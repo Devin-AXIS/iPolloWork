@@ -9,9 +9,13 @@ import { getToolActivityLabel, isToolPartInFlight } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
 import {
   Bot,
+  Check,
   ChevronDown,
   CircleAlert,
   FilePen,
+  FileSearch,
+  Globe,
+  SquareTerminal,
   KeyRound,
   ListTodo,
   LoaderCircle,
@@ -27,6 +31,15 @@ import type { ReactNode } from "react"
 function toolIcon(part: ToolPart) {
   const name = part.type === "dynamic-tool" ? part.toolName : part.type
   switch (name) {
+    case "bash":
+    case "exec_command":
+    case "functions.exec":
+      return SquareTerminal
+    case "read":
+      return FileSearch
+    case "webfetch":
+    case "websearch":
+      return Globe
     case "edit":
     case "write":
     case "apply_patch":
@@ -60,6 +73,7 @@ export type ToolProps = {
   defaultOpen?: boolean
   className?: string
   details?: ReactNode
+  active?: boolean
 }
 
 const formatValue = (value: unknown): string => {
@@ -118,9 +132,10 @@ function DiffLines({ diff }: { diff: string }) {
   )
 }
 
-const Tool = ({ title, toolPart, defaultOpen = false, className, details }: ToolProps) => {
+const Tool = ({ title, toolPart, defaultOpen = false, className, details, active }: ToolProps) => {
   const { state, input } = toolPart
   const inFlight = isToolPartInFlight(toolPart)
+  const pulsing = (active ?? inFlight) && inFlight
   const isError = state === "output-error"
   const label = title ?? getToolActivityLabel(toolPart)
   const hasInput = input !== null && input !== undefined
@@ -131,19 +146,20 @@ const Tool = ({ title, toolPart, defaultOpen = false, className, details }: Tool
   return (
     <Collapsible className={className} defaultOpen={defaultOpen}>
       <CollapsibleTrigger
+        data-tool-active={pulsing}
         className="group text-muted-foreground hover:text-foreground flex w-full min-w-0 cursor-pointer items-center justify-start gap-2 overflow-hidden text-start text-sm transition-colors"
       >
         <span className="relative inline-flex size-4 shrink-0 items-center justify-center">
-          <span className="transition-opacity group-hover:opacity-0">
-            {inFlight ? (
-              <LoaderCircle className="size-4 animate-spin" />
+          <span className={cn("transition-opacity", !pulsing && "group-hover:opacity-0")}>
+            {inFlight && active !== false ? (
+              <LoaderCircle className={cn("size-4", pulsing && "chat-tool-pulse")} />
             ) : isError ? (
               <CircleAlert className="text-destructive size-4" />
             ) : (
-              <Icon className="size-3.5" />
+              state === "output-available" ? <Check className="size-3.5" /> : <Icon className="size-3.5" />
             )}
           </span>
-          <ChevronDown className="absolute size-4 opacity-0 transition-opacity group-hover:opacity-100 group-data-panel-open:rotate-180" />
+          <ChevronDown className={cn("absolute size-4 opacity-0 transition-opacity group-data-panel-open:rotate-180", !pulsing && "group-hover:opacity-100")} />
         </span>
         <span className="min-w-0 truncate">{label}</span>
         {isError ? (

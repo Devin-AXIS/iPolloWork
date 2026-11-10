@@ -19,13 +19,46 @@ type MessageListItem = MessageGroup | UIMessageWithIndex
 export function isAssistantCommentaryMessage(message: UIMessage): boolean {
   const metadata = isRecord(message.metadata) ? message.metadata : null
   const ipollowork = isRecord(metadata?.ipollowork) ? metadata.ipollowork : null
-  return ipollowork?.codexPhase === "commentary"
+  return (ipollowork?.messagePhase ?? ipollowork?.codexPhase) === "commentary"
 }
 
 export function isAssistantFinalAnswerMessage(message: UIMessage): boolean {
   const metadata = isRecord(message.metadata) ? message.metadata : null
   const ipollowork = isRecord(metadata?.ipollowork) ? metadata.ipollowork : null
-  return ipollowork?.codexPhase === "final_answer"
+  return (ipollowork?.messagePhase ?? ipollowork?.codexPhase) === "final_answer"
+}
+
+export type AssistantMessagePresentation = "process" | "progress" | "draft" | "answer"
+
+// Use declared message phases and tool ordering, never prose/language heuristics.
+// Progress text remains visible; only a final boundary promotes it to an answer.
+export function getAssistantMessagePresentations(
+  messages: readonly UIMessage[],
+  options: { running: boolean; artifactTask?: boolean },
+): Map<string, AssistantMessagePresentation> {
+  const toolTask = options.artifactTask || messages.some(message => message.parts.some(isToolUIPart))
+  const presentations = new Map<string, AssistantMessagePresentation>()
+  let laterTool = false
+  let laterAnswer = false
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    const lastText = message.parts.findLastIndex(part => part.type === "text" && Boolean(part.text.trim()))
+    const lastTool = message.parts.findLastIndex(isToolUIPart)
+    let presentation: AssistantMessagePresentation = "process"
+    if (!message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX) && lastText >= 0) {
+      presentation = "progress"
+      if (isAssistantFinalAnswerMessage(message)) presentation = "answer"
+      else if (!isAssistantCommentaryMessage(message) && !laterTool && !laterAnswer && lastText > lastTool) {
+        presentation = options.running && toolTask ? "draft" : "answer"
+      }
+    }
+    if (lastText < 0 && !options.running && !laterTool && !laterAnswer
+      && !isAssistantCommentaryMessage(message) && message.parts.some(part => part.type === "file")) presentation = "answer"
+    presentations.set(message.id, presentation)
+    laterTool ||= lastTool >= 0
+    laterAnswer ||= presentation === "answer" || presentation === "draft"
+  }
+  return presentations
 }
 
 export type ScheduleApplyResult = {
@@ -435,7 +468,7 @@ type AssistantRenderGroup =
   | { kind: "file"; part: FileUIPart }
   | { kind: "tool"; part: ToolUIPart | DynamicToolUIPart }
 
-export type AssistantProcessRenderGroup = Extract<AssistantRenderGroup, { kind: "reasoning" | "file" | "tool" }>
+export type AssistantProcessRenderGroup = AssistantRenderGroup
 
 export type AssistantProcessState = "streaming" | "failed" | "completed"
 
@@ -522,10 +555,8 @@ export function getAssistantRenderGroups(
       continue
     }
 
-    // Intermediate tool failures remain in session history for diagnostics.
-    // The conversation shows useful progress and the assistant's final outcome.
-    if (isToolUIPart(part) && (part.state !== "output-error"
-      || (part.type === "dynamic-tool" && part.toolName === "task"))) {
+    // Keep failures inspectable; the row leaves raw diagnostics collapsed.
+    if (isToolUIPart(part)) {
       groups.push({ kind: "tool", part })
     }
   }
@@ -544,8 +575,10 @@ export function splitAssistantRenderGroups(groups: AssistantRenderGroup[]): Assi
     }
   }
 
+  const lastToolIndex = groups.findLastIndex(group => group.kind === "tool")
   const processGroups = groups.filter(
-    (group): group is AssistantProcessRenderGroup => group.kind === "reasoning" || group.kind === "tool",
+    (group, index) => group.kind === "reasoning" || group.kind === "tool"
+      || (group.kind === "text" && index < lastToolIndex),
   )
 
   return {

@@ -1,3 +1,4 @@
+import { t } from "@/i18n"
 import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai"
 import {
   isApplyPatchToolPart,
@@ -50,63 +51,63 @@ function hostnameOf(url: string | undefined): string | undefined {
 export function getToolActivityLabel(part: AnyToolPart): string {
   if (isBashToolPart(part)) {
     const description = part.input?.description?.trim()
-    return description ? truncateText(description, 64) : "Running a command"
+    return truncateText(description || part.input?.command?.trim() || t("chat.activity.command"), 96)
   }
   if (isReadToolPart(part)) {
-    return `Reading ${parseFilename(part.input?.filePath)}`
+    return t("chat.activity.read", { name: parseFilename(part.input?.filePath) })
   }
   if (isEditToolPart(part)) {
-    return `Editing ${parseFilename(part.input?.filePath)}`
+    return t("chat.activity.edit", { name: parseFilename(part.input?.filePath) })
   }
   if (isWriteToolPart(part)) {
-    return `Writing ${parseFilename(part.input?.filePath)}`
+    return t("chat.activity.write", { name: parseFilename(part.input?.filePath) })
   }
   if (isApplyPatchToolPart(part)) {
-    return "Applying changes"
+    return t("chat.activity.patch")
   }
   if (isGrepToolPart(part) || isGlobToolPart(part)) {
     const pattern = part.input?.pattern?.trim()
     return pattern
-      ? `Searching for ${truncateText(pattern, 44)}`
-      : "Searching files"
+      ? t("chat.activity.search_pattern", { name: truncateText(pattern, 44) })
+      : t("chat.activity.search")
   }
   if (isLspToolPart(part)) {
-    return `Inspecting ${parseFilename(part.input?.filePath)}`
+    return t("chat.activity.inspect", { name: parseFilename(part.input?.filePath) })
   }
   if (isSkillToolPart(part)) {
     const name = part.input?.name?.trim()
-    return name ? `Loading ${name} skill` : "Loading a skill"
+    return name ? t("chat.activity.skill_name", { name }) : t("chat.activity.skill")
   }
   if (isTodoWriteToolPart(part)) {
-    return "Updating the plan"
+    return t("chat.activity.plan")
   }
   if (isWebFetchToolPart(part)) {
     const host = hostnameOf(part.input?.url)
-    return host ? `Reading ${host}` : "Fetching a page"
+    return host ? t("chat.activity.read", { name: host }) : t("chat.activity.page")
   }
   if (isWebSearchToolPart(part)) {
     const query = part.input?.query?.trim()
     return query
-      ? `Searching the web for ${truncateText(query, 44)}`
-      : "Searching the web"
+      ? t("chat.activity.web_query", { name: truncateText(query, 44) })
+      : t("chat.activity.web")
   }
   if (isQuestionToolPart(part)) {
-    return "Asking a question"
+    return t("chat.activity.question")
   }
   if (isEnvVarRequestToolPart(part)) {
     const key = part.input?.key?.trim()
-    return key ? `Requesting ${key}` : "Requesting an environment variable"
+    return key ? t("chat.activity.environment", { name: key }) : t("chat.activity.environment_generic")
   }
   if (isTaskToolPart(part)) {
     const description = part.input?.description?.replace(/\[project-agent:[^\]]+\]\s*/gu, "").trim()
     return description
-      ? `Agent: ${truncateText(description, 56)}`
-      : "Running an agent"
+      ? t("chat.activity.agent_name", { name: truncateText(description, 56) })
+      : t("chat.activity.agent")
   }
   if (part.type === "dynamic-tool") {
-    return `Running ${part.toolName.replace(/[_-]+/g, " ")}`
+    return /image.?generation/i.test(part.toolName) ? t("chat.activity.image") : /video.?generation/i.test(part.toolName) ? t("chat.activity.video") : t("chat.activity.tool")
   }
-  return "Working"
+  return t("chat.activity.tool")
 }
 
 /** Label for the most recent tool still in flight, if any. */

@@ -1438,6 +1438,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
   const referenceBusy = Boolean(parsingReference);
   const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
 
@@ -1507,7 +1508,8 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
     ? references.length > 0 && !referenceBusy && references.every(reference => reference.status !== "failed")
     : Boolean(customBrief.title.trim() && customBrief.audience.trim());
   const submitApplication = async () => {
-    if (!canSubmit || submitting) return;
+    if (!canSubmit || submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     setSubmitting(true);
     try {
       await onSubmit(usesFiles ? {
@@ -1520,7 +1522,10 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
         audience: customBrief.audience.trim(),
         details: customBrief.details.trim(),
       }, usesFiles ? references : []);
-    } finally { setSubmitting(false); }
+    } finally {
+      submitInFlightRef.current = false;
+      setSubmitting(false);
+    }
   };
 
   if (newTaskRequired && !conflictConfirmed) {
@@ -1800,6 +1805,13 @@ export function SessionPage(props: SessionPageProps) {
   const [pendingTemplateDispatch, setPendingTemplateDispatch] = useState<PendingTemplateDispatch | null>(null);
   const [pendingStoryboardRegeneration, setPendingStoryboardRegeneration] = useState<PendingStoryboardRegeneration | null>(null);
   const templateDispatchPreparationRef = useRef<string | null>(null);
+  // The request owner survives Surface remounts while send acknowledgement is pending.
+  const claimedProgrammaticDraftIdRef = useRef<string | null>(null);
+  const claimPendingProgrammaticDraft = useCallback((id: string) => {
+    if (claimedProgrammaticDraftIdRef.current === id) return false;
+    claimedProgrammaticDraftIdRef.current = id;
+    return true;
+  }, []);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [templateSessionLoading, setTemplateSessionLoading] = useState(false);
   const [templateSaveOpen, setTemplateSaveOpen] = useState(false);
@@ -5046,7 +5058,7 @@ export function SessionPage(props: SessionPageProps) {
               {mainWorkspaceView === null && !engineInstallGateActive && !engineStartupGateActive && !showNewTaskStarter && !showDelayedSessionLoadingState && canRenderReactSurface ? (
                 <div className="flex h-full min-h-0 flex-col lg:flex-row">
                   <div className="min-h-0 min-w-0 flex-1">
-                      {isDesignSession && templateSessionLoading ? (
+                      {isDesignSession && templateSessionLoading && !hasTemplateSession ? (
                         <div className="flex h-full items-center justify-center gap-2 text-sm text-dls-secondary"><LoaderCircle className="size-4 animate-spin" />{t("templates.preparing")}</div>
                       ) : isDesignSession && !hasTemplateSession && props.ipolloworkServerClient && props.runtimeWorkspaceId ? (
                         <DesignStarter
@@ -5097,9 +5109,9 @@ export function SessionPage(props: SessionPageProps) {
                         onLoadSettled={handleSessionLoadSettled}
                         assistantWaitLabel={templateAssistantWait?.sessionId === props.selectedSessionId ? templateAssistantWait.label : undefined}
                         pendingProgrammaticDraft={pendingStoryboardRegeneration?.sessionId === props.selectedSessionId
-                          ? { id: pendingStoryboardRegeneration.requestId, draft: pendingStoryboardRegeneration.draft }
+                          ? { id: pendingStoryboardRegeneration.requestId, draft: pendingStoryboardRegeneration.draft, claim: claimPendingProgrammaticDraft }
                           : pendingTemplateDispatch?.sessionId === props.selectedSessionId && pendingTemplateDispatch.draft
-                            ? { id: pendingTemplateDispatch.requestId, draft: pendingTemplateDispatch.draft }
+                            ? { id: pendingTemplateDispatch.requestId, draft: pendingTemplateDispatch.draft, claim: claimPendingProgrammaticDraft }
                             : null}
                         onPendingProgrammaticDraftSettled={settlePendingProgrammaticDraft}
                         templateEntryPath={templateEntryPathForArtifacts}

@@ -1,59 +1,99 @@
-import { mountFixture } from './conversation-streaming-result.flow.mjs';
-import { loadVoiceoverParagraphs } from '../runner/voiceover.mjs';
-const vo = await loadVoiceoverParagraphs('conversation-active-state');
-const state = `(() => {const h=document.querySelector('#streaming-answer-proof');const s=h.querySelector('[data-testid=assistant-current-state]');return {label:s?.textContent,pulse:s?getComputedStyle(s).animationName:null,pulses:h.querySelectorAll('.chat-live-activity').length,pending:h.querySelectorAll('[data-testid=assistant-result-pending]').length,body:[...h.querySelectorAll('[data-assistant-result]')].map(n=>n.textContent)};})()`;
+import { mountFixture } from "./conversation-streaming-result.flow.mjs";
+import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
+const vo = await loadVoiceoverParagraphs("conversation-active-state");
+const host = "#streaming-answer-proof";
+const heading = `${host} .chat-process-heading[aria-expanded]`;
+const phase = (ctx, name, text) => ctx.eval(`window.__streamingAnswerProof.showAgentPhase(${JSON.stringify(name)}${text === undefined ? "" : ","+JSON.stringify(text)})`);
+const clickProcess = ctx => ctx.eval(`document.querySelector(${JSON.stringify(heading)}).click()`);
 export default {
- id:'conversation-active-state', title:'Streaming text stays in place and only the current state pulses',kind:'user-facing',preserveTheme:true,
- steps:[
- {name:'Current reasoning and tool state',run:ctx=>ctx.prove('One current state pulses and no duplicate thinking placeholder appears',{
- voiceover:vo[0],action:()=>ctx.eval(`(${mountFixture.toString()})()`,{awaitPromise:true}),assert:async()=>{
- await ctx.waitFor(`Boolean(window.__streamingAnswerProof?.showOpenCodePhase)`);
- for(const [phase,label] of [['reasoning','正在思考'],['tool','检查项目文件']]){
- await ctx.eval(`window.__streamingAnswerProof.showOpenCodePhase('${phase}')`);
- await ctx.waitFor(`document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('${label}')`);
- const s=await ctx.eval(state);ctx.assert(s.pulses===1&&s.pending===0&&s.pulse==='chat-live-activity',JSON.stringify(s));ctx.recordEvidence({type:'assertion',status:'passed',assertion:phase+' current state only',actual:s});
- }
- },screenshot:{name:'current-tool',requireText:['检查项目文件']}})},
- {name:'Unphased text retains DOM through later tools and completion',run:ctx=>ctx.prove('OpenCode text streams in one body and both text nodes survive completion',{
- voiceover:vo[1],action:async()=>{
- await ctx.eval(`window.__streamingAnswerProof.showOpenCodePhase('answer')`);
- await ctx.waitFor(`document.querySelector('#streaming-answer-proof [data-assistant-result]')?.textContent.includes('已找到相关文件。')`);
- await ctx.eval(`void(window.__stableText=document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]'))`);
- },assert:async()=>{
- const s=await ctx.eval(state);ctx.assert(s.label.includes('正在回复')&&s.pulses===1&&s.pending===0,JSON.stringify(s));
- await ctx.eval(`window.__streamingAnswerProof.appendOpenCodeStep()`);
- await ctx.waitFor(`document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-final]')?.textContent.includes('目录确认完成。')`);
- ctx.assert(await ctx.eval(`window.__stableText===document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]')`),'First body node survived subsequent tool/text');
- await ctx.eval(`void(window.__stableFinal=document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-final]'))`);
- await ctx.eval(`window.__streamingAnswerProof.finishOpenCode()`);
- await ctx.waitFor(`!document.querySelector('#streaming-answer-proof .chat-live-activity')`);
- ctx.assert(await ctx.eval(`window.__stableText===document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]')&&window.__stableFinal===document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-final]')`),'Both body nodes survived completion');
- const done=await ctx.eval(state);ctx.assert(done.body.length===2&&done.pulses===0&&done.pending===0,JSON.stringify(done));ctx.recordEvidence({type:'assertion',status:'passed',assertion:'Stable streamed body before and after completion',actual:done});
- },screenshot:{name:'stable-completed-text',requireText:['已找到相关文件。','目录确认完成。']}})},
- {name:'Post-processing pulses and interrupted history stops',run:ctx=>ctx.prove('Finishing pulses while actual work remains; interrupted history has no animated status or spinners',{
- voiceover:vo[2],action:async()=>{
- await ctx.eval(`window.__streamingAnswerProof.showCompletedWhilePostProcessing()`);
- await ctx.waitFor(`document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('正在收尾')`);
- const processing=await ctx.eval(state);ctx.assert(processing.pulses===1,JSON.stringify(processing));ctx.recordEvidence({type:'assertion',status:'passed',assertion:'Post-processing remains active',actual:processing});
- await ctx.eval(`window.__streamingAnswerProof.showHistoricalInterruption()`);
- await ctx.waitFor(`!document.querySelector('#streaming-answer-proof .chat-live-activity')`);
- },assert:async()=>{
- const s=await ctx.eval(state);ctx.assert(s.pulses===0&&s.pending===0,JSON.stringify(s));
- const animations=await ctx.eval(`Array.from(document.querySelectorAll('#streaming-answer-proof .animate-spin')).map(n=>getComputedStyle(n).animationName)`);ctx.assert(animations.every(a=>a==='none'),JSON.stringify(animations));
- },screenshot:{name:'static-interrupted-history',requireText:['已完成部分内容。']}})}
- ,{name:'Compact image file card',run:ctx=>ctx.prove('Image file card shows a contained 64×44 thumbnail with two-line title and hover actions',{
- voiceover:vo[3],action:async()=>{
- await ctx.eval(`window.__streamingAnswerProof.showUnmatchedImage()`);
- await ctx.waitFor(`Boolean(document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]'))`);
- await ctx.eval(`document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]').scrollIntoView({block:'center'})`);
- await ctx.waitFor(`document.querySelector('#streaming-answer-proof .artifact-thumbnail')?.naturalWidth>0`);
- },assert:async()=>{
- const s=await ctx.eval(`(() => {const c=document.querySelector('#streaming-answer-proof [data-testid=artifact-file-card]');const i=c.querySelector('[data-artifact-thumbnail]');const title=c.querySelector('.chat-output-title');const a=c.parentElement.querySelector('[data-testid=artifact-file-actions]');return {card:c.getBoundingClientRect().toJSON(),thumb:i.getBoundingClientRect().toJSON(),fit:getComputedStyle(i.querySelector('img')).objectFit,lines:getComputedStyle(title).webkitLineClamp,actionsOpacity:getComputedStyle(a).opacity,border:getComputedStyle(c).borderTopWidth,shadow:getComputedStyle(c).boxShadow,background:getComputedStyle(c).backgroundColor,surface:getComputedStyle(document.querySelector('#streaming-answer-proof')).backgroundColor,actionShadow:getComputedStyle(a).boxShadow,buttonBackground:getComputedStyle(a.querySelector('button')).backgroundColor,buttonShadow:getComputedStyle(a.querySelector('button')).boxShadow};})()`);
- ctx.assert(s.card.height===64&&s.thumb.width===64&&s.thumb.height===44&&s.fit==='contain'&&s.lines==='2'&&s.border==='1px'&&s.shadow==='none'&&s.actionShadow==='none'&&s.background===s.surface&&s.buttonBackground==='rgba(0, 0, 0, 0)'&&s.buttonShadow==='none',JSON.stringify(s));
- await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:s.card.left+20,y:s.card.top+20});
- await ctx.waitFor(`getComputedStyle(document.querySelector('#streaming-answer-proof [data-testid=artifact-file-actions]')).opacity==='1'`);
- ctx.recordEvidence({type:'assertion',status:'passed',assertion:'Compact card thumbnail and hover',actual:s});
- },screenshot:{name:'compact-thumbnail-card',requireText:['cover.png']}})}
- ,{name:'Release fixture' ,run:ctx=>ctx.eval(`window.__streamingAnswerProof?.cleanup?.()`)}
- ]
+  id: "conversation-active-state", title: "Compact process, stable response, truthful delivery and restrained motion", kind: "user-facing", preserveTheme: true,
+  steps: [
+    { name: "Compact thinking", run: ctx => ctx.prove("Long reasoning stays closed behind one active status", {
+      voiceover: vo[0], action: async () => {
+        await ctx.client.send("Emulation.setEmulatedMedia", {features:[{name:"prefers-reduced-motion",value:"no-preference"}]});
+        await ctx.eval(`(${mountFixture.toString()})({scrolling:true})`, {awaitPromise:true});
+        await ctx.waitFor("Boolean(window.__streamingAnswerProof?.showAgentPhase)");
+        await phase(ctx,"thinking");
+        await ctx.waitFor(`document.querySelector('${host} [data-testid=assistant-current-state]')?.textContent.includes('正在思考')`);
+      }, assert: async () => {
+        const s=await ctx.eval(`(()=>{const h=document.querySelector('${host}'),d=h.querySelector('.chat-process-disclosure');return {open:d.dataset.open,inert:d.inert,height:d.getBoundingClientRect().height,pulses:h.querySelectorAll('.chat-live-activity').length,text:h.innerText,animation:getComputedStyle(h.querySelector('.chat-live-activity')).animationName}})()`);
+        ctx.assert(s.open==='false'&&s.inert&&s.height<1&&s.pulses===1&&!s.text.includes('generationPath')&&s.animation==='chat-live-activity',JSON.stringify(s));
+      }, screenshot:{name:"compact-thinking",requireText:["正在思考"],rejectText:["generationPath"]},
+    })},
+    { name: "User-controlled disclosure", run: ctx => ctx.prove("Process reveals with a bounded transition and retains manual expansion", {
+      voiceover:vo[1],action:()=>clickProcess(ctx),assert:async()=>{
+        await ctx.waitFor(`document.querySelector('${host} .chat-process-disclosure').getBoundingClientRect().height>100`);
+        const s=await ctx.eval(`(()=>{const d=document.querySelector('${host} .chat-process-disclosure');return {height:d.getBoundingClientRect().height,inert:d.inert,transition:getComputedStyle(d).transitionDuration}})()`);
+        ctx.assert(!s.inert&&s.height<=440&&s.transition.includes('0.18'),JSON.stringify(s));
+        await phase(ctx,"tools");
+        await ctx.waitFor(`document.querySelector('${host} .chat-process-disclosure')?.dataset.open==='true'`);
+      },screenshot:{name:"expanded-process",requireText:["generationPath","正在生成图片"]},
+    })},
+    { name: "Tool activity and approval",run:ctx=>ctx.prove("Tool updates have one active icon; approval stops motion",{
+      voiceover:vo[2],action:async()=>{await clickProcess(ctx);await phase(ctx,"tools");},assert:async()=>{
+        await ctx.waitFor(`document.querySelector('${host} [data-testid=assistant-current-state]')?.textContent.includes('正在生成图片')`);
+        ctx.assert(await ctx.eval(`document.querySelectorAll('${host} .chat-live-activity').length===1&&!document.querySelector('${host} [data-assistant-result]')`),"One active status and no final answer during tools");
+        ctx.assert(await ctx.eval(`document.querySelectorAll('${host} .chat-tool-pulse').length===0&&[...document.querySelectorAll('${host} [data-testid=assistant-tool-action] button')].every(n=>n.getAttribute('aria-expanded')==='false')`),"Only the shared status pulses; tool summaries start collapsed");
+        ctx.assert(await ctx.eval(`(()=>{const h=document.querySelector('${host}'),p=h.querySelector('[data-testid=assistant-progress-timeline]');return p?.innerText.includes('研究已完成')&&p.checkVisibility()&&h.querySelector('.chat-process-disclosure').dataset.open==='false'&&!!p.querySelector('[data-testid=assistant-tool-action]')&&[...p.querySelectorAll('pre')].every(n=>!n.checkVisibility())})()`),"Progress narration and tool summaries remain visible with reasoning and code collapsed");
+        await ctx.waitFor(`document.querySelector('${host} .chat-process-disclosure').getBoundingClientRect().height<1`);
+        const pulse = await ctx.eval(`(()=>{const n=document.querySelector('${host} .chat-live-activity');const k=n.getAnimations()[0].effect.getKeyframes();return k.map(f=>({opacity:Number(f.opacity),transform:f.transform}))})()`);
+        ctx.assert(Math.max(...pulse.map(k=>k.opacity))-Math.min(...pulse.map(k=>k.opacity))>=0.6&&pulse.every(k=>!k.transform||k.transform==='none'),"Pulse changes opacity without scaling");
+        await phase(ctx,"approval");
+        await ctx.waitFor(`document.querySelector('${host} [data-testid=assistant-current-state]')?.textContent.includes('等待你确认')`);
+        ctx.assert(await ctx.eval(`document.querySelectorAll('${host} .chat-live-activity').length===0`),"Approval is waiting, not running");
+        ctx.assert(await ctx.eval(`document.querySelectorAll('${host} .chat-tool-pulse').length===0`),"Approval pauses tool pulse");
+      },screenshot:{name:"waiting-for-confirmation",requireText:["等待你确认"]},
+    })},
+    {name:"Inspectable response draft",run:ctx=>ctx.prove("Unclassified agent text is a draft, not a final response",{
+      voiceover:vo[3],action:async()=>{await phase(ctx,"draft");await clickProcess(ctx);},assert:async()=>{
+        await ctx.waitFor(`Boolean(document.querySelector('${host} [data-testid=assistant-reply-draft]'))`);
+        await ctx.waitFor(`Boolean(document.querySelector('${host} [data-testid=assistant-live-tool][data-phase=confirmed]'))`);
+        await ctx.waitFor(`!document.querySelector('${host} [data-testid=assistant-live-tool]')`);
+        const s=await ctx.eval(`({answer:!!document.querySelector('${host} [data-assistant-result]'),draft:document.querySelector('${host} [data-testid=assistant-reply-draft]')?.textContent,codeVisible:document.querySelector('${host} pre')?.checkVisibility()})`);
+        ctx.assert(!s.answer&&s.draft.includes('三张配图')&&!s.codeVisible,JSON.stringify(s));
+      },screenshot:{name:"inspectable-draft",requireText:["回复草稿","三张配图"]},
+    })},
+    {name:"Stable streamed answer",run:ctx=>ctx.prove("Final answer grows in the same DOM node without process text",{
+      voiceover:vo[4],action:async()=>{await clickProcess(ctx);await phase(ctx,"answer","三张配图已生成，");},assert:async()=>{
+        await ctx.waitFor(`document.querySelector('${host} [data-assistant-result]')?.textContent.includes('三张配图')`);
+        await ctx.eval(`void(window.__compactAnswerNode=document.querySelector('${host} [data-assistant-result]'))`);
+        await phase(ctx,"answer","三张配图已生成，正在核对报告与配图。 ");
+        await ctx.waitFor(`document.querySelector('${host} [data-assistant-result]')?.textContent.includes('正在核对报告')`);
+        ctx.assert(await ctx.eval(`window.__compactAnswerNode===document.querySelector('${host} [data-assistant-result]')&&!document.querySelector('${host} [data-assistant-result]').innerText.includes('generationPath')&&!document.querySelector('${host} [data-testid=artifact-file-card]')`),"Stable answer with no raw execution details or premature cards");
+      },screenshot:{name:"stable-final-answer",requireText:["正在回复","正在核对报告"]},
+    })},
+    {name:"Post-processing then delivery",run:ctx=>ctx.prove("Export remains active and cards enter only after completion",{
+      voiceover:vo[5],action:async()=>{await phase(ctx,"finishing");await ctx.waitFor(`document.querySelector('${host} [data-testid=assistant-current-state]')?.textContent.includes('正在收尾')`);await ctx.screenshot("post-processing",{voiceover:vo[5],claim:"Export is still running",requireText:["正在收尾"]});await phase(ctx,"done");},assert:async()=>{
+        await ctx.waitFor(`Boolean(document.querySelector('${host} [data-testid=artifact-file-card]'))`);
+        await ctx.waitFor(`!document.querySelector('${host} [data-testid=assistant-live-tool]')`);
+        ctx.assert(await ctx.eval(`document.querySelector('${host} .chat-process-disclosure').querySelectorAll('[data-testid=assistant-tool-action]').length===3&&document.querySelector('${host} [data-testid=assistant-progress-timeline]').innerText.includes('研究已完成')`),"Completed tools move to closed history; progress text remains visible");
+        const s=await ctx.eval(`({animated:document.querySelector('${host} .chat-result-enter')?getComputedStyle(document.querySelector('${host} .chat-result-enter')).animationName:null,pulses:document.querySelectorAll('${host} .chat-live-activity').length,collapsed:document.querySelector('${host} .chat-process-disclosure').dataset.open})`);
+        ctx.assert(s.animated==='chat-content-enter'&&s.pulses===0&&s.collapsed==='false',JSON.stringify(s));
+        await ctx.eval(`document.querySelector('${host} [data-testid=artifact-file-card]').click()`);
+        ctx.assert(await ctx.eval("Boolean(window.__streamingAnswerProof.openedPath)"),"Completed file opens");
+      },screenshot:{name:"delivered-results",requireText:["三张配图","report.pdf"]},
+    })},
+    {name:"Stopped and reduced motion",run:ctx=>ctx.prove("Stopped runs and reduced motion have no continuing animation",{
+      voiceover:vo[6],action:async()=>{await phase(ctx,"stopped");await ctx.waitFor(`document.querySelector('${host} [data-testid=assistant-current-state]')?.textContent.includes('已停止')`);await ctx.client.send("Emulation.setEmulatedMedia",{features:[{name:"prefers-reduced-motion",value:"reduce"}]});await phase(ctx,"tools");await clickProcess(ctx);},assert:async()=>{
+        await ctx.waitFor(`document.querySelector('${host} .chat-process-disclosure')?.dataset.open==='true'`);
+        const s=await ctx.eval(`(()=>{const h=document.querySelector('${host}');return {animation:getComputedStyle(h.querySelector('.chat-live-activity')).animationName,transition:getComputedStyle(h.querySelector('.chat-process-disclosure')).transitionDuration,spinners:[...h.querySelectorAll('.animate-spin,.chat-tool-pulse')].map(n=>getComputedStyle(n).animationName)}})()`);
+        ctx.assert(s.animation==='none'&&s.transition==='0s'&&s.spinners.every(n=>n==='none'),JSON.stringify(s));
+      },screenshot:{name:"reduced-motion",requireText:["正在生成图片"]},
+    })},
+    {name:"Reading position stays put",run:ctx=>ctx.prove("Selection holds reading position while output grows; jump returns to latest",{
+      voiceover:vo[7],action:async()=>{
+        await ctx.eval("window.__streamingAnswerProof.showLongAnswer();window.__streamingAnswerProof.scrollStore.getState().setStickyBottom('proof',null)");
+        await ctx.waitFor(`document.querySelector('${host}').scrollHeight>innerHeight*2`);
+        await ctx.eval(`(()=>{const h=document.querySelector('${host}');h.scrollTop=200;const p=[...h.querySelectorAll('p')].find(n=>n.getBoundingClientRect().top>80);const r=document.createRange();r.selectNodeContents(p);getSelection().removeAllRanges();getSelection().addRange(r);document.dispatchEvent(new Event('selectionchange'));window.__heldChatTop=h.scrollTop;})()`);
+        await ctx.waitFor("window.__streamingAnswerProof.scrollStore.getState().sessions.proof?.mode==='manual'");
+        await ctx.eval("window.__streamingAnswerProof.appendLongAnswer()");
+      },assert:async()=>{
+        await ctx.waitFor(`document.querySelector('${host}').innerText.includes('新增内容')`);
+        const delta=await ctx.eval(`Math.abs(document.querySelector('${host}').scrollTop-window.__heldChatTop)`);ctx.assert(delta<=2,`Reading position drift: ${delta}`);
+        await ctx.eval("getSelection().removeAllRanges();window.__streamingAnswerProof.scroll.jumpToLatest('smooth')");
+        await ctx.waitFor(`(()=>{const h=document.querySelector('${host}');return h.scrollHeight-h.clientHeight-h.scrollTop<2})()`);
+      },screenshot:{name:"stable-reading-and-jump",requireText:["新增内容"]},
+    })},
+    {name:"Release fixture",run:async ctx=>{await ctx.eval("window.__streamingAnswerProof?.cleanup?.()");await ctx.client.send("Emulation.setEmulatedMedia",{features:[]});}},
+  ],
 };

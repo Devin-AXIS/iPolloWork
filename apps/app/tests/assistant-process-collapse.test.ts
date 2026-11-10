@@ -7,6 +7,7 @@ import {
   getMessageCompleted,
   getMessageCreated,
   getAssistantRenderGroups,
+  getAssistantMessagePresentations,
   hasActiveAssistantVisibleResult,
   getScheduleApplyResult,
   groupMessages,
@@ -51,7 +52,7 @@ describe("assistant process collapse sections", () => {
     expect(getAssistantRenderGroups(answer.parts, true)).toEqual([{ kind: "text", text: "The fix is" }]);
   });
 
-  test("omits failed tool attempts from progress without mutating history or hiding the final explanation", () => {
+  test("retains failed tool attempts for inspection without mutating history or hiding the final explanation", () => {
     const parts = [
       { type: "reasoning", text: "正在准备内容", state: "done" },
       { type: "dynamic-tool", toolName: "ipollowork_browser_snapshot", toolCallId: "failed-browser", state: "output-error", input: {}, errorText: "Browser timeout" },
@@ -62,11 +63,11 @@ describe("assistant process collapse sections", () => {
     const before = JSON.stringify(parts);
     for (const showThinking of [true, false]) {
       const groups = getAssistantRenderGroups(parts, showThinking);
-      expect(groups.filter(group => group.kind === "tool").map(group => group.part.toolCallId)).toEqual(["saved"]);
+      expect(groups.filter(group => group.kind === "tool").map(group => group.part.toolCallId)).toEqual(["failed-browser", "failed-command", "saved"]);
       expect(groups.at(-1)).toEqual({ kind: "text", text: "草稿已保存；发布仍需处理登录问题。" });
     }
     expect(JSON.stringify(parts)).toBe(before);
-    expect(getAssistantRenderGroups([parts[1], parts[2]], true)).toEqual([]);
+    expect(getAssistantRenderGroups([parts[1], parts[2]], true)).toHaveLength(2);
   });
 
   test("finds a completed schedule import across OpenCode and MCP tool result envelopes", () => {
@@ -100,34 +101,56 @@ describe("assistant process collapse sections", () => {
     })
   })
 
-  test("shows live process steps and folds them on completion", () => {
-    const source = readFileSync(
-      new URL("../src/components/chat/message-list.tsx", import.meta.url),
-      "utf8",
-    );
+  test("keeps process details mounted and user-controlled across stream updates", () => {
+    const source = readFileSync(new URL("../src/components/chat/message-list.tsx", import.meta.url), "utf8");
+    expect(source).toContain('className="chat-process-disclosure" data-open={isOpen} inert={!isOpen}');
+    expect(source).toContain("const [isOpen, setIsOpen] = React.useState(false)");
+    expect(source).not.toContain("setManualOpen");
+  });
 
-    expect(source).toContain("const isOpen = manualOpen ?? (isStreaming && !completed)");
-    expect(source).toContain("getAssistantProcessState(isStreaming, hasError)");
-    expect(source).toContain("getToolActivityLabel(activeTool)");
-    expect(source).toContain('runOutcome === "running"');
-    expect(source).toContain("getLatestArtifactAssistantMessageId(messages.slice(latestUserIndex + 1))");
-    expect(source).toContain("message.id === latestTurnAssistantMessageId");
-    expect(source).toContain("aria-expanded={isOpen}");
-    expect(source).toContain("onClick={() => setManualOpen(!isOpen)}");
-    expect(source).toContain("if (completed) setManualOpen(null)");
-    expect(source).toContain('message.process_handled_tool_count');
-    expect(source).toContain("<AssistantProcessDisclosure");
-    expect(source).toContain("isStreaming={liveProcess}");
-    expect(source).toContain("processRows.map(renderProcessRow)");
-    expect(source).toContain("hideProcess");
-    expect(source).toContain("isStreaming={group.isStreaming}");
+  test("separates unphased tool explanations, drafts and final text without altering history", () => {
+    const messages = [
+      { id: "explanation", role: "assistant", parts: [{ type: "text", text: "I need to inspect generationPath and copy assets", state: "done" }] },
+      { id: "tools", role: "assistant", parts: [{ type: "dynamic-tool", toolName: "image_generation", toolCallId: "image", state: "output-available", input: {}, output: "saved" }] },
+      { id: "answer", role: "assistant", parts: [{ type: "text", text: "图片已保存。", state: "streaming" }] },
+    ] satisfies Parameters<typeof getAssistantMessagePresentations>[0];
+    const original = JSON.stringify(messages);
+    const live = getAssistantMessagePresentations(messages, { running: true });
+    expect(live.get("explanation")).toBe("progress");
+    expect(live.get("answer")).toBe("draft");
+    const done = getAssistantMessagePresentations(messages, { running: false });
+    expect(done.get("explanation")).toBe("progress");
+    expect(done.get("answer")).toBe("answer");
+    expect(JSON.stringify(messages)).toBe(original);
+  });
 
-    const markdownSource = readFileSync(
-      new URL("../src/components/markdown/markdown.tsx", import.meta.url),
-      "utf8",
-    );
-    expect(markdownSource).toContain("STREAMING_MARKDOWN_RENDER_INTERVAL_MS = 50");
-    expect(markdownSource).toContain("return streaming ? renderedText : text");
+  test("streams plain chat immediately but holds unclassified artifact task text", () => {
+    const messages = [{ id: "text", role: "assistant", parts: [{ type: "text", text: "普通回答", state: "streaming" }] }] satisfies Parameters<typeof getAssistantMessagePresentations>[0];
+    expect(getAssistantMessagePresentations(messages, { running: true }).get("text")).toBe("answer");
+    expect(getAssistantMessagePresentations(messages, { running: true, artifactTask: true }).get("text")).toBe("draft");
+  });
+
+  test("honors common final metadata while keeping commentary inspectable", () => {
+    const messages = [
+      { id: "progress", role: "assistant", metadata: { ipollowork: { messagePhase: "commentary" } }, parts: [{ type: "text", text: "Working" }] },
+      { id: "final", role: "assistant", metadata: { ipollowork: { messagePhase: "final_answer" } }, parts: [{ type: "text", text: "Done" }] },
+    ] satisfies Parameters<typeof getAssistantMessagePresentations>[0];
+    expect(isAssistantCommentaryMessage(messages[0])).toBe(true);
+    expect(isAssistantFinalAnswerMessage(messages[1])).toBe(true);
+    expect(getAssistantMessagePresentations(messages, { running: true }).get("progress")).toBe("progress");
+    expect(getAssistantMessagePresentations(messages, { running: true, artifactTask: true }).get("final")).toBe("answer");
+  });
+
+  test("keeps tool-prefacing text in process even when it shares a tool message", () => {
+    const message = { id: "mixed", role: "assistant", parts: [
+      { type: "text", text: "Checking the source", state: "done" },
+      { type: "dynamic-tool", toolName: "read", toolCallId: "read", input: {}, state: "output-available", output: "content" },
+    ] } satisfies Parameters<typeof getAssistantMessagePresentations>[0][number];
+    expect(getAssistantMessagePresentations([message], { running: false }).get("mixed")).toBe("progress");
+    const groups = getAssistantRenderGroups([...message.parts, { type: "text", text: "Final response", state: "done" }], true);
+    const sections = splitAssistantRenderGroups(groups);
+    expect(sections.resultGroups).toEqual([{ kind: "text", text: "Final response" }]);
+    expect(sections.processGroups[0]).toEqual({ kind: "text", text: "Checking the source" });
   });
 
   test("keeps a follow-up waiting state off the completed assistant turn", () => {

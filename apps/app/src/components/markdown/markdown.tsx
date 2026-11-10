@@ -346,6 +346,24 @@ const markdownParser = new Marked(baseMarkedOptions).use(
   }),
 );
 
+// Streaming text is progress, not a completed file delivery. Keep source
+// optional until the turn settles, including text followed by another tool.
+const streamingMarkdownParser = new Marked(baseMarkedOptions).use(
+  markedEmoji({
+    emojis: emojiAliases,
+    renderer: (token) => escapeHtml(token.emoji),
+  }),
+  { renderer: {
+    link(token) {
+      if (localFilePathFromHref(token.href)) return this.parser.parseInline(token.tokens);
+      return baseMarkedOptions.renderer.link.call(this, token);
+    },
+    code(token) {
+      return `<details class="my-3"><summary class="cursor-pointer text-sm text-muted-foreground">${escapeHtml(t("new_conversation.mode.code"))}</summary><div class="max-h-60 overflow-auto">${baseMarkedOptions.renderer.code.call(this, token)}</div></details>`;
+    },
+  } },
+);
+
 const highlightedMarkdownParser = new Marked({
   ...baseMarkedOptions,
   async: true,
@@ -454,8 +472,9 @@ function MarkdownBlockInner({
     if (!renderedText.trim()) {
       return "";
     }
-    return sanitizeMarkdownHtml(markdownParser.parse(renderedText, { async: false }));
-  }, [renderedText]);
+    const parser = streaming ? streamingMarkdownParser : markdownParser;
+    return sanitizeMarkdownHtml(parser.parse(renderedText, { async: false }));
+  }, [renderedText, streaming]);
   const [highlightedHtml, setHighlightedHtml] = useState<{ text: string; html: string } | null>(null);
 
   useEffect(() => {

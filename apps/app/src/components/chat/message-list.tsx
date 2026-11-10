@@ -12,17 +12,12 @@ import {
   Copy,
   Download,
   FileIcon,
-  FilePenLine,
-  FileSearch,
-  Globe,
   Info,
   LoaderCircle,
   Pencil,
   Quote,
   Split,
-  SquareTerminal,
   Undo2,
-  Wrench,
 } from "lucide-react"
 import {
   DynamicToolUIPart,
@@ -114,13 +109,11 @@ import {
 } from "@/lib/build-in-tools"
 import type { ThreadStatus } from "@/lib/messages"
 import {
-  collectToolParts,
-  getActiveToolLabel,
   getToolActivityLabel,
   isToolPartInFlight,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, hasActiveAssistantVisibleResult, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, earliestProcessTimestamp, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isAssistantCommentaryMessage, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, earliestProcessTimestamp, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, getAssistantMessagePresentations, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px]"
@@ -156,8 +149,6 @@ type ProcessStep = {
 }
 
 type ToolAction = "inspect" | "edit" | "command" | "web" | "other"
-type ProcessRow = { kind: "step"; step: ProcessStep } | { kind: "tools"; action: ToolAction; steps: ProcessStep[] }
-
 function getToolAction(part: ToolUIPart | DynamicToolUIPart): ToolAction {
   if (isReadToolPart(part) || isGrepToolPart(part) || isGlobToolPart(part) || isLspToolPart(part)) return "inspect"
   if (isEditToolPart(part) || isWriteToolPart(part) || isApplyPatchToolPart(part)) return "edit"
@@ -166,19 +157,44 @@ function getToolAction(part: ToolUIPart | DynamicToolUIPart): ToolAction {
   return "other"
 }
 
-function groupProcessSteps(steps: ProcessStep[]): ProcessRow[] {
-  const rows: ProcessRow[] = []
-  for (const step of steps) {
-    if (step.group.kind !== "tool" || isTaskToolPart(step.group.part)) {
-      rows.push({ kind: "step", step })
-      continue
+// Keep a live tool in place briefly after acknowledgement, then move it to history.
+function ToolProgressRow({ part, live, waiting, messageId }: {
+  part: ToolUIPart | DynamicToolUIPart
+  live: boolean
+  waiting: boolean
+  messageId: string
+}) {
+  const pending = live && isToolPartInFlight(part)
+  const failed = part.state === "output-error"
+  const [phase, setPhase] = React.useState<"visible" | "confirmed" | "closing" | "hidden">(pending || failed ? "visible" : "hidden")
+  const wasPending = React.useRef(pending)
+  React.useEffect(() => {
+    if (pending || failed) {
+      wasPending.current = pending
+      setPhase("visible")
+      return
     }
-    const action = getToolAction(step.group.part)
-    const last = rows.at(-1)
-    if (last?.kind === "tools" && last.action === action) last.steps.push(step)
-    else rows.push({ kind: "tools", action, steps: [step] })
-  }
-  return rows
+    if (!wasPending.current) return
+    wasPending.current = false
+    if (part.state !== "output-available" || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setPhase("hidden")
+      return
+    }
+    setPhase("confirmed")
+    const closing = window.setTimeout(() => setPhase("closing"), 650)
+    const hidden = window.setTimeout(() => setPhase("hidden"), 900)
+    return () => { window.clearTimeout(closing); window.clearTimeout(hidden) }
+  }, [pending, failed, part.state])
+  if (phase === "hidden") return null
+  return (
+    <div className="chat-tool-progress w-full" data-phase={phase} data-testid="assistant-live-tool" data-process-active={pending && !waiting} data-message-id={messageId}>
+      <div className="min-h-0 overflow-hidden">
+        <div className="py-1" data-testid="assistant-tool-action" data-tool-action={getToolAction(part)}>
+          <Tool toolPart={part} active={false} />
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>[number], index: number, options: RenderAssistantGroupOptions = {}) {
@@ -206,7 +222,7 @@ function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>
         key={`reasoning-${index}`}
         className="text-muted-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
         markdown
-        isStreaming={group.isStreaming}
+        isStreaming={options.streaming || group.isStreaming}
       >
         {group.text}
       </MessageContent>
@@ -630,12 +646,14 @@ function useElapsedNow(startedAt: number | null, active: boolean) {
 function AssistantProcessDisclosure(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
-  completed?: boolean
   finalizing?: boolean
   hasError?: boolean
   stopped?: boolean
   hasDetails?: boolean
   responding?: boolean
+  drafting?: boolean
+  retrying?: boolean
+  pendingLabel?: string
   currentTool?: ToolUIPart | DynamicToolUIPart | null
   startedAt?: number | null
   endedAt?: number | null
@@ -643,14 +661,10 @@ function AssistantProcessDisclosure(props: {
   children: React.ReactNode
   contentClassName?: string
 }) {
-  const { groups, isStreaming, completed = false, finalizing = false, hasError = false, stopped = false, hasDetails = true, responding = false, currentTool, startedAt = null, endedAt = null, durationMs, children, contentClassName } = props
+  const { groups, isStreaming, finalizing = false, hasError = false, stopped = false, hasDetails = true, responding = false, drafting = false, retrying = false, pendingLabel, currentTool, startedAt = null, endedAt = null, durationMs, children, contentClassName } = props
   const { waitingLabel } = useMessageList()
   const awaitingConfirmation = isStreaming && Boolean(waitingLabel)
-  const [manualOpen, setManualOpen] = React.useState<boolean | null>(null)
-  const isOpen = manualOpen ?? (isStreaming && !completed)
-  React.useEffect(() => {
-    if (completed) setManualOpen(null)
-  }, [completed])
+  const [isOpen, setIsOpen] = React.useState(false)
   const now = useElapsedNow(startedAt, isStreaming)
   const activeGroup = isStreaming && !responding ? groups.findLast((group) => group.kind === "tool" && isToolPartInFlight(group.part)) : undefined
   const activeTool = currentTool !== undefined ? currentTool : activeGroup?.kind === "tool" ? activeGroup.part : null
@@ -662,39 +676,43 @@ function AssistantProcessDisclosure(props: {
   const elapsed = elapsedMs === null ? null : formatElapsedDuration(elapsedMs)
   const label = stopped ? t("message.elapsed_stopped") : awaitingConfirmation ? waitingLabel
     : processState === "streaming"
-    ? currentStep ?? (responding ? t("session.assistant_responding") : finalizing ? t("session.status_finalizing") : t("session.assistant_thinking"))
+    ? retrying ? t("session.retry_recovering") : currentStep ?? (responding ? t("session.assistant_responding") : drafting ? t("session.assistant_drafting") : finalizing ? t("session.status_finalizing") : pendingLabel ?? t("session.assistant_thinking"))
     : processState === "failed"
       ? t("message.process_failed")
       : t("message.process_completed")
-  const heading = elapsed === null ? label
-    : isStreaming ? `${label} · ${t("message.elapsed_running", { duration: elapsed })}`
-    : processState === "completed" && !stopped ? t("message.elapsed_total", { duration: elapsed })
-    : `${stopped ? label : t("message.elapsed_failed")} · ${t("message.elapsed_total", { duration: elapsed })}`
   const completedCommands = groups.filter((group) => group.kind === "tool" && !isToolPartInFlight(group.part)).length
+  const active = isStreaming && !hasError && !stopped && !awaitingConfirmation
+  const Icon = stopped ? CirclePause : hasError ? CircleAlert : isStreaming ? awaitingConfirmation ? Clock3 : LoaderCircle : Check
   const content = (
     <>
-      <span className="min-w-0 truncate"><span className={cn(isStreaming && !hasError && !stopped && !awaitingConfirmation && "chat-live-activity")} data-testid="assistant-current-state">{heading}</span>
+      <Icon className={cn("size-3.5 shrink-0", active && "chat-live-activity")} aria-hidden />
+      <span className="min-w-0 truncate" data-testid="assistant-current-state">
+        <span key={label} className="chat-state-label">{elapsed === null || isStreaming || stopped || hasError ? label : t("message.process_completed")}</span>
+        {elapsed ? <span className="tabular-nums"> · {isStreaming ? t("message.elapsed_running", { duration: elapsed }) : t("message.elapsed_total", { duration: elapsed })}</span> : null}
         {completedCommands > 0 ? <span> · {t("message.process_handled_tool_count", { count: completedCommands })}</span> : null}
       </span>
-      {hasDetails ? <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")} aria-hidden /> : null}
+      {hasDetails ? <ChevronRight className={cn("ml-auto size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")} aria-hidden /> : null}
     </>
   )
 
   return (
     <div className="w-full">
-      {hasDetails ? <button
+      <button
         type="button"
-        className={cn(
-          "chat-process-heading text-muted-foreground hover:text-foreground flex w-full items-center gap-2 px-0 py-2 text-left text-xs font-medium transition-colors",
-          processState === "failed" && "text-muted-foreground",
-        )}
-        aria-expanded={isOpen}
+        data-active-status={isStreaming}
+        tabIndex={hasDetails ? 0 : -1}
+        className="chat-process-heading text-muted-foreground hover:text-foreground flex w-full items-center gap-2 px-0 py-2 text-left text-xs font-medium transition-colors"
+        aria-expanded={hasDetails ? isOpen : undefined}
         aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
-        onClick={() => setManualOpen(!isOpen)}
-      >{content}</button> : <div className="chat-process-heading text-muted-foreground flex items-center gap-2 py-2 text-xs font-medium">{content}</div>}
-      {hasDetails && isOpen ? (
-        <div className={cn("mt-2 flex w-full flex-col gap-2", !isStreaming && "border-l border-border/70 pl-4", contentClassName)}>
-          {children}
+        onClick={() => { if (hasDetails) setIsOpen(!isOpen) }}
+      >{content}</button>
+      {hasDetails ? (
+        <div className="chat-process-disclosure" data-open={isOpen} inert={!isOpen} aria-hidden={!isOpen}>
+          <div className="chat-process-details">
+            <div className={cn("chat-process-inner flex max-h-[420px] flex-col gap-3 overflow-y-auto border-l border-border/70 pl-4", contentClassName)}>
+              {children}
+            </div>
+          </div>
         </div>
       ) : null}
     </div>
@@ -1106,32 +1124,6 @@ const MessageComponent = React.memo(
 
 MessageComponent.displayName = "MessageComponent"
 
-function ThinkingDots() {
-  return <span className="chat-thinking-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
-}
-
-function ThinkingIndicator() {
-  const label = t("session.assistant_thinking")
-  return <><span className="chat-thinking-label" aria-label={label}>{Array.from(label).map((character, index) => <span key={index} aria-hidden="true" style={{ animationDelay: `${index * 0.12}s` }}>{character}</span>)}</span><ThinkingDots /></>
-}
-
-const LoadingMessage = React.memo(({ label, paused = false, startedAt = null }: { label?: string; paused?: boolean; startedAt?: number | null }) => {
-  const now = useElapsedNow(startedAt, true)
-  const elapsed = startedAt === null ? null : formatElapsedDuration(now - startedAt)
-  return (
-  <Message className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2" data-testid="assistant-loading">
-    <div className="group flex w-full flex-col gap-0">
-      <div className="chat-process-heading flex items-center gap-2 px-1 py-1 text-xs font-medium text-muted-foreground">
-        {paused ? <Clock3 className="size-4 shrink-0" aria-hidden /> : null}
-        <span>{label ? label : paused ? t("session.assistant_thinking") : <ThinkingIndicator />}{elapsed ? ` · ${t("message.elapsed_running", { duration: elapsed })}` : ""}</span>
-      </div>
-    </div>
-  </Message>
-  )
-})
-
-LoadingMessage.displayName = "LoadingMessage"
-
 interface AssistantRunErrorTextProps {
   error: string | null
 }
@@ -1188,6 +1180,7 @@ function AssistantRunErrorText({ error }: AssistantRunErrorTextProps) {
 }
 
 interface RetryMessageProps {
+  compact?: boolean
   status: RetryStatus
 }
 
@@ -1204,7 +1197,7 @@ function RetryActionButton(props: { link: string; label: string }) {
   )
 }
 
-const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
+const RetryMessage = React.memo(({ status, compact = false }: RetryMessageProps) => {
   const [seconds, setSeconds] = React.useState(() => retryDelaySeconds(status))
 
   React.useEffect(() => {
@@ -1224,9 +1217,9 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
   return (
     <Message className="not-prose mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0">
       <div className="group flex w-full flex-col items-start gap-0">
-        <div className="text-foreground flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
+        <div className="text-foreground flex min-w-0 flex-1 flex-col gap-2 py-2">
           <div className="flex items-start gap-2">
-            <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-muted-foreground" />
+            <LoaderCircle size={16} className={cn("mt-0.5 shrink-0 text-muted-foreground", !compact && "chat-live-activity")} />
             <div className="min-w-0 space-y-1">
               <p className="text-sm font-medium">{t("session.retry_recovering")}</p>
               <p className="text-xs text-muted-foreground">{info}</p>
@@ -1297,6 +1290,7 @@ function getRenderableMessage(message: UIMessage) {
 }
 
 interface AssistantMessageGroupProps {
+  retryStatus?: RetryStatus | null
   items: UIMessageWithIndex[]
   messages: UIMessage[]
   isStreaming: boolean
@@ -1307,6 +1301,7 @@ interface AssistantMessageGroupProps {
   artifactContext?: ArtifactInteractionContext
   latestAssistantMessageId?: string
   activeAssistantMessageId?: string
+  assistantWaitLabel?: string
   imageStatus?: "failed" | "stopped"
   runIncomplete?: boolean
   runOutcome?: "running" | "completed" | "failed" | "stopped" | null
@@ -1317,6 +1312,7 @@ interface AssistantMessageGroupProps {
 }
 
 function MessageGroup({
+  retryStatus,
   items,
   messages,
   isStreaming,
@@ -1327,6 +1323,7 @@ function MessageGroup({
   artifactContext,
   latestAssistantMessageId,
   activeAssistantMessageId,
+  assistantWaitLabel,
   imageStatus,
   runIncomplete = false,
   runOutcome = null,
@@ -1348,7 +1345,9 @@ function MessageGroup({
   const latestUser = messages.findLast((message) => message.role === "user" && !isInternalContinuationMessage(message))
   const currentTurn = isLatestAssistantGroup && precedingUser?.id === latestUser?.id
   const isLiveGroup = isStreaming && items.some((item) => item.message.id === activeAssistantMessageId)
-  const liveProcess = isLiveGroup
+  const liveProcess = isStreaming && currentTurn
+  const wasLive = React.useRef(false)
+  if (liveProcess) wasLive.current = true
   const artifactMessages = React.useMemo(
     () => getAssistantGroupArtifactMessages(items),
     [items],
@@ -1385,22 +1384,25 @@ function MessageGroup({
     [artifactMessages],
   )
 
-  if (!lastItem || (isMessageEmptyGroup(items) && requestArtifactFiles.length === 0 && !terminalError)) {
+  if (!lastItem || (isMessageEmptyGroup(items) && !liveProcess && requestArtifactFiles.length === 0 && !terminalError)) {
     return null
   }
 
-  const renderableItems = getRenderableMessages(items.filter((item) => !isSessionErrorMessage(item.message)))
   const lastTextMessage = lastRealItem ? getLastTextPart(lastRealItem.message) : null
 
   const activityParts = items.flatMap((item) => item.message.parts)
+  const presentations = getAssistantMessagePresentations(items.map(item => item.message), {
+    running: liveProcess,
+    artifactTask: Boolean(templateEntryPath || artifactContext),
+  })
   const itemRenderData = items.map((item) => {
     const groups = getAssistantRenderGroups(item.message.parts, showThinking, activityParts)
-    return { item, groups, sections: splitAssistantRenderGroups(groups) }
+    return { item, groups, presentation: presentations.get(item.message.id), sections: splitAssistantRenderGroups(groups) }
   })
-  // Keep every non-commentary text message in the same body row during and
-  // after streaming, even when another tool or assistant message follows it.
-  const resultItemIndex = itemRenderData.findLastIndex(({ item, groups }) =>
-    !isAssistantCommentaryMessage(item.message)
+  // Progress stays visible. Running tools settle into history on completion;
+  // reasoning and completed tools share the existing disclosure.
+  const resultItemIndex = itemRenderData.findLastIndex(({ item, groups, presentation }) =>
+    presentation === "answer"
       && !isSessionErrorMessage(item.message)
       && (groups.some((group) => group.kind === "text" && Boolean(group.text.trim()))
         || (!liveProcess && !runIncomplete && groups.some((group) => group.kind === "file"))),
@@ -1411,43 +1413,41 @@ function MessageGroup({
       ? itemRenderData.findLastIndex(({ item }) => !isSessionErrorMessage(item.message))
       : -1
   const resultData = resolvedResultItemIndex >= 0 ? itemRenderData[resolvedResultItemIndex] : null
-  const liveProgressData = liveProcess || runIncomplete
-    ? itemRenderData.findLast(({ item, groups }, index) =>
-        index > resolvedResultItemIndex
-          && !isSessionErrorMessage(item.message)
-          && groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
-      )
-    : null
   // Keep inline previews available while a response is streaming. They are
   // explicitly marked as previews by FileMessage and are not delivery cards;
   // the completed-file result area is gated separately by SessionSurface.
   const streamingFileGroups = liveProcess || runIncomplete
     ? itemRenderData.flatMap(({ groups }) => groups.filter((group) => group.kind === "file"))
     : []
-  const bodyRenderData = itemRenderData.filter(({ item, groups }, index) =>
-    !isAssistantCommentaryMessage(item.message) && !isSessionErrorMessage(item.message)
-      && (index === resolvedResultItemIndex || groups.some((group) => group.kind === "text" && Boolean(group.text.trim()))),
+  const bodyRenderData = itemRenderData.filter(({ item, presentation }, index) =>
+    !isSessionErrorMessage(item.message) && (presentation === "answer" || index === resolvedResultItemIndex),
   )
-  const processItemGroups = itemRenderData.map(({ item, groups, sections }) => {
+  const processItemGroups = itemRenderData.map(({ item, groups, sections, presentation }) => {
     if (isSessionErrorMessage(item.message)) return []
-    const processGroups = isAssistantCommentaryMessage(item.message) ? groups : sections.processGroups
+    const processGroups = presentation === "answer" ? sections.processGroups : groups
     return processGroups.filter((group) => !((liveProcess || runIncomplete) && group.kind === "file"))
   })
-  const processRows = groupProcessSteps(itemRenderData.flatMap(({ item }, itemIndex) =>
+  const processRows = itemRenderData.flatMap(({ item }, itemIndex) =>
     processItemGroups[itemIndex].map((group, groupIndex) => ({
       key: `${item.message.id}:${groupIndex}`,
       messageId: item.message.id,
       group,
     })),
-  ))
+  )
+  const reasoningRows = processRows.filter(step => step.group.kind === "reasoning"
+    || (step.group.kind === "tool" && step.group.part.state !== "output-error"
+      && (!liveProcess || !isToolPartInFlight(step.group.part))))
+  const progressRows = processRows.filter(step => step.group.kind !== "reasoning")
   const processRenderGroups = processItemGroups.flatMap((groups) => groups.filter(
     (group): group is AssistantProcessRenderGroup => group.kind !== "text",
   ))
   const latestGroup = itemRenderData.flatMap(({ groups }) => groups).findLast((group) => group.kind !== "file")
-  const responding = liveProcess && latestGroup?.kind === "text"
+  const drafting = liveProcess && itemRenderData.at(-1)?.presentation === "draft"
+  const responding = liveProcess && itemRenderData.at(-1)?.presentation === "answer" && latestGroup?.kind === "text"
     && getMessageCompleted(lastItem.message) === null
     && lastItem.message.parts.some((part) => part.type === "text" && part.state !== "done")
-  const activeTool = liveProcess && latestGroup?.kind === "tool" && isToolPartInFlight(latestGroup.part) ? latestGroup : undefined
+  const lastActiveTool = processRenderGroups.findLast(group => group.kind === "tool" && isToolPartInFlight(group.part))
+  const activeTool = liveProcess && lastActiveTool?.kind === "tool" ? lastActiveTool : undefined
   const hasProcessContent = processItemGroups.some((groups) => groups.length > 0)
   const storedTiming = precedingUser ? runTimings[precedingUser.id] : undefined
   const processStartedAt = earliestProcessTimestamp(
@@ -1466,6 +1466,7 @@ function MessageGroup({
   const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
   const sessionErrorItem = items.find((item) => isSessionErrorMessage(item.message))
   const inlineError = terminalError ?? (sessionErrorItem ? getMessagesText([sessionErrorItem.message]) || t("message.session_failed") : null)
+  const renderableItems = getRenderableMessages(bodyRenderData.map(data => data.item))
   const responseActionMessages: UIMessage[] = inlineError
     ? [...renderableItems.map(({ message }) => message), {
         id: `${lastItem.message.id}:error`, role: "assistant",
@@ -1473,44 +1474,28 @@ function MessageGroup({
       }]
     : renderableItems.map(({ message }) => message)
 
-  const renderProcessRow = (row: ProcessRow) => {
-    const firstStep = row.kind === "tools" ? row.steps[0] : row.step
-    const activeStep = row.kind === "tools" && activeTool
-      ? row.steps.find((step) => step.group.kind === "tool" && step.group.part.toolCallId === activeTool.part.toolCallId)
-      : undefined
-    const action = row.kind === "tools" ? {
-      inspect: { label: t("message.process_action_inspect"), Icon: FileSearch },
-      edit: { label: t("message.process_action_edit"), Icon: FilePenLine },
-      command: { label: t("message.process_action_command"), Icon: SquareTerminal },
-      web: { label: t("message.process_action_web"), Icon: Globe },
-      other: { label: t("message.process_action_other"), Icon: Wrench },
-    }[row.action] : null
+  const renderProcessRow = (step: ProcessStep, history = false) => {
+    const tool = step.group.kind === "tool" ? step.group.part : null
+    const active = !history && liveProcess && !waitingLabel && tool !== null && isToolPartInFlight(tool)
+    if (!history && tool && !isTaskToolPart(tool) && !isQuestionToolPart(tool) && !isEnvVarRequestToolPart(tool) && !isTodoWriteToolPart(tool)) {
+      return <ToolProgressRow key={`process-${step.key}`} part={tool} live={liveProcess} waiting={Boolean(waitingLabel)} messageId={step.messageId} />
+    }
     return (
       <Message
-        key={`process-${firstStep.key}`}
+        key={`process-${step.key}`}
         className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0"
-        data-process-active={row.kind === "tools" ? Boolean(activeStep) : liveProcess && !responding && !activeTool}
-        data-message-id={firstStep.messageId}
+        data-process-active={tool ? active : liveProcess && !responding && !activeTool}
+        data-message-id={step.messageId}
         data-message-role="assistant"
       >
-        {row.kind === "tools" && action ? (
-          <details className="chat-tool-action w-full" data-testid="assistant-tool-action" data-tool-action={row.action}>
-            <summary className="flex w-fit max-w-full cursor-pointer list-none items-center gap-2 rounded-md py-1 text-left text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-              <action.Icon className="size-4 shrink-0" aria-hidden />
-              <span>{action.label}</span>
-              {activeStep?.group.kind === "tool" ? (
-                <span className="chat-tool-action-active min-w-0 truncate font-normal">
-                  <LoaderCircle className="mr-1 inline size-3 animate-spin opacity-65" aria-hidden />
-                  · {getToolActivityLabel(activeStep.group.part)}
-                </span>
-              ) : null}
-              <ChevronRight className="chat-tool-action-chevron size-3.5 shrink-0 transition-transform" aria-hidden />
-            </summary>
-            <div className="flex w-full flex-col gap-1 pt-1 pl-6">
-              {row.steps.map((step) => <div key={step.key} data-process-active={step === activeStep}>{renderAssistantGroup(step.group, 0, { streaming: isLiveGroup, imageStatus, inlineImageArtifacts })}</div>)}
-            </div>
-          </details>
-        ) : renderAssistantGroup(firstStep.group, 0, { streaming: isLiveGroup, imageStatus, inlineImageArtifacts })}
+        {tool && !isTaskToolPart(tool) && !isQuestionToolPart(tool) && !isEnvVarRequestToolPart(tool) && !isTodoWriteToolPart(tool) ? (
+          <div className="w-full min-w-0" data-testid="assistant-tool-action" data-tool-action={getToolAction(tool)}>
+            <Tool toolPart={tool} active={active} />
+          </div>
+        ) : <div className="w-full" data-testid={presentations.get(step.messageId) === "draft" ? "assistant-reply-draft" : undefined}>
+          {presentations.get(step.messageId) === "draft" ? <p className="mb-1 text-xs font-medium text-muted-foreground">{t("session.reply_draft")}</p> : null}
+          {renderAssistantGroup(step.group, 0, { streaming: liveProcess, imageStatus, inlineImageArtifacts })}
+        </div>}
       </Message>
     )
   }
@@ -1522,22 +1507,29 @@ function MessageGroup({
           <AssistantProcessDisclosure
             groups={processRenderGroups}
             isStreaming={liveProcess}
-            completed={runOutcome === "completed" && currentTurn && !liveProcess}
             finalizing={isLiveGroup && (finalizing || runOutcome === "completed")}
             hasError={hasSessionError || runIncomplete}
             stopped={runOutcome === "stopped" && currentTurn}
-            hasDetails={hasProcessContent}
+            hasDetails={reasoningRows.length > 0 || Boolean(retryStatus)}
             responding={responding}
+            drafting={drafting}
+            retrying={Boolean(retryStatus)}
+            pendingLabel={!activeAssistantMessageId ? assistantWaitLabel : undefined}
             currentTool={activeTool?.part ?? null}
             startedAt={processStartedAt}
             endedAt={processCompletedAt}
             durationMs={processDurationMs}
-            contentClassName={liveProcess ? undefined : "max-h-[520px] overflow-y-auto"}
           >
             <div className={cn("flex flex-col gap-3", ASSISTANT_TEXT_EDGES_CLASS_NAME)}>
-              {processRows.map(renderProcessRow)}
+              {reasoningRows.map(step => renderProcessRow(step, true))}
+              {currentTurn && retryStatus ? <RetryMessage status={retryStatus} compact /> : null}
             </div>
           </AssistantProcessDisclosure>
+        </div>
+      ) : null}
+      {progressRows.length > 0 ? (
+        <div className={cn(ASSISTANT_COLUMN_CLASS_NAME, "flex flex-col gap-3")} data-testid="assistant-progress-timeline">
+          {progressRows.map(step => renderProcessRow(step))}
         </div>
       ) : null}
       {streamingFileGroups.length > 0 ? (
@@ -1545,22 +1537,16 @@ function MessageGroup({
           {streamingFileGroups.map((group, index) => renderAssistantGroup(group, index, { streaming: isLiveGroup, imageStatus, inlineImageArtifacts }))}
         </div>
       ) : null}
-      {liveProgressData && !liveProcess ? (
-        <div className={cn(ASSISTANT_COLUMN_CLASS_NAME, ASSISTANT_TEXT_EDGES_CLASS_NAME)} data-testid="assistant-streaming-progress">
-          {liveProgressData.groups.filter((group) => group.kind === "text").map((group, index) =>
-            renderAssistantGroup(group, index, { streaming: isLiveGroup }),
-          )}
-        </div>
-      ) : null}
       {bodyRenderData.map((data) => {
         const isResult = data === resultData
         return (
-          <div key={data.item.message.id} className={ASSISTANT_TEXT_EDGES_CLASS_NAME} data-assistant-result="true">
+          <div key={data.item.message.id} className={cn(ASSISTANT_TEXT_EDGES_CLASS_NAME, isResult && !liveProcess && wasLive.current && "chat-result-enter")} data-assistant-result="true">
+            {isResult && runIncomplete && groupArtifacts.length > 0 ? <p className="mb-2 text-xs text-muted-foreground" data-testid="assistant-partial-result">{t("session.outputs.partial")}</p> : null}
             <MessageComponent
               message={data.item.message}
               artifactMessages={isResult ? artifactMessages : []}
               isLastMessage={data.item.index === messages.length - 1}
-              isStreaming={isLiveGroup && data.item.index === messages.length - 1}
+              isStreaming={isStreaming && currentTurn}
               isLastStep
               hideProcess
               showLatestArtifactsTitle={isResult && isLatestAssistantGroup}
@@ -1571,7 +1557,7 @@ function MessageGroup({
               artifactFiles={isResult ? requestArtifactFiles : []}
               artifactContext={artifactContext}
               imageStatus={hasSessionError ? "failed" : imageStatus}
-              deferFilesWhileStreaming={liveProcess}
+              deferFilesWhileStreaming={isStreaming && currentTurn}
             />
             {isResult && inlineError && !isLiveGroup ? <AssistantRunErrorText error={inlineError} /> : null}
           </div>
@@ -1644,13 +1630,21 @@ interface MessageListProps {
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, deliveryIncomplete = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {}, deliveryError = null }: MessageListProps) {
   "use memo";
-  const { sessionTitle, waitingLabel } = useMessageList()
+  const { sessionTitle } = useMessageList()
   const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
   const isStreaming = !stopAcknowledged
     && runOutcome !== "failed"
     && runOutcome !== "stopped"
     && (runOutcome === "running" || status === "submitted" || status === "streaming" || status === "retrying")
-  const items = React.useMemo(() => groupMessages(messages), [messages])
+  // A presentation-only pending message lets the same turn component own the
+  // status before the engine creates its first assistant message.
+  const renderMessages = React.useMemo<UIMessage[]>(() => {
+    const userIndex = messages.findLastIndex(message => message.role === "user" && !isInternalContinuationMessage(message))
+    if (!isStreaming || userIndex < 0 || messages.slice(userIndex + 1).some(message =>
+      message.role === "assistant" && !isStudioResultMessage(message) && !isSessionErrorMessage(message))) return messages
+    return [...messages, { id: `pending-assistant:${messages[userIndex].id}`, role: "assistant", parts: [] }]
+  }, [messages, isStreaming])
+  const items = React.useMemo(() => groupMessages(renderMessages), [renderMessages])
   const supplementalArtifactFiles = React.useMemo(
     () => [...new Set([
       ...(artifactFiles ?? []),
@@ -1670,13 +1664,13 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     [artifactRequestOwnership, messages, supplementalArtifactFiles],
   )
   const latestAssistantMessageId = React.useMemo(
-    () => getLatestArtifactAssistantMessageId(messages),
-    [messages],
+    () => getLatestArtifactAssistantMessageId(renderMessages),
+    [renderMessages],
   )
   const latestTurnAssistantMessageId = React.useMemo(() => {
     const latestUserIndex = messages.findLastIndex(message => message.role === "user" && !isInternalContinuationMessage(message))
-    return getLatestArtifactAssistantMessageId(messages.slice(latestUserIndex + 1))
-  }, [messages])
+    return getLatestArtifactAssistantMessageId(renderMessages.slice(latestUserIndex + 1))
+  }, [renderMessages, messages])
   const activeAssistantMessageId = React.useMemo(
     () => isStreaming ? getActiveAssistantMessageId(messages.filter(message => !isStudioResultMessage(message)), activeMessageBaseline) : undefined,
     [activeMessageBaseline, isStreaming, messages],
@@ -1690,10 +1684,6 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     && message.parts.some(part => isFileUIPart(part) && getFileMediaType(part).startsWith("image/") && getFileUrl(part).length > 0),
   )
   const latestErrorTargetId = latestTurnAssistantMessageId ?? latestSessionErrorMessage?.id
-  const liveActionLabel = isStreaming
-    ? getActiveToolLabel(collectToolParts(messages))
-    : null
-
   return (
     <StudioDeliveryPaths.Provider value={deliveredPaths}>
     <div className={cn("flex flex-col gap-2 @container/message-list")} data-chat-transcript>
@@ -1701,8 +1691,11 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
         if (isMessageGroup(item)) {
           return (
             <MessageGroup
-              key={item.messages[0]?.message.id ?? "empty-assistant-group"}
+              key={item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)
+                ? `assistant-turn:${messages[latestUserIndex]?.id ?? "initial"}`
+                : item.messages[0]?.message.id ?? "empty-assistant-group"}
               items={item.messages}
+              retryStatus={item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId) ? retryStatus : null}
               messages={messages}
               isStreaming={isStreaming}
               finalizing={finalizing}
@@ -1717,6 +1710,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               artifactContext={artifactContext}
               latestAssistantMessageId={latestAssistantMessageId}
               activeAssistantMessageId={activeAssistantMessageId}
+              assistantWaitLabel={assistantWaitLabel}
               runIncomplete={(Boolean(error || stopAcknowledged) || deliveryIncomplete) && item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)}
               imageStatus={error && item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)
                 ? "failed"
@@ -1742,7 +1736,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
           : undefined
 
         return (
-          <div key={item.message.id} className="mt-4 first:mt-0">
+          <div key={item.message.id} className={cn("mt-4 first:mt-0", item.message.role === "user" && isStreaming && activeMessageBaseline != null && item.index >= activeMessageBaseline && "chat-message-enter")}>
             <MessageComponent
               message={item.message}
               isLastMessage={isLastMessage}
@@ -1766,11 +1760,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
         )
       })}
 
-      {(status === "submitted" || status === "streaming") && !activeAssistantMessageId
-        && !hasActiveAssistantVisibleResult(messages, activeMessageBaseline)
-        ? <LoadingMessage label={waitingLabel ?? liveActionLabel ?? assistantWaitLabel ?? undefined} paused={Boolean(waitingLabel)} startedAt={runStartedAt} />
-        : null}
-      {retryStatus ? <RetryMessage status={retryStatus} /> : null}
+      {retryStatus && !latestTurnAssistantMessageId ? <RetryMessage status={retryStatus} /> : null}
       {error && !latestErrorTargetId ? <AssistantRunErrorText error={error} /> : null}
       {stopAcknowledged && !error && !latestSessionErrorMessage && !currentTurnHasStoppedImage ? <Message className="not-prose mx-auto w-full max-w-[800px] px-0"><RunIssueNotice kind="stopped" /></Message> : null}
     </div>

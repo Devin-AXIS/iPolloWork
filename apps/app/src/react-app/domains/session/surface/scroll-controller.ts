@@ -73,7 +73,12 @@ function latestMessageTopClippedId(container: HTMLElement) {
   return lastMessageDoesNotFit && !startVisible ? messageId : null;
 }
 
+function scrollBehaviorForMotion(behavior: ScrollBehavior): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : behavior;
+}
+
 function syncProgrammaticScrollTop(container: HTMLElement, top: number, behavior: ScrollBehavior = "auto") {
+  behavior = scrollBehaviorForMotion(behavior);
   const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
   const clampedTop = Math.min(Math.max(0, top), maxScrollTop);
   const anchor = container.ownerDocument.createElement("span");
@@ -175,6 +180,7 @@ export function useSessionScrollController(
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "auto") => {
+      behavior = scrollBehaviorForMotion(behavior);
       const container = options.containerRef.current;
       if (!container) return;
 
@@ -291,6 +297,7 @@ export function useSessionScrollController(
 
   const jumpToStartOfMessage = useCallback(
     (behavior: ScrollBehavior = "smooth") => {
+      behavior = scrollBehaviorForMotion(behavior);
       const messageId = readScrollState(selectedSessionId).topClippedMessageId;
       const container = options.containerRef.current;
       if (!messageId || !container) return;
@@ -322,6 +329,38 @@ export function useSessionScrollController(
     updateOverflowAnchor();
     return useSessionScrollStore.subscribe(updateOverflowAnchor);
   }, [updateOverflowAnchor]);
+
+  useEffect(() => {
+    const container = options.containerRef.current;
+    if (!container) return;
+
+    const holdReadingPosition = () => {
+      clearProgrammaticScrollReset();
+      if (programmaticScrollRef.current) syncCurrentScrollPosition(container);
+      programmaticScrollRef.current = false;
+      programmaticScrollDirectionRef.current = null;
+      lastKnownScrollTopRef.current = container.scrollTop;
+      setManualScroll(selectedSessionId, container.scrollTop, latestMessageTopClippedId(container));
+    };
+    const handleSelection = () => {
+      const selection = container.ownerDocument.getSelection();
+      if (selection && !selection.isCollapsed && container.contains(selection.anchorNode)) {
+        holdReadingPosition();
+      }
+    };
+    const handleDisclosure = (event: Event) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".chat-process-heading, .chat-tool-action > summary")) {
+        holdReadingPosition();
+      }
+    };
+    container.ownerDocument.addEventListener("selectionchange", handleSelection);
+    container.addEventListener("click", handleDisclosure, true);
+    return () => {
+      container.ownerDocument.removeEventListener("selectionchange", handleSelection);
+      container.removeEventListener("click", handleDisclosure, true);
+    };
+  }, [clearProgrammaticScrollReset, options.containerRef, selectedSessionId, setManualScroll, syncCurrentScrollPosition]);
 
   useEffect(() => {
     const content = options.contentRef.current;
