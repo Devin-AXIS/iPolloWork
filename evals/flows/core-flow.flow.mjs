@@ -20,23 +20,9 @@
 
 const MESSAGE = "Reply with exactly: core-flow ok";
 
-async function pasteComposer(ctx, text) {
-  return ctx.eval(
-    `(() => {
-      const editor = document.querySelector('[contenteditable="true"][data-lexical-editor="true"]')
-        || document.querySelector('[contenteditable="true"]');
-      if (!editor) return { ok: false, reason: 'composer not found' };
-      editor.focus();
-      const data = new DataTransfer();
-      data.setData('text/plain', ${JSON.stringify(text)});
-      editor.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }));
-      return { ok: true, text: editor.innerText };
-    })()`,
-  );
-}
-
 export default {
   id: "core-flow",
+  kind: "user-facing",
   title: "Open app, send a message, get a response, reopen with session intact",
   spec: "evals/react-session-flows.md",
   precondition: async (ctx) => {
@@ -117,22 +103,11 @@ export default {
         await ctx.prove("The composer accepts a message and the agent responds", {
           voiceover: "输入消息并发送，可以看到消息和回复。",
           action: async () => {
-            const pasted = await pasteComposer(ctx, MESSAGE);
-            ctx.assert(pasted?.ok, `Composer not ready: ${pasted?.reason ?? "unknown"}`);
-            // Submit: prefer the visible Run action, fall back to Enter.
-            const ran = await ctx.eval(`(() => {
-              const byLabel = Array.from(document.querySelectorAll('button'))
-                .find((b) => /run task|send|run/i.test((b.textContent || "").trim()) && !b.disabled);
-              if (byLabel) { byLabel.click(); return "clicked"; }
-              const editor = document.querySelector('[contenteditable="true"]');
-              if (editor) {
-                editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-                return "enter";
-              }
-              return "none";
-            })()`);
-            ctx.assert(ran !== "none", "Could not submit the composer message.");
-            ctx.log(`submit: ${ran}`);
+            await ctx.control("composer.set_text", { text: MESSAGE });
+            await ctx.control("composer.send");
+            await ctx.waitFor(`Array.from(document.querySelectorAll('[data-message-role="user"]')).some(message => message.innerText.includes(${JSON.stringify(MESSAGE)}))`, {
+              timeoutMs: 15_000, label: "submitted user message appears in the transcript",
+            });
           },
           assert: async () => {
             // The message we typed must appear in the transcript, and an

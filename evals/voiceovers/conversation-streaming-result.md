@@ -1,10 +1,10 @@
 # Conversation streaming: stable final answer
 
-1. Send a request that makes the assistant explain what it is doing, run a command, and then answer. The live explanation and running command appear in order beneath the process heading; the raw command remains optional, with only the current tool state pulsing. The process folds when the answer is complete.
+1. Send a request that makes the assistant explain what it is doing, run a command, and then answer. The compact process starts closed; expand it to see the explanation and running command in order. the raw command remains optional, with only the current tool state pulsing. A manually expanded process stays open through completion.
 
 2. When the assistant starts its final answer, the answer appears below the progress area and grows in place as text streams in. While text is still streaming, the process row says it is responding and keeps counting time.
 
-3. After the run completes, the elapsed time freezes beside the processed command count and the process details fold away. The final answer remains visible, and a follow-up entered while the run is busy stays queued for the next run.
+3. After the run completes, the elapsed time freezes beside the processed command count and the process keeps the user’s chosen expansion state. The final answer remains visible, and a follow-up entered while the run is busy stays queued for the next run.
 
 4. When the assistant says a document is ready, the text streams first. The file card appears only after the run finishes. The card names the document clearly and opens the saved file when selected.
 
@@ -38,11 +38,11 @@
 
 19. If the selected model is unsupported by this account, the reason appears as ordinary text in the conversation, without an error card.
 
-20. Expanding a completed run shows icon-labeled action groups for file inspection and command execution. Each group starts closed, opens to reveal its original steps, and can be folded again without hiding the final answer.
+20. 工具直接显示文件名或具体操作，每条默认收起，点击才展开参数和输出，不再套一层工具分类。
 
-21. OpenCode keeps only one thinking label while continuing after an earlier answer, then shows thinking before its first assistant part. During reasoning and tools, only the current state pulses.
+21. 无论模板文件是否已经存在，从等待、思考到工具执行、重试和回复，都在同一个状态入口持续更新，不出现第二个思考或转圈标识。
 
-22. OpenCode text streams in stable body nodes while tools appear in the process area. Later tools and completion preserve those text nodes; completion folds the process.
+22. 普通问答直接流式显示；工具任务中没有最终阶段标记的文字保留在可展开的过程和回复草稿里，任务结束后只有最后的回答进入正文。
 
 23. After the model finishes generating the video source, the process still says it is in progress while the iPolloWork app exports the MP4, instead of reporting the task as complete too early.
 

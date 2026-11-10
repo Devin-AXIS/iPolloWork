@@ -279,50 +279,35 @@ body {
   font-weight: 400;
 }
 
-.chat-thinking-dots {
-  display: inline-flex;
-  width: 1.2em;
-  margin-left: 0.1em;
-}
-
-.chat-thinking-label span {
-  animation: chat-thinking-letter 1.6s ease-in-out infinite;
-}
-
-@keyframes chat-thinking-letter {
-  0%, 60%, 100% { opacity: 0.7; }
-  30% { opacity: 1; }
-}
-
-.chat-thinking-dots span {
-  opacity: 0.3;
-  animation: chat-thinking-dot 1.4s ease-in-out infinite;
-}
-
-.chat-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
-.chat-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
-
+/* The turn status owns activity; tool rows and history are static summaries. */
+[data-testid="assistant-progress-timeline"] .animate-spin,
+[data-testid="assistant-progress-timeline"] .chat-tool-pulse,
+.chat-process-disclosure .chat-tool-pulse { animation: none; }
+[data-testid="assistant-progress-timeline"] .lucide-loader-circle { display: none; }
 /* Interrupted and historical tools can retain an in-flight protocol state. */
-[data-process-active="false"] .animate-spin { animation: none; }
+[data-process-active="false"] .animate-spin,
+.chat-process-disclosure .animate-spin { animation: none; }
 
 .chat-live-activity {
-  animation: chat-live-activity 1.8s ease-in-out infinite;
+  animation: chat-live-activity 1.6s ease-in-out infinite;
 }
+
+.chat-tool-pulse { animation: chat-tool-pulse 1.25s ease-in-out infinite; }
+@keyframes chat-tool-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+[data-tool-active="true"] > span:last-child { animation: chat-live-activity 1.25s ease-in-out infinite; }
+.chat-tool-progress { display: grid; grid-template-rows: 1fr; opacity: 1; transition: grid-template-rows 240ms ease, opacity 180ms ease, transform 180ms ease; animation: chat-content-enter 180ms ease-out; }
+.chat-tool-progress[data-phase="confirmed"] { color: var(--foreground); }
+.chat-tool-progress[data-phase="closing"] { grid-template-rows: 0fr; opacity: 0; transform: translateY(-3px); pointer-events: none; }
+[data-testid="assistant-tool-action"] button { border-radius: 6px; padding: 3px 4px; transition: background-color 140ms ease, color 140ms ease; }
+[data-testid="assistant-tool-action"] button:hover { background-color: var(--muted); }
+[data-testid="assistant-tool-action"] button:active { background-color: var(--accent); }
 
 @keyframes chat-live-activity {
-  0%, 100% { opacity: 0.58; }
-  50% { opacity: 0.92; }
-}
-
-@keyframes chat-thinking-dot {
-  0%, 60%, 100% { opacity: 0.3; }
-  30% { opacity: 1; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-thinking-label span { animation: none; }
-  .chat-thinking-dots span { animation: none; opacity: 0.75; }
-  .chat-live-activity { animation: none; opacity: 0.75; }
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 
 [data-chat-transcript] .text-xs,
@@ -331,9 +316,49 @@ body {
   line-height: var(--ui-meta-line);
 }
 
-.chat-tool-action > summary { font-size: var(--ui-control-size); line-height: var(--ui-control-line); }
+[data-testid="assistant-tool-action"] button { font-size: var(--ui-control-size); line-height: var(--ui-control-line); }
 
-.chat-tool-action[open] > summary .chat-tool-action-chevron { transform: rotate(90deg); }
+.chat-state-label { animation: chat-state-enter 120ms ease-out; }
+
+.chat-process-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows 180ms ease, opacity 140ms ease, visibility 180ms;
+}
+
+.chat-process-disclosure[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+}
+
+.chat-process-details { min-height: 0; overflow: hidden; }
+.chat-process-inner { max-height: 420px; overflow-y: auto; padding-top: 8px; }
+.chat-result-enter { animation: chat-content-enter 180ms ease-out; }
+.chat-message-enter { animation: chat-content-enter 140ms ease-out; }
+.chat-scroll-overlay { animation: chat-state-enter 140ms ease-out; }
+
+@keyframes chat-state-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes chat-content-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-chat-transcript] *,
+  .chat-scroll-overlay,
+  .chat-scroll-overlay * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
 
 /* Match the existing macOS Chinese readability correction in settings/chat.
    PingFang's 400 fallback can render as ExtraLight in Electron; keep captions

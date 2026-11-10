@@ -231,7 +231,7 @@ export type SessionSurfaceProps = {
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
   assistantWaitLabel?: string;
-  pendingProgrammaticDraft?: { id: string; draft: ComposerDraft } | null;
+  pendingProgrammaticDraft?: { id: string; draft: ComposerDraft; claim: (id: string) => boolean } | null;
   onPendingProgrammaticDraftSettled?: (id: string, dispatched: boolean) => void;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
   onConfigureModels?: (providerId?: string) => void;
@@ -1514,11 +1514,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     },
   }), [chatStreaming, props.workspaceId, props.sessionId, sendDraft, statusQueryKey]);
 
-  const programmaticDraftIdRef = useRef<string | null>(null);
   useEffect(() => {
     const pending = props.pendingProgrammaticDraft;
-    if (!pending || programmaticDraftIdRef.current === pending.id) return;
-    programmaticDraftIdRef.current = pending.id;
+    if (!pending || !pending.claim(pending.id)) return;
     void sendDraft(pending.draft, pending.draft.attachments).then(
       (dispatched) => props.onPendingProgrammaticDraftSettled?.(pending.id, Boolean(dispatched)),
       () => props.onPendingProgrammaticDraftSettled?.(pending.id, false),

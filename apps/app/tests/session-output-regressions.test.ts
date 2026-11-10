@@ -454,7 +454,8 @@ describe("session output issue regressions", () => {
     expect(initialProjectSource).toContain("assistantWaitLabel=");
     expect(initialProjectSource).toContain('t("templates.brief.reference_agent_processing_label"');
     expect(messageListSource).toContain("assistantWaitLabel?: string");
-    expect(messageListSource).toContain("liveActionLabel ?? assistantWaitLabel");
+    expect(messageListSource).toContain("pendingLabel={!activeAssistantMessageId ? assistantWaitLabel : undefined}");
+    expect(messageListSource).not.toContain("<LoadingMessage");
     expect(sessionSurfaceSource).toContain("assistantWaitLabel?: string");
     expect(initialProjectSource).not.toContain("attachmentRequiresNativeModelSupport");
     expect(initialProjectSource).not.toContain("modelSafeAttachments");
@@ -705,7 +706,7 @@ describe("session output issue regressions", () => {
     expect(messageListSource).toContain('runOutcome !== "failed"');
     expect(messageListSource).toContain('runOutcome !== "stopped"');
     expect(messageListSource).toContain('runOutcome === "running" || status === "submitted" || status === "streaming" || status === "retrying"');
-    expect(messageListSource).toContain('completed={runOutcome === "completed" && currentTurn && !liveProcess}');
+    expect(messageListSource).toContain("const liveProcess = isStreaming && currentTurn");
     expect(messageListSource).not.toContain('runOutcome === null && (status === "submitted"');
   });
 
