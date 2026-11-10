@@ -34,6 +34,7 @@ import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
 import { getSlashCommandQuery } from "./slash-command";
 import { composerEscapeToStopAllowed } from "./composer-draft";
+import { MAX_ATTACHMENT_BYTES } from "../../sync/attachment-support";
 
 type MentionItem = {
   id: string;
@@ -137,7 +138,6 @@ export type ComposerProps = {
 
 const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
 const FOCUS_PROMPT_EVENT = "ipollowork:focusPrompt";
-const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
 const IMAGE_COMPRESS_MAX_PX = 2048;
 const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
@@ -1075,8 +1075,8 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (oversize.length) {
       toast.warning(
         oversize.length === 1
-          ? t("composer.file_exceeds_limit", { name: oversize[0] })
-          : `${oversize.length} files exceed the 8MB limit.`,
+          ? t("composer.file_exceeds_limit", { name: oversize[0], limit: maxAttachmentBytes / 1024 / 1024 })
+          : `${oversize.length} files exceed the ${formatBytes(maxAttachmentBytes)} limit.`,
       );
     }
 

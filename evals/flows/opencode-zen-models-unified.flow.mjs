@@ -10,16 +10,25 @@ const ENGINES = ENGINE_FILTER
 
 const EXPECTED_MODELS = [
   "Big Pickle",
+  "MiMo-V2.6-Flash Free",
+  "DeepSeek V4.1 Flash Free",
+  "GLM-5.3-Flash Free",
+  "LongCat 2.5 Free",
+  "Iceman Free",
+  "Inkling 2 Small Free",
+  "Beam Free",
+  "Flint 40B Free",
+  "Nemotron 3.5 Super VL Free",
+  "Nemotron 3.5 Lightning Free",
+  "MiniMax M3.1 Flash Free",
+];
+
+const REMOVED_MODELS = [
   "Space Bunny Free",
   "Cat Jam Free",
   "LongCat 2.5 Preview Free",
   "Step 5 Preview Free",
-  "MiMo-V2.6-Flash Free",
-  "Nemotron 3.5 Lightning Free",
   "Muse Spark 1.3 Contributor Free",
-];
-
-const REMOVED_MODELS = [
   "MiMo-V2.5 Free",
   "Nemotron 3 Ultra Free",
   "Hy3 Free",

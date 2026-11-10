@@ -64,6 +64,7 @@ import {
 } from "./composer/composer-draft";
 import { desktopBridge } from "@/app/lib/desktop";
 import { publicAssetUrl } from "@/app/lib/public-asset";
+import { formatBytes } from "@/app/utils";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import {
@@ -85,6 +86,7 @@ import {
 } from "./session-render-state";
 import { useLocal } from "@/react-app/kernel/local-provider";
 import {
+  MAX_ATTACHMENT_BYTES,
   attachmentRequiresNativeModelSupport,
   isModelReadableAttachment,
 } from "@/react-app/domains/session/sync/attachment-support";
@@ -1806,12 +1808,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [attachments, buildDraft, draft, props.onDraftChange]);
 
   const handleAttachFiles = (files: File[]) => {
-    const oversized = files.filter((file) => file.size > 25 * 1024 * 1024);
-    const sized = files.filter((file) => file.size <= 25 * 1024 * 1024);
+    const oversized = files.filter((file) => file.size > MAX_ATTACHMENT_BYTES);
+    const sized = files.filter((file) => file.size <= MAX_ATTACHMENT_BYTES);
     if (oversized.length) {
       toast.warning(
         oversized.length === 1 ? `${oversized[0]?.name ?? "File"} is too large` : `${oversized.length} files are too large`,
-        { description: "Files over 25 MB were skipped." },
+        { description: `Files over ${formatBytes(MAX_ATTACHMENT_BYTES)} were skipped.` },
       );
     }
     const unreadable = sized.filter((file) => !isModelReadableAttachment(file.type));

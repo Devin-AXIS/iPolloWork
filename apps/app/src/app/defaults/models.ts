@@ -15,7 +15,10 @@
  */
 export const RECOMMENDED_MODEL_PATTERNS: string[] = [
   "claude-opus-4",
-  "gpt-5.5",
+  "gpt-6.1-sol",
+  "gpt-6.1-terra",
+  "gpt-6-astra",
+  "gpt-6-luna",
   "kimi-k2.6",
   "glm-5.2",
   "minimax-m3",
