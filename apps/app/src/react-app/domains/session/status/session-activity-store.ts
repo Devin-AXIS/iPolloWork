@@ -89,7 +89,7 @@ type SessionActivityStore = {
   seedSessionRun: (workspaceId: string, sessionId: string, status: unknown, assistantOutput: boolean) => void;
   setRunStatus: (workspaceId: string, sessionId: string, status: unknown) => void;
   setHostDelivery: (workspaceId: string, sessionId: string, active: boolean, error?: string) => void;
-  finishRun: (workspaceId: string, sessionId: string, outcome: "completed" | "stopped", turnId?: string) => void;
+  finishRun: (workspaceId: string, sessionId: string, outcome: "completed" | "stopped", turnId?: string, completedAt?: number) => void;
   markMessageRole: (workspaceId: string, sessionId: string, messageId: string, role: SessionMessageRole) => void;
   markAssistantOutput: (workspaceId: string, sessionId: string, messageId?: string, options?: { allowUnknownMessageRole?: boolean }) => void;
   setWaitingRequest: (workspaceId: string, sessionId: string, kind: "permission" | "question", requestId: string, waiting: boolean) => void;
@@ -346,13 +346,13 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
       ...(active ? {} : { runActive: false, assistantOutput: false }),
     })));
   },
-  finishRun: (workspaceId, sessionId, outcome, turnId) => {
+  finishRun: (workspaceId, sessionId, outcome, turnId, completedAt) => {
     const workspace = workspaceId.trim();
     const session = sessionId.trim();
     if (!workspace || !session) return;
     const previous = get().recordsByWorkspaceId[workspace]?.[session];
-    const endedAt = previous && previous.runOutcome !== "running" && previous.runEndedAt !== null
-      ? previous.runEndedAt : Date.now();
+    const endedAt = completedAt ?? (previous && previous.runOutcome !== "running" && previous.runEndedAt !== null
+      ? previous.runEndedAt : Date.now());
     if (previous?.runStartedAt !== null && previous?.runStartedAt !== undefined && endedAt >= previous.runStartedAt) {
       saveRunTiming(workspace, session, turnId, { startedAt: previous.runStartedAt, endedAt });
     }

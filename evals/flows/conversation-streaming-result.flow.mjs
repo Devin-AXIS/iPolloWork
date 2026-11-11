@@ -17,10 +17,13 @@ async function assertFailureUX(ctx, title, hint, raw) {
 export async function mountFixture(options = {}) {
   window.__streamingAnswerProof?.cleanup?.();
   document.querySelectorAll("#streaming-answer-proof").forEach((node) => node.remove());
-  const moduleUrl = (name) => performance.getEntriesByType("resource").map(entry => entry.name).find(url => url.includes(name));
-  for (let attempt = 0; attempt < 100 && !["/react.js?", "/react-dom_client.js?", "/@tanstack_react-query.js?"].every(moduleUrl); attempt++) {
-    await new Promise(resolve => setTimeout(resolve, 50));
-  }
+  const entrySource = await fetch("/src/index.react.tsx").then(response => response.text());
+  const moduleUrls = Array.from(entrySource.matchAll(/"([^"]+\.js\?v=[^"]+)"/g), match => match[1]);
+  const moduleUrl = (name) => {
+    const url = moduleUrls.find(url => url.includes(name));
+    if (!url) throw new Error(`Could not resolve ${name} from the app entrypoint`);
+    return url;
+  };
   const { default: React } = await import(moduleUrl("/react.js?"));
   const { default: ReactDOM } = await import(moduleUrl("/react-dom_client.js?"));
   const { QueryClient, QueryClientProvider } = await import(moduleUrl("/@tanstack_react-query.js?"));
@@ -402,7 +405,7 @@ export async function mountFixture(options = {}) {
         dispatchAction() {}, setPrompt() {},
       }, React.createElement("main", { ref: contentRef, className: "mx-auto max-w-[850px]" },
         React.createElement("h1", { className: "mb-8 text-xl font-semibold" }, "对话流式输出"),
-        React.createElement(MessageList, { messages, status, runOutcome, activeMessageBaseline, runEndedAt, finalizing, retryStatus, artifactFiles, stoppedImageMessageIds, stopAcknowledged }),
+        React.createElement(MessageList, { messages, status, runOutcome, activeMessageBaseline, runEndedAt, finalizing, retryStatus, artifactFiles, stoppedImageMessageIds, stopAcknowledged, ...options.messageListProps }),
         queued.length ? React.createElement("div", { className: "mt-8" },
           React.createElement(QueuedMessagesPanel, { messages: queued, onRemove: () => setQueued([]) })) : null),
         React.createElement(SessionScrollOverlay, { sessionId: "proof", isStreaming: status === "streaming",
