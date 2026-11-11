@@ -58,6 +58,8 @@ export type LocalPreferences = {
 
 export type EnginePreferences = {
   mode: string | null;
+  model?: ModelRef;
+  modelVariant?: string | null;
 };
 
 const UI_STORAGE_KEY = "ipollowork.ui";
@@ -99,9 +101,7 @@ export function updateEnginePreferences(
     ...preferences,
     enginePreferences: {
       ...preferences.enginePreferences,
-      [resolvedEngineId]: {
-        mode: next.mode,
-      },
+      [resolvedEngineId]: { ...previousEngine, ...next },
     },
   };
 }
@@ -109,11 +109,14 @@ export function updateEnginePreferences(
 export function updateModelPreferences(
   preferences: LocalPreferences,
   updater: (previous: Pick<LocalPreferences, "model" | "modelVariant">) => Pick<LocalPreferences, "model" | "modelVariant">,
+  engineId?: string,
 ): LocalPreferences {
-  return {
-    ...preferences,
-    ...updater({ model: preferences.model, modelVariant: preferences.modelVariant }),
-  };
+  const engine = engineId ? getEnginePreferences(preferences, engineId) : undefined;
+  const next = updater(engine?.model
+    ? { model: engine.model, modelVariant: engine.modelVariant ?? null }
+    : { model: preferences.model, modelVariant: preferences.modelVariant });
+  const updated = { ...preferences, ...next };
+  return engineId ? updateEnginePreferences(updated, engineId, (current) => ({ ...current, ...next })) : updated;
 }
 
 function normalizeModelRef(value: unknown): ModelRef | null {
@@ -130,8 +133,10 @@ function normalizeEnginePreferences(value: unknown): Record<string, EnginePrefer
     Object.entries(value).flatMap(([engineId, selection]) => {
       if (!selection || typeof selection !== "object" || Array.isArray(selection)) return [];
       const record = selection as Partial<EnginePreferences>;
+      const model = normalizeModelRef(record.model);
       return [[engineId, {
         mode: typeof record.mode === "string" ? record.mode : null,
+        ...(model ? { model, modelVariant: typeof record.modelVariant === "string" ? record.modelVariant : null } : {}),
       }]];
     }),
   );

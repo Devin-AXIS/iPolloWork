@@ -92,7 +92,7 @@ export default {
     {
       name: "Start directly without preset setup",
       run: guarded(async (ctx) => {
-        await ctx.prove("A new conversation keeps engine selection and requires no work template or role setup", {
+        await ctx.prove("A new conversation uses the project engine and requires no work template or role setup", {
           voiceover: vo[0],
           action: async () => {
             ctx.assert(wid && Object.values(fixtures).every(f => f.sid && f.children?.length >= 2), "Provide existing OpenCode and Codex root/child fixture IDs");
@@ -114,7 +114,7 @@ export default {
             await ctx.waitFor("Boolean(document.querySelector('[data-testid=new-conversation-starter-composer-shell] [contenteditable=true]'))", { label: "new conversation composer" });
           },
           assert: async () => {
-            ctx.assert(await ctx.eval("Boolean(document.querySelector('[data-testid=conversation-engine-picker]')) && !document.querySelector('[data-testid=work-template-picker]') && !document.querySelector('[data-testid=project-agent-inspector]')"), "Engine choice remains; preset selection is absent");
+            ctx.assert(await ctx.eval("Boolean(document.querySelector('[data-testid=conversation-project-engine]')) && !document.querySelector('[data-testid=conversation-engine-picker], [data-testid=work-template-picker], [data-testid=project-agent-inspector]')"), "The project engine is displayed without engine or preset selection");
           },
           screenshot: { name: "direct-start", requireText: ["OpenCode"], rejectText: ["Something went wrong"] },
         });

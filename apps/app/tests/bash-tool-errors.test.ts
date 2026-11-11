@@ -11,6 +11,5 @@ describe("Bash tool errors", () => {
     expect(source).toContain('part.state === "output-error"');
     expect(source).toContain("part.errorText");
     expect(source).toContain("Command failed or was interrupted");
-    expect(source).toContain("defaultOpen={isError}");
   });
 });

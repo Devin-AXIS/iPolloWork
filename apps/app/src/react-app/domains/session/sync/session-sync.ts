@@ -193,8 +193,11 @@ function observeInterruptedUserMessage(
     run.resumeStartedAt = null;
     return "resumed";
   }
+  // OpenCode can announce a native user ID before sending the prompt parts.
+  // Leave unconfirmed IDs eligible to resume when the text arrives.
+  if (run.interrupted) return "ignore";
   run.observedUserMessageIds.add(message.id);
-  return run.interrupted ? "ignore" : "normal";
+  return "normal";
 }
 
 function reconcileInterruptedUserMessage(workspaceId: string, sessionId: string, run: InterruptedRun, message: UIMessage) {

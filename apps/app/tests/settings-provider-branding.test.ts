@@ -71,7 +71,7 @@ describe("settings provider branding", () => {
   });
 
   test("waits for the OpenAI OAuth callback only once per authorization session", () => {
-    expect(providerAuthModalSource).toContain("oauthAutoCompletionKeyRef");
+    expect(providerAuthModalSource).toContain("oauthAutoCompletionRef.current === session");
     expect(providerAuthModalSource).not.toContain("oauthAutoPollRef");
     expect(providerAuthModalSource).not.toContain("startOauthAutoPolling");
   });

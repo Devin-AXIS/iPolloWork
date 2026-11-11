@@ -1065,6 +1065,7 @@ describe("Media Center extension", () => {
     const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
     let activeSynthesisRequests = 0;
     let maximumSynthesisRequests = 0;
+    const synthesisRequestsStarted = Promise.withResolvers<void>();
     const synthesisInputs: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
@@ -1073,7 +1074,8 @@ describe("Media Center extension", () => {
       }
       activeSynthesisRequests += 1;
       maximumSynthesisRequests = Math.max(maximumSynthesisRequests, activeSynthesisRequests);
-      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (activeSynthesisRequests === 2) synthesisRequestsStarted.resolve();
+      await synthesisRequestsStarted.promise;
       activeSynthesisRequests -= 1;
       const body = JSON.parse(String(init?.body));
       synthesisInputs.push(body.input);

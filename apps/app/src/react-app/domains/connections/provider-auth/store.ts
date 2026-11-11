@@ -216,7 +216,7 @@ type CreateProviderAuthStoreOptions = {
   focusPromptSoon?: () => void;
 };
 
-type ProviderRefreshOptions = {
+export type ProviderRefreshOptions = {
   dispose?: boolean;
   force?: boolean;
   skipSharedImport?: boolean;
@@ -556,6 +556,8 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     key: string;
     promise: Promise<ProviderOAuthCompletionResult>;
   } | null = null;
+  let awaitingProviderOAuthCallback = false;
+  const isProviderOAuthPending = () => providerAuthStartInFlight !== null || awaitingProviderOAuthCallback;
 
   const emitChange = () => {
     for (const listener of listeners) listener();
@@ -1976,15 +1978,18 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     const accountEnvKeys = await refreshAccountConnectedProviderIds().catch(() => null);
     const client = options.client();
     if (!client) return null;
+    // Importing shared provider configuration can reload the engine and
+    // discard the in-memory authorization before the callback saves it.
+    const skipSharedImport = optionsArg.skipSharedImport || isProviderOAuthPending();
     const deferSharedImport = Boolean(
       accountEnvKeys
       && options.deferSharedProviderImport?.()
-      && !optionsArg?.skipSharedImport
+      && !skipSharedImport
       && !optionsArg?.force
       && !optionsArg?.dispose
       && !optionsArg?.runtimeEnvironmentChanged,
     );
-    const sharedProviderImport = optionsArg?.skipSharedImport || !accountEnvKeys || deferSharedImport
+    const sharedProviderImport = skipSharedImport || !accountEnvKeys || deferSharedImport
       ? { changed: false, requiresReload: false }
       : await importSharedProviderConnections(accountEnvKeys).catch(() => ({
           changed: false,
@@ -2037,7 +2042,7 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         // recovered connection error; credential and OAuth failures remain.
         setStateField("providerAuthError", null);
       }
-      if (deferSharedImport && accountEnvKeys) {
+      if (deferSharedImport && accountEnvKeys && !isProviderOAuthPending()) {
         // The account provider list is the settings-page source of truth. Show
         // it immediately, then reconcile credentials into the OpenCode runtime
         // without holding the first render behind config writes and reloads.
@@ -2145,7 +2150,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
 
     try {
       const trimmedCode = code?.trim();
-      await connection.completeOAuth(resolved, methodIndex, trimmedCode || undefined);
+      awaitingProviderOAuthCallback = true;
+      try {
+        await connection.completeOAuth(resolved, methodIndex, trimmedCode || undefined);
+      } finally {
+        awaitingProviderOAuthCallback = false;
+      }
       await ensureProjectProviderDisabledState(resolved, false);
       const updated = await refreshProviders({
         dispose: true,
@@ -2177,9 +2187,12 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
         }
         return { connected: false, pending: true };
       }
-      const message = describeProviderError(error, t("providers.oauth_failed"));
+      const callbackFailed = error instanceof Error && error.message.includes("ProviderAuthOauthCallbackFailed");
+      const message = callbackFailed
+        ? t("providers.oauth_unconfirmed")
+        : describeProviderError(error, t("providers.oauth_failed"));
       setStateField("providerAuthError", message);
-      throw error instanceof Error ? error : new Error(message);
+      throw !callbackFailed && error instanceof Error ? error : new Error(message, { cause: error });
     }
   }
 

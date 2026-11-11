@@ -1,6 +1,7 @@
 import {
   projectSessionExecutionFinishSchema,
   projectSessionExecutionStartSchema,
+  workAutomationModelSchema,
   workBoardConfigValueSchema,
   workItemCreateSchema,
   workItemUpdateSchema,
@@ -22,6 +23,7 @@ import {
   updateWorkItem,
   writeWorkBoardConfig,
   readProjectSessionWorkItem,
+  setWorkAutomationModel,
   writeConversationWorkflow,
   listWorkTemplates,
   saveWorkTemplate,
@@ -142,6 +144,16 @@ export function registerWorkItemRoutes(options: RegisterWorkItemRoutesOptions): 
     const parsed = workTemplateSaveSchema.safeParse(await readJsonBody(ctx.request));
     if (!parsed.success) throw schemaError("Work template is invalid", parsed.error.issues);
     return jsonResponse(await withConflictHandling(() => saveWorkTemplate(config, workspace, parsed.data)), 201);
+  });
+
+  addRoute(routes, "PUT", "/workspace/:id/work-automation-model", "client", async (ctx) => {
+    ensureWritable(config);
+    requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const parsed = workAutomationModelSchema.safeParse(await readJsonBody(ctx.request));
+    if (!parsed.success) throw schemaError("Scheduled task model is invalid", parsed.error.issues);
+    await setWorkAutomationModel(config, workspace, parsed.data);
+    return jsonResponse({ ok: true });
   });
 
   addRoute(routes, "POST", "/workspace/:id/work-items", "client", async (ctx) => {

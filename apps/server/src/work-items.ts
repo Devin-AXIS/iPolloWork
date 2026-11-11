@@ -8,6 +8,7 @@ import {
   workTemplateSaveSchema,
   workTemplateSchema,
   projectSessionExecutionSchema,
+  workAutomationModelSchema,
   workBoardConfigValueSchema,
   workItemAutomationSchema,
   workItemCreateSchema,
@@ -16,6 +17,7 @@ import {
   type WorkBoardConfigValue,
   type WorkItem,
   type WorkItemAutomation,
+  type WorkAutomationModel,
   type WorkItemCreateInput,
   type WorkItemListResponse,
   type WorkItemUpdateInput,
@@ -36,7 +38,7 @@ import {
   type ProjectAgent,
   type ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
-import { isHarnessWorkspaceEngineId } from "@ipollowork/types/workspace";
+import { DEFAULT_ENGINE_ID, isHarnessWorkspaceEngineId } from "@ipollowork/types/workspace";
 
 import { ApiError, isApiError } from "./errors.js";
 import { templateCategoryWorkKind } from "@ipollowork/types/templates";
@@ -600,7 +602,7 @@ async function projectWorkContext(config: ServerConfig, workspace: WorkspaceInfo
   ]);
   const parsed = projectWorkspaceConfigSchema.safeParse(stored.project);
   const project = parsed.success ? parsed.data : createDefaultProjectWorkspaceConfig();
-  return { project, templates: [...builtinWorkTemplates, ...savedWorkTemplates(library)] };
+  return { project, templates: [...builtinWorkTemplates, ...savedWorkTemplates(library)], workAutomationModel: stored.workAutomationModel };
 }
 
 export async function listWorkTemplates(config: ServerConfig, workspace: WorkspaceInfo): Promise<WorkTemplateListResponse> {
@@ -984,25 +986,67 @@ function resolveProjectExecutionRuntime(input: {
   };
 }
 
-export async function resolveProjectExecutionPlan(
+async function resolveProjectExecutionPlan(
   config: ServerConfig,
   workspace: WorkspaceInfo,
-  input: Pick<ProjectSessionExecutionStartInput, "agentId" | "runtime">,
+  input: Pick<ProjectSessionExecutionStartInput, "agentId" | "runtime"> & { followComposerModel?: boolean },
 ): Promise<Omit<ProjectSessionExecution, "sessionId" | "boundAt">> {
-  const { project, templates } = await projectWorkContext(config, workspace);
+  const { project, templates, workAutomationModel } = await projectWorkContext(config, workspace);
   const template = templates.find((candidate) => candidate.id === "general");
   if (!template) throw new Error("Default conversation template is missing");
   const workflow = workflowFromTemplate(template, { source: "auto", project });
   const agentId = workflow.config.orchestration.entryAgentId;
   const agent = workflow.config.agents.find((candidate) => candidate.id === agentId);
   if (!agent) throw new ApiError(409, "project_agent_missing", "The selected conversation Agent no longer exists");
+  const preference = input.followComposerModel && !input.runtime.model
+    ? workAutomationModelSchema.safeParse(workAutomationModel)
+    : null;
+  const composer = preference?.success && preference.data.engineId === input.runtime.engineId ? preference.data : null;
+  const runtimeAgent = input.followComposerModel
+    ? project.agents.find((candidate) => candidate.id === project.orchestration.entryAgentId) ?? agent
+    : agent;
   return {
     projectRevision: project.revision,
     projectGoal: project.goal,
     agent,
     workflow,
-    runtime: resolveProjectExecutionRuntime({ engineId: input.runtime.engineId, agent, requested: input.runtime }),
+    runtime: resolveProjectExecutionRuntime({
+      engineId: input.runtime.engineId,
+      agent: runtimeAgent,
+      requested: composer ? { ...input.runtime, model: composer.model, modelVariant: composer.modelVariant } : input.runtime,
+    }),
   };
+}
+
+export async function setWorkAutomationModel(config: ServerConfig, workspace: WorkspaceInfo, value: WorkAutomationModel): Promise<void> {
+  if (value.engineId !== (workspace.engineId?.trim() || DEFAULT_ENGINE_ID)) {
+    throw new ApiError(409, "work_automation_engine_changed", "The project engine has changed");
+  }
+  await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => {
+    const saved = workAutomationModelSchema.safeParse(current.workAutomationModel);
+    if (saved.success && saved.data.engineId === value.engineId
+      && saved.data.model.providerId === value.model.providerId && saved.data.model.modelId === value.model.modelId
+      && saved.data.modelVariant === value.modelVariant) return current;
+    return { ...current, workAutomationModel: value };
+  });
+}
+
+export async function resolveWorkItemAutomationExecutionPlan(config: ServerConfig, workspace: WorkspaceInfo, item: WorkItem) {
+  const plan = await resolveProjectExecutionPlan(config, workspace, {
+    agentId: item.assignee ?? undefined,
+    followComposerModel: true,
+    runtime: {
+      engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
+      model: item.automation?.model ?? null,
+      mode: null,
+      modelVariant: null,
+    },
+  });
+  const model = plan.runtime.model;
+  if (!model) {
+    throw new ApiError(409, "work_automation_model_required", "Choose a model in the project chat or the scheduled task before it can run.");
+  }
+  return { ...plan, runtime: { ...plan.runtime, model } };
 }
 
 export async function bindProjectSessionExecution(

@@ -83,6 +83,12 @@ export const projectSessionExecutionRuntimeSchema = z.object({
   modelVariant: z.string().trim().min(1).max(64).nullable(),
 });
 
+export const workAutomationModelSchema = projectSessionExecutionRuntimeSchema.pick({
+  engineId: true,
+  modelVariant: true,
+}).extend({ model: projectAgentModelSchema });
+export type WorkAutomationModel = z.infer<typeof workAutomationModelSchema>;
+
 export const conversationWorkKindSchema = z.enum(["general", "video", "design", "development", "research", "document"]);
 export const conversationWorkflowStageSchema = z.object({
   id: z.string().trim().min(1).max(64).regex(/^[a-zA-Z0-9_-]+$/),

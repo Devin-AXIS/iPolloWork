@@ -91,8 +91,7 @@ async function workspaceConfigDb(config: ServerConfig): Promise<iPolloWorkWorksp
   return db;
 }
 
-export async function readiPolloWorkWorkspaceConfig(config: ServerConfig, workspaceId: string): Promise<Record<string, unknown>> {
-  const db = await workspaceConfigDb(config);
+function readWorkspaceConfig(db: iPolloWorkWorkspaceConfigDb, workspaceId: string): Record<string, unknown> {
   const row = db.get(workspaceId);
   if (!row) return {};
   try {
@@ -102,14 +101,19 @@ export async function readiPolloWorkWorkspaceConfig(config: ServerConfig, worksp
   }
 }
 
+export async function readiPolloWorkWorkspaceConfig(config: ServerConfig, workspaceId: string): Promise<Record<string, unknown>> {
+  return readWorkspaceConfig(await workspaceConfigDb(config), workspaceId);
+}
+
 export async function writeiPolloWorkWorkspaceConfig(
   config: ServerConfig,
   workspaceId: string,
   updater: (current: Record<string, unknown>) => Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
   const db = await workspaceConfigDb(config);
-  const next = normalizeiPolloWorkWorkspaceConfig(updater(await readiPolloWorkWorkspaceConfig(config, workspaceId)));
-  db.upsert({ workspaceId, configJson: JSON.stringify(next), updatedAt: Date.now() });
+  const current = readWorkspaceConfig(db, workspaceId);
+  const next = normalizeiPolloWorkWorkspaceConfig(updater(current));
+  if (next !== current) db.upsert({ workspaceId, configJson: JSON.stringify(next), updatedAt: Date.now() });
   return next;
 }
 

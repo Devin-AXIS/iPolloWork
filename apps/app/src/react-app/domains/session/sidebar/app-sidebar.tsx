@@ -141,7 +141,7 @@ interface SessionStatusIndicatorProps {
   isActive: boolean;
 }
 
-function workspaceEngineLabel(engineId?: string | null) {
+export function workspaceEngineLabel(engineId?: string | null) {
   const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
   if (resolvedEngineId === CODEX_HARNESS_ENGINE_ID) return t("projects.engine_codex");
   if (resolvedEngineId === DEEPSEEK_HARNESS_ENGINE_ID) return t("projects.engine_dsh");

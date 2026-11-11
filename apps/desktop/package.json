@@ -2,7 +2,7 @@
   "name": "@ipollowork/desktop",
   "desktopName": "@ipolloworkdesktop.desktop",
   "private": true,
-  "version": "0.50.34",
+  "version": "0.50.35",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",

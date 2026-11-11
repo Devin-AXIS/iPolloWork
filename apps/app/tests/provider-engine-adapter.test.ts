@@ -341,12 +341,13 @@ describe("model runtime adapters", () => {
     queryClient.clear();
   });
 
-  test("keeps provider OAuth start and completion requests single-flight", async () => {
+  test("keeps provider OAuth single-flight and defers credential imports while waiting for the browser", async () => {
     const queryClient = getReactQueryClient();
     queryClient.clear();
     const { calls, client } = createOpenCodeProviderClient();
     let releaseAuthorize = () => {};
     let releaseCallback = () => {};
+    let sharedCredentialReads = 0;
     const authorizeGate = new Promise<void>((resolve) => {
       releaseAuthorize = resolve;
     });
@@ -416,8 +417,17 @@ describe("model runtime adapters", () => {
       runtimeWorkspaceId: () => "workspace-oauth-single-flight",
       ipolloworkServer: {
         getSnapshot: () => ({
-          ipolloworkServerStatus: "disconnected",
-          ipolloworkServerClient: null,
+          ipolloworkServerStatus: "connected",
+          ipolloworkServerClient: {
+            listUserEnvKeys: async () => ({ keys: [sharedProviderCredentialEnvKey("minimax")] }),
+            getUserEnv: async () => {
+              sharedCredentialReads++;
+              throw new Error("Fixture credential is offline");
+            },
+            reloadEngine: async () => ({ ok: true }),
+            upsertUserEnv: async () => ({ updated: [] }),
+            deleteUserEnv: async () => ({ ok: true }),
+          } as never,
           ipolloworkServerCapabilities: null,
         }),
       },
@@ -438,10 +448,14 @@ describe("model runtime adapters", () => {
 
     const firstCompletion = store.completeProviderAuthOAuth("openai", 0);
     const duplicateCompletion = store.completeProviderAuthOAuth("openai", 0);
+    await store.refreshProviders();
+    expect(sharedCredentialReads).toBe(0);
     releaseCallback();
     expect(await firstCompletion).toMatchObject({ connected: true });
     expect(await duplicateCompletion).toMatchObject({ connected: true });
     expect(calls.filter((call) => call.name === "callback")).toHaveLength(1);
+    await store.refreshProviders();
+    expect(sharedCredentialReads).toBe(1);
 
     store.dispose();
     queryClient.clear();
