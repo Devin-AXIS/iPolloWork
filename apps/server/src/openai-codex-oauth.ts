@@ -267,7 +267,7 @@ export async function resolveOpenAiCodexOAuthSession(
   const pending = (async () => {
     const accountAuthPath = config.opencodeAuthPath
       ? resolveOpencodeAuthPath({ authPath: config.opencodeAuthPath })
-      : resolveOpencodeAuthPath({ managedOnly: true }) ?? resolveOpencodeAuthPath();
+      : resolveOpencodeAuthPath({ managedOnly: true }) ?? (allowOfficialCodexFallback ? resolveOpencodeAuthPath() : null);
     const officialAuthPath = allowOfficialCodexFallback ? resolveOfficialCodexAuthPath() : null;
     const readAuthStore = async (path: string | null): Promise<Record<string, unknown> | null> => {
       if (!path) return null;

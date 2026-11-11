@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
+import { resolveOpenAiCodexOAuthSession } from "./openai-codex-oauth.js";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -22,6 +23,7 @@ import {
   codexHarnessRuntimeProviderId,
   CodexHarnessModelSelectionError,
   CodexHarnessRuntime,
+  createCodexAppServer,
   CodexHarnessRuntimePool,
 } from "./codex-harness-runtime.js";
 import {
@@ -65,6 +67,10 @@ async function removeTestRoot(root: string): Promise<void> {
   }
 }
 
+async function writeCodexFixture(path: string, source: string | Buffer, options?: Parameters<typeof writeFile>[2]): Promise<void> {
+  await writeFile(path, `if (process.argv.includes('--version')) { console.log('codex-cli 0.149.0'); process.exit(0); }\n${source.toString()}`, options);
+}
+
 async function testConfig(): Promise<ServerConfig> {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-codex-runtime-test-"));
   roots.push(root);
@@ -100,12 +106,71 @@ afterEach(async () => {
 });
 
 describe("Codex Harness provider projection", () => {
+  test("startup rejects missing, wrong-version and corrupt runtimes without consulting PATH", async () => {
+    const config = await testConfig();
+    const root = dirname(config.configPath!);
+    const previous = process.env.IPOLLOWORK_CODEX_CLI;
+    try {
+      delete process.env.IPOLLOWORK_CODEX_CLI;
+      await expect(createCodexAppServer({ cwd: root, environment: { ...process.env, CODEX_HOME: root } })).rejects.toThrow("不会使用个人 Codex");
+      const cli = join(root, "invalid.js");
+      process.env.IPOLLOWORK_CODEX_CLI = cli;
+      await writeCodexFixture(cli, "");
+      await expect(createCodexAppServer({ cwd: root, environment: {PATH:process.env.PATH} })).rejects.toThrow("不会使用个人配置");
+      for (const source of ["console.log('codex-cli 0.167.0')", "process.exit(1)", "console.log('another-cli 0.149.0')"]) {
+        await writeFile(cli, source);
+        await expect(createCodexAppServer({ cwd: root, environment: { ...process.env, CODEX_HOME: root } })).rejects.toThrow("需要 0.149.0");
+      }
+    } finally {
+      if (previous === undefined) delete process.env.IPOLLOWORK_CODEX_CLI; else process.env.IPOLLOWORK_CODEX_CLI = previous;
+    }
+  });
+
+  test("the child keeps app configuration but drops inherited personal Codex and OpenAI overrides", async () => {
+    const config = await testConfig();
+    const root = dirname(config.configPath!);
+    const cli = join(root, "environment.js");
+    await writeCodexFixture(cli, `require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line); console.log(JSON.stringify({id:m.id,result:{home:process.env.CODEX_HOME,origin:process.env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE,key:process.env.OPENAI_API_KEY,base:process.env.OPENAI_BASE_URL,provider:process.env.IPOLLOWORK_CODEX_PROVIDER_TEST_API_KEY}}))});`);
+    const previous = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = cli;
+    try {
+      const rpc = await createCodexAppServer({ cwd: root, environment: { ...process.env, CODEX_HOME: root, CODEX_INTERNAL_ORIGINATOR_OVERRIDE: "personal", OPENAI_API_KEY: "personal-key", OPENAI_BASE_URL: "https://personal.invalid", IPOLLOWORK_CODEX_PROVIDER_TEST_API_KEY: "app-key" } });
+      try { expect(await rpc.call<Record<string, unknown>>("inspect")).toEqual({ home: root, provider: "app-key" }); } finally { await rpc.close(); }
+    } finally {
+      if (previous === undefined) delete process.env.IPOLLOWORK_CODEX_CLI; else process.env.IPOLLOWORK_CODEX_CLI = previous;
+    }
+  });
+
+  test("personal Codex login is never implicitly imported and missing app login has a clear recovery message", async () => {
+    const config = await testConfig();
+    const root = dirname(config.configPath!);
+    const home = process.env.CODEX_HOME!;
+    await mkdir(home, { recursive: true });
+    const jwt = `eyJhbGciOiJub25lIn0.${Buffer.from(JSON.stringify({iat: Math.floor(Date.now()/1000), exp: Math.floor(Date.now()/1000)+3600})).toString("base64url")}.signature`;
+    const auth = JSON.stringify({ tokens: { access_token: jwt, refresh_token: "personal-refresh", id_token: "personal-id", account_id: "personal-account" }, last_refresh: new Date().toISOString() });
+    await writeFile(join(home, "auth.json"), auth);
+    await writeFile(join(root, "env.json"), JSON.stringify({schemaVersion:1,updatedAt:Date.now(),variables:[{key:sharedProviderProfileEnvKey("openai"),value:serializeSharedProviderProfile({schemaVersion:1,providerId:"openai",displayName:"OpenAI",api:"openai-responses",models:[{id:"gpt-6.1-sol"}]}),updatedAt:Date.now()}]}));
+    const runtime = new CodexHarnessRuntime({ config, workspace: { id: "isolated", name: "Isolated", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness" }, env: new EnvService({path: join(root, "env.json")}) });
+    try {
+      expect((await runtime.providerDirectory()).connected).not.toContain("openai");
+      await expect(runtime.startThread({modelProvider: "ipollowork-openai", model: "gpt-6.1-sol"})).rejects.toThrow("授权中心");
+      expect(existsSync(config.opencodeAuthPath!)).toBe(false);
+      expect(await readFile(join(home, "auth.json"), "utf8")).toBe(auth);
+      await writeFile(config.opencodeAuthPath!, JSON.stringify({openai:{type:"oauth", access:"app-access", refresh:"app-refresh", expires:Date.now()+3600000, accountId:"app-account"}}));
+      expect(await resolveOpenAiCodexOAuthSession(config, {allowOfficialCodexFallback:false})).toEqual({accessToken:"app-access",accountId:"app-account"});
+      expect((await runtime.providerDirectory()).connected).toContain("openai");
+      const generated = await runtime.providers();
+      expect(generated.find(p => p.id === "openai")?.apiKey).toBe("app-access");
+      expect(await readFile(join(home, "auth.json"), "utf8")).toBe(auth);
+    } finally { await runtime.close(); }
+  });
+
   test("closing during initialization drains the child and cannot restart a released runtime", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath); const marker = join(root, "native-pid.txt");
     const fixturePath = join(root, "closing-fixture.js");
-    await writeFile(fixturePath, `import {createInterface} from 'node:readline';import {writeFileSync} from 'node:fs';
+    await writeCodexFixture(fixturePath, `import {createInterface} from 'node:readline';import {writeFileSync} from 'node:fs';
       createInterface({input:process.stdin}).on('line',line=>{const request=JSON.parse(line);if(request.id===undefined)return;
         const respond=()=>process.stdout.write(JSON.stringify({id:request.id,result:{data:[]}})+'\\n');
         if(request.method==='initialize'){writeFileSync(${JSON.stringify(marker)},String(process.pid));setTimeout(respond,150);}else respond();});`);
@@ -186,7 +251,7 @@ describe("Codex Harness provider projection", () => {
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-compaction-fixture.js");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const readline = require("node:readline");
 const emit = value => process.stdout.write(JSON.stringify(value) + "\n");
 let starts = 0;
@@ -287,7 +352,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-confirmation-fixture.js");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const readline = require("node:readline");
 let replies = 0;
 const emit = value => process.stdout.write(JSON.stringify(value) + "\n");
@@ -506,9 +571,9 @@ if (message.method === "thread/list") { emit({ id: message.id, result: { data: [
     let capture: (body: unknown) => void = () => undefined;
     const received = new Promise<unknown>((resolve) => { capture = resolve; });
     const server = createServer(async (request, response) => {
-      let body = "";
-      for await (const chunk of request) body += chunk;
-      capture(JSON.parse(body));
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      capture(JSON.parse(Buffer.concat(chunks).toString("utf8")));
       // Stop before generation: no remote request, credential or model cost.
       response.writeHead(400).end("Local transport proof complete");
     });
@@ -657,7 +722,7 @@ if (message.method === "thread/list") { emit({ id: message.id, result: { data: [
         { key: "no_proxy", value: "internal.example", updatedAt: Date.now() },
       ],
     }), "utf8");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const fs = require("node:fs");
 const readline = require("node:readline");
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
@@ -710,7 +775,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-warm-runtime-fixture.js");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const readline = require("node:readline");
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);
@@ -759,9 +824,10 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
+    await writeFile(join(root, "env.json"), JSON.stringify({schemaVersion: 1, updatedAt: Date.now(), variables: [{key: sharedProviderCredentialEnvKey("openai"), value: "app-account-key", updatedAt: Date.now()}]}));
     const fixturePath = join(root, "codex-provider-change-fixture.js");
     const logPath = join(root, "codex-provider-change-log");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const fs = require("node:fs");
 const readline = require("node:readline");
 const log = (value) => fs.appendFileSync(process.env.IPOLLOWORK_CODEX_PROVIDER_CHANGE_LOG, value + "\n");
@@ -850,10 +916,11 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
+    await writeFile(join(root, "env.json"), JSON.stringify({schemaVersion: 1, updatedAt: Date.now(), variables: [{key: sharedProviderCredentialEnvKey("openai"), value: "app-account-key", updatedAt: Date.now()}]}));
     const fixturePath = join(root, "codex-app-server-fixture.js");
     const rebindMarkerPath = join(root, "codex-rebind-marker");
     const rebindLogPath = join(root, "codex-rebind-log");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const fs = require("node:fs");
 const readline = require("node:readline");
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
@@ -1033,7 +1100,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-empty-thread-rebind-fixture.js");
     const logPath = join(root, "codex-empty-thread-rebind-log");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const fs = require("node:fs");
 const readline = require("node:readline");
 const log = (value) => fs.appendFileSync(process.env.IPOLLOWORK_CODEX_EMPTY_REBIND_LOG, value + "\n");
@@ -1164,7 +1231,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-thread-list-fixture.js");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const readline = require("node:readline");
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);
@@ -1234,7 +1301,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-unmaterialized-thread-fixture.js");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const readline = require("node:readline");
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);
@@ -1295,7 +1362,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-template-history-fixture.js");
-    await writeFile(fixturePath, await readFile(new URL("../../../evals/support/codex-empty-history-fixture.cjs", import.meta.url)));
+    await writeCodexFixture(fixturePath, await readFile(new URL("../../../evals/support/codex-empty-history-fixture.cjs", import.meta.url)));
     const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
     process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
     const runtime = new CodexHarnessRuntime({
@@ -1399,6 +1466,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(codexHarnessRuntimeProviderId("openai")).toBe("ipollowork-openai");
     expect(config).toContain("[features]");
     expect(config).toContain("plugins = false");
+    expect(config).toContain("[tools.update_plan]\nenabled = true");
     expect(config).toContain('[model_providers."ipollowork-openai"]');
     expect(config).not.toContain('[model_providers."openai"]');
     expect(config).toContain('env_key = "IPOLLOWORK_CODEX_PROVIDER_IPOLLOWORK_OPENAI_API_KEY"');
@@ -2502,7 +2570,7 @@ describe("Codex pending approval recovery", () => {
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
     const fixturePath = join(root, "codex-approval-fixture.js");
-    await writeFile(fixturePath, String.raw`
+    await writeCodexFixture(fixturePath, String.raw`
 const send = (event) => process.stdout.write(JSON.stringify(event) + "\n");
 require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);

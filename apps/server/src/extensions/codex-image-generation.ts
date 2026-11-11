@@ -79,7 +79,7 @@ export async function runCodexImageTurn(
 ): Promise<Buffer> {
   const capabilities: unknown = await rpc.call("modelProvider/capabilities/read", {}, 30_000);
   if (!isRecord(capabilities) || capabilities.imageGeneration !== true) {
-    throw new ApiError(400, "codex_image_unavailable", "当前 Codex 运行时不支持生图，请更新运行时，或选择 API 模型。");
+    throw new ApiError(400, "codex_image_unavailable", "当前客户端 Codex 运行时不支持生图，请选择已配置的 API 生图模型。");
   }
   const started: unknown = await rpc.call("thread/start", {
     ephemeral: true,
@@ -139,7 +139,7 @@ export async function runCodexImageTurn(
         } else {
           // A completed text turn is not image success and is not evidence of
           // expired credentials or quota. Never expose private runtime stderr.
-          reject(imageFailure("Codex 未返回图片结果，图片工具可能未能启动。请更新 Codex 运行时后重试。"));
+          reject(imageFailure("Codex 未返回图片结果，图片工具可能未能启动。请检查客户端 Codex 运行时的功能兼容性。"));
         }
       }
     });
@@ -184,7 +184,7 @@ async function withCodexImageSession<T>(authorization: AuthorizationAccess, run:
   try {
     // No shared CODEX_HOME: never rewrite the conversation runtime or official client auth.
     root = await mkdtemp(join(tmpdir(), "ipollowork-codex-image-"));
-    rpc = createCodexAppServer({ cwd: root, environment: { ...process.env, CODEX_HOME: root, NO_COLOR: "1" } });
+    rpc = await createCodexAppServer({ cwd: root, environment: { ...process.env, CODEX_HOME: root, NO_COLOR: "1" } });
     await rpc.call("initialize", { clientInfo: { name: "ipollowork", version: "0.1.0" }, capabilities: { experimentalApi: true } }, 30_000);
     rpc.notify("initialized", {});
     await rpc.call("account/login/start", {
@@ -194,7 +194,7 @@ async function withCodexImageSession<T>(authorization: AuthorizationAccess, run:
   } catch (error) {
     if (isApiError(error)) throw error;
     // RPC failures can include private process stderr. Keep those out of the UI.
-    throw imageFailure("无法连接 Codex 生图服务。请检查网络、更新 Codex 运行时，或在授权中心重新登录 OpenAI。");
+    throw imageFailure("无法连接 Codex 生图服务。请检查网络及客户端 Codex 运行时，或在授权中心重新登录 OpenAI。");
   } finally {
     await rpc?.close();
     // root is created by mkdtemp above, never supplied by the caller.

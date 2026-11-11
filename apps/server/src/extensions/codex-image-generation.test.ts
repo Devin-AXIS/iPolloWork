@@ -78,7 +78,7 @@ describe("ChatGPT image generation", () => {
   test("reports missing output and releases the subscription", async () => {
     const rpc = fakeRpc({ result: null });
     await expect(runCodexImageTurn(rpc, tmpdir(), { prompt: "bird", size: "auto", quality: "auto" })).rejects.toMatchObject({
-      code: "codex_image_generation_failed", message: "Codex 未返回图片结果，图片工具可能未能启动。请更新 Codex 运行时后重试。",
+      code: "codex_image_generation_failed", message: "Codex 未返回图片结果，图片工具可能未能启动。请检查客户端 Codex 运行时的功能兼容性。",
     });
     expect(rpc.subscribed()).toBe(false);
   });
