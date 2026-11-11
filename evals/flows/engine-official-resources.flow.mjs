@@ -1,13 +1,13 @@
 export default {
   id: "engine-official-resources",
-  title: "Official Agent engines are reused without duplicate downloads",
+  title: "Personal Codex is isolated while official DeepSeek remains reusable",
   kind: "user-facing",
   steps: [
     {
-      name: "Official Codex and DeepSeek resources are ready",
+      name: "Managed Codex and official DeepSeek resources are ready",
       run: async (ctx) => {
-        await ctx.prove("Installed official Codex and DeepSeek resources are ready and cannot be uninstalled in iPolloWork", {
-          voiceover: "The engine manager finds the official Codex and DeepSeek installations already on this device, uses them immediately, and explains why iPolloWork does not offer install or uninstall actions for them.",
+        await ctx.prove("Codex uses its pinned client-managed runtime while DeepSeek keeps its official installation", {
+          voiceover: "Codex uses the runtime managed by iPolloWork. DeepSeek can still reuse its compatible official installation.",
           action: async () => {
             await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30_000 });
             await ctx.navigateHash("/settings/engines");
@@ -31,6 +31,11 @@ export default {
               })))()`);
             ctx.assert(Array.isArray(engines) && engines.length === 2, "Expected both optional engine rows.");
             for (const engine of engines) {
+              if (engine.id === 'codex-harness') {
+                const codex = await ctx.eval("import('/src/app/lib/desktop.ts').then(async m=>(await m.enginePackagesList()).find(e=>e.id==='codex-harness'))", {awaitPromise:true});
+                ctx.assert(codex.installed && codex.source === 'downloaded' && codex.version === '0.149.0', 'Codex must use the pinned client runtime');
+                continue;
+              }
               ctx.assert(
                 engine.text.includes("Using official installation") || engine.text.includes("使用官方安装资源"),
                 `Expected ${engine.id} to use an official installation.`,
