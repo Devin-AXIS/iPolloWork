@@ -134,6 +134,16 @@ describe("Design HTML runtime", () => {
     }
   });
 
+  test("hides template navigation chrome only inside the client preview", () => {
+    const source = '<html><body><section class="slide is-active">One</section><section class="slide">Two</section><nav class="controls"><button aria-label="下一页">Next</button></nav><div class="progress-bar"></div></body></html>';
+    const preview = buildDesignPreviewDocument(source, true, "", true, false, true);
+    expect(preview).toContain('body > nav.controls');
+    expect(preview).toContain('body > .progress-bar { display: none !important; }');
+    expect(preview).toContain('control.click()');
+    expect(preview).toContain('clone.querySelectorAll("#ipollowork-design-deck-runtime-style")');
+    expect(preview).toContain('<nav class="controls">');
+  });
+
   test("acknowledges a restored deck index even when it matches the initial slide", () => {
     const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
     const preview = buildDesignPreviewDocument(source, true, "", true, false, true, "frame-7");

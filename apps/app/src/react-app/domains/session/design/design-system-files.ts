@@ -77,12 +77,12 @@ export function replaceDesignTokenValue(source: string, name: string, value: str
   return `${before}${leadingNewline}  ${name}: ${value};${newline}${source.slice(closingBrace)}`;
 }
 
-function removeLegacyIpwRootDeclarations(source: string) {
+function removeLegacyIpwRootDeclarations(source: string, managedNames: ReadonlySet<string>) {
   return source.replace(/:root\s*\{([\s\S]*?)\}/gi, (_block, body: string) => {
     const declarations = body
       .split(";")
       .map((declaration) => declaration.trim())
-      .filter((declaration) => declaration && !declaration.startsWith("--ipw-"));
+      .filter((declaration) => declaration && !managedNames.has(declaration.split(":", 1)[0].trim()) && !declaration.startsWith("--ipw-od-"));
     return declarations.length ? `:root {\n  ${declarations.join(";\n  ")};\n}` : "";
   });
 }
@@ -92,13 +92,19 @@ export function mergeTemplateTokenCss(existingCss: string | undefined, generated
   const existing = existingCss ?? "";
   if (!incoming) return existing;
 
+  const managedNames = new Set(Object.keys(parseDesignTokenValues(incoming.content)));
   const current = themeBlock(existing);
   if (current) {
-    return `${existing.slice(0, current.start)}${incoming.content}${existing.slice(current.end)}`;
+    const templateValues = Object.entries(parseDesignTokenValues(current.content))
+      .filter(([name]) => !managedNames.has(name) && !name.startsWith("--ipw-od-"));
+    const preserved = templateValues.length
+      ? `\n:root {\n${templateValues.map(([name, value]) => `  ${name}: ${value};`).join("\n")}\n}`
+      : "";
+    return `${existing.slice(0, current.start)}${incoming.content}${preserved}${existing.slice(current.end)}`;
   }
 
   const newline = existing.includes("\r\n") ? "\r\n" : "\n";
-  const preserved = removeLegacyIpwRootDeclarations(existing).trim();
+  const preserved = removeLegacyIpwRootDeclarations(existing, managedNames).trim();
   return preserved
     ? `${incoming.content}${newline}${newline}${preserved}${newline}`
     : `${incoming.content}${newline}`;
