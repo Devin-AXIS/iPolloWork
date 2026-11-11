@@ -321,3 +321,144 @@ it("removes development plugin overrides from an embedded production environment
   assert.equal(target.IPOLLOWORK_DEV_MODE, "1");
   assert.equal(target.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR, "C:/dev/source");
 });
+
+
+describe("desktop runtime ownership", () => {
+  async function fixture(t) {
+    const { createServer } = await import("node:http");
+    const { createRuntimeManager } = await import("./runtime.mjs");
+    const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-"));
+    const first = path.join(root, "first");
+    const second = path.join(root, "second");
+    await Promise.all([mkdir(first), mkdir(second)]);
+    const prior = { IPOLLOWORK_ENV_STORE: process.env.IPOLLOWORK_ENV_STORE, IPOLLOWORK_DATA_DIR: process.env.IPOLLOWORK_DATA_DIR };
+    process.env.IPOLLOWORK_ENV_STORE = path.join(root, "env.json");
+    process.env.IPOLLOWORK_DATA_DIR = path.join(root, "data");
+    const stats = { starts: 0, live: 0, maxLive: 0, failStarts: 0, failStop: false, unhealthy: false };
+    const handles = [];
+    const manager = createRuntimeManager({
+      app: { getPath: name => name === "userData" ? root : name === "exe" ? process.execPath : root, isPackaged: false },
+      desktopRoot: root, listLocalWorkspacePaths: async () => [first, second],
+      loadServer: async () => ({ startEmbeddedServer: async () => {
+        stats.starts++;
+        if (stats.failStarts-- > 0) throw new Error("controlled startup failure");
+        stats.unhealthy = false;
+        // Keep startup asynchronous so raw activation can race the public start.
+        await new Promise(resolve => setTimeout(resolve, 15));
+        const server = createServer((req, res) => {
+          res.setHeader("Content-Type", "application/json");
+          if (stats.unhealthy) { res.statusCode = 503; res.end('{}'); return; }
+          res.end(JSON.stringify(req.url === "/tokens" ? { token: "test-owner" } : { items: [first, second].map(p => ({ path: p, opencode: { baseUrl: handle.url, directory: first } })) }));
+        });
+        await new Promise(resolve => server.listen({ port: 0, host: "127.0.0.1" }, () => resolve(undefined)));
+        const address = server.address();
+        if (!address || typeof address === "string") throw new Error("Expected a TCP listener");
+        stats.live++; stats.maxLive = Math.max(stats.maxLive, stats.live);
+        const handle = { port: address.port, url: `http://127.0.0.1:${address.port}`, managedOpencodeExecution: null, stop: async () => {
+          if (stats.failStop) throw new Error("controlled shutdown failure");
+          if (!server.listening) return;
+          await new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
+          stats.live--;
+        } };
+        handles.push(handle);
+        return handle;
+      } }),
+    });
+    t.after(async () => {
+      stats.failStop = false;
+      await manager.dispose();
+      await Promise.all(handles.map(h => h.stop()));
+      for (const [key, value] of Object.entries(prior)) if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      await rm(root, { recursive: true, force: true });
+    });
+    return { manager, stats, handles, first, second, root };
+  }
+
+  it("serializes boot, duplicate renderer starts and activation into one healthy server", async t => {
+    const { manager, stats, first, second } = await fixture(t);
+    await Promise.all([manager.engineStart(first), manager.orchestratorWorkspaceActivate({ workspacePath: first }), ...Array.from({ length: 5 }, () => manager.engineStart(first))]);
+    assert.equal(stats.starts, 1);
+    assert.equal(stats.maxLive, 1);
+    const before = await manager.ipolloworkServerInfo();
+    await manager.orchestratorWorkspaceActivate({ workspacePath: second });
+    assert.equal((await manager.ipolloworkServerInfo()).baseUrl, before.baseUrl);
+    assert.equal(stats.starts, 1, "registered workspace activation must not terminate other tasks");
+    await manager.engineStart(path.join(first, "new-project"));
+    assert.equal(stats.starts, 1, "new workspace registration uses the profile server, preserving running sessions");
+  });
+
+  it("safely replaces an unhealthy owned instance and recovers from a failed start", async t => {
+    const { manager, stats, handles, first } = await fixture(t);
+    stats.failStarts = 1;
+    await manager.engineStart(first);
+    assert.equal(stats.starts, 2);
+    await handles.at(-1).stop();
+    await manager.engineStart(first);
+    assert.equal(stats.starts, 3);
+    stats.unhealthy = true;
+    await manager.engineStart(first);
+    stats.unhealthy = false;
+    assert.equal(stats.starts, 4);
+    assert.equal(stats.live, 1);
+    assert.equal(stats.maxLive, 1);
+    await Promise.all([manager.engineStop(), manager.engineStart(first), manager.orchestratorWorkspaceActivate({ workspacePath: first })]);
+    assert.equal(stats.live, 1);
+    assert.equal(stats.maxLive, 1);
+  });
+
+  it("never launches over an owned instance that failed to stop, and the queue recovers", async t => {
+    const { manager, stats, first } = await fixture(t);
+    await manager.engineStart(first);
+    stats.failStop = true;
+    await assert.rejects(manager.engineRestart(), /controlled shutdown failure/);
+    assert.equal(stats.starts, 1);
+    assert.equal(stats.live, 1);
+    stats.failStop = false;
+    await manager.engineRestart();
+    assert.equal(stats.live, 1);
+    assert.equal(stats.maxLive, 1);
+  });
+
+  it("reclaims an actual orphan after a crash without killing an unrelated process", { skip: process.platform === "win32" }, async t => {
+    const { spawn } = await import("node:child_process");
+    const { copyFile, realpath } = await import("node:fs/promises");
+    const { manager, root } = await fixture(t);
+    const directory = path.join(await realpath(root), "engine-packs", "process-test");
+    await mkdir(directory, { recursive: true });
+    const binary = path.join(directory, "sleep");
+    await copyFile("/bin/sleep", binary);
+    const unrelated = spawn("/bin/sleep", ["60"], { stdio: "ignore" });
+    const launcher = spawn(process.execPath, ["-e", `const {spawn}=require('node:child_process');const child=spawn(${JSON.stringify(binary)},['60'],{stdio:'ignore'});console.log(child.pid);setInterval(()=>{},1000);`], { stdio: ["ignore", "pipe", "inherit"] });
+    const chunk = await new Promise(resolve => launcher.stdout.once("data", value => resolve(value)));
+    const pid = Number(String(chunk).trim());
+    t.after(() => { unrelated.kill("SIGKILL"); launcher.kill("SIGKILL"); try { process.kill(pid, "SIGKILL"); } catch {} });
+    const exited = new Promise(resolve => launcher.once("exit", () => resolve(undefined)));
+    launcher.kill("SIGKILL");
+    await exited;
+    await manager.prepareFreshRuntime();
+    let running = true;
+    for (let i = 0; i < 100 && running; i++) {
+      try { process.kill(pid, 0); await new Promise(resolve => setTimeout(resolve, 10)); } catch { running = false; }
+    }
+    assert.equal(running, false, "the private orphan must be reclaimed before another writer starts");
+    assert.equal(unrelated.exitCode, null);
+    assert.equal(unrelated.signalCode, null);
+  });
+
+  it("only selects orphaned private engines from this profile", async () => {
+    const { orphanedManagedRuntimeProcesses } = await import("./runtime.mjs");
+    const cli = "/profile/engine-packs/codex/cli";
+    const rows = [
+      { pid: 10, ppid: 1, command: "Electron /profile/engine-packs/codex/bin/codex.js" },
+      { pid: 11, ppid: 10, command: cli },
+      { pid: 12, ppid: 1, command: cli },
+      { pid: 20, ppid: 90, command: "Electron /profile/engine-packs/codex/bin/codex.js" },
+      { pid: 21, ppid: 20, command: cli },
+      { pid: 30, ppid: 1, command: "/other-profile/engine-packs/codex/cli" },
+      { pid: 40, ppid: 1, command: "/usr/local/bin/codex" },
+      { pid: 50, ppid: 1, command: "/Applications/ChatGPT.app/codex" },
+      { pid: 60, ppid: 1, command: "/app/resources/sidecars/opencode" },
+    ];
+    assert.deepEqual(orphanedManagedRuntimeProcesses(rows, "/profile").map(p => p.pid), [11, 12]);
+  });
+});
