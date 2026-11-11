@@ -540,6 +540,7 @@ function WorkspaceFileTree({ nodes, query, onOpenTarget }: {
 }
 
 interface ArtifactListProps {
+  className?: string
   messages: UIMessage[]
   excludedPaths?: readonly string[]
   client?: iPolloWorkServerClient | null
@@ -557,7 +558,7 @@ interface ArtifactListProps {
   onOpenVideoStudio?: (displayName?: string) => void
 }
 
-export function ArtifactList({ messages, excludedPaths, client, workspaceId, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
+export function ArtifactList({ className, messages, excludedPaths, client, workspaceId, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
   const requestArtifacts = selectArtifactsForRequest(
     artifacts.filter(artifact => !excludedPaths?.includes(artifact.path)),
@@ -581,7 +582,7 @@ export function ArtifactList({ messages, excludedPaths, client, workspaceId, ses
   }
 
   return (
-    <div className="w-full">
+    <div className={cn("w-full", className)}>
       {title ? <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</div> : null}
       <div
         className="chat-output-grid pb-2"

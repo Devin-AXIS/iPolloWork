@@ -7,6 +7,7 @@ import {
   CollapsibleToolStep,
   CollapsibleToolTrigger,
 } from "@/components/tools/collapsible-tool"
+import { getToolActivityLabel } from "@/lib/tool-activity"
 import type { BashToolPart } from "@/lib/build-in-tools"
 
 interface BashToolProps {
@@ -17,7 +18,6 @@ export function BashTool({ part }: BashToolProps) {
   const isError = part.state === "output-error"
   const isRunning = part.state === "input-streaming" || part.state === "input-available"
   const command = part.input?.command?.trim() || "Command details unavailable"
-  const description = part.input?.description?.trim() || (isRunning ? "Running command" : "Command")
   const output = part.state === "output-available" ? part.output : null
   const errorText = isError
     ? part.errorText?.trim() || "Command failed or was interrupted before an error was reported."
@@ -25,7 +25,7 @@ export function BashTool({ part }: BashToolProps) {
 
   return (
     <CollapsibleTool>
-      <CollapsibleToolStep className="flex flex-col gap-2" defaultOpen={isError}>
+      <CollapsibleToolStep className="flex flex-col gap-2">
         <CollapsibleToolTrigger
           className={isError ? "text-destructive hover:text-destructive" : undefined}
           leftIcon={
@@ -38,12 +38,8 @@ export function BashTool({ part }: BashToolProps) {
         >
           <span className="flex gap-2">
             <span className="shrink-0">
-              {description}
+              {getToolActivityLabel(part)}
             </span>
-            <span className="opacity-80 truncate grow">
-              {command}
-            </span>
-            {isError ? <span className="shrink-0 text-xs">failed</span> : null}
           </span>
         </CollapsibleToolTrigger>
         <CollapsibleToolContent className="bg-muted rounded-lg p-2">

@@ -741,6 +741,8 @@ function AssistantProcessSection(props: {
 
 const AssistantMessage = React.memo(
   ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext, imageStatus, deferFilesWhileStreaming = false }: AssistantMessageProps) => {
+    const wasStreaming = React.useRef(false)
+    if (isStreaming) wasStreaming.current = true
     const deliveredPaths = React.useContext(StudioDeliveryPaths)
     const { client, workspaceId, showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
@@ -796,6 +798,7 @@ const AssistantMessage = React.memo(
           )}
           {!isStreaming ? (
             <ArtifactList
+              className={wasStreaming.current ? "chat-result-enter" : undefined}
               messages={artifactMessages ?? [message]}
               excludedPaths={isStudioResultMessage(message) ? inlineImagePaths : [...deliveredPaths, ...inlineImagePaths]}
               client={client}
@@ -1142,7 +1145,10 @@ export function RunIssueNotice({ detail, kind, onDismiss, children }: {
       : providerFailure?.code === "provider_auth_failed" ? t("session.provider_auth_title")
         : providerFailure?.code === "provider_quota_exhausted" ? t("session.provider_quota_title")
           : providerFailure?.code === "provider_rate_limited" ? t("session.provider_rate_title")
-            : t("session.run_failed_title")
+            : providerFailure?.code === "provider_unavailable" ? t("session.provider_unavailable_title")
+              : providerFailure?.code === "provider_timeout" ? t("session.provider_timeout_title")
+                : providerFailure?.code === "provider_network_error" ? t("session.provider_network_title")
+                  : t("session.run_failed_title")
   const description = interrupted ? t("session.run_stopped_hint")
     : modelUnavailable ? t("session.model_unavailable_hint")
       : providerFailure?.code === "provider_auth_failed" ? t("session.provider_auth_hint")
@@ -1173,9 +1179,9 @@ export function RunIssueNotice({ detail, kind, onDismiss, children }: {
 
 function AssistantRunErrorText({ error }: AssistantRunErrorTextProps) {
   return (
-    <p className={cn(ASSISTANT_COLUMN_CLASS_NAME, "whitespace-pre-wrap break-words text-sm text-foreground")} data-assistant-run-error="true" data-chat-readable-text="true">
-      {t("session.run_failed_title")}：{error}
-    </p>
+    <div className={ASSISTANT_COLUMN_CLASS_NAME} data-assistant-run-error="true" data-chat-readable-text="true">
+      <RunIssueNotice detail={error} />
+    </div>
   )
 }
 
@@ -1219,9 +1225,9 @@ const RetryMessage = React.memo(({ status, compact = false }: RetryMessageProps)
       <div className="group flex w-full flex-col items-start gap-0">
         <div className="text-foreground flex min-w-0 flex-1 flex-col gap-2 py-2">
           <div className="flex items-start gap-2">
-            <LoaderCircle size={16} className={cn("mt-0.5 shrink-0 text-muted-foreground", !compact && "chat-live-activity")} />
+            {!compact ? <LoaderCircle size={16} className="chat-live-activity mt-0.5 shrink-0 text-muted-foreground" /> : null}
             <div className="min-w-0 space-y-1">
-              <p className="text-sm font-medium">{t("session.retry_recovering")}</p>
+              {!compact ? <p className="text-sm font-medium">{t("session.retry_recovering")}</p> : null}
               <p className="text-xs text-muted-foreground">{info}</p>
             </div>
           </div>
@@ -1346,8 +1352,6 @@ function MessageGroup({
   const currentTurn = isLatestAssistantGroup && precedingUser?.id === latestUser?.id
   const isLiveGroup = isStreaming && items.some((item) => item.message.id === activeAssistantMessageId)
   const liveProcess = isStreaming && currentTurn
-  const wasLive = React.useRef(false)
-  if (liveProcess) wasLive.current = true
   const artifactMessages = React.useMemo(
     () => getAssistantGroupArtifactMessages(items),
     [items],
@@ -1420,11 +1424,11 @@ function MessageGroup({
     ? itemRenderData.flatMap(({ groups }) => groups.filter((group) => group.kind === "file"))
     : []
   const bodyRenderData = itemRenderData.filter(({ item, presentation }, index) =>
-    !isSessionErrorMessage(item.message) && (presentation === "answer" || index === resolvedResultItemIndex),
+    !isSessionErrorMessage(item.message) && (presentation === "answer" || presentation === "draft" || index === resolvedResultItemIndex),
   )
   const processItemGroups = itemRenderData.map(({ item, groups, sections, presentation }) => {
     if (isSessionErrorMessage(item.message)) return []
-    const processGroups = presentation === "answer" ? sections.processGroups : groups
+    const processGroups = presentation === "answer" || presentation === "draft" ? sections.processGroups : groups
     return processGroups.filter((group) => !((liveProcess || runIncomplete) && group.kind === "file"))
   })
   const processRows = itemRenderData.flatMap(({ item }, itemIndex) =>
@@ -1540,7 +1544,8 @@ function MessageGroup({
       {bodyRenderData.map((data) => {
         const isResult = data === resultData
         return (
-          <div key={data.item.message.id} className={cn(ASSISTANT_TEXT_EDGES_CLASS_NAME, isResult && !liveProcess && wasLive.current && "chat-result-enter")} data-assistant-result="true">
+          <div key={data.item.message.id} className={ASSISTANT_TEXT_EDGES_CLASS_NAME} data-assistant-result={data.presentation === "draft" ? undefined : "true"} data-testid={data.presentation === "draft" ? "assistant-reply-draft" : undefined}>
+            {data.presentation === "draft" ? <p className="mb-1 text-xs font-medium text-muted-foreground">{t("session.reply_draft")}</p> : null}
             {isResult && runIncomplete && groupArtifacts.length > 0 ? <p className="mb-2 text-xs text-muted-foreground" data-testid="assistant-partial-result">{t("session.outputs.partial")}</p> : null}
             <MessageComponent
               message={data.item.message}
@@ -1557,7 +1562,7 @@ function MessageGroup({
               artifactFiles={isResult ? requestArtifactFiles : []}
               artifactContext={artifactContext}
               imageStatus={hasSessionError ? "failed" : imageStatus}
-              deferFilesWhileStreaming={isStreaming && currentTurn}
+              deferFilesWhileStreaming={liveProcess || runIncomplete}
             />
             {isResult && inlineError && !isLiveGroup ? <AssistantRunErrorText error={inlineError} /> : null}
           </div>
