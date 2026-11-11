@@ -31,6 +31,7 @@ import type {
 import type {
   WorkBoardConfig,
   WorkBoardConfigValue,
+  WorkAutomationModel,
   WorkItem,
   WorkItemCreateInput,
   WorkItemListResponse,
@@ -1641,6 +1642,15 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
           timeoutMs: timeouts.config,
         },
       ),
+    setWorkAutomationModel: (workspaceId: string, value: WorkAutomationModel, signal?: AbortSignal) =>
+      requestJson<{ ok: boolean }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-automation-model`, {
+        token,
+        hostToken,
+        method: "PUT",
+        body: value,
+        timeoutMs: timeouts.config,
+        signal,
+      }),
     getWorkBoard: (workspaceId: string) =>
       requestJson<WorkBoardConfig>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/work-board`, {
         token,

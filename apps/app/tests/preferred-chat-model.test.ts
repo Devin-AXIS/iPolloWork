@@ -142,4 +142,14 @@ describe("resolveEngineSelectableChatModel", () => {
       preferred: { providerID: "openai", modelID: "gpt-5.5" },
     })).toBeNull();
   });
+
+  test("keeps the explicit engine choice through a temporary provider outage", () => {
+    const selectedForEngine = { providerID: "openai", modelID: "gpt-5.6-sol" };
+    const free = { providerID: "opencode", modelIDs: ["big-pickle"], freeModelIDs: ["big-pickle"] };
+    const input = { selectedForEngine, preferred: null, defaults: { opencode: "big-pickle" } };
+    expect(resolveEngineSelectableChatModel({ ...input, providers: [free] })).toBeNull();
+    expect(resolveEngineSelectableChatModel({
+      ...input, providers: [free, { providerID: "openai", modelIDs: ["gpt-5.6-sol"] }],
+    })).toEqual(selectedForEngine);
+  });
 });

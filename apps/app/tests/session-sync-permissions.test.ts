@@ -992,6 +992,45 @@ describe("session transcript sync", () => {
     }
   });
 
+  test.each(["live parts", "snapshot"])("resumes after an OpenCode user message header when text arrives via %s", (source) => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+    const previous = { id: "native-stopped", role: "user" as const, text: "换个内容" };
+    const resumed = { id: "native-resumed", role: "user" as const, text: "继续" };
+    const answer = { id: "resumed-answer", role: "assistant" as const, text: "新的回复", parentUserMessageId: resumed.id };
+    seedSessionState("workspace-a", snapshotWithMessages([previous]));
+    settleInterruptedSessionRun("workspace-a", "session-a", previous.id);
+    beginOptimisticSessionPrompt("workspace-a", "session-a", resumed.text, "local-resumed");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert", sessionId: "session-a", message: { id: resumed.id, role: "user", parts: [] },
+      });
+      if (source === "live parts") {
+        __applySessionSyncEventForTest(syncInput, {
+          type: "message.parts", sessionId: "session-a", messageId: resumed.id, partId: "resumed-text",
+          messageRole: "user", visibleAssistantOutput: false,
+          parts: [{ type: "text", text: resumed.text, state: "done" }],
+        });
+        __applySessionSyncEventForTest(syncInput, {
+          type: "message.upsert", sessionId: "session-a",
+          message: uiMessage(answer.id, answer.role, answer.text, answer),
+        });
+      } else {
+        seedSessionState("workspace-a", snapshotWithMessages([previous, resumed, answer]));
+      }
+      __applySessionSyncEventForTest(syncInput, { type: "session.idle", sessionId: "session-a" });
+
+      const query = getReactQueryClient();
+      expect(query.getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"))?.map(message => message.id))
+        .toEqual([previous.id, resumed.id, answer.id]);
+      expect(query.getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
   test("never resurrects a stopped turn after the next identical turn completes", () => {
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");

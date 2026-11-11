@@ -89,7 +89,7 @@ import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-ico
 import { useDenAuth } from "../../cloud/den-auth-provider";
 import ProviderAuthModal, { type ProviderAuthModalProps } from "../../connections/provider-auth/provider-auth-modal";
 import { RenameSessionModal } from "../modals/rename-session-modal";
-import { AppSidebar } from "../sidebar/app-sidebar";
+import { AppSidebar, workspaceEngineLabel } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType, subscribeToSessionType } from "../sidebar/session-type";
 import { SessionSurface, StarterCapabilityChip, type SessionSurfaceHandle, type SessionSurfaceProps } from "../surface/session-surface";
@@ -884,6 +884,7 @@ function InitialProjectTaskStarter({
   pendingDraft?: ComposerDraft | null;
   onSubmit: (draft: ComposerDraft) => Promise<boolean>;
 }) {
+  const engineLabel = workspaceEngineLabel(engineId);
   const draft = useComposerStateStore((state) => getComposerDraft(state, draftScope));
   const attachments = useComposerStateStore((state) => getComposerAttachments(state, draftScope));
   const pastedText = useComposerStateStore((state) => getComposerPasteParts(state, draftScope));
@@ -1154,7 +1155,7 @@ function InitialProjectTaskStarter({
             {onEngineChange ? (
               <Select value={engineId || DEFAULT_ENGINE_ID} onValueChange={(value) => { if (value) onEngineChange(value); }}>
                 <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent px-2 text-xs shadow-none" aria-label={t("conversation_work.engine")} data-testid="conversation-engine-picker">
-                  <SelectValue>{engineId === CODEX_HARNESS_ENGINE_ID ? t("projects.engine_codex") : engineId === DEEPSEEK_HARNESS_ENGINE_ID ? t("projects.engine_dsh") : t("projects.engine_opencode")}</SelectValue>
+                  <SelectValue>{engineLabel}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={DEFAULT_ENGINE_ID}>{t("projects.engine_opencode")}</SelectItem>
@@ -1162,7 +1163,9 @@ function InitialProjectTaskStarter({
                   <SelectItem value={DEEPSEEK_HARNESS_ENGINE_ID}>{t("projects.engine_dsh")}</SelectItem>
                 </SelectContent>
               </Select>
-            ) : null}
+            ) : (
+              <span className="inline-flex h-8 items-center px-2 text-xs" data-testid="conversation-project-engine">{engineLabel}</span>
+            )}
           </div>
         ) : null}
         <div data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">

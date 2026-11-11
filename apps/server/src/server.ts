@@ -148,7 +148,7 @@ import {
   finishProjectSessionExecution,
   listConversationSessionBindings,
   readProjectSessionWorkItem,
-  resolveProjectExecutionPlan,
+  resolveWorkItemAutomationExecutionPlan,
   startProjectSessionExecution,
   startWorkItemAutomationScheduler,
   workItemAutomationPrompt,
@@ -1051,20 +1051,12 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     config,
     dispatch: async (item) => {
       const workspace = await resolveWorkspace(config, item.workspaceId);
-      const requestedRuntime = {
-        engineId: workspace.engineId?.trim() || DEFAULT_ENGINE_ID,
-        model: item.automation?.model ?? null,
-        mode: null,
-        modelVariant: null,
-      };
-      const plan = await resolveProjectExecutionPlan(config, workspace, {
-        agentId: item.assignee ?? undefined,
-        runtime: requestedRuntime,
-      });
-      const session = await sessionRuntime.create(workspace, item.title, plan.runtime.model ? {
+      const plan = await resolveWorkItemAutomationExecutionPlan(config, workspace, item);
+      const model = {
         providerID: plan.runtime.model.providerId,
         modelID: plan.runtime.model.modelId,
-      } : undefined);
+      };
+      const session = await sessionRuntime.create(workspace, item.title, model);
       const execution = {
         sessionId: session.id,
         ...plan,
@@ -1074,12 +1066,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       try {
         const promptedSessionId = await sessionRuntime.prompt(workspace, session.id, {
           text: workItemAutomationPrompt(item),
-          ...(execution.runtime.model ? {
-            model: {
-              providerID: execution.runtime.model.providerId,
-              modelID: execution.runtime.model.modelId,
-            },
-          } : {}),
+          model,
           ...(execution.runtime.mode ? { mode: execution.runtime.mode } : {}),
           ...(execution.runtime.modelVariant ? { reasoningEffort: execution.runtime.modelVariant } : {}),
           system: projectExecutionSystemContext(execution),

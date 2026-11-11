@@ -84,19 +84,17 @@ describe("shared AI provider preferences", () => {
       mode: "code",
     });
 
-    const updated = updateModelPreferences(initial, (current) => ({
-      model: { providerID: "anthropic", modelID: "claude-sonnet" },
-      modelVariant: null,
-    }));
-
-    expect(updated.model).toEqual({
-      providerID: "anthropic",
-      modelID: "claude-sonnet",
-    });
+    const openCode = { model: { providerID: "openai", modelID: "gpt-5" }, modelVariant: "high" };
+    const deepSeek = { model: { providerID: "deepseek-official", modelID: "deepseek-v4-flash" }, modelVariant: null };
+    const first = updateModelPreferences(initial, () => openCode, DEFAULT_ENGINE_ID);
+    const updated = updateModelPreferences(first, () => deepSeek, DEEPSEEK_HARNESS_ENGINE_ID);
     const modeUpdated = updateEnginePreferences(updated, DEEPSEEK_HARNESS_ENGINE_ID, () => ({ mode: "review" }));
-    expect(getEnginePreferences(modeUpdated, DEEPSEEK_HARNESS_ENGINE_ID).mode).toBe("review");
-    expect(getEnginePreferences(modeUpdated, DEFAULT_ENGINE_ID).mode).toBe("build");
-    expect(modeUpdated.model).toEqual(updated.model);
+    expect(getEnginePreferences(modeUpdated, DEFAULT_ENGINE_ID)).toEqual({ mode: "build", ...openCode });
+    expect(getEnginePreferences(modeUpdated, DEEPSEEK_HARNESS_ENGINE_ID)).toEqual({ mode: "review", ...deepSeek });
+    expect(modeUpdated.model).toEqual(deepSeek.model);
+    const variantUpdated = updateModelPreferences(modeUpdated, (selection) => ({ ...selection, modelVariant: "low" }), DEFAULT_ENGINE_ID);
+    expect(getEnginePreferences(variantUpdated, DEFAULT_ENGINE_ID)).toEqual({ mode: "build", ...openCode, modelVariant: "low" });
+    expect(getEnginePreferences(variantUpdated, DEEPSEEK_HARNESS_ENGINE_ID)).toEqual({ mode: "review", ...deepSeek });
   });
 
   test("uses the OpenCode workspace as the shared provider control plane", () => {
@@ -134,15 +132,13 @@ describe("shared AI provider preferences", () => {
     expect(settingsRouteSource).toContain("runtimeSource: activeModelProviderSource");
     expect(settingsRouteSource).toContain("connectedProviderIds: providerAuthSnapshot.connectedProviderIds");
     expect(sessionRouteSource).toContain("getRunnableChatModelSnapshot({");
-    expect(sessionRouteSource).toContain("getSelectableChatModelSnapshot(accountProviderList, activeEngineId)");
     expect(sessionRouteSource).toContain("runtime: activeProviderList");
     expect(sessionRouteSource).toContain("runtimeSource: activeProviderSource");
     expect(sessionRouteSource).toContain("model: effectiveModel");
     expect(sessionRouteSource).toContain("providerId: effectiveModel.providerID");
-    expect(sessionRouteSource).toContain("setEngineModelSelections((previous) => ({ ...previous, [activeEngineId]: model }))");
-    expect(sessionRouteSource).toContain("const engineModelSelection = engineModelSelections[activeEngineId]");
-    expect(sessionRouteSource).toContain("selectedForEngine: effectiveModel");
-    expect(sessionRouteSource).toContain("const activeSelectedModel = explicitlySelectedModel ?? (activeProviderList");
+    expect(sessionRouteSource).toContain("const engineModelSelection = activeEnginePreferences.model");
+    expect(sessionRouteSource).toContain("selectedForEngine: engineModelSelection");
+    expect(sessionRouteSource).toContain("const displayedModel = engineModelSelection ?? activeSelectedModel");
   });
 
   test("renders provider choices before loading engine auth metadata", () => {

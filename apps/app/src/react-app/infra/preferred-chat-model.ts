@@ -56,7 +56,7 @@ export function resolvePreferredSelectableChatModel(input: {
  * Resolve the model an engine can execute without changing the app-wide
  * preference. OpenCode defaults to its live free models; a paid shared choice
  * inherited from another engine is not consent to use that route in OpenCode.
- * An available choice made in this engine remains authoritative.
+ * A choice made in this engine stays selected even while it is unavailable.
  */
 export function resolveEngineSelectableChatModel(input: {
   engineId?: string | null;
@@ -76,6 +76,7 @@ export function resolveEngineSelectableChatModel(input: {
   if (current && input.providers.some((provider) => (
     provider.providerID === current.providerID && provider.modelIDs.includes(current.modelID)
   ))) return current;
+  if (input.selectedForEngine) return null;
 
   if (isOpenCode) {
     const defaultModel = input.defaults?.opencode;

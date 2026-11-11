@@ -68,7 +68,6 @@ type WorkItemSheetProps = {
   board: WorkBoardConfig;
   defaultStatus: string;
   scheduleMode: boolean;
-  allowAutomation?: boolean;
   initialSchedule: WorkItemScheduleDraft | null;
   saving: boolean;
   deleting: boolean;
@@ -615,7 +614,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
                   : null}
               </div>
               {invalidRange ? <p id="work-item-range-error" className="mt-2 text-xs text-destructive">{t("work.field.invalid_range")}</p> : null}
-              {!props.item?.execution && props.allowAutomation !== false ? (
+              {!props.item?.execution ? (
                 <div className="mt-4 border-t border-dls-border/70 pt-4" data-testid="work-item-automation">
                   <div className="flex items-center gap-3">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-hover text-dls-secondary">

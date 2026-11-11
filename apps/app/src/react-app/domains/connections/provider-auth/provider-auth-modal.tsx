@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dialog";
 import { desktopFetchViaMain, openDesktopAuthUrl, openDesktopUrl } from "@/app/lib/desktop";
 import { isDesktopRuntime } from "@/app/utils";
+import { t } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { ProviderIcon } from "../../../design-system/provider-icon";
 import { TextInput } from "../../../design-system/text-input";
@@ -43,6 +44,7 @@ import type {
   ProviderAuthMethod,
   ProviderAuthProvider,
   ProviderOAuthStartResult,
+  ProviderRefreshOptions,
 } from "./store";
 
 type ProviderOAuthSession = ProviderOAuthStartResult & {
@@ -71,7 +73,7 @@ export type ProviderAuthModalProps = {
     methodIndex: number,
     code?: string,
   ) => Promise<{ connected: boolean; pending?: boolean; message?: string }>;
-  onRefreshProviders?: () => Promise<unknown>;
+  onRefreshProviders?: (options?: ProviderRefreshOptions) => Promise<unknown>;
   showiPolloWorkModelsSubscribe?: boolean;
   onSubscribeiPolloWorkModels?: () => void | Promise<void>;
   onClose: () => void;
@@ -102,7 +104,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const providerPollRef = useRef<number | null>(null);
-  const oauthAutoCompletionKeyRef = useRef<string | null>(null);
+  const providerPollInFlightRef = useRef(false);
+  const oauthAutoCompletionRef = useRef<ProviderOAuthSession | null>(null);
   const oauthCodeCopiedResetRef = useRef<number | null>(null);
   const autoOpenedPreferredProviderIdRef = useRef<string | null>(null);
 
@@ -205,7 +208,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     setSearchQuery("");
     setActiveEntryIndex(0);
     setLocalError(null);
-    oauthAutoCompletionKeyRef.current = null;
+    oauthAutoCompletionRef.current = null;
     setOauthAutoBusy(false);
     setOauthCodeCopied(false);
     setOauthBrowserOpened(false);
@@ -286,16 +289,14 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     !!activeProviderId && (props.connectedProviderIds ?? []).includes(activeProviderId);
 
   const pollProviders = async () => {
-    const id = activeProviderId;
-    if (!id || pollingBusy) return;
+    if (!activeProviderId || providerPollInFlightRef.current) return;
+    providerPollInFlightRef.current = true;
     setPollingBusy(true);
     try {
-      await props.onRefreshProviders?.();
+      await props.onRefreshProviders?.({ skipSharedImport: true });
     } finally {
+      providerPollInFlightRef.current = false;
       setPollingBusy(false);
-    }
-    if ((props.connectedProviderIds ?? []).includes(id)) {
-      handleClose();
     }
   };
 
@@ -367,16 +368,20 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   };
 
   const attemptOauthAutoCompletion = async (session: ProviderOAuthSession) => {
-    const completionKey = `${session.providerId}:${session.methodIndex}`;
-    if (oauthAutoCompletionKeyRef.current === completionKey) return;
-    oauthAutoCompletionKeyRef.current = completionKey;
+    if (oauthAutoCompletionRef.current === session) return;
+    oauthAutoCompletionRef.current = session;
     setOauthAutoBusy(true);
     try {
-      await submitOauth(session.providerId, session.methodIndex);
-    } catch {
-      // submitOauth already exposes the actionable provider error in the modal.
+      const result = await props.onSubmitOAuth(session.providerId, session.methodIndex);
+      if (oauthAutoCompletionRef.current !== session) return;
+      if (result.connected) handleClose();
+      else setLocalError(t("providers.oauth_unconfirmed"));
+    } catch (error) {
+      if (oauthAutoCompletionRef.current === session) {
+        setLocalError(error instanceof Error ? error.message : t("providers.oauth_failed"));
+      }
     } finally {
-      if (oauthAutoCompletionKeyRef.current === completionKey) {
+      if (oauthAutoCompletionRef.current === session) {
         setOauthAutoBusy(false);
       }
     }
@@ -396,6 +401,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     setLocalError(null);
     setOauthCodeInput("");
     setOauthSession(null);
+    oauthAutoCompletionRef.current = null;
     setOauthCodeCopied(false);
     setOauthBrowserOpened(false);
     try {
@@ -595,7 +601,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       }
       setOauthSession(null);
       setOauthCodeInput("");
-      oauthAutoCompletionKeyRef.current = null;
+      oauthAutoCompletionRef.current = null;
       setOauthAutoBusy(false);
       setOauthCodeCopied(false);
       setOauthBrowserOpened(false);
@@ -1141,7 +1147,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <div className="text-sm font-medium text-gray-12">{selectedEntry.name}</div>
-                      <div className="text-xs text-gray-10 mt-1">Waiting for browser confirmation.</div>
+                      {!errorMessage ? <div className="text-xs text-gray-10 mt-1">Waiting for browser confirmation.</div> : null}
                     </div>
                     <Button variant="outline" onClick={handleBack} disabled={actionDisabled}>
                       Back
@@ -1170,7 +1176,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                       </Button>
                     </div>
                   ) : null}
-                  {isOpenAiHeadlessSession && !oauthBrowserOpened ? (
+                  {errorMessage ? null : isOpenAiHeadlessSession && !oauthBrowserOpened ? (
                     <div className="flex items-center gap-2 text-xs text-gray-9">
                       <span>Authorization checks will start after you click Open Browser.</span>
                     </div>
@@ -1183,11 +1189,13 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                   <div className="flex items-center justify-between gap-3">
                     <Button
                       variant="outline"
+                      disabled={actionDisabled || Boolean(errorMessage && oauthAutoBusy)}
                       onClick={() => {
-                        void openOauthUrl(oauthSession.providerId, oauthSession.authorization.url ?? "");
+                        if (errorMessage) void startOauth(selectedEntry, oauthSession.methodIndex);
+                        else void openOauthUrl(oauthSession.providerId, oauthSession.authorization.url ?? "");
                       }}
                     >
-                      {isOpenAiHeadlessSession
+                      {errorMessage ? t("providers.oauth_retry") : isOpenAiHeadlessSession
                         ? oauthBrowserOpened
                           ? "Reopen Browser"
                           : "Open Browser"

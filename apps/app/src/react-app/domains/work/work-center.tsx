@@ -638,7 +638,6 @@ export function WorkCenter(props: WorkCenterProps) {
         board={editorBoard}
         defaultStatus={createStatus || editorBoard.columns[0]?.id || "planned"}
         scheduleMode={props.mode === "global" || projectView === "schedule"}
-        allowAutomation={!props.sessionId || Boolean(editingEntry?.item.automation)}
         initialSchedule={createSchedule}
         saving={createMutation.isPending || updateMutation.isPending}
         deleting={deleteMutation.isPending}

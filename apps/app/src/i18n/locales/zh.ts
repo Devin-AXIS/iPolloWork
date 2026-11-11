@@ -2353,6 +2353,8 @@ export default {
   "providers.not_connected": "未连接到服务器",
   "providers.not_oauth_flow_prefix": "所选认证方式不是OAuth流程：",
   "providers.oauth_failed": "完成OAuth失败",
+  "providers.oauth_unconfirmed": "应用尚未确认这次授权。请重新授权，并在新打开的浏览器页面完成登录。",
+  "providers.oauth_retry": "重新授权",
   "providers.oauth_method_required": "OAuth方式为必填项",
   "providers.provider_error": "提供商错误（{provider}）",
   "providers.provider_id_required": "提供商ID为必填项",

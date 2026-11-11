@@ -17,18 +17,16 @@ export default {
   kind: "user-facing",
   steps: [
     ...(engines.some(engine => engine.engineId === 'opencode') ? [{
-      name: 'Switching from Codex defaults to a live free OpenCode model without selecting one',
+      name: 'Using a live free default model in an OpenCode project',
       run: async ctx => {
         await ctx.waitFor('Boolean(window.__ipolloworkControl)');
         const { id: workspaceId } = await ensureEngineWorkspace(ctx, {
-          project: 'codex', engineId: 'codex-harness', label: 'Codex Harness', name: '免费默认模型切换验证',
+          project: 'open', engineId: 'opencode', label: 'OpenCode', name: '免费默认模型验证',
         });
         await ctx.prove('OpenCode chooses its real free default and returns a reply without a model click', {
-          voiceover: '在 Codex 项目中新建任务，切换 OpenCode 后不手动选择模型，免费默认模型直接回复。',
+          voiceover: '在 OpenCode 项目中新建任务，使用默认的免费模型直接获得回复。',
           action: async () => {
             await ctx.navigateHash(`/workspace/${workspaceId}/session`);
-            await ctx.trustedClick('[data-testid="conversation-engine-picker"]');
-            await ctx.clickText('OpenCode', { selector: '[role="option"]' });
             await ctx.waitFor(`Array.from(document.querySelectorAll('button')).some(b => /切换模型|Change model/.test(b.getAttribute('aria-label') || '') && b.textContent.includes('Big Pickle'))`, { timeoutMs: 70_000 });
             await selectAndInvokeFreeModel(ctx, { project: 'open', engineId: 'opencode', label: 'OpenCode' }, { model: 'Big Pickle', token: 'OPENCODE_DEFAULT_FREE_OK' });
           },

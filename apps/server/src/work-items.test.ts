@@ -24,7 +24,9 @@ import {
   finishProjectSessionExecution,
   listWorkItems,
   readWorkBoardConfig,
+  resolveWorkItemAutomationExecutionPlan,
   runDueWorkItemAutomationsOnce,
+  setWorkAutomationModel,
   workItemAutomationPrompt,
   startProjectSessionExecution,
   updateWorkItem,
@@ -533,6 +535,28 @@ describe("work item store", () => {
       const unauthorized = await fetch(`${baseUrl}/work-items?workspaceId=project_one`);
       expect(unauthorized.status).toBe(401);
       const headers = { authorization: `Bearer ${config.token}`, "content-type": "application/json" };
+      const automationModelUrl = `${baseUrl}/workspace/project_one/work-automation-model`;
+      const selection = {
+        engineId: DEFAULT_ENGINE_ID,
+        model: { providerId: "alibaba-cn", modelId: "qwen3.7-max" },
+        modelVariant: null,
+      };
+      expect((await fetch(automationModelUrl, {
+        method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify(selection),
+      })).status).toBe(401);
+      expect((await fetch(automationModelUrl, {
+        method: "PUT", headers, body: JSON.stringify({ ...selection, model: null }),
+      })).status).toBe(400);
+      expect((await fetch(automationModelUrl, {
+        method: "PUT", headers, body: JSON.stringify({ ...selection, engineId: DEEPSEEK_HARNESS_ENGINE_ID }),
+      })).status).toBe(409);
+      expect((await fetch(automationModelUrl, {
+        method: "PUT", headers, body: JSON.stringify(selection),
+      })).status).toBe(200);
+      expect(await readiPolloWorkWorkspaceConfig(config, "project_one")).toMatchObject({
+        project,
+        workAutomationModel: selection,
+      });
       const unbound = await fetch(`${baseUrl}/workspace/project_one/sessions/session_video/workflow`, { headers });
       expect(await unbound.json()).toEqual({ item: null });
       const templates = await fetch(`${baseUrl}/workspace/project_one/work-templates`, { headers });
@@ -655,6 +679,46 @@ describe("work item store", () => {
     } finally {
       await server.stop();
     }
+  });
+
+  test("scheduled work follows the latest composer model for its project and honors an explicit override", async () => {
+    const { config, root } = await testContext();
+    const [workspace] = config.workspaces;
+    const item = await createWorkItem(config, workspace.id, {
+      title: "Follow the project model",
+      startAt: Date.now(),
+      automation: { enabled: true, recurrence: "daily" },
+    });
+    const plan = () => resolveWorkItemAutomationExecutionPlan(config, workspace, item);
+    await expect(plan()).rejects.toMatchObject({ code: "work_automation_model_required" });
+
+    const project = createDefaultProjectWorkspaceConfig({ engineId: DEFAULT_ENGINE_ID });
+    const agentModel = { providerId: "openai", modelId: "gpt-agent-default" };
+    project.agents[0].runtime.model = agentModel;
+    await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => ({ ...current, project }));
+    expect((await plan()).runtime.model).toEqual(agentModel);
+
+    const composer = {
+      engineId: DEFAULT_ENGINE_ID,
+      model: { providerId: "alibaba-cn", modelId: "qwen3.7-max" },
+      modelVariant: "high",
+    };
+    await setWorkAutomationModel(config, workspace, composer);
+    expect((await plan()).runtime).toMatchObject(composer);
+    const otherProject = { ...workspace, id: "project_two", path: join(root, "other") };
+    await expect(resolveWorkItemAutomationExecutionPlan(config, otherProject, { ...item, workspaceId: otherProject.id }))
+      .rejects.toMatchObject({ code: "work_automation_model_required" });
+    const changedEngine = { ...workspace, engineId: DEEPSEEK_HARNESS_ENGINE_ID };
+    await expect(resolveWorkItemAutomationExecutionPlan(config, changedEngine, item))
+      .rejects.toMatchObject({ code: "work_automation_model_required" });
+
+    const updated = { ...composer, model: { ...composer.model, modelId: "qwen3.7-flash" }, modelVariant: null };
+    await setWorkAutomationModel(config, workspace, updated);
+    expect((await plan()).runtime).toMatchObject(updated);
+    const explicit = { providerId: "openai", modelId: "gpt-task-override" };
+    expect((await resolveWorkItemAutomationExecutionPlan(config, workspace, {
+      ...item, automation: { enabled: true, recurrence: "daily", model: explicit },
+    })).runtime).toMatchObject({ model: explicit, modelVariant: null });
   });
 
   test("persists, schedules, updates, and deletes project work", async () => {

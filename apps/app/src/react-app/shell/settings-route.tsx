@@ -103,7 +103,7 @@ import { useBootState } from "./boot-state";
 import { SettingsShell } from "@/react-app/domains/settings/shell/settings-shell";
 import { createExtensionsStore, useExtensionsStoreSnapshot } from "@/react-app/domains/settings/state/extensions-store";
 import { usePlatform } from "@/react-app/kernel/platform";
-import { updateModelPreferences, useLocal } from "@/react-app/kernel/local-provider";
+import { getEnginePreferences, updateModelPreferences, useLocal } from "@/react-app/kernel/local-provider";
 import {
   ipolloworkServerRestart,
   engineStart,
@@ -991,8 +991,9 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           ? selection.modelVariant
           : null,
       }),
+      activeEngineId,
     ));
-  }, [local.setPrefs]);
+  }, [activeEngineId, local.setPrefs]);
 
   useEffect(() => {
     setActiveClient(opencodeClient);
@@ -2367,7 +2368,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         setQuery={modelPicker.setQuery}
         target="default"
         current={
-          local.prefs.model ?? { providerID: "", modelID: "" }
+          getEnginePreferences(local.prefs, activeEngineId).model ?? local.prefs.model
         }
         onSelect={(next: ModelRef) => {
           setActiveModel(next);

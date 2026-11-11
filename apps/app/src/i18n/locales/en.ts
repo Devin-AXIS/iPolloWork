@@ -2626,6 +2626,8 @@ export default {
   "providers.not_connected": "Not connected to a server",
   "providers.not_oauth_flow_prefix": "Selected auth method is not an OAuth flow for",
   "providers.oauth_failed": "Failed to complete OAuth",
+  "providers.oauth_unconfirmed": "The app could not confirm this authorization. Start a new authorization and sign in on the new browser page.",
+  "providers.oauth_retry": "Restart authorization",
   "providers.oauth_method_required": "OAuth method is required",
   "providers.provider_error": "Provider error ({provider})",
   "providers.provider_id_required": "Provider ID is required",

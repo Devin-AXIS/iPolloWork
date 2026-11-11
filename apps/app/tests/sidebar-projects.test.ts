@@ -236,7 +236,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toContain("createUngroupedConversation");
   });
 
-  test("creates the first project and task with OpenCode only after the starter is submitted", () => {
+  test("creates the first project and task with the selected engine when the starter is submitted", () => {
     expect(sessionPageSource).toContain('data-testid="initial-project-task-starter"');
     expect(sessionPageSource).toContain('<MessageContent className="max-w-[85%] rounded-3xl bg-muted px-5 py-2.5 text-foreground whitespace-pre-wrap sm:max-w-[75%]">');
     expect(sessionPageSource).not.toContain('rounded-2xl bg-dls-text px-4 py-3 text-sm leading-6 text-dls-surface');
@@ -268,7 +268,7 @@ describe("sidebar projects", () => {
     expect(sessionSurfaceSource).toContain("modelContextWindow={props.modelContextWindow}");
     expect(composerSource).toContain('data-testid="composer-context-health"');
     expect(sessionRouteSource).toContain("const handleCreateInitialProjectTask = useCallback(");
-    expect(sessionRouteSource).toContain("engineId: DEFAULT_ENGINE_ID");
+    expect(sessionRouteSource).toContain("engineId: isBuiltInWorkspaceEngineId(activeEngineId) ? activeEngineId : DEFAULT_ENGINE_ID");
     expect(sessionRouteSource).not.toMatch(/handleCreateInitialProjectTask[\s\S]{0,500}selectedWorkspace\?\.engineId/);
     expect(sessionRouteSource).toContain('name: t("session.untitled")');
     expect(sessionRouteSource).toContain("surfaceProps.onSendDraft(");
@@ -283,6 +283,14 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).toMatch(
       /!loading[\s\S]*selectedWorkspaceId[\s\S]*!workspaces\.some\(\(workspace\) => !workspace\.isDefault\)[\s\S]*dismissFirstRunLoader\(\)/,
     );
+  });
+
+  test("locks the project engine for new conversations while allowing initial engine selection", () => {
+    expect(sessionRouteSource).toContain("const projectEngineId = selectedWorkspace?.isDefault ? undefined : workspaceEngineId;");
+    expect(sessionRouteSource).toContain("projectEngineId || newConversationEngineId");
+    expect(sessionRouteSource).toContain("onSelectConversationEngine: projectEngineId ? undefined : setNewConversationEngineId");
+    expect(sessionRouteSource).toMatch(/const engineId = \(workspace\.isDefault \? undefined : targetWorkspaceEngineId\)\s+\?\? conversationOptions\?\.engineId/);
+    expect(sessionPageSource).toContain('data-testid="conversation-project-engine">{engineLabel}</span>');
   });
 
   test("loads the selected task directory before hydrating remaining project indexes", () => {
@@ -357,7 +365,7 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('project.status === "loading" && project.sessions.length === 0 && !isSelectedProject');
     expect(sessionRouteSource).toContain("taskCreationInFlightRef.current.has(workspaceId)");
     expect(sessionRouteSource).toMatch(
-      /endpoint\.client\.createSession\(\s*endpoint\.workspaceId,\s*undefined,\s*activeSelectedModel,\s*conversationOptions\?\.engineId/,
+      /endpoint\.client\.createSession\(\s*endpoint\.workspaceId,\s*undefined,\s*engineId === activeEngineId \? activeSelectedModel : undefined,\s*engineId/,
     );
     expect(sessionRouteSource).not.toContain("workspaceConversation.create(");
     expect(sessionRouteSource).not.toContain("Give the click an immediate destination");

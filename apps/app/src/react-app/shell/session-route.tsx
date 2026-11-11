@@ -14,6 +14,7 @@ import type { PptxCompatibility, TemplateCategory, TemplateSessionSnapshot } fro
 import {
   DEEPSEEK_HARNESS_ENGINE_ID,
   DEFAULT_ENGINE_ID,
+  isBuiltInWorkspaceEngineId,
   type BuiltInWorkspaceEngineId,
 } from "@ipollowork/types/workspace";
 import { isOpenCodeZenPublicModel } from "@ipollowork/types/opencode-zen-public-models";
@@ -204,7 +205,6 @@ import {
   ensureProviderListQuery,
   getModelContextWindow,
   getRunnableChatModelSnapshot,
-  getSelectableChatModelSnapshot,
   providerListExposesModel,
   projectAccountProviderConnections,
   type ProviderListQueryInput,
@@ -378,9 +378,10 @@ export function SessionRoute() {
   });
   const [newConversationEngineId, setNewConversationEngineId] = useState<string | null>(null);
   const selectedConversation = sessionsByWorkspaceId[selectedWorkspaceId]?.find((item) => item.id === selectedSessionId);
-  const activeEngineId = selectedSessionId
-    ? selectedConversation?.engineId || selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID
-    : newConversationEngineId || selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID;
+  const workspaceEngineId = selectedWorkspace?.engineId?.trim();
+  const projectEngineId = selectedWorkspace?.isDefault ? undefined : workspaceEngineId;
+  const activeEngineId = (selectedSessionId ? selectedConversation?.engineId : projectEngineId || newConversationEngineId)
+    || workspaceEngineId || DEFAULT_ENGINE_ID;
   useEffect(() => setNewConversationEngineId(null), [selectedWorkspaceId]);
   const conversation = useMemo(
     () => opencodeBaseUrl && selectedWorkspaceServerToken && !selectedWorkspaceError && (!selectedSessionId || selectedConversation)
@@ -429,8 +430,7 @@ export function SessionRoute() {
   }, [conversation, selectedWorkspaceEndpoint?.client, selectedWorkspaceEndpoint?.workspaceId]);
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   const selectedModel = local.prefs.model;
-  const [engineModelSelections, setEngineModelSelections] = useState<Record<string, ModelRef | undefined>>({});
-  const engineModelSelection = engineModelSelections[activeEngineId];
+  const engineModelSelection = activeEnginePreferences.model;
   const selectedMode = activeEnginePreferences.mode;
   const [modeSelectionLocked, setModeSelectionLocked] = useState(false);
   useEffect(() => {
@@ -925,7 +925,6 @@ export function SessionRoute() {
     disabledProviderIds: hiddenProviderIds,
   });
   const setSelectedModel = useCallback((model: ModelRef) => {
-    setEngineModelSelections((previous) => ({ ...previous, [activeEngineId]: model }));
     local.setPrefs((previous) => updateModelPreferences(
       previous,
       (selection) => ({
@@ -935,14 +934,16 @@ export function SessionRoute() {
           ? selection.modelVariant
           : null,
       }),
+      activeEngineId,
     ));
   }, [activeEngineId, local.setPrefs]);
   const setModelVariant = useCallback((modelVariant: string | null) => {
     local.setPrefs((previous) => updateModelPreferences(
       previous,
       (selection) => ({ ...selection, modelVariant }),
+      engineModelSelection ? activeEngineId : undefined,
     ));
-  }, [local.setPrefs]);
+  }, [activeEngineId, engineModelSelection, local.setPrefs]);
   const selectableModels = getRunnableChatModelSnapshot({
     catalog: accountProviderList,
     runtime: activeProviderList,
@@ -960,42 +961,43 @@ export function SessionRoute() {
       )
     )
   ));
-  const accountSelectableModels = getSelectableChatModelSnapshot(accountProviderList, activeEngineId);
-  const explicitlySelectedModel = engineModelSelection
-    && accountSelectableModels.some((provider) => (
-      provider.providerID === engineModelSelection.providerID
-      && provider.modelIDs.includes(engineModelSelection.modelID)
-    ))
-    // Preserve the explicit click while discovery is pending. Once the active
-    // engine has answered, do not keep a model that only exists in another
-    // engine's account catalog (or in an obsolete packaged whitelist).
-    && (!activeProviderList || permittedSelectableModels.some((provider) => (
-      provider.providerID === engineModelSelection.providerID
-      && provider.modelIDs.includes(engineModelSelection.modelID)
-    )))
-    ? engineModelSelection
-    : null;
-  // A user click is authoritative for the current engine. Runtime discovery
-  // can still be catching up during first launch; silently substituting its
-  // default here makes the picker and the composer show different models and
-  // can send the task with a model the user did not choose.
-  const activeSelectedModel = explicitlySelectedModel ?? (activeProviderList
+  const activeSelectedModel = activeProviderList
     ? resolveEngineSelectableChatModel({
         engineId: activeEngineId,
         providers: permittedSelectableModels,
         defaults: activeProviderList.default,
         preferred: selectedModel,
+        selectedForEngine: engineModelSelection,
       })
-    : null);
+    : null;
+  const displayedModel = engineModelSelection ?? activeSelectedModel;
   const usesSharedModelPreference = Boolean(
     selectedModel &&
     activeSelectedModel &&
     selectedModel.providerID === activeSelectedModel.providerID &&
     selectedModel.modelID === activeSelectedModel.modelID,
   );
-  const activeModelVariant = usesSharedModelPreference
-    ? local.prefs.modelVariant
-    : null;
+  const activeModelVariant = engineModelSelection
+    ? activeEnginePreferences.modelVariant ?? null
+    : usesSharedModelPreference ? local.prefs.modelVariant : null;
+  const automationModelProviderId = activeSelectedModel?.providerID;
+  const automationModelId = activeSelectedModel?.modelID;
+  const isNamedProject = Boolean(selectedWorkspace && !selectedWorkspace.isDefault);
+  useEffect(() => {
+    if (!selectedWorkspaceEndpoint || !isNamedProject
+      || activeEngineId !== (workspaceEngineId || DEFAULT_ENGINE_ID)
+      || !automationModelProviderId || !automationModelId) return;
+    const controller = new AbortController();
+    void selectedWorkspaceEndpoint.client.setWorkAutomationModel(selectedWorkspaceEndpoint.workspaceId, {
+      engineId: activeEngineId,
+      model: { providerId: automationModelProviderId, modelId: automationModelId },
+      modelVariant: activeModelVariant,
+    }, controller.signal).catch((error) => {
+      if (!controller.signal.aborted) console.warn("[work-automation] Could not sync the project model", error);
+    });
+    return () => controller.abort();
+  }, [activeEngineId, activeModelVariant, automationModelId, automationModelProviderId, isNamedProject,
+    selectedWorkspaceEndpoint, workspaceEngineId]);
   const { providerCatalog, modelVariantLabel, modelBehaviorOptions, modelVariantValue } =
     useModelBehavior({
       providerList: accountProviderList,
@@ -1120,8 +1122,8 @@ export function SessionRoute() {
     };
   }, [denSessionVersion, sharedProviderClient, sharedProviderEndpoint?.opencodeBaseUrl, sharedProviderEngineId, sharedProviderRoot]);
 
-  const modelLabel = activeSelectedModel
-    ? resolveModelDisplayName(activeSelectedModel.modelID)
+  const modelLabel = displayedModel
+    ? resolveModelDisplayName(displayedModel.modelID)
     : t("session.default_model");
 
   const listSlashCommands = useCallback(async (): Promise<SlashCommandOption[]> => {
@@ -1256,7 +1258,7 @@ export function SessionRoute() {
       modelPickerOpen: modelPicker.compactOpen,
       modelStatus,
       onRetryModelLoad: retryModelLoad,
-      selectedModel: activeSelectedModel ?? { providerID: "", modelID: "" },
+      selectedModel: displayedModel ?? { providerID: "", modelID: "" },
       modelContextWindow: selectedModelContextWindow,
       onModelPickerOpenChange: (open: boolean) => {
         if (open && !hasUsableModel) {
@@ -1328,7 +1330,7 @@ export function SessionRoute() {
         const text = (draft.resolvedText ?? draft.text).trim();
         if (!text && draft.attachments.length === 0) return false;
 
-        let effectiveModel = activeSelectedModel;
+        let effectiveModel = displayedModel;
         let effectiveMode = selectedMode;
         let effectiveModelVariant = modelVariantValue;
         let effectiveRuntimeProviderList = activeProviderList;
@@ -1336,6 +1338,7 @@ export function SessionRoute() {
           activeProviderSource
           && (
             !effectiveRuntimeProviderList
+            || (engineModelSelection && !activeSelectedModel)
             || (effectiveModel && !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel))
           )
         ) {
@@ -1368,6 +1371,12 @@ export function SessionRoute() {
             )
           )
         ));
+        if (engineModelSelection && !effectiveSelectableModels.some((provider) => (
+          provider.providerID === engineModelSelection.providerID && provider.modelIDs.includes(engineModelSelection.modelID)
+        ))) {
+          toast.error(t("composer.model_unavailable"));
+          return false;
+        }
         const reliableVideoOrchestration = ["publish-douyin", "publish-wechat-channels"].includes(videoDeliveryIntentForPrompt(text) ?? "");
         if (
           reliableVideoOrchestration
@@ -1398,7 +1407,7 @@ export function SessionRoute() {
             providers: effectiveSelectableModels,
             defaults: effectiveRuntimeProviderList.default,
             preferred: effectiveModel,
-            selectedForEngine: effectiveModel,
+            selectedForEngine: engineModelSelection,
           });
           effectiveModelVariant = null;
         }
@@ -2103,6 +2112,8 @@ export function SessionRoute() {
     permittedSelectableModels,
     selectedMode,
     activeSelectedModel,
+    displayedModel,
+    engineModelSelection,
     selectedSessionId,
     selectedModelSupportsAttachments,
     selectedModelContextWindow,
@@ -2196,11 +2207,15 @@ export function SessionRoute() {
     try {
       setErrorsByWorkspaceId((current) => ({ ...current, [workspaceId]: null }));
       setRouteError(null);
+      const targetWorkspaceEngineId = workspace.engineId?.trim() || undefined;
+      const engineId = (workspace.isDefault ? undefined : targetWorkspaceEngineId)
+        ?? conversationOptions?.engineId
+        ?? (workspaceId === selectedWorkspaceId ? activeEngineId : targetWorkspaceEngineId);
       const { item: session } = await endpoint.client.createSession(
         endpoint.workspaceId,
         undefined,
-        activeSelectedModel,
-        conversationOptions?.engineId || (workspaceId === selectedWorkspaceId ? activeEngineId : workspace.engineId || undefined),
+        engineId === activeEngineId ? activeSelectedModel : undefined,
+        engineId,
       );
       createdSessionId = session.id;
       const workTemplateId = conversationOptions?.workTemplateId
@@ -2210,7 +2225,7 @@ export function SessionRoute() {
         await endpoint.client.setConversationWorkflow(endpoint.workspaceId, session.id, {
           templateId: workTemplateId,
           source: "manual",
-          runtime: { engineId: session.engineId || activeEngineId, model: null, mode: null, modelVariant: null },
+          runtime: { engineId: session.engineId || engineId || DEFAULT_ENGINE_ID, model: null, mode: null, modelVariant: null },
         });
         projectInitializationFailed = false;
       }
@@ -2377,7 +2392,7 @@ export function SessionRoute() {
         targetWorkspaceId = await createProject({
           name: t("session.untitled"),
           folderPath: "",
-          engineId: DEFAULT_ENGINE_ID,
+          engineId: isBuiltInWorkspaceEngineId(activeEngineId) ? activeEngineId : DEFAULT_ENGINE_ID,
         }) || "";
       }
       if (!targetWorkspaceId) return false;
@@ -3063,7 +3078,7 @@ export function SessionRoute() {
         onSelectProject: selectProject,
         onCreateProject: createProject,
         onCreateInitialProjectTask: handleCreateInitialProjectTask,
-        onSelectConversationEngine: setNewConversationEngineId,
+        onSelectConversationEngine: projectEngineId ? undefined : setNewConversationEngineId,
         onCreateTaskFromDraft: handleCreateTaskFromDraft,
         onRenameProject: renameProject,
         onRevealProject: revealProject,
@@ -3226,7 +3241,7 @@ export function SessionRoute() {
       query={modelPicker.query}
       setQuery={modelPicker.setQuery}
       target="default"
-      current={activeSelectedModel ?? ({ providerID: "", modelID: "" } satisfies ModelRef)}
+      current={displayedModel ?? ({ providerID: "", modelID: "" } satisfies ModelRef)}
       onSelect={(next: ModelRef) => {
         setSelectedModel(next);
         modelPicker.setOpen(false);
