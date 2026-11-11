@@ -416,7 +416,10 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
   let todos: TodoItem[] = [];
   for (const { event } of source.history.events) {
     const data = isRecord(event.data) ? event.data : null;
-    if (data && typeof data.turn === "number") activeTurn = data.turn;
+    if (data && typeof data.turn === "number" && (activeTurn === undefined || data.turn > activeTurn)) {
+      activeTurn = data.turn;
+      todos = [];
+    }
     if (event.type === "user/message" || event.type === "assistant/message") {
       const turn = data && typeof data.turn === "number" ? data.turn : activeTurn;
       const message = mapMessageEvent(
@@ -480,7 +483,9 @@ export function mapDeepSeekHarnessSnapshot(snapshot: unknown): ConversationSnaps
       }));
       continue;
     }
-    if (event.type === "todo/write") todos = mapTodos(source.session.id, data);
+    if (event.type === "todo/write" && (typeof data.turn !== "number" || data.turn === activeTurn)) {
+      todos = mapTodos(source.session.id, data);
+    }
     if (event.type === "turn/end" && typeof data.turn === "number") {
       completedTurns.set(data.turn, event.time);
       const text = turnErrorText(data);

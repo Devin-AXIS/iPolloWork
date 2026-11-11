@@ -5,6 +5,7 @@ import type { DeepSeekHarnessRuntime } from "./deepseek-harness-runtime.js";
 import {
   listDeepSeekHarnessSessions,
   mapDeepSeekHarnessMessages,
+  mapDeepSeekHarnessTodos,
   readDeepSeekHarnessHistory,
 } from "./deepseek-harness-session-read-model.js";
 import type { WorkspaceInfo } from "./types.js";
@@ -244,4 +245,19 @@ describe("DeepSeek Harness session read model", () => {
 
     expect(messages).toEqual([]);
   });
+});
+
+
+test("DeepSeek snapshots isolate current plans and permit clearing", () => {
+  const events = [
+    { event: { type: "todo/write", seq: 1, time: 1, data: { turn: 1, todos: [{ content: "Old", status: "completed" }] } } },
+    { event: { type: "turn/start", seq: 2, time: 2, data: { turn: 2 } } },
+  ];
+  const read = () => mapDeepSeekHarnessTodos("s", { events, hasMore: false });
+  expect(read()).toEqual([]);
+  events.push({ event: { type: "todo/write", seq: 3, time: 3, data: { turn: 2, todos: [{ content: "Current", status: "in_progress" }] } } });
+  events.push({ event: { type: "todo/write", seq: 4, time: 4, data: { turn: 1, todos: [{ content: "Late old", status: "completed" }] } } });
+  expect(read()).toMatchObject([{ content: "Current" }]);
+  events.push({ event: { type: "todo/write", seq: 5, time: 5, data: { turn: 2, todos: [] } } });
+  expect(read()).toEqual([]);
 });

@@ -386,13 +386,19 @@ export function mapOpenCodeConversationSnapshot(snapshot: unknown): Conversation
     throw new Error("OpenCode returned an invalid session snapshot");
   }
   const messages = snapshotToUIMessages(source);
+  const latestUser = source.messages.findLast((message) => message.info.role === "user");
+  // OpenCode persists todos per session; the native tool's parent identifies their turn.
+  const hasCurrentPlan = !latestUser || source.messages.some((message) =>
+    message.info.role === "assistant" && message.info.parentID === latestUser.info.id
+    && message.parts.some((part) => part.type === "tool" && part.tool === "todowrite")
+  );
   const contextUsage = [...messages].reverse().flatMap((message) => (
     message.role === "assistant" ? conversationMessageContextUsage(message) ?? [] : []
   ))[0];
   return {
     session: mapOpenCodeSession(source.session),
     messages,
-    todos: mapTodos(source.session.id, source.todos),
+    todos: hasCurrentPlan ? mapTodos(source.session.id, source.todos) : [],
     status: mapStatus(source.status),
     ...(contextUsage ? { contextUsage } : {}),
   };

@@ -557,7 +557,16 @@ export function mapCodexHarnessEvent(
 }
 
 export function mapCodexHarnessSnapshot(snapshot: unknown): ConversationSnapshot {
-  return mapOpenCodeConversationSnapshot(snapshot);
+  const mapped = mapOpenCodeConversationSnapshot(snapshot);
+  // Codex snapshots already select the current native turn on the server.
+  // They have update_plan events, not OpenCode todowrite message parts.
+  const todos = isRecord(snapshot) && Array.isArray(snapshot.todos) ? snapshot.todos : [];
+  return { ...mapped, todos: todos.flatMap<ConversationSnapshot["todos"][number]>((todo) => {
+    if (!isRecord(todo) || typeof todo.id !== "string" || typeof todo.content !== "string"
+      || typeof todo.priority !== "string"
+      || (todo.status !== "pending" && todo.status !== "in_progress" && todo.status !== "completed")) return [];
+    return [{ id: todo.id, content: todo.content, status: todo.status, priority: todo.priority }];
+  }) };
 }
 
 export function codexNativeRequest(native: unknown): { rpcId: string | number; method: string; params: Record<string, unknown> } | null {

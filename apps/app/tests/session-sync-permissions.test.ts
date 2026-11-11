@@ -30,6 +30,7 @@ import {
   seedPermissionState,
   seedQuestionState,
   seedSessionState,
+  readSessionSnapshotWithTodoRevision,
   settleInterruptedSessionRun,
   snapshotKey,
   statusKey,
@@ -1454,4 +1455,108 @@ describe("session transcript sync", () => {
       __disposeWorkspaceSessionSyncForTest(liveSyncInput);
     }
   });
+});
+
+
+describe("task progress snapshot ordering", () => {
+  const plan = (status: string) => [{ id: "step", content: "Review", status, priority: "medium" }];
+  function running(sessionId = "progress"): ConversationSnapshot {
+    return { ...snapshotWithMessages([{ id: "user-1", role: "user", text: "First task" }], sessionId), status: { type: "busy" } };
+  }
+  test("late snapshots preserve live updates while fresh snapshots can reset plans", async () => {
+    const input = { workspaceId: "progress-order", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(input), release = trackWorkspaceSessionSync(input, "progress"), query = getReactQueryClient();
+    try {
+      seedSessionState(input.workspaceId, running());
+      let finish: (value: ConversationSnapshot) => void = () => {};
+      const pending = readSessionSnapshotWithTodoRevision(input.workspaceId, "progress", () => new Promise(resolve => { finish = resolve; }));
+      __applySessionSyncEventForTest(input, { type: "todo.updated", sessionId: "progress", todos: plan("completed") });
+      finish(running());
+      seedSessionState(input.workspaceId, await pending);
+      expect(query.getQueryData(todoKey(input.workspaceId, "progress"))).toEqual(plan("completed"));
+      const fresh = await readSessionSnapshotWithTodoRevision(input.workspaceId, "progress", async () => ({ ...running(), todos: plan("pending") }));
+      seedSessionState(input.workspaceId, fresh);
+      expect(query.getQueryData(todoKey(input.workspaceId, "progress"))).toEqual(plan("pending"));
+      __applySessionSyncEventForTest(input, { type: "todo.updated", sessionId: "progress", todos: [] });
+      seedSessionState(input.workspaceId, fresh);
+      expect(query.getQueryData(todoKey(input.workspaceId, "progress"))).toEqual([]);
+      seedSessionState(input.workspaceId, await readSessionSnapshotWithTodoRevision(input.workspaceId, "progress", async () => running()));
+      expect(query.getQueryData(todoKey(input.workspaceId, "progress"))).toEqual([]);
+    } finally { release(); cleanup(); }
+  });
+  test("new requests clear previous plans and reject their old snapshots", async () => {
+    const workspace = "progress-next", query = getReactQueryClient();
+    seedSessionState(workspace, { ...running(), todos: plan("completed") });
+    const stale = await readSessionSnapshotWithTodoRevision(workspace, "progress", async () => ({ ...running(), todos: plan("completed") }));
+    beginOptimisticSessionPrompt(workspace, "progress", "New task", "msg_ipollowork_progress-new");
+    expect(query.getQueryData(todoKey(workspace, "progress"))).toEqual([]);
+    seedSessionState(workspace, stale);
+    expect(query.getQueryData(todoKey(workspace, "progress"))).toEqual([]);
+  });
+  test("first load and later recovery restore each session independently", async () => {
+    const workspace = "progress-recover", query = getReactQueryClient();
+    for (const session of ["one", "two"]) seedSessionState(workspace, await readSessionSnapshotWithTodoRevision(workspace, session, async () => ({ ...running(session), todos: plan(session === "one" ? "in_progress" : "completed") })));
+    expect(query.getQueryData(todoKey(workspace, "one"))).toEqual(plan("in_progress"));
+    expect(query.getQueryData(todoKey(workspace, "two"))).toEqual(plan("completed"));
+    seedSessionState(workspace, await readSessionSnapshotWithTodoRevision(workspace, "one", async () => ({ ...running("one"), todos: plan("completed") })));
+    expect(query.getQueryData(todoKey(workspace, "one"))).toEqual(plan("completed"));
+  });
+  test("Stop ignores delayed todo events and snapshots", () => {
+    const input = { workspaceId: "progress-stop", connectionKey: "test" }, session = "progress-stop";
+    const cleanup = __createWorkspaceSessionSyncForTest(input), release = trackWorkspaceSessionSync(input, session), query = getReactQueryClient();
+    try {
+      seedSessionState(input.workspaceId, { ...running(session), todos: plan("in_progress") });
+      settleInterruptedSessionRun(input.workspaceId, session, "user-1");
+      __applySessionSyncEventForTest(input, { type: "todo.updated", sessionId: session, todos: plan("completed") });
+      seedSessionState(input.workspaceId, { ...running(session), todos: [] });
+      expect(query.getQueryData(todoKey(input.workspaceId, session))).toEqual(plan("in_progress"));
+    } finally { release(); cleanup(); }
+  });
+  test("current events can add, delete, reorder, clear and lower completed counts", () => {
+    const input = { workspaceId: "progress-edits", connectionKey: "test" }, session = "progress-edits";
+    const cleanup = __createWorkspaceSessionSyncForTest(input), release = trackWorkspaceSessionSync(input, session), query = getReactQueryClient();
+    try {
+      for (const todos of [plan("completed"), [...plan("completed"), { id: "new", content: "New step", status: "pending", priority: "medium" }].reverse(), plan("pending"), []]) {
+        __applySessionSyncEventForTest(input, { type: "todo.updated", sessionId: session, todos });
+        expect(query.getQueryData(todoKey(input.workspaceId, session))).toEqual(todos);
+      }
+    } finally { release(); cleanup(); }
+  });
+  test("a snapshot for another session is rejected before cache seeding", async () => {
+    await expect(readSessionSnapshotWithTodoRevision("progress-mismatch", "one", async () => running("two"))).rejects.toThrow("does not match");
+  });
+
+  test("todo cache uses explicit session cleanup instead of the 15 second unobserved GC", () => {
+    const query = getReactQueryClient(), key = todoKey("progress-gc", "one");
+    expect(query.getQueryDefaults(key).gcTime).toBe(Infinity);
+    query.setQueryData(key, plan("in_progress"));
+    destroyWorkspaceSessionResources({ workspaceId: "progress-gc", connectionKey: "test" }, "one");
+    expect(query.getQueryData(key)).toBeUndefined();
+  });
+
+  test("failure rejects delayed updates while a resend accepts a new plan", () => {
+    const input = { workspaceId: "progress-failed", connectionKey: "test" }, session = "progress-failed";
+    const cleanup = __createWorkspaceSessionSyncForTest(input), release = trackWorkspaceSessionSync(input, session), query = getReactQueryClient();
+    try {
+      seedSessionState(input.workspaceId, { ...running(session), todos: plan("in_progress") });
+      __applySessionSyncEventForTest(input, { type: "session.error", sessionId: session, errorText: "Failed", parentUserMessageId: "user-1" });
+      __applySessionSyncEventForTest(input, { type: "todo.updated", sessionId: session, todos: plan("completed") });
+      expect(query.getQueryData(todoKey(input.workspaceId, session))).toEqual(plan("in_progress"));
+      beginOptimisticSessionPrompt(input.workspaceId, session, "Retry", "msg_ipollowork_retry-plan");
+      expect(query.getQueryData(todoKey(input.workspaceId, session))).toEqual([]);
+      __applySessionSyncEventForTest(input, { type: "todo.updated", sessionId: session, todos: plan("pending") });
+      expect(query.getQueryData(todoKey(input.workspaceId, session))).toEqual(plan("pending"));
+    } finally { release(); cleanup(); }
+  });
+  test("a delayed read for session one cannot overwrite session two", async () => {
+    const workspace = "progress-switch", query = getReactQueryClient();
+    let finish: (value: ConversationSnapshot) => void = () => {};
+    const pending = readSessionSnapshotWithTodoRevision(workspace, "one", () => new Promise(resolve => { finish = resolve; }));
+    seedSessionState(workspace, { ...running("two"), todos: plan("completed") });
+    finish({ ...running("one"), todos: plan("in_progress") });
+    seedSessionState(workspace, await pending);
+    expect(query.getQueryData(todoKey(workspace, "two"))).toEqual(plan("completed"));
+    expect(query.getQueryData(todoKey(workspace, "one"))).toEqual(plan("in_progress"));
+  });
+
 });

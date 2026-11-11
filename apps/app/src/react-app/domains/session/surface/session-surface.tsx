@@ -107,6 +107,7 @@ import {
   rollbackOptimisticSessionPrompt,
   sanitizeInterruptedSessionSnapshot,
   seedSessionState,
+  readSessionSnapshotWithTodoRevision,
   settleInterruptedSessionRun,
   snapshotKey as reactSnapshotKey,
   statusKey as reactStatusKey,
@@ -853,7 +854,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => reactStatusKey(props.workspaceId, props.sessionId),
     [props.workspaceId, props.sessionId],
   );
-  const readSessionSnapshot = useCallback(async (sessionId: string) => {
+  const readSessionSnapshot = useCallback((sessionId: string) => readSessionSnapshotWithTodoRevision(props.workspaceId, sessionId, async () => {
     const mapped = props.conversation.mapSnapshot(
       (await props.client.getSessionSnapshot(props.workspaceId, sessionId, { limit: 140 })).item,
     );
@@ -863,7 +864,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       ...mapped,
       contextUsage: mapped.contextUsage ?? cached?.contextUsage,
     });
-  }, [props.client, props.conversation, props.workspaceId]);
+  }), [props.client, props.conversation, props.workspaceId]);
   const snapshotQuery = useQuery<ConversationSnapshot>({
     queryKey: snapshotQueryKey,
     queryFn: () => readSessionSnapshot(props.sessionId),

@@ -97,6 +97,7 @@ import { buildiPolloWorkEnvSystemContext } from "@/react-app/domains/session/syn
 import {
   applySessionRevert,
   beginOptimisticSessionPrompt,
+  readSessionSnapshotWithTodoRevision,
   destroyWorkspaceSessionResources,
   rollbackOptimisticSessionPrompt,
 } from "@/react-app/domains/session/sync/session-sync";
@@ -417,12 +418,14 @@ export function SessionRoute() {
     if (!conversation || !selectedWorkspaceEndpoint) {
       throw new Error("Conversation runtime is unavailable");
     }
-    const response = await selectedWorkspaceEndpoint.client.getSessionSnapshot(
-      selectedWorkspaceEndpoint.workspaceId,
-      sessionId,
-      { limit: 140 },
-    );
-    return conversation.mapSnapshot(response.item);
+    return readSessionSnapshotWithTodoRevision(selectedWorkspaceEndpoint.workspaceId, sessionId, async () => {
+      const response = await selectedWorkspaceEndpoint.client.getSessionSnapshot(
+        selectedWorkspaceEndpoint.workspaceId,
+        sessionId,
+        { limit: 140 },
+      );
+      return conversation.mapSnapshot(response.item);
+    });
   }, [conversation, selectedWorkspaceEndpoint?.client, selectedWorkspaceEndpoint?.workspaceId]);
   const activeEnginePreferences = getEnginePreferences(local.prefs, activeEngineId);
   const selectedModel = local.prefs.model;

@@ -12,12 +12,11 @@ export function getReactQueryClient(): QueryClient {
   for (const queryKey of [
     ["react-session-transcript"],
     ["react-session-status"],
-    ["react-session-todos"],
   ] as const) {
     queryClient.setQueryDefaults(queryKey, { gcTime: 15_000 });
   }
 
-  // Pending permissions and questions are written with setQueryData only and
+  // Todos, pending permissions and questions are written with setQueryData only and
   // observed through a raw cache subscription, so the query has zero
   // observers and TanStack GC removes it ~15s after creation. That made the
   // permission dialog auto-dismiss with no resolution while the tool call
@@ -25,6 +24,7 @@ export function getReactQueryClient(): QueryClient {
   // permission.replied / question.answered events and clearTrackedSession,
   // never by GC.
   for (const queryKey of [
+    ["react-session-todos"],
     ["react-session-permissions"],
     ["react-session-questions"],
   ] as const) {
