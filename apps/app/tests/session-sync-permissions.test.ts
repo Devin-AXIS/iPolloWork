@@ -558,6 +558,42 @@ describe("session transcript sync", () => {
     }
   });
 
+  test("restores a completed turn with its original end time when the snapshot arrives later", () => {
+    const startedAt = Date.UTC(2026, 10, 10, 10, 18, 47);
+    const completedAt = startedAt + 3_455_000;
+    const snapshot = snapshotWithMessages([
+      { id: "original-prompt", role: "user", text: "Review the project", created: startedAt },
+    ]);
+    snapshot.messages.push({
+      ...uiMessage("completed-reply", "assistant", "Review complete"),
+      metadata: { ipollowork: { completed: completedAt, parentUserMessageId: "original-prompt" } },
+    });
+
+    seedSessionState("workspace-a", snapshot);
+    seedSessionState("workspace-a", snapshot);
+
+    const activity = useSessionActivityStore.getState();
+    expect(activity.getRunOutcome("workspace-a", "session-a")).toBe("completed");
+    expect(activity.recordsByWorkspaceId["workspace-a"]?.["session-a"]?.runEndedAt).toBe(completedAt);
+  });
+
+  test("does not assign the previous reply's completion time to an unanswered prompt", () => {
+    const snapshot = snapshotWithMessages([
+      { id: "first-prompt", role: "user", text: "First question", created: 1_000 },
+    ]);
+    snapshot.messages.push(
+      {
+        ...uiMessage("first-reply", "assistant", "First answer"),
+        metadata: { ipollowork: { completed: 2_000, parentUserMessageId: "first-prompt" } },
+      },
+      uiMessage("second-prompt", "user", "Second question", { created: 3_000 }),
+    );
+
+    seedSessionState("workspace-a", snapshot);
+
+    expect(useSessionActivityStore.getState().getRunOutcome("workspace-a", "session-a")).toBeNull();
+  });
+
   test("repairs a premature no-output error when the live response arrives after the idle snapshot", () => {
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");

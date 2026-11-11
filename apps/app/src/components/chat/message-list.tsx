@@ -1459,15 +1459,19 @@ function MessageGroup({
     currentTurn ? runStartedAt : null,
     precedingUser ? getMessageCreated(precedingUser) : null,
   )
-  const processCompletedAt = storedTiming?.endedAt
-    ?? (currentTurn ? runEndedAt : null)
-    ?? getMessageCompleted(lastRealItem?.message ?? lastItem.message)
+  const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
+  const transcriptCompletedAt = getMessageCompleted(lastRealItem?.message ?? lastItem.message)
+  const recordedEnd = storedTiming?.endedAt ?? (currentTurn ? runEndedAt : null)
+  const interrupted = hasSessionError || runIncomplete || (currentTurn && (runOutcome === "failed" || runOutcome === "stopped"))
+  // A recovered session can be observed long after its final reply was written.
+  const processCompletedAt = interrupted
+    ? recordedEnd ?? transcriptCompletedAt
+    : transcriptCompletedAt ?? recordedEnd
   const processDurationMs = processStartedAt !== null
     && processCompletedAt !== null
     && processCompletedAt >= processStartedAt
     ? processCompletedAt - processStartedAt
     : null
-  const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
   const sessionErrorItem = items.find((item) => isSessionErrorMessage(item.message))
   const inlineError = terminalError ?? (sessionErrorItem ? getMessagesText([sessionErrorItem.message]) || t("message.session_failed") : null)
   const renderableItems = getRenderableMessages(bodyRenderData.map(data => data.item))

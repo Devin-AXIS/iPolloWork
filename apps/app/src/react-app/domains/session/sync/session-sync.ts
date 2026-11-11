@@ -1723,17 +1723,24 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
       }),
     ));
   } else if (safeSnapshot.status.type === "idle" && !preserveRunState && snapshotAcknowledgesRun) {
-    const latestAssistant = incoming.findLast((message) => message.role === "assistant");
+    const latestUserIndex = incoming.findLastIndex((message) => message.role === "user");
+    const latestAssistant = incoming.findLast((message, index) => index > latestUserIndex && message.role === "assistant");
     const metadata = latestAssistant?.metadata;
     const ipollowork = metadata && typeof metadata === "object" && "ipollowork" in metadata
       ? metadata.ipollowork : null;
     const finalText = latestAssistant?.parts.some((part) => part.type === "text" && part.text.trim().length > 0)
       && latestAssistant.parts.every((part) => part.type !== "dynamic-tool" && !part.type.startsWith("tool-"));
     if (ipollowork && typeof ipollowork === "object" && "completed" in ipollowork
-      && typeof ipollowork.completed === "number"
+      && typeof ipollowork.completed === "number" && Number.isFinite(ipollowork.completed)
       && !("codexPhase" in ipollowork && ipollowork.codexPhase === "commentary")
       && finalText) {
-      useSessionActivityStore.getState().finishRun(workspaceId, safeSnapshot.session.id, "completed", latestUserMessage(incoming)?.id);
+      useSessionActivityStore.getState().finishRun(
+        workspaceId,
+        safeSnapshot.session.id,
+        "completed",
+        incoming[latestUserIndex]?.id,
+        ipollowork.completed,
+      );
     }
   }
 
