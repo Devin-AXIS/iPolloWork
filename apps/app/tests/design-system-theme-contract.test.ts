@@ -7,6 +7,7 @@ import {
 import {
   linkedDesignTokenPath,
   mergeTemplateTokenCss,
+  refreshTemplateTokenCss,
   parseDesignTokenValues,
   replaceDesignTokenValue,
 } from "../src/react-app/domains/session/design/design-system-files";
@@ -61,6 +62,7 @@ describe("Design system theme contract", () => {
     expect(source).not.toContain(".scene, .hero, .section, .content, .media");
     expect(source).not.toContain(":where(button, [role=\"button\"], [class*=\"button\"], [class*=\"btn\"])");
     expect(source).toContain("html:root [data-ipw-brand-slot]");
+    expect(source).toContain("position: fixed !important; top: auto !important; left: auto !important; right: 18px !important; bottom: 18px !important");
     expect(source).toContain("width: 18px !important; height: 18px !important");
     expect(source).toContain("object-fit: contain !important");
     expect(source).toContain('import.meta.glob("./design-systems/design-systems/*/design-tokens.json"');
@@ -107,6 +109,25 @@ describe("Design system theme contract", () => {
     expect(next).toContain("--ipw-color-bg: blue");
     expect(next).not.toContain("--ipw-color-bg: red");
     expect(next).toContain(".logo { width: 18px; }");
+  });
+
+  test("preserves template layout variables inside managed and legacy roots across theme switches", () => {
+    const layout = "--ipw-slide-width:1280px; --ipw-slide-height:720px; --ipw-slide-padding:var(--ipw-page-padding); --ipw-layout-gap:30px;";
+    const theme = "/* ipw-theme:start */\n:root { --ipw-color-bg: blue; --ipw-page-padding: 48px; }\n/* ipw-theme:end */";
+    for (const source of [`:root { --ipw-color-bg:red; ${layout} }`, `/* ipw-theme:start */\n:root { --ipw-color-bg:red; --ipw-od-old:green; ${layout} }\n/* ipw-theme:end */`]) {
+      let switched = source;
+      for (let index = 0; index < 3; index++) switched = mergeTemplateTokenCss(switched, theme);
+      const tokens = parseDesignTokenValues(switched);
+      expect(tokens["--ipw-slide-width"]).toBe("1280px");
+      expect(tokens["--ipw-slide-height"]).toBe("720px");
+      expect(tokens["--ipw-slide-padding"]).toBe("var(--ipw-page-padding)");
+      expect(tokens["--ipw-layout-gap"]).toBe("30px");
+      expect(tokens["--ipw-color-bg"]).toBe("blue");
+      expect(switched).not.toContain("--ipw-od-old");
+      expect(switched.match(/--ipw-slide-width\s*:/g)).toHaveLength(1);
+      const edited = refreshTemplateTokenCss(switched, theme);
+      expect(parseDesignTokenValues(edited)["--ipw-slide-width"]).toBe("1280px");
+    }
   });
 
   test("uses template-owned sizes while applying global body and heading fonts", async () => {

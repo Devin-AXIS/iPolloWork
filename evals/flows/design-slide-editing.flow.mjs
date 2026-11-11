@@ -130,17 +130,16 @@ const flow = {
   ],
 };
 
-// Verify the already-open user deck without seeding or writing its source.
+// Verify the already-open user deck without seeding. Optional theme checks restore their edits through history.
 if (process.env.IPOLLOWORK_EVAL_SLIDE_NAVIGATION_LIVE === "1") {
   const state = ctx => ctx.eval(`(()=>{const p=document.querySelector('[data-testid=design-panel]'),f=p?.querySelector('iframe'),d=f?.contentDocument,s=d?[...d.querySelectorAll('[data-ipw-slide]')]:[];return {index:s.findIndex(n=>n.getAttribute('aria-hidden')==='false'),total:s.length,visible:s.filter(n=>n.checkVisibility()).length,mode:d?.documentElement.dataset.ipolloworkDesignMode,pager:p?.querySelector('[data-testid=design-deck-navigation]')?.innerText}})()`);
   const mode = (ctx, label) => ctx.eval(`(()=>{const b=[...document.querySelectorAll('[data-testid=design-panel] button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b)throw Error('Mode button missing');b.click();return true})()`);
   const waitIndex = (ctx,index) => ctx.waitFor(`(()=>{const d=document.querySelector('[data-testid=design-panel] iframe')?.contentDocument,s=d?[...d.querySelectorAll('[data-ipw-slide]')]:[];return s.findIndex(n=>n.getAttribute('aria-hidden')==='false')===${index}&&s.filter(n=>n.checkVisibility()).length===1&&document.querySelector('[data-testid=design-deck-navigation]')?.innerText.includes('${index+1} / '+s.length)})()`);
-  const host = (ctx,direction) => ctx.trustedClick(`[data-testid=design-panel] [aria-label="${direction} slide"]`);
-  const native = async (ctx,direction) => {
-    const selector=direction==='next'?"button[aria-label*='下一页'],button[aria-label*='Next' i]":"button[aria-label*='上一页'],button[aria-label*='Previous' i]";
-    const p=await ctx.eval(`(()=>{const f=document.querySelector('[data-testid=design-panel] iframe'),b=f.contentDocument.querySelector(${JSON.stringify(selector)}),r=b.getBoundingClientRect(),fr=f.getBoundingClientRect();return {x:fr.left+(r.left+r.width/2)*fr.width/f.clientWidth,y:fr.top+(r.top+r.height/2)*fr.height/f.clientHeight}})()`);
-    await ctx.client.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...p});
-    await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...p});
+  const host = async (ctx,direction) => {
+    const selector = `[data-testid=design-panel] [aria-label="${direction} slide"]`;
+    await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',x:10,y:200});
+    await ctx.waitFor(`(()=>{const b=document.querySelector(${JSON.stringify(selector)});if(!b)return false;const r=b.getBoundingClientRect();return b.contains(document.elementFromPoint(r.left+r.width/2,r.top+r.height/2))})()`,{label:'navigation is not covered by a theme toast'});
+    await ctx.trustedClick(selector);
   };
   flow.precondition=async ctx=>{const s=await state(ctx);return s.total>=3?null:'Open the affected presentation with at least three slides first';};
   flow.steps=[
@@ -153,19 +152,70 @@ if (process.env.IPOLLOWORK_EVAL_SLIDE_NAVIGATION_LIVE === "1") {
       },assert:async()=>{await waitIndex(ctx,1);const s=await state(ctx);ctx.assert(s.mode==='editing'&&s.visible===1,JSON.stringify(s));},
       screenshot:{name:'live-deck-host-edit-navigation',requireText:['2 /'],rejectText:['Something went wrong']},
     })},
-    {name:'Native arrows and keyboard work without blocking content selection',run:ctx=>ctx.prove('Native controls, host controls and arrow keys navigate while editing; slide text remains selectable',{
+    {name:'Only the host pager is visible and keyboard navigation remains usable',run:ctx=>ctx.prove('The host pager and arrow keys navigate all eight pages while internal bottom controls stay hidden and text remains selectable',{
       voiceover:vo[1],action:async()=>{
-        await native(ctx,'next');await waitIndex(ctx,2);await host(ctx,'Previous');await waitIndex(ctx,1);
+        ctx.assert(await ctx.eval("(()=>{const d=document.querySelector('[data-testid=design-panel] iframe').contentDocument;return [...d.querySelectorAll('body > .controls,body > .progress-bar')].length>=2&&[...d.querySelectorAll('body > .controls,body > .progress-bar')].every(n=>getComputedStyle(n).display==='none')})()"),'Internal navigation and progress are hidden');
+        await host(ctx,'Next');await waitIndex(ctx,2);await host(ctx,'Previous');await waitIndex(ctx,1);
         await ctx.eval("document.querySelector('[data-testid=design-panel] iframe').contentWindow.focus()");
         for(const [key,index,code] of [['ArrowRight',2,39],['ArrowLeft',1,37]]){await ctx.client.send('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,windowsVirtualKeyCode:code});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,windowsVirtualKeyCode:code});await waitIndex(ctx,index);}
         const total=(await state(ctx)).total;
         for(let index=2;index<total;index++){await host(ctx,'Next');await waitIndex(ctx,index);}
-        for(let index=total-2;index>=1;index--){await host(ctx,'Previous');await waitIndex(ctx,index);}
+        ctx.assert(await ctx.eval("document.querySelector('[data-testid=design-panel] [aria-label=\"Next slide\"]').disabled"),'Last page disables Next');
+        for(let index=total-2;index>=0;index--){await host(ctx,'Previous');await waitIndex(ctx,index);}
+        ctx.assert(await ctx.eval("document.querySelector('[data-testid=design-panel] [aria-label=\"Previous slide\"]').disabled"),'First page disables Previous');
+        await host(ctx,'Next');await waitIndex(ctx,1);
         ctx.assert(await ctx.eval("!document.querySelector('[data-testid=design-floating-toolbar]')"),'Navigation clears the previous editing selection');
         await ctx.eval("document.querySelector('[data-testid=design-panel] iframe').contentDocument.querySelector('[data-ipw-slide][aria-hidden=false] h1,[data-ipw-slide][aria-hidden=false] h2').click()");
       },assert:async()=>{await waitIndex(ctx,1);await ctx.waitFor("Boolean(document.querySelector('[data-testid=design-floating-toolbar]'))");ctx.assert((await state(ctx)).mode==='editing','Editing remains enabled');},
       screenshot:{name:'live-deck-native-keyboard-edit-navigation',requireText:['2 /'],rejectText:['Something went wrong']},
     })},
+    ...(process.env.IPOLLOWORK_EVAL_THEME_LAYOUT_LIVE === "1" ? [{
+      name:'Changing a theme color keeps the brand compact and the deck navigable',
+      run:ctx=>ctx.prove('Changing the background color preserves eight pages and images, with a compact brand badge and working navigation',{
+        voiceover:vo[0],action:async()=>{
+          await host(ctx,'Previous');await waitIndex(ctx,0);
+          await ctx.eval("(()=>{if(![...document.querySelectorAll('[data-testid=design-panel] button')].some(b=>b.textContent==='主题'))document.querySelector('[data-testid=design-properties-button]').click()})()");
+          await ctx.waitFor("[...document.querySelectorAll('[data-testid=design-panel] button')].some(b=>b.textContent==='主题')");
+          await ctx.eval("[...document.querySelectorAll('[data-testid=design-panel] button')].find(b=>b.textContent==='主题').click()");
+          await ctx.eval(`(()=>{const input=document.querySelectorAll('[data-testid=design-system-drawer] input[type=color]')[2];window.__themeColorBefore=input.value;const d=document.querySelector('[data-testid=design-panel] iframe').contentDocument;window.__themeColorText=[...d.querySelectorAll('[data-ipw-slide]')].map(s=>s.textContent);Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'#e8eef8');input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+          await ctx.waitFor("(()=>{const d=document.querySelector('[data-testid=design-panel] iframe')?.contentDocument,s=d?.querySelector('[data-ipw-slide][aria-hidden=false]'),b=d?.querySelector('[data-ipw-brand-slot]');return s&&getComputedStyle(s).backgroundColor==='rgb(232, 238, 248)'&&b&&parseFloat(getComputedStyle(b).height)<50})()");
+          await host(ctx,'Next');await waitIndex(ctx,1);await host(ctx,'Previous');await waitIndex(ctx,0);
+        },assert:async()=>{
+          ctx.assert(await ctx.eval("(()=>{const d=document.querySelector('[data-testid=design-panel] iframe').contentDocument,s=d.querySelector('[data-ipw-slide][aria-hidden=false]'),b=d.querySelector('[data-ipw-brand-slot]'),r=b.getBoundingClientRect();return getComputedStyle(s).width==='1280px'&&getComputedStyle(s).height==='720px'&&d.querySelectorAll('[data-ipw-slide]').length===8&&JSON.stringify([...d.querySelectorAll('[data-ipw-slide]')].map(s=>s.textContent))===JSON.stringify(window.__themeColorText)&&[...d.querySelectorAll('[data-ipw-slide] img')].every(i=>i.complete&&i.naturalWidth>0)&&r.height>0&&r.height<50&&r.bottom<=d.defaultView.innerHeight&&r.right<=d.defaultView.innerWidth})()"),'Color editing retains content, images, layout and compact badge');
+        },screenshot:{name:'live-color-change-compact-brand',requireText:['1 / 8'],rejectText:['Something went wrong']},
+      }),
+    }, {
+      name:'Theme switching preserves presentation content and layout',
+      run:ctx=>ctx.prove('Changing visual themes preserves all slide text, images, canvas dimensions and navigation',{
+        voiceover:vo[0],action:async()=>{
+          await ctx.eval("(()=>{if(![...document.querySelectorAll('[data-testid=design-panel] button')].some(b=>b.textContent==='主题'))document.querySelector('[data-testid=design-properties-button]').click()})()");
+          await ctx.waitFor("[...document.querySelectorAll('[data-testid=design-panel] button')].some(b=>b.textContent==='主题')");
+          await ctx.eval("[...document.querySelectorAll('[data-testid=design-panel] button')].find(b=>b.textContent==='主题').click()");
+          await ctx.waitFor("document.querySelectorAll('[data-testid=design-system-drawer] input[type=color]').length>=3");
+          await ctx.eval(`(()=>{const input=document.querySelectorAll('[data-testid=design-system-drawer] input[type=color]')[2];Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,window.__themeColorBefore);input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+          await ctx.waitFor("(()=>{const d=document.querySelector('[data-testid=design-panel] iframe')?.contentDocument;return d&&getComputedStyle(d.documentElement).getPropertyValue('--ipw-color-bg').trim()===window.__themeColorBefore})()");
+          await ctx.eval(`(()=>{const d=document.querySelector('[data-testid=design-panel] iframe').contentDocument;window.__themeLayoutBefore=[...d.querySelectorAll('[data-ipw-slide]')].map(s=>s.textContent);})()`);
+          await ctx.eval("(()=>{if(![...document.querySelectorAll('[data-testid=design-panel] button')].some(b=>b.textContent==='主题'))document.querySelector('[data-testid=design-properties-button]').click()})()");
+          await ctx.waitFor("[...document.querySelectorAll('[data-testid=design-panel] button')].some(b=>b.textContent==='主题')");
+          await ctx.eval("[...document.querySelectorAll('[data-testid=design-panel] button')].find(b=>b.textContent==='主题').click()");
+          for(const name of ['BMW','Claude (Anthropic)']){
+            await ctx.eval("(()=>{const b=document.querySelector('[data-testid=design-system-drawer] button[aria-expanded]');if(b.getAttribute('aria-expanded')==='false')b.click()})()");
+            await ctx.waitFor(`[...document.querySelectorAll('[data-testid=design-system-drawer] button')].some(b=>b.querySelector('span.block')?.textContent.startsWith(${JSON.stringify(name)}))`);
+            await ctx.eval(`[...document.querySelectorAll('[data-testid=design-system-drawer] button')].find(b=>b.querySelector('span.block')?.textContent.startsWith(${JSON.stringify(name)})).click()`);
+            await ctx.waitFor(`(()=>{const d=document.querySelector('[data-testid=design-panel] iframe')?.contentDocument,s=d?.querySelector('[data-ipw-slide][aria-hidden=false]');return s&&document.querySelector('[data-testid=design-panel] iframe').dataset.previewLoaded==='true'&&[...d.querySelectorAll('[data-ipw-slide] img')].every(i=>i.complete&&i.naturalWidth>0)&&getComputedStyle(s).width==='1280px'&&getComputedStyle(s).height==='720px'&&document.querySelector('[data-testid=design-system-drawer] button[aria-expanded]')?.innerText.startsWith(${JSON.stringify(name)})})()`);
+            ctx.assert(await ctx.eval("(()=>{const d=document.querySelector('[data-testid=design-panel] iframe').contentDocument;return JSON.stringify([...d.querySelectorAll('[data-ipw-slide]')].map(s=>s.textContent))===JSON.stringify(window.__themeLayoutBefore)})()"),'All slide text survives theme replacement');
+            ctx.assert(await ctx.eval("(()=>{const d=document.querySelector('[data-testid=design-panel] iframe').contentDocument,b=d.querySelector('[data-ipw-brand-slot]');return parseFloat(getComputedStyle(b).height)>0&&parseFloat(getComputedStyle(b).height)<50})()"),'Brand remains compact after each theme switch');
+          }
+          for(let index=1;index<8;index++){await host(ctx,'Next');await waitIndex(ctx,index);}
+          for(let index=6;index>=0;index--){await host(ctx,'Previous');await waitIndex(ctx,index);}
+          // Restore the exact pre-test HTML and token draft via the two theme history entries.
+          for(let i=0;i<2;i++){await ctx.trustedClick('[data-testid=design-panel] button[aria-label="撤销设计修改"]');await waitIndex(ctx,0);}
+        },assert:async()=>{
+          const s=await ctx.eval("(()=>{const d=document.querySelector('[data-testid=design-panel] iframe').contentDocument,a=d.querySelector('[data-ipw-slide][aria-hidden=false]'),images=[...d.querySelectorAll('[data-ipw-slide] img')];return {count:d.querySelectorAll('[data-ipw-slide]').length,width:getComputedStyle(a).width,height:getComputedStyle(a).height,text:JSON.stringify([...d.querySelectorAll('[data-ipw-slide]')].map(s=>s.textContent))===JSON.stringify(window.__themeLayoutBefore),images:images.length,loaded:images.every(i=>i.complete&&i.naturalWidth>0),brandHeight:parseFloat(getComputedStyle(d.querySelector('[data-ipw-brand-slot]')).height)}})()");
+          ctx.assert(s.count===8&&s.width==='1280px'&&s.height==='720px'&&s.text&&s.images>0&&s.loaded&&s.brandHeight>0&&s.brandHeight<50,JSON.stringify(s));
+        },screenshot:{name:'live-theme-layout-preserved',requireText:['1 / 8'],rejectText:['Something went wrong']},
+      }),
+    }] : []),
     {name:'Restore original viewing position',run:async ctx=>{
       await mode(ctx,'浏览');const original=await ctx.eval('window.__liveDeckBefore');let current=await state(ctx);
       while(current.index!==original.index){const expected=current.index+(current.index>original.index?-1:1);await host(ctx,current.index>original.index?'Previous':'Next');await waitIndex(ctx,expected);current=await state(ctx);}

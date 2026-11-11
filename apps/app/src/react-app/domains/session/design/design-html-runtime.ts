@@ -340,6 +340,8 @@ function designDeckRuntime(channel: string, navigationControls: Record<"previous
     [data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }
     [data-ipw-slide][aria-hidden="false"] { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
     ${displayRules}
+    /* Embedded presentations use the host pager; standalone source keeps its controls. */
+    body > nav.controls, body > nav[aria-label="演示控制"], body > .controls, body > .progress-bar { display: none !important; }
   `;
   document.head.appendChild(visibilityStyle);
 
@@ -632,6 +634,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelector("#ipollowork-design-deck-runtime")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime")?.remove();
     clone.querySelector("#ipollowork-design-fixed-slide-runtime-style")?.remove();
+    clone.querySelectorAll("#ipollowork-design-deck-runtime-style").forEach((element) => element.remove());
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
     clone.querySelectorAll(`[data-ipw-runtime-slide-display]`).forEach((element) => element.removeAttribute("data-ipw-runtime-slide-display"));
