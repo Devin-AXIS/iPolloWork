@@ -9,6 +9,7 @@ import {
   type CodexThread,
 } from "./codex-harness-session-read-model.js";
 import { isCodexUnmaterializedThreadError, type CodexHarnessRuntime } from "./codex-harness-runtime.js";
+import { projectCodexHistory } from "./codex-harness-history.js";
 import { StdioJsonRpcError } from "./stdio-json-rpc-runtime.js";
 import type { WorkspaceInfo } from "./types.js";
 
@@ -402,4 +403,68 @@ describe("Codex Harness session read model", () => {
       })],
     })]);
   });
+});
+
+test("legacy messages use persisted native identities without collapsing equal text or rewriting source items",async()=>{
+ const thread: CodexThread={id:"legacy",historyMode:"legacy",nativeHistory:[{id:"t",agentMessageIds:["native-a","native-b"],reasoningIds:[],order:["user:0","native-a","spawn","native-b"],calls:[{id:"spawn",type:"collabAgentToolCall",tool:"spawnAgent",status:"completed",senderThreadId:"legacy",receiverThreadIds:["child"],agentsStates:{child:{status:"completed",message:"ok"}}}]}],turns:[{id:"t",status:"completed",items:[{type:"userMessage",id:"item-1",clientId:"client-user",text:"same"},{type:"agentMessage",id:"item-2",text:"same"},{type:"agentMessage",id:"item-3",text:"same"}]}]};
+ const runtime={isAwaitingFirstTurn:()=>false,call:async()=>({thread:structuredClone(thread)})} as unknown as CodexHarnessRuntime;
+ const messages=(await readCodexHarnessSnapshot(runtime,"legacy")).messages;
+ expect(messages.map(m=>m.info.id)).toEqual(["client-user","native-a","spawn","native-b"]);
+ expect(messages.filter(m=>m.info.role==='assistant').every(m=>m.info.parentID==='client-user')).toBe(true);
+ expect(messages[2]?.parts[0]).toMatchObject({id:"spawn:child",callID:"spawn:child"});
+ expect(thread.turns?.[0]?.items[1]?.id).toBe("item-2");
+});
+
+test("cold snapshots recover only the latest turn's accepted plan and accept an empty replacement",async()=>{
+ const thread: CodexThread={id:"cold",nativeHistory:[{id:"old",agentMessageIds:[],reasoningIds:[],order:[],calls:[],plan:[{step:"old",status:"completed"}]},{id:"new",agentMessageIds:[],reasoningIds:[],order:[],calls:[],plan:[{step:"new",status:"inProgress"}]}],turns:[{id:"new",status:"inProgress",items:[]}]};
+ const runtime={isAwaitingFirstTurn:()=>false,call:async()=>({thread})} as unknown as CodexHarnessRuntime;
+ expect((await readCodexHarnessSnapshot(runtime,"cold")).todos).toMatchObject([{content:"new",status:"in_progress"}]);
+ thread.nativePlan={turnId:"new",plan:[]};expect((await readCodexHarnessSnapshot(runtime,"cold")).todos).toEqual([]);
+ delete thread.nativePlan;
+ const latest=thread.nativeHistory?.at(-1);if(latest) latest.plan=[];expect((await readCodexHarnessSnapshot(runtime,"cold")).todos).toEqual([]);
+ thread.turns=[{id:"next",status:"inProgress",items:[]}];expect((await readCodexHarnessSnapshot(runtime,"cold")).todos).toEqual([]);
+});
+
+test("legacy history keeps unprojected tools before final output while inserting missing collaboration", async () => {
+  const thread: CodexThread = { id: "chronological", historyMode: "legacy", nativeHistory: [{
+    id: "turn", agentMessageIds: ["before", "final"], reasoningIds: [],
+    order: ["user:0", "before", "spawn", "final"],
+    calls: [{ id: "spawn", type: "collabAgentToolCall", tool: "spawnAgent", status: "completed", receiverThreadIds: ["child"] }],
+  }], turns: [{ id: "turn", status: "completed", items: [
+    { type: "userMessage", id: "user", clientId: "client-user", text: "Edit" },
+    { type: "agentMessage", id: "item-1", phase: "commentary", text: "Editing" },
+    { type: "fileChange", id: "unprojected-patch", status: "completed", changes: "Updated file" },
+    { type: "agentMessage", id: "item-3", phase: "final_answer", text: "Done" },
+  ] }] };
+  const runtime = { isAwaitingFirstTurn: () => false, call: async () => ({ thread: structuredClone(thread) }) } as unknown as CodexHarnessRuntime;
+  const snapshot = await readCodexHarnessSnapshot(runtime, thread.id);
+  expect(snapshot.messages.map(m => m.info.id)).toEqual(["client-user", "before", "unprojected-patch", "spawn", "final"]);
+  expect(snapshot.messages[2]?.parts[0]).toMatchObject({ type: "tool", tool: "apply_patch" });
+  expect(thread.turns?.[0]?.items.map(i => i.id)).toEqual(["user", "item-1", "unprojected-patch", "item-3"]);
+});
+
+
+test("legacy merge follows call start order around native patches even when calls finish in reverse order", async () => {
+  const record = (type: string, payload: unknown) => JSON.stringify({ type, payload });
+  const call = (id: string) => record("response_item", { type: "function_call", name: "spawn_agent", call_id: id, arguments: "{}" });
+  const result = (id: string) => record("response_item", { type: "function_call_output", call_id: id, output: JSON.stringify({ agent_id: id + "-child" }) });
+  const nativeHistory = projectCodexHistory([
+    record("event_msg", { type: "task_started", turn_id: "turn" }), record("event_msg", { type: "user_message" }),
+    record("response_item", { type: "message", role: "assistant", id: "before", content: [{ text: "same" }] }),
+    call("first"), record("response_item", { type: "custom_tool_call", call_id: "patch", name: "apply_patch", input: "patch" }),
+    call("second"), result("second"), result("first"),
+    record("response_item", { type: "message", role: "assistant", id: "final", content: [{ text: "same" }] }),
+  ], "session");
+  const thread: CodexThread = { id: "session", nativeHistory, historyMode: "legacy", turns: [{ id: "turn", status: "completed", items: [
+    { type: "userMessage", id: "user", clientId: "client", text: "Work" },
+    { type: "agentMessage", id: "item-1", text: "same", phase: "commentary" },
+    { type: "fileChange", id: "patch", status: "completed", changes: "Updated" },
+    { type: "agentMessage", id: "item-3", text: "same", phase: "final_answer" },
+  ] }] };
+  const runtime = { isAwaitingFirstTurn: () => false, call: async () => ({ thread: structuredClone(thread) }) } as unknown as CodexHarnessRuntime;
+  for (let read = 0; read < 2; read++) {
+    const snapshot = await readCodexHarnessSnapshot(runtime, thread.id);
+    expect(snapshot.messages.map(m => m.info.id)).toEqual(["client", "before", "first", "patch", "second", "final"]);
+    expect(snapshot.messages.filter(m => m.info.role === "assistant").every(m => m.info.parentID === "client")).toBe(true);
+  }
 });

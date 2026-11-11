@@ -1,3 +1,8 @@
+import { createHash, randomUUID } from "node:crypto";
+import { CodexHistoryReader } from "./codex-harness-history.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import constants from "../../../constants.json" with { type: "json" };
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -98,8 +103,12 @@ function codexChildEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEn
     seen.add(host);
   }
   const noProxy = entries.join(",");
+  const isolated = Object.fromEntries(Object.entries(environment).filter(([key]) =>
+    (!key.startsWith("CODEX_") || key === "CODEX_HOME")
+    && !["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_ORG_ID", "OPENAI_PROJECT_ID"].includes(key),
+  ));
   return {
-    ...environment,
+    ...isolated,
     // Codex uses the loopback iPolloWork MCP. A desktop VPN/proxy must never
     // route that request off-device; keep both spellings for child runtimes.
     NO_PROXY: noProxy,
@@ -108,30 +117,42 @@ function codexChildEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEn
 }
 
 /** Shared CLI resolution for conversation runtimes and isolated native image turns. */
-export function createCodexAppServer(input: {
+export async function createCodexAppServer(input: {
   cwd: string;
   environment: NodeJS.ProcessEnv;
   args?: readonly string[];
-}): StdioJsonRpcProcess {
+}): Promise<StdioJsonRpcProcess> {
   const configuredCli = process.env.IPOLLOWORK_CODEX_CLI?.trim() ?? "";
-  if (configuredCli && !existsSync(configuredCli)) {
-    throw new CodexHarnessUnavailableError(`Codex Harness runtime was not found at ${configuredCli}`);
+  if (!configuredCli || !existsSync(configuredCli)) {
+    throw new CodexHarnessUnavailableError(`未安装或无法读取客户端 Codex ${constants.codexHarnessVersion}。请在设置 → 引擎中安装；不会使用个人 Codex。`);
+  }
+  if (!input.environment.CODEX_HOME?.trim()) {
+    throw new CodexHarnessUnavailableError("客户端独立的 Codex 配置尚未准备完成，请重新连接工作区。不会使用个人配置。");
   }
   const wrapper = configuredCli.endsWith(".js");
   const command = wrapper
     ? process.versions.electron
       ? process.execPath
       : process.env.IPOLLOWORK_NODE_BIN?.trim() || (process.platform === "win32" ? "node.exe" : "node")
-    : configuredCli || (process.platform === "win32" ? "codex.exe" : "codex");
+    : configuredCli;
+  const environment = codexChildEnvironment({
+    ...input.environment,
+    ...(wrapper && process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+  });
+  try {
+    const { stdout } = await promisify(execFile)(command, [...(wrapper ? [configuredCli] : []), "--version"], {
+      cwd: input.cwd, env: environment, timeout: 10_000, maxBuffer: 4096, windowsHide: true,
+    });
+    if (stdout.trim() !== `codex-cli ${constants.codexHarnessVersion}`) throw new Error("Unexpected Codex version");
+  } catch {
+    throw new CodexHarnessUnavailableError(`客户端 Codex 运行时损坏或版本不符，需要 ${constants.codexHarnessVersion}。请在设置 → 引擎中重新安装。`);
+  }
   return new StdioJsonRpcProcess({
     name: "Codex Harness",
     command,
     args: [...(wrapper ? [configuredCli] : []), "app-server", "--stdio", ...(input.args ?? [])],
     cwd: input.cwd,
-    env: codexChildEnvironment({
-      ...input.environment,
-      ...(wrapper && process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
-    }),
+    env: environment,
   });
 }
 
@@ -310,7 +331,7 @@ async function readSourceProviders(config: ServerConfig, env: EnvService) {
   const records = await env.list();
   const disconnected = new Set(sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)));
   const [openAiCodexOAuth, catalog] = await Promise.all([
-    resolveOpenAiCodexOAuthSession(config, { explicitlyDisconnected: disconnected.has("openai") }),
+    resolveOpenAiCodexOAuthSession(config, { explicitlyDisconnected: disconnected.has("openai"), allowOfficialCodexFallback: false }),
     readAccountProviderCatalog(config).catch(() => new Map()),
   ]);
   return { records, catalog, providers: await codexHarnessProviders({ config, records, openAiCodexOAuth, catalog }) };
@@ -415,6 +436,9 @@ export function codexHarnessConfig(input: {
     // into every workspace runtime before a tool turn can continue.
     "plugins = false",
     "",
+    "[tools.update_plan]",
+    "enabled = true",
+    "",
   ];
   for (const provider of input.providers) {
     const runtimeProviderId = codexHarnessRuntimeProviderId(provider.id);
@@ -491,6 +515,7 @@ export class CodexHarnessRuntime {
   // Native plan notifications are not included by thread/read. Retain only the
   // latest event per thread for snapshot/reconnect display, never execution.
   readonly #nativePlans = new Map<string, { turnId: string; plan: unknown[] }>();
+  readonly #history = new CodexHistoryReader();
   readonly #tokenTotals = new Map<string, number>();
   #unsubscribeProcessEvents = () => {};
   readonly #providerGateway = new CodexProviderGateway();
@@ -504,12 +529,19 @@ export class CodexHarnessRuntime {
   async call<T>(method: string, params: unknown = {}): Promise<T> {
     // Invalidate before sending, including failed/ambiguous writes. Never hide
     // a possibly accepted first message behind a metadata-only snapshot.
-    if (method === "turn/start") this.#markThreadUsed(params);
+    if (method === "turn/start") {
+      this.#markThreadUsed(params);
+      if (isRecord(params) && !params.clientUserMessageId) params = { ...params, clientUserMessageId: `msg_ipollowork_${randomUUID()}` };
+    }
     const process = await this.#ensureStarted();
     try {
       const result = await process.call<T>(method, params);
       this.#rememberThreadProvider(method, params, result);
       if (method === "thread/read" && isRecord(result) && isRecord(result.thread) && typeof result.thread.id === "string") {
+        if (typeof result.thread.path === "string") {
+          const home = join(runtimeStorageDir(this.#config), "codex-harness-workspaces", safeRuntimeSegment(this.#workspace.id));
+          result.thread.nativeHistory = await this.#history.read(home, result.thread.path, result.thread.id);
+        }
         const plan = this.#nativePlans.get(result.thread.id);
         if (plan) result.thread.nativePlan = plan;
       }
@@ -638,7 +670,7 @@ export class CodexHarnessRuntime {
   async startThread<T extends Record<string, unknown>>(
     input: Record<string, unknown>,
   ): Promise<T> {
-    return await this.#callWithVerifiedSelection<T>("thread/start", input);
+    return await this.#callWithVerifiedSelection<T>("thread/start", { historyMode: "paginated", ...input });
   }
 
   async resumeThread(input: {
@@ -666,7 +698,7 @@ export class CodexHarnessRuntime {
     try {
       return await this.#callWithVerifiedSelection("thread/resume", { ...input });
     } catch (error) {
-      if (error instanceof StdioJsonRpcError || error instanceof CodexHarnessModelSelectionError) throw error;
+      if (error instanceof StdioJsonRpcError || error instanceof CodexHarnessModelSelectionError || error instanceof CodexHarnessUnavailableError) throw error;
       throw new CodexHarnessUnavailableError("Codex Harness request failed", { cause: error });
     }
   }
@@ -762,6 +794,12 @@ export class CodexHarnessRuntime {
     method: "thread/start" | "thread/resume",
     input: Record<string, unknown>,
   ): Promise<T> {
+    if (input.modelProvider === codexHarnessRuntimeProviderId("openai")) {
+      const { providers } = await this.#readSourceProviders();
+      if (!providers.some(provider => provider.id === "openai")) {
+        throw new CodexHarnessUnavailableError("请在 iPolloWork 授权中心登录 OpenAI 或配置 API 密钥。客户端不会使用个人 Codex 的登录信息。");
+      }
+    }
     let process = await this.#ensureStarted();
     let result: T;
     try {
@@ -823,6 +861,7 @@ export class CodexHarnessRuntime {
       ...(typeof input.cwd === "string" ? { cwd: input.cwd } : {}),
       ...(typeof input.modelProvider === "string" ? { modelProvider: input.modelProvider } : {}),
       ...(typeof input.model === "string" ? { model: input.model } : {}),
+      historyMode: "paginated",
       allowProviderModelFallback: false,
     });
     const replacementThread = isRecord(replacement.thread) ? replacement.thread : null;
@@ -1004,7 +1043,7 @@ export class CodexHarnessRuntime {
   async #start(prepared: {
     environment: NodeJS.ProcessEnv;
   }): Promise<StdioJsonRpcProcess> {
-    const rpc = createCodexAppServer({
+    const rpc = await createCodexAppServer({
       cwd: this.#workspace.path,
       environment: prepared.environment,
     });
@@ -1094,8 +1133,18 @@ export class CodexHarnessRuntimePool {
       if (config !== this.#config) return;
       void this.closeWorkspace(workspaceId);
     });
+    const signature = async () => createHash("sha256").update(JSON.stringify(
+      (await this.#env.list()).sort((a, b) => a.key.localeCompare(b.key)).map(({ key, value }) => [key, value]),
+    )).digest("hex");
+    let environment = signature().catch(() => "");
     this.#stopEnvironmentListener = this.#env.onChange(() => {
-      void this.#closeAllRuntimes();
+      // The client re-saves provider settings on refresh. Only a real value
+      // change invalidates a running Codex process, not updatedAt bookkeeping.
+      environment = environment.then(async (before) => {
+        const after = await signature();
+        if (after !== before) await this.#closeAllRuntimes();
+        return after;
+      }).catch(async () => { await this.#closeAllRuntimes(); return ""; });
     });
   }
 

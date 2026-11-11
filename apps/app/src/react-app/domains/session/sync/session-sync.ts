@@ -801,6 +801,7 @@ export function beginOptimisticSessionPrompt(
     metadata: conversationMessageMetadata({ created: Date.now() }, { optimistic: true }),
     parts: text ? [{ type: "text", text, state: "done" }] : [],
   }));
+  queryClient.setQueryData(todoKey(workspace, session), []);
   queryClient.setQueryData(statusKey(workspace, session), { type: "busy" } satisfies ConversationStatus);
   const activity = useSessionActivityStore.getState();
   activity.markMessageRole(workspace, session, clientUserMessageId, "user");
@@ -1150,6 +1151,9 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
   }
 
   if (event.type === "todo.updated") {
+    if (interrupted?.interrupted) return;
+    const outcome = useSessionActivityStore.getState().getRunOutcome(workspaceId, event.sessionId);
+    if (outcome === "completed" || outcome === "failed" || outcome === "stopped") return;
     if (isTrackedSession(entry, event.sessionId)) {
       queryClient.setQueryData(todoKey(workspaceId, event.sessionId), event.todos);
     }
@@ -1624,14 +1628,26 @@ export function sanitizeInterruptedSessionSnapshot(
   return changed ? { ...snapshot, messages } : snapshot;
 }
 
+export async function readSessionSnapshotWithTodoRevision(
+  workspaceId: string,
+  sessionId: string,
+  read: () => Promise<ConversationSnapshot>,
+): Promise<ConversationSnapshot> {
+  const todoCacheRevision = getReactQueryClient().getQueryState(todoKey(workspaceId, sessionId))?.dataUpdateCount ?? 0;
+  const snapshot = await read();
+  if (snapshot.session.id !== sessionId) throw new Error("Session snapshot does not match the requested session");
+  return { ...snapshot, todoCacheRevision };
+}
+
 export function seedSessionState(workspaceId: string, snapshot: ConversationSnapshot) {
   const queryClient = getReactQueryClient();
   const safeSnapshot = sanitizeInterruptedSessionSnapshot(workspaceId, snapshot);
+  const todosUnchangedSinceRead = safeSnapshot.todoCacheRevision === undefined
+    || safeSnapshot.todoCacheRevision === (queryClient.getQueryState(todoKey(workspaceId, safeSnapshot.session.id))?.dataUpdateCount ?? 0);
   const key = transcriptKey(workspaceId, safeSnapshot.session.id);
   const interrupted = interruptedRun(workspaceId, safeSnapshot.session.id);
   const existingRaw = queryClient.getQueryData<UIMessage[]>(key);
   if (interrupted?.interrupted) {
-    queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
     return;
   }
   const incoming = safeSnapshot.messages;
@@ -1721,7 +1737,9 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   if (!preserveRunState) {
     queryClient.setQueryData(statusKey(workspaceId, safeSnapshot.session.id), safeSnapshot.status);
   }
-  queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
+  if (!preserveRunState && todosUnchangedSinceRead) {
+    queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
+  }
 }
 
 /**

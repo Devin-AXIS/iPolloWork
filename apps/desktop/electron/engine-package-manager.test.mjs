@@ -158,253 +158,74 @@ for (const corrupted of [false, true]) {
   });
 }
 
-test("prefers an official Codex Harness and removes a redundant downloaded copy", async () => {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-precedence-test-"));
-  const userData = path.join(temporaryRoot, "user-data");
-  const clientResources = path.join(temporaryRoot, "Codex.app", "Contents", "Resources");
-  const officialCli = path.join(clientResources, process.platform === "win32" ? "codex.EXE" : "codex");
-  const managedRoot = path.join(userData, "engine-packs", "codex-harness");
-  const managedCli = path.join(managedRoot, "7.8.9", `${process.platform}-${process.arch}`, codexCliRelativePath());
-  /** @type {NodeJS.ProcessEnv} */
-  const environment = {
-    ...process.env,
-    PATH: clientResources,
-    APPDATA: path.join(temporaryRoot, "app-data"),
-    LOCALAPPDATA: path.join(temporaryRoot, "local-app-data"),
-    ProgramFiles: path.join(temporaryRoot, "program-files"),
-  };
-  delete environment.IPOLLOWORK_CODEX_CLI;
-  delete environment.IPOLLOWORK_CODEX_CLI_VERSION;
-
-  try {
-    await mkdir(path.dirname(managedCli), { recursive: true });
-    await mkdir(clientResources, { recursive: true });
-    await writeFile(managedCli, "redundant-runtime\n");
-    await writeFile(officialCli, "official-runtime\n");
-    const resolvedOfficialCli = await realpath(officialCli);
-    const manager = createEnginePackageManager({
-      app: {
-        getPath(name) {
-          assert.equal(name, "userData");
-          return userData;
-        },
-        getVersion() { return "1.0.0"; },
-        isPackaged: true,
-      },
-      desktopRoot: path.join(temporaryRoot, "desktop"),
-      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
-      env: environment,
-      homeDir: path.join(temporaryRoot, "home"),
-      probeRuntime: async ({ executablePath }) => executablePath === resolvedOfficialCli,
-      fetch: async () => { throw new Error("fixture should not use the network"); },
-    });
-
-    const beforeStartup = (await manager.list()).find((engine) => engine.id === "codex-harness");
-    assert.equal(beforeStartup?.source, "official");
-    assert.equal(beforeStartup?.version, "7.8.9");
-    assert.equal(beforeStartup?.canInstall, false);
-    assert.equal(beforeStartup?.canUninstall, false);
-
-    await manager.applyEnvironment();
-    assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedOfficialCli);
-    assert.equal(existsSync(managedRoot), false);
-    const afterStartup = (await manager.list()).find((engine) => engine.id === "codex-harness");
-    assert.equal(afterStartup?.source, "official");
-    assert.equal(afterStartup?.canInstall, false);
-    assert.equal(afterStartup?.canUninstall, false);
-  } finally {
-    await rm(temporaryRoot, { recursive: true, force: true });
-  }
-});
-
-test("identifies an official Codex client resource and leaves it externally managed", async () => {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-client-test-"));
-  const clientResources = path.join(temporaryRoot, "ChatGPT.app", "Contents", "Resources");
-  const previousPath = process.env.PATH;
-  const previousCodexCli = process.env.IPOLLOWORK_CODEX_CLI;
-
-  try {
-    await mkdir(clientResources, { recursive: true });
-    await writeFile(path.join(clientResources, process.platform === "win32" ? "codex.EXE" : "codex"), "client-runtime\n");
-    process.env.PATH = clientResources;
-    delete process.env.IPOLLOWORK_CODEX_CLI;
-
-    const manager = createEnginePackageManager({
-      app: {
-        getPath(name) {
-          assert.equal(name, "userData");
-          return path.join(temporaryRoot, "user-data");
-        },
-        getVersion() { return "1.0.0"; },
-        isPackaged: true,
-      },
-      desktopRoot: path.join(temporaryRoot, "desktop"),
-      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
-      probeRuntime: async () => true,
-      fetch: async () => { throw new Error("fixture should not use the network"); },
-    });
-
-    const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
-    assert.equal(codex?.installed, true);
-    assert.equal(codex?.source, "official");
-    assert.equal(codex?.canInstall, false);
-    assert.equal(codex?.canUninstall, false);
-  } finally {
-    if (previousPath === undefined) delete process.env.PATH;
-    else process.env.PATH = previousPath;
-    if (previousCodexCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
-    else process.env.IPOLLOWORK_CODEX_CLI = previousCodexCli;
-    await rm(temporaryRoot, { recursive: true, force: true });
-  }
-});
-
-for (const layout of ["darwin", "darwin-current", "linux", "win32"]) {
-const platform = layout === "darwin-current" ? "darwin" : layout;
-test(`discovers an official Codex client outside the inherited PATH (${layout})`, async () => {
-  const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-discovery-test-"));
-  const homeDir = path.join(temporaryRoot, "home");
-  /** @type {NodeJS.ProcessEnv} */
-  const environment = {
-    ...process.env,
-    PATH: path.join(temporaryRoot, "empty-bin"),
-    APPDATA: path.join(temporaryRoot, "app-data"),
-    LOCALAPPDATA: path.join(temporaryRoot, "AppData", "Local"),
-    ProgramFiles: path.join(temporaryRoot, "program-files"),
-  };
-  delete environment.IPOLLOWORK_DSH_CLI;
-  delete environment.IPOLLOWORK_CODEX_CLI;
-  delete environment.NPM_CONFIG_PREFIX;
-  delete environment.PNPM_HOME;
-  const blockedCodexPath = platform === "win32"
-    ? path.join(environment.ProgramFiles, "WindowsApps", "OpenAI.Codex_1.2.3.0_x64__official", "app", "resources", "codex.exe")
-    : null;
-  const codexPath = platform === "win32"
-    ? path.join(environment.LOCALAPPDATA, "OpenAI", "Codex", "bin", "stable", "codex.exe")
-    : platform === "darwin"
-      ? layout === "darwin-current"
-        ? path.join(homeDir, "Applications", "ChatGPT.app", "Contents", "Resources", "codex-cli", "bin", "codex")
-        : path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex")
-      : path.join(homeDir, ".local", "lib", "node_modules", "@openai", "codex", "bin", "codex.js");
-  const probedPaths = [];
-
-  try {
-    if (blockedCodexPath) {
-      await mkdir(path.dirname(blockedCodexPath), { recursive: true });
-      await writeFile(blockedCodexPath, "blocked-store-runtime\n");
-    }
-    await mkdir(path.dirname(codexPath), { recursive: true });
-    await writeFile(codexPath, "official-runtime\n");
-    const resolvedBlockedCodexPath = blockedCodexPath ? await realpath(blockedCodexPath) : null;
-    const resolvedCodexPath = await realpath(codexPath);
-    const manager = createEnginePackageManager({
-      app: {
-        getPath(name) {
-          assert.equal(name, "userData");
-          return path.join(temporaryRoot, "user-data");
-        },
-        getVersion() { return "1.0.0"; },
-        isPackaged: true,
-      },
-      platform,
-      desktopRoot: path.join(temporaryRoot, "desktop"),
-      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
-      env: environment,
-      homeDir,
-      probeRuntime: async ({ executablePath }) => {
-        probedPaths.push(executablePath);
-        return executablePath === resolvedCodexPath ? "0.159.2" : false;
-      },
-      fetch: async () => { throw new Error("fixture should not use the network"); },
-    });
-
-    await manager.applyEnvironment();
-    const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
-    assert.equal(codex?.source, "official");
-    assert.equal(codex?.version, "0.159.2");
-    assert.equal(codex?.canInstall, false);
-    assert.equal(codex?.canUninstall, false);
-    assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCodexPath);
-    assert.equal(environment.IPOLLOWORK_CODEX_CLI_VERSION, "0.159.2");
-    if (resolvedBlockedCodexPath) assert.ok(probedPaths.includes(resolvedBlockedCodexPath));
-    assert.ok(probedPaths.includes(resolvedCodexPath));
-    assert.equal(probedPaths.filter((candidate) => candidate === resolvedCodexPath).length, 1);
-  } finally {
-    await rm(temporaryRoot, { recursive: true, force: true });
-  }
-});
-}
-
-
-for (const appName of ["Codex.app", "ChatGPT.app"]) {
-  test(`reuses the nested macOS CLI in ${appName} without downloading`, async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-nested-client-test-"));
-    const homeDir = path.join(root, "home");
-    const cli = path.join(homeDir, "Applications", appName, "Contents", "Resources", "codex-cli", "CodexCLI.app", "Contents", "MacOS", "codex");
-    const env = { PATH: path.join(root, "empty-bin") };
-    let downloads = 0;
+for (const isPackaged of [false, true]) {
+  test(`Codex uses only the pinned managed runtime in ${isPackaged ? "packaged" : "development"} mode`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-isolation-"));
+    const userData = path.join(root, "user-data");
+    const cli = path.join(userData, "engine-packs", "codex-harness", "0.149.0", `${process.platform}-${process.arch}`, codexCliRelativePath());
+    const personal = path.join(root, "ChatGPT.app", "Contents", "Resources", "codex");
+    const env = { PATH: path.dirname(personal), IPOLLOWORK_CODEX_CLI: personal, IPOLLOWORK_CODEX_CLI_VERSION: "0.167.0" };
+    const probes = [];
     try {
-      await mkdir(path.dirname(cli), { recursive: true });
-      await writeFile(cli, "fixture-runtime\n");
-      const resolvedCli = await realpath(cli);
+      await mkdir(path.dirname(personal), { recursive: true });
+      await writeFile(personal, "personal-runtime-kept");
       const manager = createEnginePackageManager({
-        app: { getPath: () => path.join(root, "user-data"), getVersion: () => "1.0.0", isPackaged: true },
-        desktopRoot: path.join(root, "desktop"),
-        versions: { codexHarness: "7.8.9" },
-        platform: "darwin",
-        architecture: "arm64",
-        homeDir,
-        env,
-        probeRuntime: async ({ executablePath }) => executablePath === resolvedCli ? "0.159.2" : false,
-        fetch: async () => { downloads += 1; throw new Error("must reuse the installed client"); },
+        app: { getPath: () => userData, getVersion: () => "1.0.0", isPackaged },
+        versions: { codexHarness: "0.149.0" }, env, homeDir: path.join(root, "home"),
+        probeRuntime: async ({ executablePath }) => { probes.push(executablePath); return "0.149.0"; },
+        fetch: async () => { throw new Error("No implicit download"); },
       });
-      const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
-      assert.equal(codex?.installed, true);
-      assert.equal(codex?.source, "official");
-      assert.equal(codex?.canInstall, false);
-      assert.equal(codex?.canUninstall, false);
-      assert.equal(env.IPOLLOWORK_CODEX_CLI, resolvedCli);
-      assert.equal((await manager.install("codex-harness")).source, "official");
-      assert.equal(downloads, 0);
-      assert.equal(existsSync(path.join(root, "user-data", "engine-packs")), false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+      let codex = (await manager.list()).find(e => e.id === "codex-harness");
+      assert.equal(codex.installed, false);
+      assert.equal(codex.canInstall, true);
+      assert.match(codex.error, /0.149.0/);
+      assert.equal(env.IPOLLOWORK_CODEX_CLI, undefined);
+      assert.equal(probes.length, 0);
+      await mkdir(path.dirname(cli), { recursive: true });
+      await writeFile(cli, "managed-runtime");
+      await manager.applyEnvironment();
+      codex = (await manager.list()).find(e => e.id === "codex-harness");
+      assert.equal(codex.source, "downloaded");
+      assert.equal(codex.version, "0.149.0");
+      assert.equal(codex.installed, true);
+      assert.equal(codex.canUninstall, true);
+      assert.equal(env.IPOLLOWORK_CODEX_CLI, cli);
+      assert.equal(env.IPOLLOWORK_CODEX_CLI_VERSION, "0.149.0");
+      assert.equal((await manager.install("codex-harness")).source, "downloaded");
+      assert.ok(probes.every(p => p === cli));
+      assert.equal(await readFile(personal, "utf8"), "personal-runtime-kept");
+      assert.equal(existsSync(cli), true);
+    } finally { await rm(root, { recursive: true, force: true }); }
   });
 }
 
-test("reuses a version-verified Codex CLI on PATH outside known installer locations", async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-system-cli-test-"));
-  const bin = path.join(root, "portable-bin");
-  const cli = path.join(bin, process.platform === "win32" ? "codex.EXE" : "codex");
-  const env = { PATH: bin };
-  let downloads = 0;
-  try {
-    await mkdir(bin, { recursive: true });
-    await writeFile(cli, "fixture-runtime\n");
-    const resolvedCli = await realpath(cli);
-    const manager = createEnginePackageManager({
-      app: { getPath: () => path.join(root, "user-data"), getVersion: () => "1.0.0", isPackaged: true },
-      desktopRoot: path.join(root, "desktop"),
-      versions: { codexHarness: "7.8.9" },
-      homeDir: path.join(root, "home"),
-      env,
-      probeRuntime: async ({ executablePath }) => executablePath === resolvedCli ? "0.159.2" : false,
-      fetch: async () => { downloads += 1; throw new Error("must reuse the local CLI"); },
-    });
-    const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
-    assert.equal(codex?.source, "system");
-    assert.equal(codex?.installed, true);
-    assert.equal(codex?.canInstall, false);
-    assert.equal(codex?.canUninstall, false);
-    assert.equal(env.IPOLLOWORK_CODEX_CLI, resolvedCli);
-    assert.equal((await manager.install("codex-harness")).source, "system");
-    await assert.rejects(manager.uninstall("codex-harness"), /managed outside iPolloWork/);
-    assert.equal(downloads, 0);
-    assert.equal(await readFile(cli, "utf8"), "fixture-runtime\n");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
+for (const version of ["0.167.0", false, true]) {
+  test(`Codex rejects an invalid managed version (${version}) and recovers after replacement`, async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-invalid-"));
+    const cli = path.join(root, "engine-packs", "codex-harness", "0.149.0", `${process.platform}-${process.arch}`, codexCliRelativePath());
+    const env = { PATH: "", IPOLLOWORK_CODEX_CLI: "/personal/codex" };
+    let actualVersion = version;
+    try {
+      await mkdir(path.dirname(cli), { recursive: true });
+      await writeFile(cli, "bad");
+      const manager = createEnginePackageManager({
+        app: { getPath: () => root, getVersion: () => "1.0.0" }, versions: { codexHarness: "0.149.0" }, env,
+        probeRuntime: async () => actualVersion, fetch: async () => { throw new Error("No fallback download"); },
+      });
+      const invalid = (await manager.list()).find(e => e.id === "codex-harness");
+      assert.equal(invalid.installed, false);
+      assert.equal(invalid.canInstall, true);
+      assert.match(invalid.error, /损坏或版本不符/);
+      assert.equal(env.IPOLLOWORK_CODEX_CLI, undefined);
+      actualVersion = "0.149.0";
+      await writeFile(cli, "replaced-valid-runtime");
+      assert.equal((await manager.list()).find(e => e.id === "codex-harness").installed, true);
+      await rm(cli);
+      assert.equal((await manager.list()).find(e => e.id === "codex-harness").installed, false);
+      assert.equal(env.IPOLLOWORK_CODEX_CLI, undefined);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+}
 
 test("missing optional engines never download on startup or availability refresh", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-optional-engine-test-"));
@@ -437,151 +258,6 @@ test("missing optional engines never download on startup or availability refresh
     assert.equal(env.IPOLLOWORK_CODEX_CLI, undefined);
     assert.equal(env.IPOLLOWORK_DSH_CLI, undefined);
     assert.equal(existsSync(path.join(root, "user-data", "engine-packs")), false);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("does not select a same-name command exiting successfully without Codex identity", { skip: process.platform === "win32" }, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-identity-test-"));
-  const bin = path.join(root, "bin");
-  const env = { PATH: bin };
-  try {
-    await mkdir(bin, { recursive: true });
-    await writeFile(path.join(bin, "codex"), "#!/bin/sh\nprintf '%s\\n' 'another-tool 0.159.2'\n", { mode: 0o755 });
-    const manager = createEnginePackageManager({
-      app: { getPath: () => path.join(root, "user-data"), getVersion: () => "1.0.0", isPackaged: true },
-      desktopRoot: path.join(root, "desktop"),
-      versions: { codexHarness: "7.8.9" },
-      env,
-      homeDir: path.join(root, "home"),
-      fetch: async () => { throw new Error("discovery must not download"); },
-    });
-    const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
-    assert.notEqual(env.IPOLLOWORK_CODEX_CLI, await realpath(path.join(bin, "codex")));
-    // A real installed desktop client may still be discovered on this host.
-    assert.equal(codex?.source, codex?.installed ? "official" : "none");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("selects the newest runnable cached Codex version, keeps explicit overrides, and bounds failed probes", { skip: process.platform !== "win32" }, async () => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-cache-version-test-"));
-  const environment = {
-    PATH: path.join(root, "empty-bin"),
-    APPDATA: path.join(root, "AppData", "Roaming"),
-    LOCALAPPDATA: path.join(root, "AppData", "Local"),
-    ProgramFiles: path.join(root, "program-files"),
-  };
-  const builds = [
-    ["000-old", "0.148.0-alpha.15"],
-    ["111-alpha", "0.153.0-alpha.15"],
-    ["222-stable", "0.153.0"],
-    ["333-unknown", true],
-    ["444-broken", false],
-  ];
-  const versions = new Map();
-  try {
-    for (const [hash, version] of builds) {
-      const cli = path.join(environment.LOCALAPPDATA, "OpenAI", "Codex", "bin", String(hash), "codex.exe");
-      await mkdir(path.dirname(cli), { recursive: true });
-      await writeFile(cli, "fixture\n");
-      versions.set(await realpath(cli), version);
-    }
-    const probes = new Map();
-    const options = {
-      app: { getPath: () => path.join(root, "user-data"), getVersion: () => "1.0.0", isPackaged: true },
-      desktopRoot: path.join(root, "desktop"),
-      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
-      env: environment,
-      homeDir: path.join(root, "home"),
-      probeRuntime: async ({ executablePath }) => {
-        probes.set(executablePath, (probes.get(executablePath) ?? 0) + 1);
-        return versions.get(executablePath) ?? false;
-      },
-      fetch: async () => { throw new Error("fixture must not use the network"); },
-    };
-    const manager = createEnginePackageManager(options);
-    await manager.applyEnvironment();
-    assert.equal((await manager.list()).find((engine) => engine.id === "codex-harness")?.version, "0.153.0");
-    assert.match(environment.IPOLLOWORK_CODEX_CLI, /222-stable[\\/]codex\.exe$/);
-    assert.deepEqual([...probes.values()], [1, 1, 1, 1, 2]);
-    const explicit = [...versions.keys()][0];
-    const overrideEnv = { ...environment, IPOLLOWORK_CODEX_CLI: explicit };
-    const overrideManager = createEnginePackageManager({ ...options, env: overrideEnv });
-    await overrideManager.applyEnvironment();
-    assert.equal(overrideEnv.IPOLLOWORK_CODEX_CLI, explicit);
-    assert.equal((await overrideManager.list()).find((engine) => engine.id === "codex-harness")?.version, "0.148.0-alpha.15");
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test("recovers local Codex discovery after transient failures without redundant downloads", async (t) => {
-  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-probe-recovery-"));
-  const bin = path.join(root, "Codex.app", "Contents", "Resources");
-  const officialCli = path.join(bin, process.platform === "win32" ? "codex.exe" : "codex");
-  await mkdir(bin, { recursive: true });
-  await writeFile(officialCli, "official-runtime\n");
-  const resolvedCli = await realpath(officialCli);
-  try {
-    for (const recovery of ["retry", "exception", "refresh", "install"]) {
-      await t.test(recovery, async (context) => {
-        let now = 1_000_000;
-        context.mock.method(Date, "now", () => now);
-        const userData = path.join(root, recovery);
-        const environment = { PATH: bin, APPDATA: path.join(root, "app-data"), LOCALAPPDATA: path.join(root, "local-app-data") };
-        const managedCli = path.join(userData, "engine-packs", "codex-harness", "7.8.9", `${process.platform}-${process.arch}`, codexCliRelativePath());
-        if (recovery === "refresh") {
-          await mkdir(path.dirname(managedCli), { recursive: true });
-          await writeFile(managedCli, "running-managed-runtime\n");
-        }
-        let probes = 0;
-        let available = false;
-        let downloads = 0;
-        const manager = createEnginePackageManager({
-          app: { getPath: () => userData, getVersion: () => "1.0.0", isPackaged: true },
-          desktopRoot: path.join(root, "desktop"),
-          versions: { codexHarness: "7.8.9" },
-          env: environment,
-          homeDir: path.join(root, "home"),
-          probeRuntime: async ({ executablePath }) => {
-            assert.equal(executablePath, resolvedCli);
-            probes += 1;
-            if (recovery === "exception" && probes === 1) throw new Error("temporary spawn failure");
-            return available || ((recovery === "retry" || recovery === "exception") && probes > 1)
-              ? "0.154.0-alpha.6.2" : false;
-          },
-          fetch: async () => { downloads += 1; throw new Error("must reuse the local Codex"); },
-        });
-        await Promise.all([manager.applyEnvironment(), manager.list(), manager.list()]);
-        assert.equal(probes, 2, "concurrent discovery shares a single bounded retry");
-        if (recovery === "retry" || recovery === "exception") {
-          assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCli);
-        } else {
-          assert.equal(environment.IPOLLOWORK_CODEX_CLI, recovery === "refresh" ? managedCli : undefined);
-          available = true;
-          now += 29_999;
-          const cached = (await manager.list()).find((engine) => engine.id === "codex-harness");
-          assert.equal(cached.source, recovery === "refresh" ? "downloaded" : "none");
-          assert.equal(probes, 2, "polling does not repeatedly spawn an unavailable executable");
-          if (recovery === "refresh") {
-            now += 1;
-          } else {
-            const installed = await manager.install("codex-harness");
-            assert.equal(installed.source, "official", "install rechecks before the failure cache expires");
-          }
-        }
-        const recovered = (await manager.list()).find((engine) => engine.id === "codex-harness");
-        assert.equal(recovered.source, "official");
-        assert.equal(recovered.canInstall, false);
-        assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCli, "the next launch uses the discovered system runtime");
-        assert.equal(downloads, 0);
-        assert.equal(probes, recovery === "retry" || recovery === "exception" ? 2 : 3);
-        if (recovery === "refresh") assert.equal(await readFile(managedCli, "utf8"), "running-managed-runtime\n");
-      });
-    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -708,7 +384,7 @@ test("projects the bundled Node runtime for a downloaded DeepSeek Harness packag
   }
 });
 
-test("discovers official Codex and DeepSeek resources in macOS installation locations", async () => {
+test("discovers official DeepSeek resources but ignores personal Codex in macOS installation locations", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-macos-engine-discovery-test-"));
   const homeDir = path.join(temporaryRoot, "home");
   const codexPath = path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex");
@@ -767,10 +443,10 @@ test("discovers official Codex and DeepSeek resources in macOS installation loca
 
     await manager.applyEnvironment();
     const optionalEngines = (await manager.list()).filter((engine) => engine.id !== "opencode");
-    assert.deepEqual(optionalEngines.map((engine) => engine.source), ["official", "official"]);
+    assert.deepEqual(optionalEngines.map((engine) => engine.source), ["official", "none"]);
     assert.deepEqual(optionalEngines.map((engine) => engine.canUninstall), [false, false]);
     assert.equal(environment.IPOLLOWORK_DSH_CLI, resolvedDshPath);
-    assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCodexPath);
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI, undefined);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }

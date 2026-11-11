@@ -355,8 +355,16 @@ export function mapDeepSeekHarnessMessages(
 }
 
 export function mapDeepSeekHarnessTodos(sessionId: string, history: DeepSeekHarnessHistory) {
-  const event = [...history.events].reverse().find((entry) => entry.event.type === "todo/write")?.event;
-  const data = event && isRecord(event.data) ? event.data : null;
+  let activeTurn: number | undefined;
+  let data: Record<string, unknown> | null = null;
+  for (const { event } of history.events) {
+    const value = isRecord(event.data) ? event.data : null;
+    if (value && typeof value.turn === "number" && (activeTurn === undefined || value.turn > activeTurn)) {
+      activeTurn = value.turn;
+      data = null;
+    }
+    if (event.type === "todo/write" && value && (typeof value.turn !== "number" || value.turn === activeTurn)) data = value;
+  }
   if (!data || !Array.isArray(data.todos)) return [];
   return data.todos.flatMap((todo, index) => {
     if (!isRecord(todo) || typeof todo.content !== "string" || typeof todo.status !== "string") return [];

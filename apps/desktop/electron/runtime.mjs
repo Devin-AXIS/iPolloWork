@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -737,7 +737,25 @@ export function mergeSystemCaChildEnv(baseEnv = {}, caEnv = {}, extra = {}) {
   };
 }
 
-export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths }) {
+async function loadEmbeddedServer(candidates) {
+  const embeddedPath = candidates.find((candidate) => existsSync(candidate));
+  if (!embeddedPath) throw new Error(`Cannot find iPolloWork embedded server bundle. Checked: ${candidates.join(", ")}`);
+  return import(embeddedServerImportUrl(embeddedPath));
+}
+
+// A private CLI can survive an unclean desktop exit with its Node launcher.
+// Never select live descendants, shared bundled binaries or personal CLI paths.
+export function orphanedManagedRuntimeProcesses(rows, userDataDir) {
+  const root = path.join(userDataDir, "engine-packs") + path.sep;
+  const byPid = new Map(rows.map(row => [row.pid, row]));
+  return rows.filter(row => {
+    if (!row.command.startsWith(root)) return false;
+    const parent = byPid.get(row.ppid);
+    return row.ppid === 1 || parent?.ppid === 1 && parent.command.includes(root);
+  });
+}
+
+export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths, loadServer = loadEmbeddedServer }) {
   const engineState = createEngineState();
   const ipolloworkServerState = createiPolloWorkServerState();
   const orchestratorState = createOrchestratorState();
@@ -1222,45 +1240,28 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     return `curl -fsSL https://opencode.ai/install | bash -s -- --version ${version} --no-modify-path`;
   }
 
-  function processMatchesSidecar(command) {
-    return commandMatchesPackagedSidecar(command, sidecarDirs);
-  }
-
-  function killProcessId(pid, signal = "SIGTERM") {
-    if (!Number.isFinite(pid) || pid <= 0 || pid === process.pid) return;
-    try {
-      process.kill(pid, signal);
-    } catch {
-      // Process already exited or is not ours.
-    }
-  }
-
-  async function cleanupPackagedSidecars() {
-    if (!app.isPackaged) return;
-
-    // First ask the previously recorded orchestrator daemon to shut itself and
-    // its OpenCode child down. This handles the happy path without relying on
-    // process-list parsing.
-    await requestOrchestratorShutdown(orchestratorState.dataDir || orchestratorDataDir()).catch(() => false);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-
-    // Safety net: an unclean Electron quit can orphan sidecars. Packaged builds
-    // should always own a fresh runtime per app launch, so remove any leftover
-    // sidecars from this app bundle before choosing ports for the new runtime.
-    const result = spawnSync("ps", ["-Ao", "pid=,command="], { encoding: "utf8" });
-    const rows = String(result.stdout ?? "").split(/\r?\n/);
-    const pids = [];
-    for (const row of rows) {
-      const match = row.match(/^\s*(\d+)\s+(.+)$/);
-      if (!match) continue;
-      const pid = Number(match[1]);
-      const command = match[2] ?? "";
-      if (processMatchesSidecar(command)) pids.push(pid);
-    }
-    for (const pid of pids) killProcessId(pid, "SIGTERM");
-    if (pids.length > 0) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      for (const pid of pids) killProcessId(pid, "SIGKILL");
+  async function cleanupOrphanedManagedEngines() {
+    // The Electron single-instance lock owns this profile. Reclaim only native
+    // private engine children whose launcher is now orphaned; executable-name
+    // scans of shared packaged sidecars could kill another profile/workspace.
+    if (process.platform === "win32") return;
+    const readRows = () => {
+      const result = spawnSync("ps", ["-Ao", "pid=,ppid=,command="], { encoding: "utf8" });
+      return String(result.stdout ?? "").split(/\r?\n/).flatMap(line => {
+        const match = line.match(/^\s*(\d+)\s+(\d+)\s+(.+)$/);
+        return match ? [{ pid: Number(match[1]), ppid: Number(match[2]), command: match[3] }] : [];
+      });
+    };
+    const root = realpathSync(userDataDir);
+    const candidates = orphanedManagedRuntimeProcesses(readRows(), root);
+    for (const signal of ["SIGTERM", "SIGKILL"]) {
+      const current = readRows();
+      for (const candidate of candidates) {
+        // Recheck identity before every signal, including after the grace period.
+        if (!current.some(row => row.pid === candidate.pid && row.ppid === candidate.ppid && row.command === candidate.command)) continue;
+        try { process.kill(candidate.pid, signal); } catch { /* already exited */ }
+      }
+      if (candidates.length && signal === "SIGTERM") await new Promise(resolve => setTimeout(resolve, 500));
     }
   }
 
@@ -1268,7 +1269,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const child = state.child;
     state.child = null;
     state.childExited = true;
-    if (!child || child.exitCode != null || child.killed) return;
+    if (!child || child.exitCode != null || child.signalCode != null) return;
 
     if (options.requestShutdown) {
       try {
@@ -1281,10 +1282,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       }
     }
 
-    if (child.exitCode == null && !child.killed) {
+    if (child.exitCode == null && child.signalCode == null) {
       child.kill("SIGTERM");
       await new Promise((resolve) => setTimeout(resolve, 500));
-      if (child.exitCode == null && !child.killed) {
+      if (child.exitCode == null && child.signalCode == null) {
         child.kill("SIGKILL");
       }
     }
@@ -1327,7 +1328,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const currentPort = ipolloworkServerState.port;
     // Stop any previously running in-process server
     if (inProcessServer) {
-      try { await inProcessServer.stop(); } catch { /* ignore */ }
+      await inProcessServer.stop();
       inProcessServer = null;
     }
     await stopChild(ipolloworkServerState);
@@ -1376,12 +1377,8 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const candidates = process.env.IPOLLOWORK_DEV_MODE === "1"
       ? [devPath, ...packagedPaths]
       : [...packagedPaths, devPath];
-    const embeddedPath = candidates.find((candidate) => existsSync(candidate));
-    if (!embeddedPath) {
-      throw new Error(`Cannot find iPolloWork embedded server bundle. Checked: ${candidates.join(", ")}`);
-    }
     const importStartedAt = nowMs();
-    const { startEmbeddedServer } = await import(embeddedServerImportUrl(embeddedPath));
+    const { startEmbeddedServer } = await loadServer(candidates);
     console.info(`[startup] embedded server module loaded in ${nowMs() - importStartedAt}ms`);
     // startEmbeddedServer falls back to an OS-assigned port if `port` races
     // into EADDRINUSE (see apps/server/src/serve-node.ts), so the bound port
@@ -1477,14 +1474,14 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   async function stopAllRuntimeChildren() {
     // Stop the in-process server (and its managed OpenCode child) if running.
     if (inProcessServer) {
-      try { await inProcessServer.stop(); } catch { /* ignore */ }
+      await inProcessServer.stop();
       inProcessServer = null;
     }
     await stopChild(ipolloworkServerState);
     await stopChild(orchestratorState, {
       requestShutdown: () => requestOrchestratorShutdown(orchestratorState.dataDir || orchestratorDataDir()),
     });
-    await clearOrchestratorAuthFile(orchestratorState.dataDir || orchestratorDataDir()).catch(() => undefined);
+    if (orchestratorState.dataDir) await clearOrchestratorAuthFile(orchestratorState.dataDir).catch(() => undefined);
     await stopChild(engineState);
 
     Object.assign(engineState, createEngineState());
@@ -1500,8 +1497,8 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     await stopAllRuntimeChildren();
     console.info(`[startup] runtime children stopped in ${nowMs() - childrenStartedAt}ms`);
     const sidecarsStartedAt = nowMs();
-    await cleanupPackagedSidecars();
-    console.info(`[startup] stale packaged sidecars checked in ${nowMs() - sidecarsStartedAt}ms`);
+    await cleanupOrphanedManagedEngines();
+    console.info(`[startup] orphaned managed engines checked in ${nowMs() - sidecarsStartedAt}ms`);
     lifecycleState = "idle";
     runtimePreparedForNextStart = true;
     console.info(`[startup] runtime preparation completed in ${nowMs() - startedAt}ms`);
@@ -1549,13 +1546,23 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       options.forceRestart !== true &&
       ipolloworkServerState.inProcess &&
       lifecycleState === "healthy" &&
-      normalizeWorkspaceKey(engineState.projectDir) === normalizeWorkspaceKey(safeProjectDir) &&
+      (!options.opencodeBinPath || options.opencodeBinPath === ipolloworkServerState.managedOpencodeBinPath) &&
       ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess &&
       ipolloworkServerState.networkEnvironmentFingerprint === currentNetworkEnvironmentFingerprint
     ) {
       const existing = snapshotiPolloWorkServerState(ipolloworkServerState);
       if (existing.running && existing.baseUrl && (existing.ownerToken || existing.clientToken)) {
-        return snapshotEngineState(engineState);
+        try {
+          const list = await fetchJson(`${existing.baseUrl}/workspaces`, {
+            headers: { Authorization: `Bearer ${existing.ownerToken || existing.clientToken}` },
+          }, 2_000);
+          // One profile-local server owns the workspace registry. Selecting or
+          // registering another workspace must not restart unrelated sessions.
+          if (Array.isArray(list?.items)) return snapshotEngineState(engineState);
+        } catch {
+          // This owned server is unhealthy. The serialized restart stops it
+          // before replacement; an occupied foreign port is never killed.
+        }
       }
     }
 
@@ -1701,12 +1708,11 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       throw new Error("workspacePath is required");
     }
     const resolved = path.resolve(workspacePath);
-    if (normalizeWorkspaceKey(engineState.projectDir) !== normalizeWorkspaceKey(resolved)) {
-      await engineStart(resolved, {
-        runtime: DIRECT_RUNTIME,
-        workspacePaths: [resolved],
-      });
-    }
+    await engineStart(resolved, {
+      runtime: DIRECT_RUNTIME,
+      workspacePaths: [resolved],
+      ipolloworkRemoteAccess: ipolloworkServerState.remoteAccessEnabled,
+    });
     return {
       id: normalizeWorkspaceKey(resolved),
       path: resolved,
@@ -2051,7 +2057,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     ipolloworkServerInfo,
     ipolloworkServerRestart: (options) => withRuntimeLifecycle(() => ipolloworkServerRestart(options)),
     orchestratorStatus,
-    orchestratorWorkspaceActivate,
+    orchestratorWorkspaceActivate: (input) => withRuntimeLifecycle(() => orchestratorWorkspaceActivate(input)),
     orchestratorInstanceDispose,
     orchestratorStartDetached,
     sandboxDoctor,

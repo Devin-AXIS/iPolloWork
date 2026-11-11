@@ -15,7 +15,6 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { compareVersions } from "./updater.mjs";
 import { fetchDesktopResourceManifest } from "./desktop-resource-manifest.mjs";
 import { DESKTOP_RESOURCE_APP_VERSION } from "./app-version.mjs";
 
@@ -189,47 +188,13 @@ async function officialGlobalPackageEntrypoints(descriptor, platform, env, homeD
   return uniqueDirectories(moduleRoots, platform).map((root) => path.join(root, relativePath));
 }
 
-async function codexClientCandidates(platform, env, homeDir) {
-  if (platform === "darwin") {
-    return [
-      ...["/Applications", path.join(homeDir, "Applications")].flatMap(root =>
-        ["Codex.app", "ChatGPT.app"].flatMap(app => [
-          path.join(root, app, "Contents", "Resources", "codex-cli", "bin", "codex"),
-          path.join(root, app, "Contents", "Resources", "codex-cli", "CodexCLI.app", "Contents", "MacOS", "codex"),
-        ])),
-      "/Applications/Codex.app/Contents/Resources/codex",
-      "/Applications/ChatGPT.app/Contents/Resources/codex",
-      path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex"),
-      path.join(homeDir, "Applications", "ChatGPT.app", "Contents", "Resources", "codex"),
-    ];
-  }
-  if (platform !== "win32") return [];
-
-  const candidates = [
-    env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "Microsoft", "WindowsApps", "codex.exe"),
-    homeDir && path.join(homeDir, ".local", "bin", "codex.exe"),
-  ].filter(Boolean);
-  const programFiles = env.ProgramFiles || env.PROGRAMFILES;
-  const windowsApps = programFiles && path.join(programFiles, "WindowsApps");
-  const appEntries = (await directoryEntries(windowsApps))
-    .filter((entry) => entry.isDirectory() && entry.name.toLowerCase().startsWith("openai.codex_"))
-    .sort((left, right) => right.name.localeCompare(left.name, undefined, { numeric: true }));
-  for (const entry of appEntries) {
-    candidates.push(path.join(windowsApps, entry.name, "app", "resources", "codex.exe"));
-  }
-  const localCodexBin = env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "OpenAI", "Codex", "bin");
-  for (const entry of await directoryEntries(localCodexBin)) {
-    if (entry.isDirectory()) candidates.push(path.join(localCodexBin, entry.name, "codex.exe"));
-  }
-  return candidates;
-}
-
 function probeRuntimeExecutable(executablePath, env) {
   return new Promise((resolve) => {
     let settled = false;
     let stdout = "";
-    const child = spawn(executablePath, ["--version"], {
-      env,
+    const wrapper = executablePath.endsWith(".js");
+    const child = spawn(wrapper ? (env.IPOLLOWORK_NODE_BIN || process.execPath) : executablePath, [...(wrapper ? [executablePath] : []), "--version"], {
+      env: { ...env, ...(wrapper && process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}) },
       windowsHide: true,
       stdio: ["ignore", "pipe", "ignore"],
     });
@@ -258,7 +223,7 @@ async function resolveLocalRuntime(descriptor, { platform, env, homeDir, probeRu
     const normalized = await normalizeOfficialRuntimePath(descriptor, candidate, platform);
     if (!normalized) return null;
     const official = looksLikeOfficialRuntime(descriptor, normalized);
-    if (!official && descriptor.id !== CODEX_ENGINE_ID) return null;
+    if (!official) return null;
     if (descriptor.id === DSH_ENGINE_ID) {
       const manifest = await readJson(path.resolve(path.dirname(normalized), "..", "package.json"));
       const installedVersion = normalizeVersion(manifest?.version);
@@ -270,7 +235,6 @@ async function resolveLocalRuntime(descriptor, { platform, env, homeDir, probeRu
       }
     }
     const version = await probeRuntime(normalized);
-    // A local CLI outside known installers must identify itself as codex-cli.
     return version && (official || typeof version === "string")
       ? { path: normalized, version: typeof version === "string" ? version : null }
       : null;
@@ -289,22 +253,7 @@ async function resolveLocalRuntime(descriptor, { platform, env, homeDir, probeRu
     const resolved = await resolveCandidate(candidate);
     if (resolved) return resolved;
   }
-  if (descriptor.id !== CODEX_ENGINE_ID) return null;
-  const clients = [];
-  for (const candidate of await codexClientCandidates(platform, env, homeDir)) {
-    if (!await pathExists(candidate)) continue;
-    const resolved = await resolveCandidate(candidate);
-    if (resolved) clients.push(resolved);
-  }
-  // Desktop updates leave multiple hash-named builds behind. Directory order
-  // (and copy time) does not identify the newest compatible CLI. Probes are cached.
-  clients.sort((left, right) => {
-    const leftKnown = typeof left.version === "string";
-    const rightKnown = typeof right.version === "string";
-    if (leftKnown && rightKnown) return compareVersions(right.version, left.version) ?? 0;
-    return Number(rightKnown) - Number(leftKnown);
-  });
-  return clients[0] ?? null;
+  return null;
 }
 
 export function run(command, args, options = {}) {
@@ -483,7 +432,7 @@ export function createEnginePackageManager(options) {
   for (const id of OPTIONAL_ENGINE_IDS) {
     const descriptor = engineDescriptor(id, versions, platform, architecture);
     const configured = environment[descriptor.environmentKey]?.trim();
-    if (configured) externalOverrides.set(id, configured);
+    if (configured && id !== CODEX_ENGINE_ID) externalOverrides.set(id, configured);
   }
 
   function descriptorFor(engineId) {
@@ -540,7 +489,9 @@ export function createEnginePackageManager(options) {
 
   async function probeRuntime(descriptor, executablePath) {
     if (descriptor.id !== CODEX_ENGINE_ID) return true;
-    const key = platform === "win32" ? executablePath.toLowerCase() : executablePath;
+    const file = await stat(executablePath).catch(() => null);
+    if (!file) return false;
+    const key = `${executablePath}:${file.mtimeMs}:${file.size}`;
     const cached = runtimeProbeCache.get(key);
     if (cached && Date.now() < cached.retryAt) return cached.pending;
     // Share in-flight work and successful probes, but let transient startup
@@ -551,7 +502,7 @@ export function createEnginePackageManager(options) {
         try {
           const result = await (options.probeRuntime
             ? options.probeRuntime({ engineId: descriptor.id, executablePath })
-            : probeRuntimeExecutable(executablePath, environment));
+            : probeRuntimeExecutable(executablePath, { ...environment, CODEX_HOME: installedRoot(descriptor) }));
           if (result) return result;
         } catch {
           // A failed spawn or a rejected probe gets the same bounded retry.
@@ -618,6 +569,15 @@ export function createEnginePackageManager(options) {
 
   /** @returns {Promise<{ path: string; version: string | null; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; nodePath: string | null } | null>} */
   async function resolveRuntimeSource(descriptor) {
+    // Codex is pinned to the app-managed package. Personal installations and
+    // inherited overrides must not change the client runtime or its defaults.
+    if (descriptor.id === CODEX_ENGINE_ID) {
+      const managedCli = cliPath(descriptor);
+      const version = await probeRuntime(descriptor, managedCli);
+      return version === descriptor.version
+        ? { path: managedCli, version, source: "downloaded", nodePath: null }
+        : null;
+    }
     const override = externalOverrides.get(descriptor.id);
     const overrideVersion = override && existsSync(override) ? await probeRuntime(descriptor, override) : false;
     if (override && overrideVersion) {
@@ -698,7 +658,11 @@ export function createEnginePackageManager(options) {
       installedBytes: installedState.installedBytes,
       downloadedBytes: operation?.downloadedBytes ?? null,
       totalBytes: operation?.totalBytes ?? null,
-      error: operation?.error ?? null,
+      error: operation?.error ?? (!installedState.installed && !operation && descriptor.id === CODEX_ENGINE_ID
+        ? await pathExists(cliPath(descriptor))
+          ? `Codex ${descriptor.version} 运行时损坏或版本不符，请重新安装客户端引擎。`
+          : `未安装客户端独立的 Codex ${descriptor.version}，请在此安装。不会使用本机个人 Codex。`
+        : null),
     };
     return info;
   }
@@ -828,6 +792,9 @@ export function createEnginePackageManager(options) {
       await installFromRelease(descriptor, stagingRoot, temporaryRoot, cloudBaseUrl);
       const stagedCli = path.join(stagingRoot, descriptor.cliRelativePath);
       if (!await pathExists(stagedCli)) throw new Error("Engine package does not contain the expected runtime executable.");
+      if (descriptor.id === CODEX_ENGINE_ID && await probeRuntime(descriptor, stagedCli) !== descriptor.version) {
+        throw new Error(`Codex ${descriptor.version} 运行时校验失败，安装包已拒绝。`);
+      }
       const installedBytes = await directorySize(stagingRoot);
       await writeFile(path.join(stagingRoot, ".installed.json"), `${JSON.stringify({
         engineId: descriptor.id,

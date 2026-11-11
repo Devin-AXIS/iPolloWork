@@ -105,6 +105,8 @@ export type ConversationSnapshot = {
   session: ConversationSession;
   messages: UIMessage[];
   todos: TodoItem[];
+  /** Local cache revision captured before reading this snapshot. */
+  todoCacheRevision?: number;
   status: ConversationStatus;
   contextUsage?: ConversationContextUsage;
 };

@@ -253,6 +253,27 @@ function messageForItem(
       }],
     };
   }
+  if (type === "collabAgentToolCall") {
+    const children = Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds.filter((id): id is string => typeof id === "string") : [];
+    if (completed && !children.length && item.status !== "failed" && item.status !== "interrupted") return null;
+    const states = isRecord(item.agentsStates) ? item.agentsStates : {};
+    const parts = (children.length ? children : [null]).map((child): DynamicToolUIPart => {
+      const agent = child && isRecord(states[child]) ? states[child] : null;
+      const childStatus = agent ? stringValue(agent.status) : null;
+      const delegationStatus = childStatus === "completed" ? "completed" : childStatus === "running" ? "running"
+        : childStatus === "errored" || childStatus === "interrupted" || childStatus === "shutdown" ? "failed" : "unknown";
+      const callId = child ? `${id}:${child}` : id;
+      const shared = {
+        type: "dynamic-tool" as const, toolName: "task", toolCallId: callId,
+        input: { prompt: stringValue(item.prompt) ?? "" },
+        callProviderMetadata: { ipollowork: { partId: callId, ...(child ? { sessionId: child } : {}), parentSessionId: stringValue(item.senderThreadId) ?? threadId, nativeTool: stringValue(item.tool) ?? "task", delegationStatus } },
+      };
+      if (item.status === "failed" || item.status === "interrupted") return { ...shared, state: "output-error", errorText: "Codex collaboration call did not complete" };
+      const output = child ? `<task id="${child}" state="${delegationStatus}">${agent && typeof agent.message === "string" ? agent.message : ""}</task>` : "";
+      return completed ? { ...shared, state: "output-available", output } : { ...shared, state: "input-streaming" };
+    });
+    return { id, role: "assistant", metadata, parts };
+  }
   const tool = toolPart(item, completed, threadId);
   return tool ? { id, role: "assistant", metadata, parts: [tool] } : null;
 }
@@ -557,7 +578,16 @@ export function mapCodexHarnessEvent(
 }
 
 export function mapCodexHarnessSnapshot(snapshot: unknown): ConversationSnapshot {
-  return mapOpenCodeConversationSnapshot(snapshot);
+  const mapped = mapOpenCodeConversationSnapshot(snapshot);
+  // Codex snapshots already select the current native turn on the server.
+  // They have update_plan events, not OpenCode todowrite message parts.
+  const todos = isRecord(snapshot) && Array.isArray(snapshot.todos) ? snapshot.todos : [];
+  return { ...mapped, todos: todos.flatMap<ConversationSnapshot["todos"][number]>((todo) => {
+    if (!isRecord(todo) || typeof todo.id !== "string" || typeof todo.content !== "string"
+      || typeof todo.priority !== "string"
+      || (todo.status !== "pending" && todo.status !== "in_progress" && todo.status !== "completed")) return [];
+    return [{ id: todo.id, content: todo.content, status: todo.status, priority: todo.priority }];
+  }) };
 }
 
 export function codexNativeRequest(native: unknown): { rpcId: string | number; method: string; params: Record<string, unknown> } | null {
