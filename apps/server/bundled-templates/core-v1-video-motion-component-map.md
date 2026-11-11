@@ -60,11 +60,11 @@ Use the same transition for repeated continuity when that supports the story. Va
 | Primary pattern | Default attention path | Recipe | Native components |
 | --- | --- | --- | ---: |
 | `progressive-build` | Reveal ordered ideas, layers, or a statement in meaningful beats. | [progressive-build.md](progressive-build.md) | 0 |
-| `focus-transfer` | Move attention among peers while their relationship remains visible. | [focus-transfer.md](focus-transfer.md) | 4 |
+| `focus-transfer` | Move attention among peers while their relationship remains visible. | [focus-transfer.md](focus-transfer.md) | 3 |
 | `path-journey` | Advance a route, workflow, dependency, or chronology. | [path-journey.md](path-journey.md) | 5 |
 | `state-transformation` | Make a before/after, correction, resolution, or completion legible. | [state-transformation.md](state-transformation.md) | 1 |
 | `data-accumulation` | Build quantitative evidence, rank, distribution, or signal over time. | [data-accumulation.md](data-accumulation.md) | 7 |
-| `asset-exploration` | Guide attention through media, an interface, or a device. | [asset-exploration.md](asset-exploration.md) | 8 |
+| `asset-exploration` | Guide attention through media, an interface, or a device. | [asset-exploration.md](asset-exploration.md) | 7 |
 | `montage` | — | [montage.md](montage.md) | overlay |
 | `camera-journey` | — | [camera-journey.md](camera-journey.md) | overlay |
 | `dialogue` | — | [dialogue.md](dialogue.md) | overlay |
@@ -87,7 +87,6 @@ Move attention among peers while their relationship remains visible.
 | `device-carousel` | body | seekable | Visit three screen images with independent depth planes, focus transfers and an overview landing. |
 | `interface-state-board` | body | seekable | Compare important UI states before a walkthrough. |
 | `split-screen` | body | seekable | A balanced two-panel media layout for parallel stories, perspectives or before-and-after framing. |
-| `workflow-demo-cards` | body | legacy metadata | Show up to four workflow states as cards with one highlighted state. |
 
 ## path-journey
 
@@ -129,7 +128,6 @@ Guide attention through media, an interface, or a device.
 
 | Component | Typical phase | Registry contract | Intended use |
 | --- | --- | --- | --- |
-| `browser-feature-tour` | body | legacy metadata | Present a browser product feature with named hotspots. |
 | `browser-walkthrough` | body | seekable | A browser UI walkthrough with editable steps, selected state and deterministic cursor click. |
 | `device-mockup` | body | seekable | A lightweight themed phone or laptop mockup with optional screen media. |
 | `media-hero` | body | seekable | A cinematic media-first hero with a readable headline and optional image source. |
