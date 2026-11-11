@@ -1,23 +1,13 @@
 async function openReadySession(ctx) {
-  const sessions = await ctx.control("session.list_sessions");
-  ctx.assert(Array.isArray(sessions), "The session list was unavailable.");
-  for (const session of [...sessions].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 12)) {
-    try {
-      await ctx.control("session.open", { sessionId: session.sessionId });
-      await ctx.waitFor(`(() => {
-        if (!window.__ipolloworkControl.snapshot().route.includes(${JSON.stringify(session.sessionId)})) return false;
-        return window.__ipolloworkControl.listActions()
-          .some((action) => action.id === "eval.session.seed_error" && !action.disabled);
-      })()`, {
-        timeoutMs: 10_000,
-        label: `error-boundary controls for ${session.sessionId}`,
-      });
-      return session.sessionId;
-    } catch {
-      // A recent session can belong to a disconnected workspace; try another.
-    }
-  }
-  throw new Error("No ready session was available for the error recovery proof.");
+  const previous = await ctx.eval("location.hash");
+  await ctx.control("session.create_task");
+  return ctx.waitFor(`(() => {
+    if (location.hash === ${JSON.stringify(previous)}) return false;
+    const sessionId = location.hash.match(/ses_[A-Za-z0-9]+/)?.[0];
+    return sessionId && !document.querySelector('[data-message-role=user]')
+      && window.__ipolloworkControl.listActions().some(action => action.id === 'eval.session.seed_error')
+      && sessionId;
+  })()`, { timeoutMs: 30_000, label: "fresh error recovery conversation" });
 }
 
 export default {
@@ -32,7 +22,7 @@ export default {
           timeoutMs: 30_000,
           label: "window.__ipolloworkControl",
         });
-        await openReadySession(ctx);
+        const sessionId = await openReadySession(ctx);
         const canStop = await ctx.eval(`window.__ipolloworkControl.listActions()
           .some((action) => action.id === "composer.stop" && !action.disabled)`);
         if (canStop) await ctx.control("composer.stop");
@@ -46,7 +36,7 @@ export default {
             voiceover: "这一轮明确报错后，输入框立即恢复，我可以编辑并发送下一条需求。",
             action: async () => {
               await ctx.control("eval.session.seed_error", { prompt: failedPrompt, errorText });
-              await ctx.waitForText(errorText, { timeoutMs: 10_000 });
+              await ctx.waitFor("document.querySelector('[data-assistant-run-error]')?.innerText.includes('可以重试或继续发送消息')", { timeoutMs:10_000 });
               await ctx.control("composer.set_text", { text: recoveryPrompt });
               await ctx.waitFor(`window.__ipolloworkControl.listActions()
                 .some((action) => action.id === "composer.send" && !action.disabled)`, {
@@ -57,8 +47,8 @@ export default {
             assert: async () => {
               const state = await ctx.eval(`(() => ({
                 failedRows: Array.from(document.querySelectorAll('[data-message-role="user"]'))
-                  .filter((message) => message.textContent?.trim() === ${JSON.stringify(failedPrompt)}).length,
-                staleThinking: Array.from(document.querySelectorAll('[role="status"]'))
+                  .filter((message) => message.textContent?.includes(${JSON.stringify(failedPrompt)})).length,
+                staleThinking: Array.from(document.querySelectorAll('[data-testid=assistant-current-state]'))
                   .some((element) => /正在思考|Thinking/i.test(element.textContent ?? "")),
                 sendEnabled: window.__ipolloworkControl.listActions()
                   .some((action) => action.id === "composer.send" && !action.disabled),
@@ -70,7 +60,7 @@ export default {
             screenshot: {
               name: "session-error-followup-ready",
               fromSurface: true,
-              requireText: [failedPrompt, errorText, recoveryPrompt],
+              requireText: [failedPrompt, "本次任务未完成", recoveryPrompt],
             },
           });
 
@@ -83,7 +73,7 @@ export default {
               await ctx.control("composer.send");
               await ctx.waitFor(`(() => {
                 const users = Array.from(document.querySelectorAll('[data-message-role="user"]'))
-                  .filter((message) => message.textContent?.trim() === ${JSON.stringify(recoveryPrompt)});
+                  .filter((message) => message.textContent?.includes(${JSON.stringify(recoveryPrompt)}));
                 const assistants = Array.from(document.querySelectorAll('[data-message-role="assistant"]'));
                 const stopDisabled = window.__ipolloworkControl.listActions()
                   .some((action) => action.id === "composer.stop" && action.disabled);
@@ -99,14 +89,14 @@ export default {
             assert: async () => {
               const state = await ctx.eval(`(() => {
                 const users = Array.from(document.querySelectorAll('[data-message-role="user"]'))
-                  .filter((message) => message.textContent?.trim() === ${JSON.stringify(recoveryPrompt)});
+                  .filter((message) => message.textContent?.includes(${JSON.stringify(recoveryPrompt)}));
                 const assistants = Array.from(document.querySelectorAll('[data-message-role="assistant"]'));
                 return {
                   matchingUsers: users.length,
                   latestAssistant: assistants.at(-1)?.innerText ?? "",
                   stopDisabled: window.__ipolloworkControl.listActions()
                     .some((action) => action.id === "composer.stop" && action.disabled),
-                  staleThinking: Array.from(document.querySelectorAll('[role="status"]'))
+                  staleThinking: Array.from(document.querySelectorAll('[data-testid=assistant-current-state]'))
                     .some((element) => /正在思考|Thinking/i.test(element.textContent ?? "")),
                 };
               })()`);
@@ -118,25 +108,17 @@ export default {
             screenshot: {
               name: "session-error-followup-completed",
               fromSurface: true,
-              requireText: [errorText, recoveryPrompt, "恢复成功"],
+              requireText: ["本次任务未完成", recoveryPrompt, "恢复成功"],
             },
           });
         } finally {
-          // Remove only this flow's authoritative follow-up and reload. The
-          // deterministic failed turn is client-only, so it disappears with
-          // the reload and repeated proof runs do not pollute user history.
-          const canStopAfter = await ctx.eval(`window.__ipolloworkControl.listActions()
-            .some((action) => action.id === "composer.stop" && !action.disabled)`).catch(() => false);
-          if (canStopAfter) await ctx.control("composer.stop").catch(() => undefined);
-          await ctx.eval(`(() => {
-            const row = Array.from(document.querySelectorAll('[data-message-role="user"]'))
-              .find((message) => message.textContent?.trim() === ${JSON.stringify(recoveryPrompt)});
-            const revert = row ? Array.from(row.querySelectorAll("button")).at(-1) : null;
-            revert?.click();
-            return Boolean(revert);
-          })()`).catch(() => false);
-          await ctx.eval("new Promise((resolve) => setTimeout(() => resolve(true), 1200))", { awaitPromise: true });
-          await ctx.eval("location.reload(); true").catch(() => undefined);
+          // Keep the proof-only conversation for review. Never revert user history.
+          const ownsCurrentSession = await ctx.eval(`location.hash.includes(${JSON.stringify(sessionId)})`);
+          if (ownsCurrentSession) {
+            const canStopAfter = await ctx.eval(`window.__ipolloworkControl.listActions()
+              .some(action => action.id === "composer.stop" && !action.disabled)`);
+            if (canStopAfter) await ctx.control("composer.stop");
+          }
         }
       },
     },

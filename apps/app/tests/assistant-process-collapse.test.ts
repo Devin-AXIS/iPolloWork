@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { getToolActivityLabel } from "../src/lib/tool-activity";
+import { t } from "../src/i18n";
 
 import {
   getActiveAssistantMessageId,
@@ -18,6 +20,15 @@ import {
 } from "../src/components/chat/utils";
 
 describe("assistant process collapse sections", () => {
+  test("keeps shell commands and command-like descriptions out of activity labels", () => {
+    for (const toolName of ["bash", "exec_command", "functions.exec"]) {
+      for (const description of [undefined, "sleep 8 && echo done", "Check project files"]) {
+        const part = { type: "dynamic-tool", toolName, toolCallId: "command-label", state: "input-available", input: { command: "sleep 8 && echo done", description } } satisfies Parameters<typeof getToolActivityLabel>[0];
+        expect(getToolActivityLabel(part)).toBe(t("chat.activity.command"));
+        expect(getToolActivityLabel({ ...part, state: "output-error", errorText: "ENOENT /private/path" })).toBe(t("chat.activity.failed"));
+      }
+    }
+  });
   test("keeps the original user-turn start when a later continuation has a shorter timing", () => {
     expect(earliestProcessTimestamp(70_000, null, 1_000)).toBe(1_000);
   });

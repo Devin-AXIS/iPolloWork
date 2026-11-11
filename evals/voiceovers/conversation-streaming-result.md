@@ -30,13 +30,13 @@
 
 15. During an automatic retry, the conversation shows a calm retry status and countdown. The transport error remains in collapsed technical details.
 
-16. When retries end in a terminal error, the reason appears as ordinary text at the end of that response, without a separate error card.
+16. 重试仍未成功时，对话明确说明原因和恢复办法，原始错误默认收在技术详情中。
 
-17. If an image was saved before the run fails, its open action and generated status remain available; the reason appears in the same response text.
+17. 图片已经保存、但整个任务失败时，图片只展示一次，仍可打开或下载，旁边说明任务尚未全部完成。
 
-18. After an interrupted run is loaded from history, its partial answer remains visible and the interruption reason appears once as plain response text.
+18. 重新打开中断的任务，已有内容仍然保留，界面说明可以继续发送消息，不再显示执行中的动画。
 
-19. If the selected model is unsupported by this account, the reason appears as ordinary text in the conversation, without an error card.
+19. 当前账号无法使用所选模型时，界面用中文说明模型不可用，并提示选择其他模型后重试。
 
 20. 工具直接显示文件名或具体操作，每条默认收起，点击才展开参数和输出，不再套一层工具分类。
 

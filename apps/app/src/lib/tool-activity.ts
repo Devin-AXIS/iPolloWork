@@ -49,9 +49,9 @@ function hostnameOf(url: string | undefined): string | undefined {
  * streamed input (fields may be missing despite the type contract).
  */
 export function getToolActivityLabel(part: AnyToolPart): string {
-  if (isBashToolPart(part)) {
-    const description = part.input?.description?.trim()
-    return truncateText(description || part.input?.command?.trim() || t("chat.activity.command"), 96)
+  if (part.state === "output-error") return t("chat.activity.failed")
+  if (isBashToolPart(part) || (part.type === "dynamic-tool" && ["exec_command", "functions.exec"].includes(part.toolName))) {
+    return t("chat.activity.command")
   }
   if (isReadToolPart(part)) {
     return t("chat.activity.read", { name: parseFilename(part.input?.filePath) })

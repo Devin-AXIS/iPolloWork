@@ -8,11 +8,19 @@ async function assertImageBadge(ctx, variant, icon, processing = false) {
   ctx.assert(state.slot === 'badge' && state.variant === variant && state.icon && state.animated === processing && state.font === '10px' && state.line === '14px', JSON.stringify(state));
 }
 
+async function assertFailureUX(ctx, title, hint, raw) {
+  await ctx.waitFor(`document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.innerText.includes(${JSON.stringify(title)})`);
+  const state = await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),e=h.querySelector('[data-assistant-run-error]'),d=e.querySelector('details');return {text:e.innerText,raw:e.textContent,closed:d&&!d.open,notices:h.querySelectorAll('[data-testid=run-issue-notice]').length,activity:h.querySelectorAll('.chat-live-activity,.chat-tool-pulse,.animate-spin').length}})()`);
+  ctx.assert(state.text.includes(title)&&state.text.includes(hint)&&!state.text.includes(raw)&&state.raw.includes(raw)&&state.closed&&state.notices===1&&state.activity===0, JSON.stringify(state));
+}
+
 export async function mountFixture(options = {}) {
   window.__streamingAnswerProof?.cleanup?.();
   document.querySelectorAll("#streaming-answer-proof").forEach((node) => node.remove());
-  const resources = performance.getEntriesByType("resource").map((entry) => entry.name);
-  const moduleUrl = (name) => resources.find((url) => url.includes(name));
+  const moduleUrl = (name) => performance.getEntriesByType("resource").map(entry => entry.name).find(url => url.includes(name));
+  for (let attempt = 0; attempt < 100 && !["/react.js?", "/react-dom_client.js?", "/@tanstack_react-query.js?"].every(moduleUrl); attempt++) {
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
   const { default: React } = await import(moduleUrl("/react.js?"));
   const { default: ReactDOM } = await import(moduleUrl("/react-dom_client.js?"));
   const { QueryClient, QueryClientProvider } = await import(moduleUrl("/@tanstack_react-query.js?"));
@@ -76,7 +84,7 @@ export async function mountFixture(options = {}) {
   };
   const tool = {
     id: "proof-tool", role: "assistant",
-    parts: [{ type: "dynamic-tool", toolName: "bash", toolCallId: "proof-tool-call", input: { command: "rg --files", description: "检查项目文件" }, state: "input-available" }],
+    parts: [{ type: "dynamic-tool", toolName: "bash", toolCallId: "proof-tool-call", input: { command: "rg --files", description: "rg --files" }, state: "input-available" }],
   };
   const completedTool = { ...tool, parts: [{ ...tool.parts[0], state: "output-available", output: "ok" }] };
   const answer = (text, state) => ({
@@ -127,11 +135,16 @@ export async function mountFixture(options = {}) {
         const response = { id: "compact-answer", role: "assistant", ...(phase === "draft" ? {} : { metadata: { ipollowork: { messagePhase: "final_answer", ...(phase === "finishing" || phase === "done" ? { completed: Date.now() } : {}) } } }), parts: [{ type: "text", text, state: phase === "done" || phase === "finishing" ? "done" : "streaming" }] };
         setMessages(phase === "thinking" ? [user,reasoning] : [user,reasoning,progress,tools,...(phase === "tools" || phase === "approval" ? [] : [response])]);
       };
-      window.__streamingAnswerProof.showLongAnswer = () => {
+      window.__streamingAnswerProof.showLongAnswer = (draft = false) => {
         setWaitingLabel(undefined); setActiveMessageBaseline(null); setStopAcknowledged(false); setArtifactFiles([]); setStatus("streaming"); setRunOutcome("running");
-        setMessages([initialUser, answer("这是一份持续更新的报告。\n\n" + "正在整理可供阅读的详细内容。\n\n".repeat(120), "streaming")]);
+        const response = answer("这是一份持续更新的报告。\n\n" + "正在整理可供阅读的详细内容。\n\n".repeat(120), "streaming");
+        setMessages([initialUser, ...(draft ? [completedTool] : []), draft ? { ...response, metadata: undefined } : response]);
       };
       window.__streamingAnswerProof.appendLongAnswer = () => setMessages(current => current.map(message => message.id === "proof-answer" ? { ...message, parts: [{ type: "text", state: "streaming", text: message.parts[0].text + "\n\n新增内容。".repeat(20) }] } : message));
+      window.__streamingAnswerProof.finishLongAnswer = () => {
+        setMessages(current => current.map(message => message.id === "proof-answer" ? { ...message, parts: message.parts.map(part => ({ ...part, state: "done" })) } : message));
+        setStatus("ready"); setRunOutcome("completed");
+      };
       window.__streamingAnswerProof.scroll = scroll;
       window.__streamingAnswerProof.scrollStore = useSessionScrollStore;
       window.__streamingAnswerProof.pauseProcess = () => setStatus("ready");
@@ -335,6 +348,8 @@ export async function mountFixture(options = {}) {
         setRetryStatus({ type: "retry", attempt: 2, next: Date.now() + 10000, message: "HTTP 503 upstream connection reset" });
       };
       window.__streamingAnswerProof.showToolFailure = () => {
+        useSessionActivityStore.getState().clearError("proof", "proof");
+        setStopAcknowledged(false); setFinalizing(false); setArtifactFiles([]);
         setRunOutcome("running");
         setRetryStatus(null);
         setStatus("streaming");
@@ -397,15 +412,22 @@ export async function mountFixture(options = {}) {
 
   window.__streamingAnswerProof = {
     cleanup() { root.unmount(); host.remove(); document.querySelector('#streaming-review-controls')?.remove(); setLocale(previousLocale); delete window.__streamingAnswerProof; },
-    enableReviewControls() {
+    enableReviewControls(exceptions = false) {
       document.querySelector('#streaming-review-controls')?.remove();
       const controls = document.createElement("aside");
       controls.id = "streaming-review-controls";
-      controls.className = "fixed bottom-5 left-1/2 z-[60] flex max-w-[95vw] -translate-x-1/2 flex-wrap items-center gap-2 rounded-xl border border-border bg-background p-3 text-sm text-foreground shadow-sm";
+      controls.style.cssText = "position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:60;width:max-content;max-width:calc(100vw - 32px)";
+      controls.className = "flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background p-3 text-sm text-foreground shadow-sm";
       const label = document.createElement("span"); label.className = "mr-2 text-xs text-muted-foreground"; label.textContent = "交互验收示例 · 示例数据"; controls.append(label);
-      for (const [title, phase] of [["思考","thinking"],["工具执行","tools"],["回复草稿","draft"],["流式回答","answer"],["收尾","finishing"],["完成","done"],["停止","stopped"]]) {
+      const errorActions = { rate: "showTerminalError", tool: "showToolFailure", retry: "showRetry", partial: "showSavedImageFailure", model: "showUnsupportedModel" };
+      const entries = exceptions ? [["限流失败","rate"],["工具失败","tool"],["自动重试","retry"],["部分成果","partial"],["模型不可用","model"]] : [["思考","thinking"],["工具执行","tools"],["回复草稿","draft"],["流式回答","answer"],["收尾","finishing"],["完成","done"],["停止","stopped"]];
+      for (const [title, phase] of entries) {
         const button = document.createElement("button"); button.type = "button"; button.className = "rounded-lg border border-border px-3 py-1.5 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"; button.textContent = title;
-        button.onclick = () => window.__streamingAnswerProof.showAgentPhase(phase); controls.append(button);
+        button.onclick = () => {
+          const proof = window.__streamingAnswerProof;
+          if (exceptions) { if (phase === "rate") proof.showRetry(); proof[errorActions[phase]](); }
+          else proof.showAgentPhase(phase);
+        }; controls.append(button);
       }
       const close = document.createElement("button"); close.type = "button"; close.className = "px-2 text-xs text-muted-foreground hover:text-foreground"; close.textContent = "关闭示例"; close.onclick = () => window.__streamingAnswerProof.cleanup(); controls.append(close);
       document.body.append(controls);
@@ -432,7 +454,7 @@ export default {
             const process = host.querySelector('[data-testid=assistant-process-column]');
             return { open: process.querySelector('button')?.getAttribute('aria-expanded'),
               commentary: host.querySelector('[data-testid=assistant-progress-timeline]')?.innerText.includes('我先检查相关文件'),
-              commentaryBeforeCommand: (()=>{const timeline=host.querySelector('[data-testid=assistant-progress-timeline]');return timeline.textContent.indexOf('我先检查相关文件') < timeline.textContent.indexOf('检查项目文件')})(),
+              commentaryBeforeCommand: (()=>{const timeline=host.querySelector('[data-testid=assistant-progress-timeline]');return timeline.textContent.indexOf('我先检查相关文件') < timeline.textContent.indexOf('正在执行命令')})(),
               liveAction: host.querySelector('[data-tool-action=command] button')?.textContent,
               commandDetailsClosed: host.querySelector('[data-tool-action=command] button')?.getAttribute('aria-expanded')==='false',
               duplicateProgress: Boolean(host.querySelector('[data-testid=assistant-streaming-progress]')),
@@ -443,8 +465,9 @@ export default {
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
           ctx.assert(state.open === "false" && state.commentary && state.commentaryBeforeCommand && !state.duplicateProgress && !state.result
-            && state.liveAction?.includes("检查项目文件") && state.commandDetailsClosed
-            && !state.pending && state.currentState?.includes("检查项目文件")
+            && state.liveAction?.includes("正在执行命令") && state.commandDetailsClosed
+            && !state.pending && state.currentState?.includes("正在执行命令")
+            && !state.currentState?.includes("rg --files") && !state.liveAction?.includes("rg --files")
             && state.thinkingDots === 0, JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'true'");
@@ -466,7 +489,7 @@ export default {
           const afterTick = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] .chat-process-heading')?.textContent");
           ctx.assert(beforeTick !== afterTick && afterTick.includes("已用时"), "The live elapsed time did not advance.");
         },
-        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "检查项目文件"] },
+        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "正在执行命令"] },
       }),
     },
     {
@@ -771,112 +794,80 @@ export default {
       }),
     },
     {
-      name: "Recoverable tool failure keeps the result pending",
-      run: (ctx) => ctx.prove("A failed step leaves a quiet pending result without exposing its raw tool error", {
-        voiceover: vo[13],
-        action: async () => {
-          await ctx.eval("window.__streamingAnswerProof.showToolFailure()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('正在思考')");
-        },
-        assert: async () => {
-          const text = await ctx.eval("document.querySelector('#streaming-answer-proof')?.textContent");
-          ctx.assert(await ctx.eval("Boolean(document.querySelector('#streaming-answer-proof [data-testid=assistant-live-tool]'))&&!document.querySelector('#streaming-answer-proof .chat-tool-pulse')"),'Failed tool remains visible without pulse');
-          ctx.assert(text.includes("正在思考") && !text.includes("有一步未成功")
-            && !text.includes("ENOENT /secret/path"), text);
-        },
-        screenshot: { name: "recoverable-tool-failure", requireText: ["正在思考"] },
+      name: "Recoverable tool failure has a terminal label without taking over activity",
+      run: ctx => ctx.prove("A failed tool says the operation did not finish while the assistant owns the only active status", {
+        voiceover:vo[13],
+        action:()=>ctx.eval("window.__streamingAnswerProof.showToolFailure()"),
+        assert:async()=>{
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-live-tool]')?.innerText.includes('操作未完成')");
+          const s=await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),r=h.querySelector('[data-testid=assistant-live-tool]');return {label:r.innerText,text:h.innerText,status:h.querySelector('[data-testid=assistant-current-state]')?.innerText,pulses:h.querySelectorAll('.chat-live-activity').length,toolPulses:r.querySelectorAll('.chat-tool-pulse,.animate-spin').length}})()`);
+          ctx.assert(s.label==='操作未完成'&&s.status.includes('正在思考')&&s.pulses===1&&s.toolPulses===0&&!s.text.includes('ENOENT')&&!s.label.includes('正在执行'),JSON.stringify(s));
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-live-tool] button').click()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-live-tool]').innerText.includes('ENOENT')");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-live-tool] button').click()");
+        },screenshot:{name:'recoverable-tool-failure',requireText:['操作未完成','正在思考'],rejectText:['ENOENT','failed']},
       }),
     },
     {
-      name: "Automatic retry keeps technical detail collapsed",
-      run: (ctx) => ctx.prove("Retry status shows timing while the raw transport error is collapsed", {
-        voiceover: vo[14],
-        action: async () => {
+      name:"Automatic retry keeps a single activity entry even with details open",
+      run:ctx=>ctx.prove("Only the shared status pulses; retry details show countdown and collapsed diagnostics",{
+        voiceover:vo[14],action:async()=>{
           await ctx.eval("window.__streamingAnswerProof.showRetry()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof')?.textContent.includes('连接中断，正在自动重试')");
-          await ctx.eval("document.querySelector('#streaming-answer-proof .chat-process-heading[aria-expanded]').click()");
-        },
-        assert: async () => {
-          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
-            const details = [...host.querySelectorAll('details')].find((node) => node.textContent.includes('HTTP 503'));
-            return { retry: host.textContent.includes('第 2 次尝试'), collapsed: details && !details.open }; })()`);
-          ctx.assert(state.retry && state.collapsed, JSON.stringify(state));
-        },
-        screenshot: { name: "automatic-retry", requireText: ["正在自动重试", "第 2 次尝试"] },
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.innerText.includes('正在自动重试')");
+          await ctx.eval("document.querySelector('#streaming-answer-proof .chat-process-heading').click()");
+        },assert:async()=>{
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof .chat-process-disclosure')?.innerText.includes('第 2 次尝试')");
+          const s=await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),d=h.querySelector('.chat-process-disclosure');return {labels:h.innerText.split('连接中断，正在自动重试').length-1,pulses:h.querySelectorAll('.chat-live-activity').length,detailsSpinners:d.querySelectorAll('.chat-live-activity,.animate-spin,.lucide-loader-circle').length,attempt:d.innerText.includes('第 2 次尝试'),rawVisible:d.innerText.includes('HTTP 503'),closed:!d.querySelector('details').open}})()`);
+          ctx.assert(s.labels===1&&s.pulses===1&&s.detailsSpinners===0&&s.attempt&&!s.rawVisible&&s.closed,JSON.stringify(s));
+        },screenshot:{name:'automatic-retry',requireText:['正在自动重试','第 2 次尝试'],rejectText:['HTTP 503']},
       }),
     },
     {
-      name: "Terminal error appears in response text",
-      run: (ctx) => ctx.prove("Final failure appears as ordinary response text without a card", {
-        voiceover: vo[15],
-        action: async () => {
-          await ctx.eval("window.__streamingAnswerProof.showTerminalError()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.textContent.includes('HTTP 429 rate limit')");
-        },
-        assert: async () => {
-          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
-            return { text: host.querySelector('[data-assistant-run-error]')?.textContent,
-              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
-          ctx.assert(state.text?.includes('本次任务未完成') && state.text.includes('HTTP 429 rate limit') && state.cards === 0, JSON.stringify(state));
-        },
-        screenshot: { name: "terminal-error-details", requireText: ["本次任务未完成", "HTTP 429 rate limit"] },
+      name:"Terminal failure explains recovery in Chinese",
+      run:ctx=>ctx.prove("Rate limits explain what happened and how to recover; technical errors stay in closed details",{
+        voiceover:vo[15],action:()=>ctx.eval("window.__streamingAnswerProof.showTerminalError()"),
+        assert:async()=>{
+          await assertFailureUX(ctx,'模型当前请求较多','稍后重试，或切换其他模型','HTTP 429');
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-run-error] summary').click()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]').innerText.includes('HTTP 429')");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-run-error] summary').click()");
+        },screenshot:{name:'terminal-error-details',requireText:['模型当前请求较多','稍后重试','查看技术详情'],rejectText:['HTTP 429']},
       }),
     },
     {
-      name: "Saved image remains ready if the run fails later",
-      run: (ctx) => ctx.prove("An already saved image remains usable even when the overall run ends in failure", {
-        voiceover: vo[16],
-        action: async () => {
-          await ctx.eval("window.__streamingAnswerProof.showSavedImageFailure()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-image-status]')?.textContent.includes('图片已生成')");
-          await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.scrollIntoView({ block: 'end' })");
-        },
-        assert: async () => {
-          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
-            return { saved: host.querySelector('[data-testid=assistant-image-status]')?.textContent,
-              open: host.textContent.includes('打开图片'), run: host.textContent.includes('本次任务未完成'),
-              errorInReply: Boolean(host.querySelector('[data-assistant-result] [data-assistant-run-error]')),
-              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
-          await assertImageBadge(ctx, "success", "lucide-circle-check");
-          ctx.assert(state.saved?.includes('图片已生成') && state.open && state.run && state.errorInReply && state.cards === 0, JSON.stringify(state));
-        },
-        screenshot: { name: "saved-image-after-failure", requireText: ["图片已生成", "打开图片", "本次任务未完成"] },
+      name:"Saved image remains usable once if the overall run fails",
+      run:ctx=>ctx.prove("A saved image appears once with working open and download actions alongside an overall failure",{
+        voiceover:vo[16],action:()=>ctx.eval("window.__streamingAnswerProof.showSavedImageFailure()"),
+        assert:async()=>{
+          await assertFailureUX(ctx,'模型服务暂时不可用','可以重试或继续发送消息','HTTP 503');
+          await assertImageBadge(ctx,'success','lucide-circle-check');
+          const s=await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof');return {images:h.querySelectorAll('img[alt="cover.png"]').length,open:h.innerText.includes('打开图片'),download:h.innerText.includes('下载图片'),partial:h.innerText.includes('部分成果')}})()`);
+          ctx.assert(s.images===1&&s.open&&s.download&&s.partial,JSON.stringify(s));
+          await ctx.eval("[...document.querySelectorAll('#streaming-answer-proof button')].find(b=>b.textContent==='打开图片').click()");
+          ctx.assert(await ctx.eval("window.__streamingAnswerProof.openedPath==='design/proof/cover.png'"),'Saved image still opens after failure');
+          const downloads=await ctx.eval("window.__streamingAnswerProof.downloadRequests||0");
+          await ctx.eval("[...document.querySelectorAll('#streaming-answer-proof button')].find(b=>b.textContent==='下载图片').click()");
+          await ctx.waitFor(`window.__streamingAnswerProof.downloadRequests===${downloads+1}`);
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-run-error]').scrollIntoView({block:'end'})");
+        },screenshot:{name:'saved-image-after-failure',requireText:['图片已生成','打开图片','模型服务暂时不可用'],rejectText:['HTTP 503']},
       }),
     },
     {
-      name: "Historical interruption reopens as an interruption",
-      run: (ctx) => ctx.prove("A replayed interrupted turn keeps partial text and shows the reason inline", {
-        voiceover: vo[17],
-        action: async () => {
-          await ctx.eval("window.__streamingAnswerProof.showHistoricalInterruption()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.textContent.includes('interrupted')");
-        },
-        assert: async () => {
-          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
-            const result = host.querySelector('[data-assistant-result]');
-            return { partial: result?.textContent.includes('已完成部分内容'), rawInResult: result?.textContent.includes('interrupted'),
-              interrupted: host.querySelector('[data-assistant-run-error]')?.textContent.includes('interrupted'),
-              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
-          ctx.assert(state.partial && state.interrupted && state.cards === 0, JSON.stringify(state));
-        },
-        screenshot: { name: "historical-interruption", requireText: ["已完成部分内容", "本次任务未完成"] },
+      name:"Historical interruption keeps content and explains continuation",
+      run:ctx=>ctx.prove("Reopened partial content stays visible with one interruption hint and no continuing activity",{
+        voiceover:vo[17],action:()=>ctx.eval("window.__streamingAnswerProof.showHistoricalInterruption()"),
+        assert:async()=>{
+          await assertFailureUX(ctx,'任务已中断','可以继续发送消息','The run was interrupted');
+          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-result]')?.innerText.includes('已完成部分内容')"),'Partial answer retained');
+        },screenshot:{name:'historical-interruption',requireText:['已完成部分内容','任务已中断','可以继续发送消息'],rejectText:['interrupted']},
       }),
     },
     {
-      name: "Unsupported model explains the next action",
-      run: (ctx) => ctx.prove("An unsupported model error appears as ordinary conversation text", {
-        voiceover: vo[18],
-        action: async () => {
-          await ctx.eval("window.__streamingAnswerProof.showUnsupportedModel()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.textContent.includes('not supported')");
-        },
-        assert: async () => {
-          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
-            return { text: host.querySelector('[data-assistant-run-error]')?.textContent,
-              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
-          ctx.assert(state.text?.includes('not supported') && state.cards === 0, JSON.stringify(state));
-        },
-        screenshot: { name: "unsupported-model-guidance", requireText: ["本次任务未完成", "not supported"] },
+      name:"Unsupported model gives an understandable next step",
+      run:ctx=>ctx.prove("An unsupported model prompts the user to select another model without exposing raw provider text",{
+        voiceover:vo[18],action:()=>ctx.eval("window.__streamingAnswerProof.showUnsupportedModel()"),
+        assert:()=>assertFailureUX(ctx,'当前模型不可用','请选择其他模型后重试','not supported'),
+        screenshot:{name:'unsupported-model-guidance',requireText:['当前模型不可用','请选择其他模型后重试'],rejectText:['not supported']},
       }),
     },
     {
@@ -892,14 +883,14 @@ export default {
         },
         assert: async () => {
           const state = await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof');const rows=[...h.querySelectorAll('[data-testid=assistant-tool-action]')];return {labels:rows.map(n=>n.querySelector('button').textContent),closed:rows.every(n=>n.querySelector('button').getAttribute('aria-expanded')==='false'),nested:rows.some(n=>n.querySelector('details')),pulses:h.querySelectorAll('.chat-tool-pulse').length}})()`);
-          ctx.assert(state.labels[0].includes('entry.html')&&state.labels[1]==='Inspect entry'&&state.labels[2]==='Check theme'&&state.closed&&!state.nested&&state.pulses===0,JSON.stringify(state));
+          ctx.assert(state.labels[0].includes('entry.html')&&state.labels[1]==='正在执行命令'&&state.labels[2]==='正在执行命令'&&state.closed&&!state.nested&&state.pulses===0,JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] button').click()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-tool-action=command] pre')?.checkVisibility()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-tool-action=command]').innerText.includes(\"sed -n\")&&document.querySelectorAll('#streaming-answer-proof [data-tool-action=command] button')[1].getAttribute('aria-expanded')==='false'");
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] button').click()");
           await ctx.waitFor("!document.querySelector('#streaming-answer-proof [data-tool-action=command] pre')?.checkVisibility()");
         },
-        screenshot: {name:'compact-tool-entries',requireText:['entry.html','Inspect entry','Check theme','palette.json']},
+        screenshot: {name:'compact-tool-entries',requireText:['entry.html','正在执行命令','palette.json']},
       }),
     },
     {
@@ -912,7 +903,7 @@ export default {
             await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('submitted')");
             await ctx.waitFor("document.querySelectorAll('#streaming-answer-proof [data-active-status=true]').length===1");
             await ctx.eval("void(window.__singleStatusNode=document.querySelector('#streaming-answer-proof [data-active-status=true]'))");
-            for (const [phase,label] of [['waiting','正在思考'],['reasoning','正在思考'],['tool','检查项目文件'],['retry','连接中断'],['reasoning','正在思考'],['answer','正在回复']]) {
+            for (const [phase,label] of [['waiting','正在思考'],['reasoning','正在思考'],['tool','正在执行命令'],['retry','连接中断'],['reasoning','正在思考'],['answer','正在回复']]) {
               await ctx.eval(`window.__streamingAnswerProof.showOpenCodePhase(${JSON.stringify(phase)})`);
               await ctx.waitFor(`document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes(${JSON.stringify(label)})`);
               const state=await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof');return {same:h.querySelector('[data-active-status=true]')===window.__singleStatusNode,statuses:h.querySelectorAll('[data-active-status=true]').length,indicators:h.querySelectorAll('.chat-live-activity').length,toolPulses:h.querySelectorAll('.chat-tool-pulse').length,loading:h.querySelectorAll('[data-testid=assistant-loading]').length}})()`);
@@ -922,10 +913,10 @@ export default {
           await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('tool')");
         },
         assert: async () => {
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('检查项目文件')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.textContent.includes('正在执行命令')");
           ctx.assert(await ctx.eval("document.querySelectorAll('#streaming-answer-proof [data-active-status=true]').length===1&&document.querySelectorAll('#streaming-answer-proof .chat-live-activity').length===1"),'One status entry owns the tool stage');
         },
-        screenshot:{name:'single-status-across-phases',requireText:['检查项目文件']},
+        screenshot:{name:'single-status-across-phases',requireText:['正在执行命令']},
       }),
     },
     {

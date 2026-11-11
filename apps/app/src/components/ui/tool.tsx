@@ -137,7 +137,7 @@ const Tool = ({ title, toolPart, defaultOpen = false, className, details, active
   const inFlight = isToolPartInFlight(toolPart)
   const pulsing = (active ?? inFlight) && inFlight
   const isError = state === "output-error"
-  const label = title ?? getToolActivityLabel(toolPart)
+  const label = isError ? getToolActivityLabel(toolPart) : title ?? getToolActivityLabel(toolPart)
   const hasInput = input !== null && input !== undefined
   const hasOutput = "output" in toolPart && toolPart.output !== undefined
   const inputDiff = getInputDiff(input)
@@ -162,9 +162,6 @@ const Tool = ({ title, toolPart, defaultOpen = false, className, details, active
           <ChevronDown className={cn("absolute size-4 opacity-0 transition-opacity group-data-panel-open:rotate-180", !pulsing && "group-hover:opacity-100")} />
         </span>
         <span className="min-w-0 truncate">{label}</span>
-        {isError ? (
-          <span className="text-destructive shrink-0 text-xs">failed</span>
-        ) : null}
       </CollapsibleTrigger>
       <CollapsibleContent className="h-(--collapsible-panel-height) overflow-hidden text-sm transition-[height] duration-150 ease-out data-starting-style:h-0 data-ending-style:h-0 [&[hidden]:not([hidden='until-found'])]:hidden">
         <div className="bg-muted mt-2 flex flex-col gap-2 rounded-lg p-2 text-xs">
