@@ -123,6 +123,17 @@ export function resolveDesignNavigationPath(currentPath: string, rootPath: strin
   return { path, hash };
 }
 
+// Navigation dispatch and editor hit testing must recognize the same controls.
+const DESIGN_DECK_CONTROLS = {
+  previous: "[data-ipw-deck-control='previous'],[data-action='prev'],[data-action='previous'],[aria-label*='Previous' i],[aria-label*='上一页']",
+  next: "[data-ipw-deck-control='next'],[data-action='next'],[aria-label*='Next' i],[aria-label*='下一页']",
+};
+const DESIGN_DECK_NAVIGATION_SELECTOR = [
+  "[data-ipw-deck-control]",
+  "button[aria-label^='Go to slide']",
+  ...Object.values(DESIGN_DECK_CONTROLS),
+].join(",");
+
 export function buildDesignPreviewDocument(
   source: string,
   includeEditor: boolean,
@@ -137,13 +148,13 @@ export function buildDesignPreviewDocument(
     : "";
   const navigationRuntime = `<script id="ipollowork-design-navigation-runtime">(${designNavigationRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${editing ? "true" : "false"},${JSON.stringify(frameRevision)});<\/script>`;
   const deckRuntime = isPresentationTemplate
-    ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${fixedSlideStage ? "true" : "false"},${JSON.stringify(frameRevision)});<\/script>`
+    ? `<script id="ipollowork-design-deck-runtime">(${designDeckRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_DECK_CONTROLS)},${JSON.stringify(DESIGN_DECK_NAVIGATION_SELECTOR)},${fixedSlideStage ? "true" : "false"},${JSON.stringify(frameRevision)});<\/script>`
     : "";
   const fixedSlideRuntime = fixedSlideStage
     ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
   const editingRuntime = includeEditor
-    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement); const primaryAttribute = "data-ipollowork-design-primary"; let selectedElements: HTMLElement[] = []; let primaryElement: HTMLElement | null = null; const effectiveMode = selectedElements.length > 1 ? "move" : mode; const selectedTargets = (ids: unknown) => */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"},${JSON.stringify(DESIGN_MULTI_SELECTION_STYLE_FIELDS)},${JSON.stringify(frameRevision)},(${designMediaTools.toString()})());<\/script>`
+    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement); const primaryAttribute = "data-ipollowork-design-primary"; let selectedElements: HTMLElement[] = []; let primaryElement: HTMLElement | null = null; const effectiveMode = selectedElements.length > 1 ? "move" : mode; const selectedTargets = (ids: unknown) => */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${JSON.stringify(DESIGN_DECK_NAVIGATION_SELECTOR)},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"},${JSON.stringify(DESIGN_MULTI_SELECTION_STYLE_FIELDS)},${JSON.stringify(frameRevision)},(${designMediaTools.toString()})());<\/script>`
     : "";
   const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${fixedSlideRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
@@ -261,7 +272,7 @@ function designNavigationRuntime(channel: string, editing: boolean, frameRevisio
   });
 }
 
-function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frameRevision = "") {
+function designDeckRuntime(channel: string, navigationControls: Record<"previous" | "next", string>, navigationSelector: string, runtimeOwnsNavigation = false, frameRevision = "") {
   const slideSelector = "[data-ipw-slide],section.slide,.slide,.slide-frame";
   const slides = Array.from(document.querySelectorAll<HTMLElement>(slideSelector))
     .filter((element, index, list) => list.indexOf(element) === index);
@@ -333,10 +344,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frame
   document.head.appendChild(visibilityStyle);
 
   const deckControl = (direction: "previous" | "next") => {
-    const aliases = direction === "previous"
-      ? ["[data-ipw-deck-control='previous']", "[data-action='prev']", "[data-action='previous']", "[aria-label*='Previous' i]", "[aria-label*='上一页']"]
-      : ["[data-ipw-deck-control='next']", "[data-action='next']", "[aria-label*='Next' i]", "[aria-label*='下一页']"];
-    return document.querySelector<HTMLElement>(aliases.join(","));
+    return document.querySelector<HTMLElement>(navigationControls[direction]);
   };
 
   const activeIndex = () => {
@@ -437,7 +445,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frame
 
   document.addEventListener("click", (event) => {
     const isDeckControl = event.target instanceof Element
-      && Boolean(event.target.closest("[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']"));
+      && Boolean(event.target.closest(navigationSelector));
     window.setTimeout(() => {
       setSlideVisibility(activeIndex());
       if (isDeckControl) notifyNavigation();
@@ -475,7 +483,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frame
   report();
 }
 
-function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false, presentationCanvas = strictPptx, multiSelectionStyleFields: readonly string[] = [], frameRevision = "", mediaTools: ReturnType<typeof designMediaTools> = designMediaTools()) {
+function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, navigationSelector: string, strictPptx = false, presentationCanvas = strictPptx, multiSelectionStyleFields: readonly string[] = [], frameRevision = "", mediaTools: ReturnType<typeof designMediaTools> = designMediaTools()) {
   const runtimeId = "ipollowork-design-runtime";
   const styleId = "ipollowork-design-runtime-style";
   const selectedAttribute = "data-ipollowork-design-selected";
@@ -932,7 +940,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     return element;
   };
 
-  const isDeckNavigation = (target: Element) => Boolean(target.closest("[data-ipw-deck-control],[data-action='prev'],[data-action='previous'],[data-action='next'],button[aria-label^='Go to slide']"));
+  const isDeckNavigation = (target: Element) => Boolean(target.closest(navigationSelector));
 
   const clearSelection = (notify = false) => {
     cancelPendingSelection();

@@ -122,6 +122,18 @@ describe("Design HTML runtime", () => {
     expect(selectionChange).not.toContain('post("editing")');
   });
 
+  test("shares localized native navigation controls with the editor bridge", () => {
+    const source = '<html><body><section class="slide is-active">One</section><section class="slide">Two</section><button aria-label="下一页">Next</button></body></html>';
+    const preview = buildDesignPreviewDocument(source, true, "", true, false, true);
+    for (const id of ["ipollowork-design-deck-runtime", "ipollowork-design-runtime"]) {
+      const script = preview.split(`<script id="${id}">`)[1].split("</script>")[0];
+      for (const selector of ["[aria-label*='Previous' i]", "[aria-label*='Next' i]", "[aria-label*='上一页']", "[aria-label*='下一页']"]) {
+        expect(script).toContain(selector);
+      }
+      expect(script).toContain("closest(navigationSelector)");
+    }
+  });
+
   test("acknowledges a restored deck index even when it matches the initial slide", () => {
     const source = "<!doctype html><html><body><section class=\"slide is-active\"><h1>One</h1></section><section class=\"slide\"><h1>Two</h1></section></body></html>";
     const preview = buildDesignPreviewDocument(source, true, "", true, false, true, "frame-7");
@@ -232,7 +244,7 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain("!isPresentationRoot(element)");
     expect(preview).toContain("slideRoot && !slideRoot.contains(element)");
     expect(preview).toContain("isPresentationSlideRoot(element)");
-    expect(preview).toContain("],false,false,true,[");
+    expect(preview).toContain('",false,true,[');
   });
 
   test("reports a drag on empty presentation canvas space as a pan", () => {
@@ -262,8 +274,8 @@ describe("Design HTML runtime", () => {
     const presentationPreview = buildDesignPreviewDocument("<!doctype html><html><body><section class=\"slide\"><h1>Slide</h1></section></body></html>", true, "", false, false, true);
 
     expect(sitePreview).toContain("if (!presentationCanvas || !event.ctrlKey && !event.metaKey)");
-    expect(sitePreview).toContain("],false,false,false,[");
-    expect(presentationPreview).toContain("],false,false,true,[");
+    expect(sitePreview).toContain('",false,false,[');
+    expect(presentationPreview).toContain('",false,true,[');
     expect(presentationPreview).toContain('type: "zoom"');
   });
 

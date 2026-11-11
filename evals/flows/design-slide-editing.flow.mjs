@@ -57,7 +57,7 @@ async function openDeck(ctx) {
   await waitForFrame(ctx, "document.title === 'iPolloWork Slide Editing Demo'", "deck preview");
 }
 
-export default {
+const flow = {
   id: "design-slide-editing",
   title: "Multi-slide Design editing preserves the active page and native navigation",
   kind: "user-facing",
@@ -129,3 +129,48 @@ export default {
     },
   ],
 };
+
+// Verify the already-open user deck without seeding or writing its source.
+if (process.env.IPOLLOWORK_EVAL_SLIDE_NAVIGATION_LIVE === "1") {
+  const state = ctx => ctx.eval(`(()=>{const p=document.querySelector('[data-testid=design-panel]'),f=p?.querySelector('iframe'),d=f?.contentDocument,s=d?[...d.querySelectorAll('[data-ipw-slide]')]:[];return {index:s.findIndex(n=>n.getAttribute('aria-hidden')==='false'),total:s.length,visible:s.filter(n=>n.checkVisibility()).length,mode:d?.documentElement.dataset.ipolloworkDesignMode,pager:p?.querySelector('[data-testid=design-deck-navigation]')?.innerText}})()`);
+  const mode = (ctx, label) => ctx.eval(`(()=>{const b=[...document.querySelectorAll('[data-testid=design-panel] button')].find(b=>b.textContent.trim()===${JSON.stringify(label)});if(!b)throw Error('Mode button missing');b.click();return true})()`);
+  const waitIndex = (ctx,index) => ctx.waitFor(`(()=>{const d=document.querySelector('[data-testid=design-panel] iframe')?.contentDocument,s=d?[...d.querySelectorAll('[data-ipw-slide]')]:[];return s.findIndex(n=>n.getAttribute('aria-hidden')==='false')===${index}&&s.filter(n=>n.checkVisibility()).length===1&&document.querySelector('[data-testid=design-deck-navigation]')?.innerText.includes('${index+1} / '+s.length)})()`);
+  const host = (ctx,direction) => ctx.trustedClick(`[data-testid=design-panel] [aria-label="${direction} slide"]`);
+  const native = async (ctx,direction) => {
+    const selector=direction==='next'?"button[aria-label*='下一页'],button[aria-label*='Next' i]":"button[aria-label*='上一页'],button[aria-label*='Previous' i]";
+    const p=await ctx.eval(`(()=>{const f=document.querySelector('[data-testid=design-panel] iframe'),b=f.contentDocument.querySelector(${JSON.stringify(selector)}),r=b.getBoundingClientRect(),fr=f.getBoundingClientRect();return {x:fr.left+(r.left+r.width/2)*fr.width/f.clientWidth,y:fr.top+(r.top+r.height/2)*fr.height/f.clientHeight}})()`);
+    await ctx.client.send('Input.dispatchMouseEvent',{type:'mousePressed',button:'left',clickCount:1,...p});
+    await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseReleased',button:'left',clickCount:1,...p});
+  };
+  flow.precondition=async ctx=>{const s=await state(ctx);return s.total>=3?null:'Open the affected presentation with at least three slides first';};
+  flow.steps=[
+    {name:'Host navigation and edit mode preserve the active slide',run:ctx=>ctx.prove('The affected deck advances in Edit mode and keeps the same slide across Browse/Edit toggles',{
+      voiceover:vo[0],action:async()=>{
+        const s=await state(ctx);await ctx.eval(`void(window.__liveDeckBefore=${JSON.stringify(s)})`);
+        let current=await state(ctx);while(current.index>0){await host(ctx,'Previous');await waitIndex(ctx,current.index-1);current=await state(ctx);}
+        await mode(ctx,'编辑');await host(ctx,'Next');await waitIndex(ctx,1);
+        await mode(ctx,'浏览');await mode(ctx,'编辑');
+      },assert:async()=>{await waitIndex(ctx,1);const s=await state(ctx);ctx.assert(s.mode==='editing'&&s.visible===1,JSON.stringify(s));},
+      screenshot:{name:'live-deck-host-edit-navigation',requireText:['2 /'],rejectText:['Something went wrong']},
+    })},
+    {name:'Native arrows and keyboard work without blocking content selection',run:ctx=>ctx.prove('Native controls, host controls and arrow keys navigate while editing; slide text remains selectable',{
+      voiceover:vo[1],action:async()=>{
+        await native(ctx,'next');await waitIndex(ctx,2);await host(ctx,'Previous');await waitIndex(ctx,1);
+        await ctx.eval("document.querySelector('[data-testid=design-panel] iframe').contentWindow.focus()");
+        for(const [key,index,code] of [['ArrowRight',2,39],['ArrowLeft',1,37]]){await ctx.client.send('Input.dispatchKeyEvent',{type:'keyDown',key,code:key,windowsVirtualKeyCode:code});await ctx.client.send('Input.dispatchKeyEvent',{type:'keyUp',key,code:key,windowsVirtualKeyCode:code});await waitIndex(ctx,index);}
+        const total=(await state(ctx)).total;
+        for(let index=2;index<total;index++){await host(ctx,'Next');await waitIndex(ctx,index);}
+        for(let index=total-2;index>=1;index--){await host(ctx,'Previous');await waitIndex(ctx,index);}
+        ctx.assert(await ctx.eval("!document.querySelector('[data-testid=design-floating-toolbar]')"),'Navigation clears the previous editing selection');
+        await ctx.eval("document.querySelector('[data-testid=design-panel] iframe').contentDocument.querySelector('[data-ipw-slide][aria-hidden=false] h1,[data-ipw-slide][aria-hidden=false] h2').click()");
+      },assert:async()=>{await waitIndex(ctx,1);await ctx.waitFor("Boolean(document.querySelector('[data-testid=design-floating-toolbar]'))");ctx.assert((await state(ctx)).mode==='editing','Editing remains enabled');},
+      screenshot:{name:'live-deck-native-keyboard-edit-navigation',requireText:['2 /'],rejectText:['Something went wrong']},
+    })},
+    {name:'Restore original viewing position',run:async ctx=>{
+      await mode(ctx,'浏览');const original=await ctx.eval('window.__liveDeckBefore');let current=await state(ctx);
+      while(current.index!==original.index){const expected=current.index+(current.index>original.index?-1:1);await host(ctx,current.index>original.index?'Previous':'Next');await waitIndex(ctx,expected);current=await state(ctx);}
+      if(original.mode==='editing')await mode(ctx,'编辑');await ctx.eval('delete window.__liveDeckBefore');
+    }},
+  ];
+}
+export default flow;
