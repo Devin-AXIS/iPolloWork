@@ -191,6 +191,29 @@ describe("Codex Harness provider projection", () => {
       if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI; else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
     }
   });
+  test("re-saving identical environment values preserves Codex runtimes; real changes invalidate them", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const env = new EnvService({ path: join(root, "env.json") });
+    const workspace: WorkspaceInfo = { id: "refresh", name: "Refresh", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness" };
+    await env.upsertMany([{ key: "PROVIDER_TEST", value: "one" }]);
+    const pool = new CodexHarnessRuntimePool({ config, env });
+    try {
+      const runtime = pool.forWorkspace(workspace);
+      await env.upsertMany([{ key: "PROVIDER_TEST", value: "one" }]);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(pool.forWorkspace(workspace)).toBe(runtime);
+      await env.upsertMany([{ key: "PROVIDER_TEST", value: "two" }]);
+      for (let i = 0; i < 30 && pool.hasWorkspaceRuntime(workspace.id); i++) await new Promise(resolve => setTimeout(resolve, 10));
+      expect(pool.hasWorkspaceRuntime(workspace.id)).toBe(false);
+      const replacement = pool.forWorkspace(workspace);
+      await env.delete("PROVIDER_TEST");
+      for (let i = 0; i < 30 && pool.hasWorkspaceRuntime(workspace.id); i++) await new Promise(resolve => setTimeout(resolve, 10));
+      expect(pool.hasWorkspaceRuntime(workspace.id)).toBe(false);
+      expect(replacement).not.toBe(runtime);
+    } finally { await pool.close(); }
+  });
   test("account provider discovery works for OpenCode projects without creating a Codex runtime", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");

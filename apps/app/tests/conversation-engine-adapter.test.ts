@@ -3359,6 +3359,26 @@ test("OpenCode session todos are not inherited by a new user turn", () => {
   expect(mapOpenCodeConversationSnapshot({ session, messages: [old, user, current], todos, status: { type: "busy" } }).todos).toMatchObject([{ content: "Review" }]);
 });
 
+test("Codex collaboration events retain per-child part IDs, parent links and native outcomes",()=>{
+ const state=createCodexLiveState();
+ for(const [native,status] of [["spawnAgent","completed"],["wait","completed"],["sendInput","completed"],["closeAgent","interrupted"]]) {
+  const events=mapCodexHarnessEvent({type:"notification",method:"item/completed",params:{threadId:"parent",turnId:"turn",item:{type:"collabAgentToolCall",id:"call",tool:native,status,senderThreadId:"parent",receiverThreadIds:["one","two"],agentsStates:{one:{status:"completed",message:"ok"},two:{status:"errored",message:"failed"}}}}},state);
+  expect(events).toHaveLength(1);const e=events[0];if(e?.type!=="message.upsert")throw Error("Missing collaboration message");
+  expect(e.message.parts.map(p=>p.type==='dynamic-tool'?p.toolCallId:null)).toEqual(["call:one","call:two"]);
+  expect(e.message.parts[0]).toMatchObject({callProviderMetadata:{ipollowork:{sessionId:"one",parentSessionId:"parent",nativeTool:native,delegationStatus:"completed"}}});
+  expect(e.message.parts[1]).toMatchObject({callProviderMetadata:{ipollowork:{sessionId:"two",delegationStatus:"failed"}}});
+ }
+});
+
+test("Codex failed creation stays visible without inventing a child, and equal user text retains native identities",()=>{
+ const state=createCodexLiveState();
+ const failed=mapCodexHarnessEvent({type:"notification",method:"item/completed",params:{threadId:"p",turnId:"t",item:{type:"collabAgentToolCall",id:"call",tool:"spawnAgent",status:"failed",receiverThreadIds:[]}}},state);
+ expect(failed[0]).toMatchObject({type:"message.upsert",message:{parts:[{toolCallId:"call",state:"output-error"}]}});
+ const users=["one","two"].map(id=>mapCodexHarnessEvent({type:"notification",method:"item/completed",params:{threadId:"p",turnId:id,item:{type:"userMessage",id,text:"same"}}},createCodexLiveState())[0]);
+ expect(users).toMatchObject([{type:"message.upsert",message:{id:"one"}},{type:"message.upsert",message:{id:"two"}}]);
+});
+
+
 test("Codex snapshots retain server-scoped native plans without OpenCode todowrite parts", () => {
   const source = {
     session: { id: "codex-plan", title: "Plan", time: { created: 1, updated: 2 } },

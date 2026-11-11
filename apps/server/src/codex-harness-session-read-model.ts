@@ -1,3 +1,4 @@
+import type { CodexHistoryTurn } from "./codex-harness-history.js";
 import { CODEX_HARNESS_ENGINE_ID, codexNativePlanTodos, type SessionTokenMetering } from "@ipollowork/types/workspace";
 
 import {
@@ -8,7 +9,7 @@ import { ApiError } from "./errors.js";
 import { workspacePathMatches } from "./deepseek-harness-session-read-model.js";
 import type { WorkspaceInfo } from "./types.js";
 
-type CodexThreadItem = {
+export type CodexThreadItem = {
   type: string;
   id: string;
   clientId?: string | null;
@@ -57,6 +58,7 @@ export type CodexThread = SessionTokenMetering & {
   updatedAt?: number;
   status?: { type?: string; activeFlags?: string[] };
   nativePlan?: { turnId: string; plan: unknown[] };
+  nativeHistory?: CodexHistoryTurn[];
   historyMode?: "legacy" | "paginated";
   turns?: CodexTurn[];
 };
@@ -269,7 +271,11 @@ function messagePart(item: CodexThreadItem, parentSessionId: string) {
     }];
   }
   if (item.type === "collabAgentToolCall") {
-    return (item.receiverThreadIds ?? []).map((childSessionId) => {
+    if (!item.receiverThreadIds?.length && item.status !== "failed" && item.status !== "interrupted") return [];
+    if (!item.receiverThreadIds?.length) return [{ type: "tool", tool: "task", callID: item.id,
+      state: { status: item.status === "failed" || item.status === "interrupted" ? "error" : item.status === "completed" ? "completed" : "running",
+        input: { prompt: item.prompt ?? "" }, ...(item.status === "failed" || item.status === "interrupted" ? { error: "Codex collaboration call did not complete" } : { output: "" }) } }];
+    return item.receiverThreadIds.map((childSessionId) => {
       const agent = item.agentsStates?.[childSessionId];
       const delegationStatus = agent?.status === "completed"
         ? "completed"
@@ -353,7 +359,7 @@ export function mapCodexMessages(thread: CodexThread) {
           // Snapshots and live Codex deltas describe the same assistant part.
           id: role === "assistant" && (part.type === "text" || part.type === "reasoning")
             ? `${messageId}:${part.type}`
-            : `${messageId}:${index}`,
+            : part.type === "tool" && "callID" in part && typeof part.callID === "string" ? part.callID : `${messageId}:${index}`,
           messageID: messageId,
           sessionID: thread.id,
         })),
@@ -536,7 +542,35 @@ export async function readCodexHarnessThread(runtime: CodexHarnessRuntime, threa
     }
     const response = await runtime.call<{ thread?: CodexThread }>("thread/read", { threadId, includeTurns: true });
     if (!response.thread?.id) throw new ApiError(404, "session_not_found", "Session not found");
-    return response.thread;
+    const thread = response.thread;
+    for (const turn of thread.turns ?? []) {
+      const persisted = thread.nativeHistory?.find(t => t.id === turn.id);
+      if (!persisted) continue;
+      let agentIndex = 0;
+      let reasoningIndex = 0;
+      for (const item of turn.items) {
+        if (item.type === "agentMessage") item.id = persisted.agentMessageIds[agentIndex++] ?? item.id;
+        if (item.type === "reasoning") item.id = persisted.reasoningIds[reasoningIndex++] ?? item.id;
+      }
+      const ids = new Set(turn.items.map(i => i.id));
+      const order = new Map(persisted.order.map((id, index) => [id, index]));
+      let userIndex = 0;
+      const positions = new Map(turn.items.map(item => [item, order.get(item.type === "userMessage" ? `user:${userIndex++}` : item.id)]));
+      // Native legacy items are already chronological. Never sort unprojected
+      // items after the final reply; only merge calls missing from that history.
+      const missing = persisted.calls.filter(item => !ids.has(item.id))
+        .sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+      for (const call of missing) {
+        const position = order.get(call.id);
+        const next = position === undefined ? -1 : turn.items.findIndex(item => {
+          const anchor = positions.get(item);
+          return anchor !== undefined && anchor > position;
+        });
+        if (next === -1) turn.items.push(call);
+        else turn.items.splice(next, 0, call);
+      }
+    }
+    return thread;
   } catch (error) {
     // The native missing-rollout response is authoritative for an unmaterialized
     // thread. Other history failures must never erase existing output.
@@ -557,11 +591,14 @@ export async function readCodexHarnessMessages(runtime: CodexHarnessRuntime, thr
 export async function readCodexHarnessSnapshot(runtime: CodexHarnessRuntime, threadId: string, limit?: number) {
   const thread = await readCodexHarnessThread(runtime, threadId);
   const messages = mapCodexMessages(thread);
+  const latest = thread.turns?.at(-1);
+  const persisted = thread.nativeHistory?.find(t => t.id === latest?.id);
   return {
     session: mapCodexThread(thread),
     messages: typeof limit === "number" ? messages.slice(-limit) : messages,
     todos: thread.nativePlan && thread.nativePlan.turnId === thread.turns?.at(-1)?.id
-      ? codexNativePlanTodos(threadId, thread.nativePlan.turnId, thread.nativePlan.plan) : [],
+      ? codexNativePlanTodos(threadId, thread.nativePlan.turnId, thread.nativePlan.plan)
+      : latest && persisted?.plan ? codexNativePlanTodos(threadId, latest.id, persisted.plan) : [],
     status: codexThreadRunStatus(thread),
   };
 }

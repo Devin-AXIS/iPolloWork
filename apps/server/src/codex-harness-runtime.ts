@@ -1,3 +1,5 @@
+import { createHash, randomUUID } from "node:crypto";
+import { CodexHistoryReader } from "./codex-harness-history.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import constants from "../../../constants.json" with { type: "json" };
@@ -513,6 +515,7 @@ export class CodexHarnessRuntime {
   // Native plan notifications are not included by thread/read. Retain only the
   // latest event per thread for snapshot/reconnect display, never execution.
   readonly #nativePlans = new Map<string, { turnId: string; plan: unknown[] }>();
+  readonly #history = new CodexHistoryReader();
   readonly #tokenTotals = new Map<string, number>();
   #unsubscribeProcessEvents = () => {};
   readonly #providerGateway = new CodexProviderGateway();
@@ -526,12 +529,19 @@ export class CodexHarnessRuntime {
   async call<T>(method: string, params: unknown = {}): Promise<T> {
     // Invalidate before sending, including failed/ambiguous writes. Never hide
     // a possibly accepted first message behind a metadata-only snapshot.
-    if (method === "turn/start") this.#markThreadUsed(params);
+    if (method === "turn/start") {
+      this.#markThreadUsed(params);
+      if (isRecord(params) && !params.clientUserMessageId) params = { ...params, clientUserMessageId: `msg_ipollowork_${randomUUID()}` };
+    }
     const process = await this.#ensureStarted();
     try {
       const result = await process.call<T>(method, params);
       this.#rememberThreadProvider(method, params, result);
       if (method === "thread/read" && isRecord(result) && isRecord(result.thread) && typeof result.thread.id === "string") {
+        if (typeof result.thread.path === "string") {
+          const home = join(runtimeStorageDir(this.#config), "codex-harness-workspaces", safeRuntimeSegment(this.#workspace.id));
+          result.thread.nativeHistory = await this.#history.read(home, result.thread.path, result.thread.id);
+        }
         const plan = this.#nativePlans.get(result.thread.id);
         if (plan) result.thread.nativePlan = plan;
       }
@@ -660,7 +670,7 @@ export class CodexHarnessRuntime {
   async startThread<T extends Record<string, unknown>>(
     input: Record<string, unknown>,
   ): Promise<T> {
-    return await this.#callWithVerifiedSelection<T>("thread/start", input);
+    return await this.#callWithVerifiedSelection<T>("thread/start", { historyMode: "paginated", ...input });
   }
 
   async resumeThread(input: {
@@ -851,6 +861,7 @@ export class CodexHarnessRuntime {
       ...(typeof input.cwd === "string" ? { cwd: input.cwd } : {}),
       ...(typeof input.modelProvider === "string" ? { modelProvider: input.modelProvider } : {}),
       ...(typeof input.model === "string" ? { model: input.model } : {}),
+      historyMode: "paginated",
       allowProviderModelFallback: false,
     });
     const replacementThread = isRecord(replacement.thread) ? replacement.thread : null;
@@ -1122,8 +1133,18 @@ export class CodexHarnessRuntimePool {
       if (config !== this.#config) return;
       void this.closeWorkspace(workspaceId);
     });
+    const signature = async () => createHash("sha256").update(JSON.stringify(
+      (await this.#env.list()).sort((a, b) => a.key.localeCompare(b.key)).map(({ key, value }) => [key, value]),
+    )).digest("hex");
+    let environment = signature().catch(() => "");
     this.#stopEnvironmentListener = this.#env.onChange(() => {
-      void this.#closeAllRuntimes();
+      // The client re-saves provider settings on refresh. Only a real value
+      // change invalidates a running Codex process, not updatedAt bookkeeping.
+      environment = environment.then(async (before) => {
+        const after = await signature();
+        if (after !== before) await this.#closeAllRuntimes();
+        return after;
+      }).catch(async () => { await this.#closeAllRuntimes(); return ""; });
     });
   }
 
