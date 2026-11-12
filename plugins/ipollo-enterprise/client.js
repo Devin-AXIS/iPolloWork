@@ -2,14 +2,14 @@ window.__ModuleLoader__.load({
   id: '@ipollo/dsh-enterprise-connector',
   factory(require) {
     const React = require('react')
-    const { IconUsersOutlineRegular } = require('@deepseek-ai/dsh-client-ui-primitives')
+    const { Button, IconUsersOutlineRegular } = require('@deepseek-ai/dsh-client-ui-primitives')
     const h = React.createElement
     const { useEffect, useRef, useState, useSyncExternalStore } = React
     const PANEL = 'ipollo-enterprise-join'
     const NS = 'ipolloEnterpriseJoin'
     const API = '/ipollo-enterprise/api'
     const zh = {
-      panel: '加入企业', title: '连接企业空间', intro: '使用管理员提供的 OS 企业地址与加入码，登录后加入已有企业。',
+      panel: '加入企业', openPanel: '打开加入企业', title: '连接企业空间', intro: '使用管理员提供的 OS 企业地址与加入码，登录后加入已有企业。',
       origin: '企业服务地址', code: '企业加入码', invitation: '粘贴邀请信息', invitationHint: '可粘贴 OS 复制的企业地址和加入码',
       verify: '验证企业地址', verified: '已验证企业', email: 'iPollo Account 邮箱', password: '账号密码',
       account: '账号服务地址', advanced: '账号服务设置', login: '登录并加入企业', back: '更换企业地址',
@@ -45,7 +45,7 @@ window.__ModuleLoader__.load({
       body_too_large: '提交内容过长，请只填写企业连接和登录信息。',
     }
     const en = {
-      panel: 'Join enterprise', title: 'Connect an enterprise', intro: 'Use the OS enterprise address and join code provided by your administrator.',
+      panel: 'Join enterprise', openPanel: 'Open enterprise connection', title: 'Connect an enterprise', intro: 'Use the OS enterprise address and join code provided by your administrator.',
       origin: 'Enterprise URL', code: 'Enterprise join code', invitation: 'Paste invitation', invitationHint: 'Paste the URL and join code copied from OS',
       verify: 'Verify enterprise', verified: 'Verified enterprise', email: 'iPollo Account email', password: 'Account password',
       account: 'Account service URL', advanced: 'Account service settings', login: 'Sign in and join', back: 'Change enterprise URL',
@@ -263,6 +263,10 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function OpenEnterprise({ t, open }) {
+      return h(Button, { variant: 'outline', onClick: open }, t('openPanel'))
+    }
+
     function Icon({ size = 18 }) {
       return h(IconUsersOutlineRegular, { width: size, height: size, 'aria-hidden': true })
     }
@@ -274,6 +278,9 @@ window.__ModuleLoader__.load({
         const actions = { startSession: id => ctx.uiWorkspace.startSession(id) }
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL, locale: NS,
           inject: () => ({ localeStore, actions }) }, Panel))
+        ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({ name: 'plugins.bundle.config',
+          key: '@ipollo/dsh-enterprise-connector', locale: NS,
+          inject: () => ({ open: () => ctx.layout.selectPanel(PANEL) }) }, OpenEnterprise))
         const t = ctx.locale.bind(NS)
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL,
           order: 7, locale: NS, label: () => t('panel') }, Icon))

@@ -12,6 +12,8 @@ dsh plugin --profile desktop add link:/absolute/path/to/ipollo-enterprise
 
 确认该包已加入桌面 profile 的 `dsh.profile.bundles`。DSH 启用热重载时会重新组合插件；未启用时需重启应用。管理员在 OS 企业管理设置中复制当前生效的企业地址与加入码，员工在 DSH 侧边栏打开「加入企业」，粘贴邀请信息、验证企业地址，再登录自己的 iPollo Account。
 
+使用 DS Bot 等自定义侧栏时，可从「插件 → 已安装 → 加入企业」详情点击「打开加入企业」，进入同一个原生面板。
+
 企业地址需要能够从员工设备访问。局域网可使用 HTTP，公网企业服务需使用 HTTPS。账号服务默认是 `https://i.ipollo.ai`，私有部署可在「账号服务设置」中填写企业配置的账号服务地址。旧账号服务使用 HTTP 时，需由员工明确确认未加密传输；插件不会自动将 HTTPS 降级为 HTTP。控制台地址、SSH 登录信息和管理员凭据不能作为员工企业连接信息。
 
 ## 当前能力

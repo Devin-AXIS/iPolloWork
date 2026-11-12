@@ -22,6 +22,8 @@ Enable `@ipollo/dsh-enterprise-connector` in the profile's `dsh.profile.bundles`
 
 In OS, copy the active enterprise URL and join code from the enterprise's member-management settings. In DSH, open **加入企业**, paste that information or enter the fields separately, verify the enterprise, and sign in with the account provider configured for that enterprise. The enterprise endpoint must already be reachable from the employee's device; the desktop-control address and administrator/SSH credentials are not enterprise connection information.
 
+When a custom sidebar is active, open **Plugins → Installed → Join enterprise** and use **Open enterprise connection** to reach the same native panel.
+
 ## Verification
 
 ```sh
