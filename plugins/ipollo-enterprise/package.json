@@ -1,0 +1,20 @@
+{
+  "name": "@ipollo/dsh-enterprise-connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Join an existing iPolloOS enterprise through native DeepSeek Harness plugin APIs.",
+  "exports": { ".": "./index.js", "./client": "./client.js", "./locale/*.json": "./locale/*.json" },
+  "files": ["index.js", "enterprise.js", "client.js", "cordis.patch.yml", "locale/*.json", "README.md", "README.zh.md"],
+  "scripts": {
+    "check": "node --check index.js && node --check enterprise.js && node --check client.js && node --test tests/*.test.mjs"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-layout", "@deepseek-ai/dsh-client-ui-sidebar", "@deepseek-ai/dsh-client-ui-workspace", "@deepseek-ai/dsh-client-ui-primitives"]
+    }
+  }
+}
