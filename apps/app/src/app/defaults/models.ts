@@ -21,8 +21,8 @@ export const RECOMMENDED_MODEL_PATTERNS: string[] = [
   "gpt-6-luna",
   "kimi-k2.6",
   "glm-5.2",
+  "minimax-m3.1-flash",
   "minimax-m3",
-  "minimax-m2.7",
 ];
 
 /**
