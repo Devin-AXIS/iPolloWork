@@ -231,6 +231,19 @@ describe("enterprise connections", () => {
     expect(readEnterpriseConnections()).toEqual([connectedEnterprise]);
   });
 
+  test("preserves the same account's hosted enterprise bindings when Cloud upgrades to HTTPS", () => {
+    saveEnterpriseConnection(connectedEnterprise);
+    window.localStorage.setItem("ipollowork.den.baseUrl", "https://i.ipollo.ai");
+    setEnterpriseConnectionAccount({ userId: "account-b", baseUrl: "https://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([]);
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "https://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([connectedEnterprise]);
+    removeEnterpriseConnection(connectedEnterprise.id);
+    setEnterpriseConnectionAccount(null);
+    setEnterpriseConnectionAccount({ userId: "account-a", baseUrl: "https://i.ipollo.ai", token: "cloud-session" });
+    expect(readEnterpriseConnections()).toEqual([]);
+  });
+
   test("migrates the legacy device bindings once after verifying the account", () => {
     clearEnterpriseLoginState();
     window.localStorage.setItem("ipollowork.enterprise-connections.v1", JSON.stringify([connectedEnterprise]));
@@ -373,16 +386,40 @@ describe("enterprise connections", () => {
     const fetcher: typeof fetch = async (input) => {
       const url = String(input);
       if (url.endsWith("/.well-known/ipollo-enterprise")) return Response.json({ serverId: connected.id, name: connected.name, origin: connected.origin, authMode: connected.authMode });
-      if (url.endsWith("/membership")) return Response.json({ membership: { id: connected.membership.id, role: "member", status: "suspended", displayName: "Employee", email: "employee@example.com", departmentId: "department-1" } });
+      if (url.endsWith("/membership")) return Response.json({ membership: { id: connected.membership.id, role: "member", status: "suspended", displayName: "Employee", email: "employee@example.com", departmentId: "department-1", departmentName: "产品部" } });
       return Response.json({ enterprise: connected, ...(upgraded ? { features: { membership: true, sessionSharing: true } } : {}) });
     };
     const refreshed = await refreshEnterpriseConnection(connected, fetcher);
-    expect(refreshed.membership).toEqual({ id: "member-1", role: "member", status: "suspended", departmentId: "department-1" });
-    expect(readEnterpriseConnections()[0].membership.role).toBe("member");
+    expect(refreshed.membership).toEqual({ id: "member-1", role: "member", status: "suspended", departmentId: "department-1", departmentName: "产品部" });
+    expect(readEnterpriseConnections()[0].membership).toEqual(refreshed.membership);
     upgraded = false;
     const downgraded = await refreshEnterpriseConnection(refreshed, fetcher);
     expect(downgraded.features).toBeUndefined();
     expect(readEnterpriseConnections()[0].features).toBeUndefined();
+  });
+
+  test("renews an active enterprise session near expiry without requesting the join code", async () => {
+    const current: EnterpriseConnection = {
+      ...connectedEnterprise,
+      session: { token: "old-enterprise-token", expiresAt: new Date(Date.now() + 60_000).toISOString() },
+    };
+    saveEnterpriseConnection(current);
+    const paths: string[] = [];
+    const session = { token: "renewed-enterprise-token", expiresAt: new Date(Date.now() + 604_800_000).toISOString() };
+    const updated = await refreshEnterpriseConnection(current, async (input, init) => {
+      const path = new URL(String(input)).pathname;
+      paths.push(path);
+      if (path === "/.well-known/ipollo-enterprise") return Response.json({ serverId: current.id, name: current.name, authMode: "ipollo_oidc", origin: current.origin });
+      if (path === "/api/v1/client-manifest") return Response.json({ enterprise: current, features: { membership: true, sessionRefresh: true } });
+      if (path === "/api/v1/membership") return Response.json({ membership: { ...current.membership, status: "active", displayName: null, email: "member@example.test" } });
+      expect(path).toBe("/api/v1/session/refresh");
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer old-enterprise-token");
+      return Response.json({ session });
+    });
+    expect(paths.at(-1)).toBe("/api/v1/session/refresh");
+    expect(updated.session).toEqual(session);
+    expect(readEnterpriseConnections()[0].session).toEqual(session);
   });
 
   test("resource management refreshes membership even when its separate capability flag is absent", async () => {

@@ -10,8 +10,8 @@ async function assertImageBadge(ctx, variant, icon, processing = false) {
 
 async function assertFailureUX(ctx, title, hint, raw) {
   await ctx.waitFor(`document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.innerText.includes(${JSON.stringify(title)})`);
-  const state = await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),e=h.querySelector('[data-assistant-run-error]'),d=e.querySelector('details');return {text:e.innerText,raw:e.textContent,closed:d&&!d.open,notices:h.querySelectorAll('[data-testid=run-issue-notice]').length,activity:h.querySelectorAll('.chat-live-activity,.chat-tool-pulse,.animate-spin').length}})()`);
-  ctx.assert(state.text.includes(title)&&state.text.includes(hint)&&!state.text.includes(raw)&&state.raw.includes(raw)&&state.closed&&state.notices===1&&state.activity===0, JSON.stringify(state));
+  const state = await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),e=h.querySelector('[data-assistant-run-error]');return {text:e.textContent,notices:h.querySelectorAll('[data-testid=run-issue-notice]').length,activity:h.querySelectorAll('.chat-live-activity,.chat-tool-pulse,.animate-spin').length}})()`);
+  ctx.assert(state.text.includes(title)&&state.text.includes(hint)&&!state.text.includes(raw)&&state.notices===1&&state.activity===0, JSON.stringify(state));
 }
 
 export async function mountFixture(options = {}) {
@@ -384,7 +384,9 @@ export async function mountFixture(options = {}) {
         ]);
         setStatus("ready");
       };
-      window.__streamingAnswerProof.showUnsupportedModel = () => {
+      window.__streamingAnswerProof.showUnsupportedModel = (message = JSON.stringify({
+        error: { code: "model_not_found", message: "Requested model is not supported", request_id: "private-provider-trace" },
+      })) => {
         setRunOutcome("failed");
         useSessionActivityStore.getState().clearError("proof", "proof");
         setStopAcknowledged(false);
@@ -392,7 +394,7 @@ export async function mountFixture(options = {}) {
         setRetryStatus(null);
         setMessages([{ id: "proof-model-request", role: "user", parts: [{ type: "text", text: "你好" }] }]);
         setStatus("ready");
-        useSessionActivityStore.getState().setError("proof", "proof", "The 'gpt-5.6-terra-fast' model is not supported when using Codex with a ChatGPT account.");
+        useSessionActivityStore.getState().setError("proof", "proof", message);
       };
     }, []);
     return React.createElement(QueryClientProvider, { client: queryClient },
@@ -813,28 +815,25 @@ export default {
     },
     {
       name:"Automatic retry keeps a single activity entry even with details open",
-      run:ctx=>ctx.prove("Only the shared status pulses; retry details show countdown and collapsed diagnostics",{
+      run:ctx=>ctx.prove("Only the shared status pulses; retry details explain the reason and countdown",{
         voiceover:vo[14],action:async()=>{
           await ctx.eval("window.__streamingAnswerProof.showRetry()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-current-state]')?.innerText.includes('正在自动重试')");
           await ctx.eval("document.querySelector('#streaming-answer-proof .chat-process-heading').click()");
         },assert:async()=>{
           await ctx.waitFor("document.querySelector('#streaming-answer-proof .chat-process-disclosure')?.innerText.includes('第 2 次尝试')");
-          const s=await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),d=h.querySelector('.chat-process-disclosure');return {labels:h.innerText.split('连接中断，正在自动重试').length-1,pulses:h.querySelectorAll('.chat-live-activity').length,detailsSpinners:d.querySelectorAll('.chat-live-activity,.animate-spin,.lucide-loader-circle').length,attempt:d.innerText.includes('第 2 次尝试'),rawVisible:d.innerText.includes('HTTP 503'),closed:!d.querySelector('details').open}})()`);
-          ctx.assert(s.labels===1&&s.pulses===1&&s.detailsSpinners===0&&s.attempt&&!s.rawVisible&&s.closed,JSON.stringify(s));
+          const s=await ctx.eval(`(()=>{const h=document.querySelector('#streaming-answer-proof'),d=h.querySelector('.chat-process-disclosure');return {labels:h.innerText.split('连接中断，正在自动重试').length-1,pulses:h.querySelectorAll('.chat-live-activity').length,detailsSpinners:d.querySelectorAll('.chat-live-activity,.animate-spin,.lucide-loader-circle').length,attempt:d.innerText.includes('第 2 次尝试'),reason:d.innerText.includes('模型服务暂时不可用'),rawVisible:d.textContent.includes('HTTP 503')}})()`);
+          ctx.assert(s.labels===1&&s.pulses===1&&s.detailsSpinners===0&&s.attempt&&s.reason&&!s.rawVisible,JSON.stringify(s));
         },screenshot:{name:'automatic-retry',requireText:['正在自动重试','第 2 次尝试'],rejectText:['HTTP 503']},
       }),
     },
     {
       name:"Terminal failure explains recovery in Chinese",
-      run:ctx=>ctx.prove("Rate limits explain what happened and how to recover; technical errors stay in closed details",{
+      run:ctx=>ctx.prove("Rate limits explain what happened and how to recover without showing provider fields",{
         voiceover:vo[15],action:()=>ctx.eval("window.__streamingAnswerProof.showTerminalError()"),
         assert:async()=>{
           await assertFailureUX(ctx,'模型当前请求较多','稍后重试，或切换其他模型','HTTP 429');
-          await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-run-error] summary').click()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]').innerText.includes('HTTP 429')");
-          await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-run-error] summary').click()");
-        },screenshot:{name:'terminal-error-details',requireText:['模型当前请求较多','稍后重试','查看技术详情'],rejectText:['HTTP 429']},
+        },screenshot:{name:'terminal-error-guidance',requireText:['模型当前请求较多','稍后重试'],rejectText:['HTTP 429','raw provider response']},
       }),
     },
     {
@@ -869,8 +868,8 @@ export default {
       name:"Unsupported model gives an understandable next step",
       run:ctx=>ctx.prove("An unsupported model prompts the user to select another model without exposing raw provider text",{
         voiceover:vo[18],action:()=>ctx.eval("window.__streamingAnswerProof.showUnsupportedModel()"),
-        assert:()=>assertFailureUX(ctx,'当前模型不可用','请选择其他模型后重试','not supported'),
-        screenshot:{name:'unsupported-model-guidance',requireText:['当前模型不可用','请选择其他模型后重试'],rejectText:['not supported']},
+        assert:()=>assertFailureUX(ctx,'当前模型不可用','请选择其他模型后重试','private-provider-trace'),
+        screenshot:{name:'unsupported-model-guidance',requireText:['当前模型不可用','请选择其他模型后重试'],rejectText:['model_not_found','private-provider-trace']},
       }),
     },
     {

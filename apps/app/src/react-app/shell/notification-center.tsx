@@ -229,7 +229,7 @@ function NotificationRow({
           </span>
         </div>
         {notification.body ? (
-          <p className="line-clamp-2 text-xs text-muted-foreground">{notification.body}</p>
+          <p className={cn("text-xs text-muted-foreground", notification.kind === "system" ? "whitespace-pre-line [overflow-wrap:anywhere]" : "line-clamp-2")}>{notification.body}</p>
         ) : null}
         <p className="text-xs text-muted-foreground">{t("notifications.source")}: {notification.kind === "cloud" ? "iPolloCloud" : "iPolloWork"}</p>
         {notification.action && notification.actionLabel ? (

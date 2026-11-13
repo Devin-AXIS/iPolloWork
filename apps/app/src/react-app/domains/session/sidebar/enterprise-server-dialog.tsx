@@ -32,6 +32,8 @@ type EnterpriseServerDialogProps = {
 
 function connectionErrorMessage(error: unknown) {
   if (!(error instanceof Error)) return t("enterprise_connection.error_unreachable");
+  if (error.message === "MEMBER_REMOVED") return t("enterprise_membership.removed");
+  if (error.message === "MEMBER_SUSPENDED") return t("enterprise_membership.suspended");
   if (error.message === "invalid_enterprise_url") return t("enterprise_connection.error_url");
   if (
     error.message === "JOIN_CODE_NOT_FOUND" ||

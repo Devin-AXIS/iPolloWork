@@ -19,6 +19,7 @@ import { isElectronRuntime } from "../../app/utils";
 import { evalRelaunchDesktopApp } from "../../app/lib/desktop";
 import { Button } from "../../components/ui/button";
 import { localeChangedEvent, t } from "../../i18n";
+import { useEnterpriseMembershipMonitor } from "../domains/enterprise";
 import { useDenAuth } from "../domains/cloud/den-auth-provider";
 import { ForcedSigninPage } from "../domains/cloud/forced-signin-page";
 import { HelpRoute } from "../domains/help/help-route";
@@ -596,6 +597,7 @@ function AppUpdaterProvider({ children }: { children: ReactNode }) {
 
 export function AppRoot() {
   useDesktopFontZoomBehavior();
+  useEnterpriseMembershipMonitor();
   const [, setLocaleVersion] = useState(0);
 
   // Module-level dedupe keeps StrictMode double-mounts from double-counting.

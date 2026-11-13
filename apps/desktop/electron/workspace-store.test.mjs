@@ -950,15 +950,16 @@ test("treats the old hosted desktop URL as replaceable default bootstrap config"
   });
 });
 
-test("treats the previous HTTPS iPollo hosted URL as replaceable default bootstrap config", async () => {
+test("preserves the HTTP iPollo Cloud URL and keeps it replaceable by organization config", async () => {
   await withIsolatedBootstrapStore(async ({ store, canonicalPath, root }) => {
     const bundleDir = path.join(root, "downloads");
     process.env.IPOLLOWORK_BOOTSTRAP_BUNDLE_DIR = bundleDir;
     await writeBootstrapConfig(canonicalPath, {
-      baseUrl: "https://i.ipollo.ai/",
+      baseUrl: "http://i.ipollo.ai/",
       requireSignin: false,
       writtenAt: "2026-07-10T13:00:00.000Z",
     });
+    assert.equal((await store.getDesktopBootstrapConfig()).baseUrl, "http://i.ipollo.ai");
     await mkdir(bundleDir, { recursive: true });
     await writeFile(path.join(bundleDir, "ipollowork-win-x64-9.9.9.exe"), "signed installer", "utf8");
     await writeBootstrapConfig(path.join(bundleDir, "desktop-bootstrap.json"), {

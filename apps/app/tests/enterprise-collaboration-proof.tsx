@@ -11,13 +11,16 @@ import { createiPolloWorkServerClient, type iPolloWorkSession } from "../src/app
 import { userVisibleSessionsByWorkspaceId, type RouteSession } from "../src/react-app/shell/route-workspaces";
 import { readSessionDirectoryCache, writeSessionDirectoryCache } from "../src/react-app/shell/session-memory";
 import { requestEnterpriseSessionShare } from "../src/app/lib/enterprise-client";
-import { EnterpriseResourceControls, EnterpriseSessionSharing, EnterpriseSnapshotNotice, EnterpriseMessageList, WorkResourceScopeSwitch, useActiveEnterpriseConnection, useEnterpriseMessages } from "../src/react-app/domains/enterprise";
+import { EnterpriseResourceControls, EnterpriseSessionSharing, EnterpriseSnapshotNotice, EnterpriseMessageList, WorkResourceScopeSwitch, useActiveEnterpriseConnection, useEnterpriseMembershipMonitor, useEnterpriseMessages } from "../src/react-app/domains/enterprise";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../src/react-app/domains/session/templates/template-market-dialog";
 import { Button } from "../src/components/ui/button";
 import { Tabs, TabsContent } from "../src/components/ui/tabs";
 import { PluginPackageListItem } from "../src/react-app/domains/settings/plugin-package-list-item";
 import { SkillsView, type SkillsExtensionsStore } from "../src/react-app/domains/settings/pages/skills-view";
 import { EnterpriseServerDialog } from "../src/react-app/domains/session/sidebar/enterprise-server-dialog";
+import { EnterpriseMcpView } from "../src/react-app/domains/settings/pages/enterprise-mcp-view";
+import { SettingsShell } from "../src/react-app/domains/settings/shell/settings-shell";
+import type { McpServerEntry } from "../src/app/types";
 import { PluginPackagesPanel, type PluginPackagesPanelHandle } from "../src/react-app/domains/settings/plugin-packages-panel";
 import { Toaster } from "../src/components/ui/sonner";
 import { DenAuthProvider, useDenAuth } from "../src/react-app/domains/cloud/den-auth-provider";
@@ -28,16 +31,17 @@ import { NotificationBell } from "../src/react-app/shell/notification-center";
 import { ShellConfigProvider } from "../src/react-app/shell/shell-config";
 import { ReloadCoordinatorProvider } from "../src/react-app/shell/reload-coordinator";
 import { useNotificationStore } from "../src/react-app/kernel/notification-store";
+import { LocalProvider } from "../src/react-app/kernel/local-provider";
 import { setLocale } from "../src/i18n";
 
 // Only the isolated fixture URL uses this synthetic transport. Production imports never load it.
-const initial: EnterpriseConnection = { id: "ent_proof", name: "星河科技", shortName: "星河", origin: "https://enterprise-proof.invalid", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "owner", status: "active", departmentId: "product" }, session: { token: "synthetic-proof-session", expiresAt: "2099-01-01T00:00:00.000Z" }, features: enterpriseFeaturesSchema.parse({ membership: true, directory: true, messaging: true, sessionSharing: true, resourceManagement: true, resourcePermissions: true, templatePublishing: true, extensionPublishing: true, skills: true, skillPublishing: true }) };
+const initial: EnterpriseConnection = { id: "ent_proof", name: "星河科技", shortName: "星河", origin: "https://enterprise-proof.invalid", logoUrl: null, accent: "blue", authMode: "ipollo_oidc", membership: { id: "employee-1", role: "owner", status: "active", departmentId: "product", departmentName: "产品部" }, session: { token: "synthetic-proof-session", expiresAt: "2099-01-01T00:00:00.000Z" }, features: enterpriseFeaturesSchema.parse({ membership: true, directory: true, messaging: true, sessionSharing: true, resourceManagement: true, resourcePermissions: true, templatePublishing: true, extensionPublishing: true, skills: true, skillPublishing: true }) };
 const personalTemplate: TemplateCatalogItem = {
   manifest: templateManifestV1Schema.parse({ schemaVersion: 1, id: "personal.card-proof", version: "1.0.0", kind: "design", category: "site", subcategory: "landing", style: "minimal", title: "我的产品模板", description: "单卡片企业投稿验证。", cover: "cover.svg", entry: "index.html", source: { name: "Proof", license: "Private" }, designSystem: { tokenVersion: 1, editableGroups: ["theme"] }, applyChecklist: ["Update content"], minimumAppVersion: "0.1.0" }),
   sourceType: "local", installed: true, installedVersion: "1.0.0", updateAvailable: false, verified: false,
 };
 const departments = [{ id: "company", name: "星河科技", parentId: null }, { id: "product", name: "产品部", parentId: "company" }, { id: "engineering", name: "研发部", parentId: "company" }, { id: "empty", name: "空部门", parentId: "company" }];
-const roleNames = { owner: "企业超管", admin: "管理员", template_admin: "模板管理员", extension_admin: "插件管理员", skill_admin: "技能管理员", member: "员工" };
+const roleNames = { owner: "企业超管", admin: "管理员", template_admin: "模板管理员", extension_admin: "插件管理员", skill_admin: "技能管理员", mcp_admin: "MCP 管理员", member: "员工" };
 const members = [{ id: "zhang", displayName: "张敏", email: "zhangmin@example.com", departmentId: "product", role: "member", status: "active" }, { id: "li", displayName: "李晨", email: "lichen@example.com", departmentId: "product", role: "member", status: "active" }, { id: "wang", displayName: "王磊", email: "wanglei@example.com", departmentId: "engineering", role: "member", status: "active" }];
 const summary = "## 任务背景\n梳理产品页面和交互需求。\n\n## 关键结论\n沿用已经确认的信息结构。\n\n## 下一步\n细化原型和验收条件。";
 const message: EnterpriseMessage = { id: "received-share", title: "产品方案讨论总结", kind: "session_share", senderName: "张敏", createdAt: "2026-10-16T02:00:00.000Z", readAt: null, acceptedAt: null, ignoredAt: null, revokedAt: null, markdown: summary, resourceType: null };
@@ -48,7 +52,9 @@ let shareCount = 0;
 let creates = 0;
 let uploads = 0;
 const submissions: Record<"template" | "extension" | "skill", EnterpriseSubmission[]> = { template: [], extension: [], skill: [] };
+let serviceMembershipStatus: EnterpriseConnection["membership"]["status"];
 let serviceRole: EnterpriseConnection["membership"]["role"] | null = null;
+let serviceDepartmentId: string | null | undefined;
 let managementRequests = 0;
 let managementWrites = 0;
 let grants = 0;
@@ -64,6 +70,12 @@ const shareKeys = new Set<string>();
 const importedSession = () => ({ id: "imported-session", title: message.title, time: { created: 1000, updated: 1000 }, enterpriseShare: true });
 const baseFetch = window.fetch.bind(window);
 const resourceManagementMode = new URLSearchParams(location.search).has("resource-management");
+const mcpProofMode = new URLSearchParams(location.search).has("mcp");
+const mcpAdminProofMode = new URLSearchParams(location.search).has("mcp-admin");
+const mcpProofResource = { id: "c642310c-14d9-4be3-87a3-26940676418a", name: "企业知识库", description: "查询团队发布的资料", mcpUrl: "https://tools-proof.invalid/mcp", mcpRequiresOAuth: false };
+let mcpPublished: typeof mcpProofResource | null = null;
+let mcpProofReads = 0;
+let mcpProofAllowed = true;
 const resourceCards: EnterpriseResource[] = (["template", "extension", "skill"] as const).flatMap(type => (["pending", "rejected", "approved"] as const).map((reviewStatus, index) => ({
   id: `${type}-upload-${index}`, type, slug: `${type}-upload-${index}`, manifestId: `${type}-upload-${index}`,
   name: `${type === "template" ? "模板" : type === "extension" ? "插件" : "技能"}${["待审核投稿", "退回投稿", "已下架投稿"][index]}`,
@@ -86,6 +98,23 @@ window.fetch = async (input, init) => {
   if (!url.hostname.endsWith("-proof.invalid")) return baseFetch(input, init);
   const method = init?.method ?? "GET";
   const body = typeof init?.body === "string" ? JSON.parse(init.body) : {};
+  if (mcpAdminProofMode && url.hostname === "enterprise-proof.invalid" && url.pathname.endsWith("/resources")) {
+    if (method === "POST") {
+      if (serviceRole !== "mcp_admin") return Response.json({ error: "forbidden" }, { status: 403 });
+      mcpPublished = { ...mcpProofResource, name: body.name, mcpUrl: body.url, description: body.description, mcpRequiresOAuth: body.requiresOAuth };
+      return Response.json({ id: mcpPublished.id });
+    }
+    if (url.searchParams.get("view") === "manage" && serviceRole !== "mcp_admin") return Response.json({ error: "forbidden" }, { status: 403 });
+    return Response.json({ items: mcpPublished && serviceRole === "mcp_admin" ? [mcpPublished] : [], nextCursor: null });
+  }
+  if (mcpProofMode && url.hostname === "enterprise-proof.invalid") {
+    if (new Headers(init?.headers).get("authorization") !== "Bearer synthetic-proof-session") return Response.json({}, { status: 401 });
+    if (url.pathname.endsWith("/resources") && url.searchParams.get("type") === "mcp") return Response.json({ items: [mcpProofResource], nextCursor: null });
+    if (url.pathname.endsWith("/resources/" + mcpProofResource.id)) {
+      mcpProofReads++;
+      return mcpProofAllowed ? Response.json(mcpProofResource) : Response.json({ error: "not_found" }, { status: 404 });
+    }
+  }
   if (resourceManagementMode && url.pathname.endsWith("/resources") && url.searchParams.get("view") === "catalog") {
     return Response.json({ items: resourceCards.filter(item => item.type === url.searchParams.get("type")).map(item => ({ ...item, status: item.lifecycle?.status, sourceTemplateId: item.manifestId })), nextCursor: null });
   }
@@ -120,7 +149,12 @@ window.fetch = async (input, init) => {
   if (url.pathname.includes(".well-known")) return Response.json({ serverId: initial.id, name: initial.name, origin: initial.origin, authMode: initial.authMode });
   if (url.pathname.endsWith("/membership")) {
     const membership = (readEnterpriseConnections().find((item) => item.id === initial.id) ?? initial).membership;
-    return Response.json({ membership: { ...membership, role: serviceRole ?? membership.role, displayName: "验证用户", email: "owner@example.com" } });
+    const departmentId = serviceDepartmentId === undefined ? membership.departmentId : serviceDepartmentId;
+    return Response.json({ membership: {
+      ...membership, role: serviceRole ?? membership.role, status: serviceMembershipStatus ?? membership.status,
+      displayName: "验证用户", email: "owner@example.com", departmentId,
+      departmentName: departments.find(department => department.id === departmentId)?.name ?? null,
+    } });
   }
   if ((url.pathname.endsWith("/resources") && url.searchParams.get("view") === "manage") || url.pathname.endsWith("/access") || url.pathname.endsWith("/review") || method === "PATCH") {
     managementRequests++;
@@ -240,8 +274,11 @@ function AccountCacheProof() {
 }
 
 function NotificationProof() {
+  useEnterpriseMembershipMonitor();
   const [revision, setRevision] = useState(0);
   const reset = () => {
+    serviceMembershipStatus = undefined;
+    serviceDepartmentId = undefined;
     notificationMessages.splice(0, notificationMessages.length, ...initialNotificationMessages);
     useNotificationStore.setState({ notifications: [], clearedSources: {} });
     useNotificationStore.getState().add({ kind: "cloud", title: "公开插件更新可用", body: "新版本已发布。" });
@@ -259,6 +296,12 @@ function NotificationProof() {
       <Button data-testid="notification-proof-member" onClick={() => { saveEnterpriseConnection({ ...initial, membership: { ...initial.membership, id: "employee-2" }, session: { ...initial.session, token: "synthetic-employee-2" } }); }}>切换另一成员</Button>
       <Button data-testid="notification-proof-reopen" onClick={async () => { await useNotificationStore.persist.rehydrate(); setRevision((value) => value + 1); }}>重开通知中心</Button>
       <Button data-testid="notification-proof-theme" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; }}>切换主题</Button>
+      {new URLSearchParams(window.location.search).has("membership") && <>
+        <Button data-testid="notification-proof-change-details" onClick={() => { serviceRole = "skill_admin"; serviceDepartmentId = "engineering"; window.dispatchEvent(new Event("focus")); }}>模拟管理员调整角色和部门</Button>
+        <Button data-testid="notification-proof-remove-department" onClick={() => { serviceDepartmentId = null; window.dispatchEvent(new Event("focus")); }}>模拟管理员取消部门分配</Button>
+        <Button onClick={() => { activatePersonalWorkContext(); serviceMembershipStatus = "suspended"; window.dispatchEvent(new Event("focus")); }}>模拟管理员停用成员</Button>
+        <Button onClick={() => { serviceMembershipStatus = "active"; window.dispatchEvent(new Event("focus")); }}>模拟管理员恢复成员</Button>
+      </>}
       <NotificationBell key={revision} />
     </div>
     <p key={revision} className="text-xs text-muted-foreground">通知请求 {notificationRequests}</p>
@@ -322,5 +365,40 @@ function Proof() {
     <Toaster />
   </div></main>;
 }
-if (notificationsMode) setLocale("zh");
-createRoot(document.getElementById("root")!).render(<HashRouter>{notificationsMode ? <NotificationProof /> : accountCacheMode ? <DenAuthProvider><CloudSessionProvider><AccountCacheProof /></CloudSessionProvider></DenAuthProvider> : <Routes><Route path="/workspace/:workspaceId/session/:sessionId?" element={<Proof />} /><Route path="/session/:sessionId?" element={<Proof />} /><Route path="/settings/*" element={<Proof />} /><Route path="*" element={<Navigate to="/session" replace />} /></Routes>}</HashRouter>);
+function EnterpriseMcpProof() {
+  const [installed, setInstalled] = useState<McpServerEntry[]>([]);
+  return <LocalProvider><SettingsShell activeTab="extensions" developerMode={false} onClose={() => undefined} onSelectTab={() => undefined} headerTitle="扩展 · MCP" showNotifications={false} hidePageHeader>
+    <button type="button" hidden data-testid="proof-mcp-revoke" onClick={() => { mcpProofAllowed = false; }} />
+    <div data-testid="proof-mcp-install" data-installed={installed[0]?.name} data-authorized-reads={mcpProofReads}>
+      <EnterpriseMcpView
+        enterprise={initial}
+        ready
+        installed={installed}
+        statuses={Object.fromEntries(installed.map(entry => [entry.name, { status: "connected" }]))}
+        install={async entry => {
+          if (entry.url !== mcpProofResource.mcpUrl || entry.oauth || !entry.serverName || !mcpProofReads) return false;
+          setInstalled([{ name: entry.serverName, config: { type: "remote", url: entry.url, oauth: false } }]);
+          return true;
+        }}
+        remove={async name => { setInstalled(items => items.filter(item => item.name !== name)); return true; }}
+      />
+    </div>
+  </SettingsShell></LocalProvider>;
+}
+
+function McpAdminProof() {
+  const [role, setRole] = useState<"mcp_admin" | "member">("mcp_admin");
+  const switchRole = (nextRole: "mcp_admin" | "member") => {
+    serviceRole = nextRole;
+    saveEnterpriseConnection({ ...initial, membership: { ...initial.membership, role: nextRole } });
+    setRole(nextRole);
+  };
+  useEffect(() => { switchRole("mcp_admin"); }, []);
+  return <LocalProvider><SettingsShell activeTab="extensions" developerMode={false} onClose={() => undefined} onSelectTab={() => undefined} headerTitle="扩展 · MCP" showNotifications={false} hidePageHeader>
+    <Button onClick={() => switchRole("member")}>切换到普通成员</Button>
+    <EnterpriseMcpView key={role} enterprise={{ ...initial, membership: { ...initial.membership, role }, features: initial.features && { ...initial.features, mcpManagement: true } }}
+      ready installed={[]} statuses={{}} install={async () => false} remove={async () => false} />
+  </SettingsShell></LocalProvider>;
+}
+if (notificationsMode || mcpProofMode || mcpAdminProofMode) setLocale("zh");
+createRoot(document.getElementById("root")!).render(<HashRouter>{mcpAdminProofMode ? <McpAdminProof /> : mcpProofMode ? <EnterpriseMcpProof /> : notificationsMode ? <NotificationProof /> : accountCacheMode ? <DenAuthProvider><CloudSessionProvider><AccountCacheProof /></CloudSessionProvider></DenAuthProvider> : <Routes><Route path="/workspace/:workspaceId/session/:sessionId?" element={<Proof />} /><Route path="/session/:sessionId?" element={<Proof />} /><Route path="/settings/*" element={<Proof />} /><Route path="*" element={<Navigate to="/session" replace />} /></Routes>}</HashRouter>);

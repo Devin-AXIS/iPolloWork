@@ -1472,11 +1472,11 @@ describe("conversation engine adapters", () => {
     expect(mapCodexHarnessEvent({
       type: "notification",
       method: "error",
-      params: { threadId: "codex-thread", error: { message: "provider failed" } },
+      params: { threadId: "codex-thread", error: { message: "provider failed", request_id: "private-provider-trace" } },
     }, state)).toEqual([{
       type: "session.error",
       sessionId: "codex-thread",
-      errorText: "provider failed",
+      errorText: "Codex 处理失败，请稍后重试。",
       parentUserMessageId: "codex-user-error",
     }]);
   });
@@ -2356,7 +2356,7 @@ describe("conversation engine adapters", () => {
         sessionId: "session-1",
         parts: [{ type: "text", text: "Which model is active?" }],
         model: { providerID: "tokenstar", modelID: "gpt-5.6-sol" },
-      })).rejects.toThrow("DeepSeek Harness");
+      })).rejects.toThrow("当前模型不可用，请切换其他模型后重试。");
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -3,62 +3,139 @@ import { useEffect, useState } from "react";
 
 import {
   enterpriseConnectionsChangedEvent,
+  enterpriseMembershipChangedEvent,
   refreshEnterpriseConnection,
+  readEnterpriseConnections,
   saveEnterpriseConnection,
   type EnterpriseConnection,
+  type EnterpriseMembershipChange,
 } from "@/app/lib/enterprise-connections";
 import { EnterpriseRequestError } from "@/app/lib/enterprise-client";
-import { readActiveEnterpriseConnection, workContextChangedEvent } from "@/app/lib/work-context";
+import { readActiveEnterpriseConnection, readActiveWorkContextId, enterpriseWorkContextId, workContextChangedEvent } from "@/app/lib/work-context";
 
-let pendingRefresh: { connectionId: string; promise: Promise<EnterpriseConnection> } | null = null;
+import { t } from "@/i18n";
+import { notifyEvent } from "@/react-app/shell/notifications";
+
+function selectedConnection() {
+  const context = readActiveWorkContextId();
+  return readEnterpriseConnections().find(item => enterpriseWorkContextId(item.id) === context);
+}
+
+const pendingRefresh = new Map<string, Promise<EnterpriseConnection>>();
 
 function refreshConnection(connection: EnterpriseConnection) {
   const connectionId = `${connection.id}:${connection.membership.id}:${connection.session.token}`;
-  if (pendingRefresh?.connectionId === connectionId) return pendingRefresh.promise;
+  const pending = pendingRefresh.get(connectionId);
+  if (pending) return pending;
   const promise = refreshEnterpriseConnection(connection).finally(() => {
-    if (pendingRefresh?.promise === promise) pendingRefresh = null;
+    pendingRefresh.delete(connectionId);
   });
-  pendingRefresh = { connectionId, promise };
+  pendingRefresh.set(connectionId, promise);
   return promise;
+}
+
+function notifyMembershipChange(event: Event) {
+  if (!(event instanceof CustomEvent)) return;
+  const { name, before, after }: EnterpriseMembershipChange = event.detail;
+  const state = after.removed ? "removed" : after.status ?? "active";
+  const previous = before.removed ? "removed" : before.status ?? "active";
+  const changes: string[] = [];
+  if (previous !== state) {
+    changes.push(t(state === "removed" ? "enterprise_membership.removed" : state === "suspended" ? "enterprise_membership.suspended"
+      : state === "left" ? "enterprise_membership.left" : state === "invited" ? "enterprise_membership.invited"
+      : "enterprise_membership.restored"));
+  }
+  if (before.role !== after.role) {
+    changes.push(t("enterprise_membership.role_changed", {
+      before: t(`enterprise_membership.role_${before.role}`),
+      after: t(`enterprise_membership.role_${after.role}`),
+    }));
+  }
+  const moved = before.departmentId !== undefined && before.departmentId !== after.departmentId;
+  const renamed = before.departmentName && after.departmentName && before.departmentName !== after.departmentName;
+  if (moved || renamed) {
+    const unassigned = t("enterprise_membership.department_unassigned");
+    const oldDepartment = before.departmentId === null ? unassigned : before.departmentName;
+    const newDepartment = after.departmentId === null ? unassigned : after.departmentName;
+    if (oldDepartment && newDepartment && oldDepartment !== newDepartment) {
+      changes.push(t("enterprise_membership.department_changed", { before: oldDepartment, after: newDepartment }));
+    } else if (newDepartment) {
+      changes.push(t("enterprise_membership.department_current", { name: newDepartment }));
+    } else {
+      changes.push(t("enterprise_membership.department_name_unavailable"));
+    }
+  }
+  if (!changes.length) return;
+  notifyEvent({
+    kind: "system",
+    severity: state === "active" ? "info" : "warning",
+    title: t(previous === state ? "enterprise_membership.details_title" : "enterprise_membership.notification_title", { name }),
+    body: changes.join("\n"),
+  });
+}
+
+export function useEnterpriseMembershipMonitor() {
+  useEffect(() => {
+    let backgroundIndex = 0;
+    const refresh = (connection: EnterpriseConnection) => {
+      if (Date.parse(connection.session.expiresAt) <= Date.now()) return;
+      void refreshConnection(connection).catch((error: unknown) => {
+        const current = readEnterpriseConnections().find(item => item.id === connection.id);
+        if (error instanceof EnterpriseRequestError && error.status === 401 && current?.membership.id === connection.membership.id
+          && current.session.token === connection.session.token) {
+          saveEnterpriseConnection({ ...current, session: { ...current.session, expiresAt: new Date(0).toISOString() } });
+          if (!current.membership.removed) notifyEvent({
+            kind: "system",
+            severity: "warning",
+            title: t("enterprise_membership.notification_title", { name: current.name }),
+            body: t("enterprise_membership.reconnect"),
+          });
+        }
+      });
+    };
+    const refreshSelected = () => {
+      const selected = selectedConnection();
+      if (selected) refresh(selected);
+    };
+    const refreshVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      refreshSelected();
+      const selected = selectedConnection();
+      const others = readEnterpriseConnections().filter(item => item.id !== selected?.id && Date.parse(item.session.expiresAt) > Date.now());
+      const next = others[backgroundIndex % others.length];
+      if (next) {
+        backgroundIndex++;
+        refresh(next);
+      }
+    };
+    window.addEventListener(enterpriseMembershipChangedEvent, notifyMembershipChange);
+    window.addEventListener(enterpriseConnectionsChangedEvent, refreshSelected);
+    window.addEventListener(workContextChangedEvent, refreshSelected);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    const interval = window.setInterval(refreshVisible, 15_000);
+    refreshVisible();
+    return () => {
+      window.removeEventListener(enterpriseMembershipChangedEvent, notifyMembershipChange);
+      window.removeEventListener(enterpriseConnectionsChangedEvent, refreshSelected);
+      window.removeEventListener(workContextChangedEvent, refreshSelected);
+      window.removeEventListener("focus", refreshVisible);
+      document.removeEventListener("visibilitychange", refreshVisible);
+      window.clearInterval(interval);
+    };
+  }, []);
 }
 
 export function useActiveEnterpriseConnection(): EnterpriseConnection | null {
   const [connection, setConnection] = useState<EnterpriseConnection | null>(() => readActiveEnterpriseConnection());
-
   useEffect(() => {
-    let disposed = false;
     const readStoredConnection = () => setConnection(readActiveEnterpriseConnection());
-    const refreshActiveConnection = () => {
-      const activeConnection = readActiveEnterpriseConnection();
-      setConnection(activeConnection);
-      if (!activeConnection) return;
-      void refreshConnection(activeConnection)
-        .then(() => {
-          if (!disposed) readStoredConnection();
-        })
-        .catch((error: unknown) => {
-          const current = readActiveEnterpriseConnection();
-          if (!disposed && error instanceof EnterpriseRequestError && error.status === 401
-            && current?.id === activeConnection.id && current.membership.id === activeConnection.membership.id
-            && current.session.token === activeConnection.session.token) {
-            saveEnterpriseConnection({ ...current, session: { ...current.session, expiresAt: new Date(0).toISOString() } });
-          }
-        });
-    };
-    const refreshVisibleConnection = () => { if (document.visibilityState === "visible") refreshActiveConnection(); };
     window.addEventListener(enterpriseConnectionsChangedEvent, readStoredConnection);
-    window.addEventListener(workContextChangedEvent, refreshActiveConnection);
-    window.addEventListener("focus", refreshActiveConnection);
-    document.addEventListener("visibilitychange", refreshVisibleConnection);
-    const interval = window.setInterval(refreshVisibleConnection, 15_000);
-    refreshActiveConnection();
+    window.addEventListener(workContextChangedEvent, readStoredConnection);
+    readStoredConnection();
     return () => {
-      disposed = true;
       window.removeEventListener(enterpriseConnectionsChangedEvent, readStoredConnection);
-      window.removeEventListener(workContextChangedEvent, refreshActiveConnection);
-      window.removeEventListener("focus", refreshActiveConnection);
-      document.removeEventListener("visibilitychange", refreshVisibleConnection);
-      window.clearInterval(interval);
+      window.removeEventListener(workContextChangedEvent, readStoredConnection);
     };
   }, []);
 

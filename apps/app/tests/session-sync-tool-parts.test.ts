@@ -50,6 +50,15 @@ test("OpenCode text parts remain streaming until the provider records their end"
     .toMatchObject({ state: "done" });
 });
 
+test("OpenCode reports unsuccessful finish reasons even when no separate error event arrives", () => {
+  const info = { id: "assistant", sessionID: "session-a", role: "assistant", parentID: "user", time: { created: 1, completed: 2 } };
+  const update = (finish: string) => mapOpenCodeConversationEvent({ type: "message.updated", properties: { info: { ...info, finish } } });
+  expect(update("content-filter")).toMatchObject({ type: "session.error", parentUserMessageId: "user", errorText: "模型服务拦截了本次内容，请调整输入后重试。" });
+  expect(update("length")).toMatchObject({ type: "session.error", errorText: "模型达到输出上限，回复未完整生成。" });
+  expect(update("stop")?.type).toBe("message.upsert");
+  expect(update("tool-calls")?.type).toBe("message.upsert");
+});
+
 function writeToolPart(
   status: "pending" | "running" | "completed" | "error",
   input: Record<string, unknown>,
@@ -135,6 +144,18 @@ describe("tool part mapper", () => {
     expect(describeConversationSessionError({ data: { statusCode: 429, message: "insufficient_quota" } }))
       .toBe("第三方服务余额或额度不足，请检查余额、用量限制或等待额度恢复。");
     expect(describeConversationSessionError("Unexpected server error")).toBe("操作未完成，请稍后重试。");
+  });
+
+  test("uses actionable text for nested or serialized chat failures, including errors inside an HTTP 200 stream", () => {
+    const trace = "private-provider-trace";
+    const missing = { name: "APIError", data: { statusCode: 404, responseBody: JSON.stringify({ error: { code: "model_not_found", request_id: trace } }) } };
+    const streamingError = { error: { code: "invalid_parameter_error", message: "audio input required", request_id: trace } };
+    expect(describeConversationSessionError(missing)).toBe("当前模型不可用，请切换其他模型后重试。");
+    expect(describeConversationSessionError({ error: { code: "model_decommissioned" } })).toBe("当前模型不可用，请切换其他模型后重试。");
+    expect(describeConversationSessionError(new Error(JSON.stringify(streamingError)))).toBe("模型不接受本次请求，请调整输入或切换模型后重试。");
+    const unknown = { data: { statusCode: 400, responseBody: JSON.stringify({ request_id: trace }) } };
+    expect(describeConversationSessionError(unknown)).not.toContain(trace);
+    expect(describeConversationSessionError(JSON.stringify(unknown))).not.toContain("responseBody");
   });
 
   test("explains OpenCode free-tier and regional restrictions instead of an account entitlement failure", () => {

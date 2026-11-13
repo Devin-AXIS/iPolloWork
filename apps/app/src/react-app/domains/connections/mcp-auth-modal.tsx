@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, ExternalLink, Loader2, RefreshCcw } from "lucide-react";
 
-import type { McpDirectoryInfo } from "@/app/constants";
+import { getMcpServerName, type McpDirectoryInfo } from "@/app/constants";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { openDesktopUrl } from "@/app/lib/desktop";
 import { validateMcpServerName } from "@/app/mcp";
@@ -40,7 +40,7 @@ export function McpAuthModal(props: McpAuthModalProps) {
   const startedAt = useRef(0);
 
   const serverName = props.entry
-    ? validateMcpServerName(props.entry.name).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    ? validateMcpServerName(props.entry.id ?? getMcpServerName(props.entry))
     : "";
 
   const openAuthorizationUrl = useCallback(async (url: string) => {

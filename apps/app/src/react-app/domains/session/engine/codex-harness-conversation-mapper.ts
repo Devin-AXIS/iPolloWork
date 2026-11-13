@@ -1,6 +1,6 @@
 import { codexNativePlanTodos } from "@ipollowork/types/workspace";
 import type { DynamicToolUIPart, UIMessage } from "ai";
-import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
+import { describeConversationSessionError } from "./opencode-message-adapter";
 import { t } from "@/i18n";
 
 import type { WorkspaceEngineEvent } from "@/app/lib/workspace-engine-rpc-client";
@@ -462,11 +462,10 @@ export function mapCodexHarnessEvent(
     state.retryingThreads.delete(threadId);
     if (!turnId || activeTurnId === turnId) state.activeTurnByThread.delete(threadId);
     if (turn.status === "failed") {
-      const error = isRecord(turn.error) ? stringValue(turn.error.message) : null;
       completed.push({
         type: "session.error",
         sessionId: threadId,
-        errorText: serviceErrorMessage(turn.error, error ?? "Codex 处理失败，请稍后重试。"),
+        errorText: describeConversationSessionError(turn.error, "Codex 处理失败，请稍后重试。"),
         ...(parentUserMessageId ? { parentUserMessageId } : {}),
       });
     } else if (turn.status === "completed" && !hasVisibleResult && !(hasCompaction && !parentUserMessageId)) {
@@ -570,7 +569,7 @@ export function mapCodexHarnessEvent(
     return [{
       type: "session.error",
       sessionId: threadId,
-      errorText: serviceErrorMessage(error ?? params.message, "Codex 处理失败，请稍后重试。"),
+      errorText: describeConversationSessionError(error ?? params.message, "Codex 处理失败，请稍后重试。"),
       ...(parentUserMessageId ? { parentUserMessageId } : {}),
     }];
   }

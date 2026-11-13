@@ -825,6 +825,21 @@ describe("model runtime adapters", () => {
     }]);
   });
 
+  test("filters unavailable Alibaba China models from both chat selectors without hiding another provider's model", () => {
+    const models = Object.fromEntries(["qwen3.8-flash", "qwen3-asr-flash", "qwen-deep-research", "qwen2-5-14b-instruct"].map((id) => [id, { id, name: id, capabilities: {} }]));
+    const catalog = {
+      all: ["alibaba-cn", "custom-gateway"].map((id) => ({ id, name: id, source: "config" as const, env: [], models })),
+      connected: ["alibaba-cn", "custom-gateway"],
+      default: {},
+    };
+    const expected = [
+      { providerID: "alibaba-cn", modelIDs: ["qwen3.8-flash"] },
+      { providerID: "custom-gateway", modelIDs: Object.keys(models) },
+    ];
+    expect(getSelectableChatModelSnapshot(catalog)).toEqual(expected);
+    expect(getRunnableChatModelSnapshot({ catalog, runtime: catalog })).toEqual(expected);
+  });
+
   test("shows OpenCode free models only in the OpenCode engine", () => {
     const model = { id: "mimo-v2.5-free", name: "MiMo Free", capabilities: {} };
     const catalog = {

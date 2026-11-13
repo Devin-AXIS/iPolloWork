@@ -80,7 +80,9 @@ import { SettingsStack } from "@/react-app/domains/settings/settings-section";
 import { AdvancedView } from "@/react-app/domains/settings/pages/advanced-view";
 import { AppearanceView } from "@/react-app/domains/settings/pages/appearance-view";
 import { CloudAccountView } from "@/react-app/domains/settings/pages/cloud-account-view";
+import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise";
 import { ConnectView } from "@/react-app/domains/settings/pages/connect-view";
+import { McpLibraryView } from "@/react-app/domains/settings/pages/mcp-library-view";
 import { CloudMarketplacesView } from "@/react-app/domains/settings/pages/cloud-marketplaces-view";
 import { CloudProvidersView } from "@/react-app/domains/settings/pages/cloud-providers-view";
 import { MemoryView } from "@/react-app/domains/settings/pages/memory-view";
@@ -741,6 +743,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   );
   useExtensionsStoreSnapshot(extensionsStore);
   const orgMcpConnections = useOrgMcpConnections();
+  const activeEnterprise = useActiveEnterpriseConnection();
 
   const ipolloworkServerStatusForMcp = ipolloworkServerSnapshot.ipolloworkServerStatus;
   useEffect(() => {
@@ -1633,6 +1636,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
 
   const selectedWorkspaceName = selectedWorkspace?.displayNameResolved ?? t("session.workspace_fallback");
   const workspaceType = selectedWorkspace?.workspaceType ?? "local";
+  const extensionsSection = route.extensionsSection === "skills" || route.extensionsSection === "mcp"
+    ? route.extensionsSection : "plugins";
   const isRemoteWorkspace = workspaceType === "remote";
   const canWriteWorkspaceSkills =
     !isRemoteWorkspace || ipolloworkServerSnapshot.ipolloworkServerCanWriteSkills;
@@ -1862,7 +1867,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   }
 
   if (!props.embedded && !routeWorkspaceId && selectedWorkspaceId) {
-    return <Navigate to={workspaceSettingsRoute(selectedWorkspaceId, settingsPathForRoute(route))} replace state={location.state} />;
+    return <Navigate to={{ pathname: workspaceSettingsRoute(selectedWorkspaceId, settingsPathForRoute(route)), search: location.search }} replace state={location.state} />;
   }
 
   const openCloudAccountSettings = () => {
@@ -1991,6 +1996,18 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           />
         );
       case "extensions": {
+        if (extensionsSection === "mcp") {
+          return <McpLibraryView
+            key={JSON.stringify([runtimeWorkspaceId, activeEnterprise?.id, activeEnterprise?.membership.id, location.search])}
+            enterprise={activeEnterprise}
+            ready={Boolean(runtimeWorkspaceId) && !isRemoteWorkspace}
+            installed={connectionsSnapshot.mcpServers}
+            statuses={connectionsSnapshot.mcpStatuses}
+            install={connectionsStore.connectMcp}
+            remove={connectionsStore.removeMcp}
+            refreshInstalled={connectionsStore.refreshMcpServers}
+          />;
+        }
         const skillsView = (
           <SkillsView
             client={selectedWorkspaceEndpoint?.client ?? ipolloworkClient}
@@ -2054,7 +2071,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
           />
         );
         if (route.pluginPackageId) return pluginPackagesView;
-        return route.extensionsSection === "skills" ? skillsView : pluginPackagesView;
+        return extensionsSection === "skills" ? skillsView : pluginPackagesView;
       }
       case "cloud-account":
         return (
@@ -2222,18 +2239,19 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         headerTitle={route.tab === "ai" && !props.embedded ? (
           <span className="sr-only">{t("settings.tab_ai")}</span>
         ) : route.tab === "extensions" && !route.pluginPackageId && !selectedPluginSettingsPage ? (
-          <SettingsSegmentedTabs
-            value={route.extensionsSection === "skills" ? "skills" : "plugins"}
+          <SettingsSegmentedTabs<"plugins" | "skills" | "mcp">
+            value={extensionsSection}
             ariaLabel={t("plugin_library.navigation_label")}
             items={[
               { value: "plugins", label: t("plugin_library.plugins_tab") },
               { value: "skills", label: t("plugin_library.skills_tab") },
+              { value: "mcp", label: "MCP" },
             ]}
-            onValueChange={(value) => navigateSettingsPath(value === "skills" ? "extensions/skills" : "extensions")}
+            onValueChange={(value) => navigateSettingsPath(value === "plugins" ? "extensions" : `extensions/${value}`)}
           />
         ) : undefined}
         headerActions={route.tab === "extensions" && !route.pluginPackageId && !selectedPluginSettingsPage ? (
-          route.extensionsSection === "skills" ? (
+          extensionsSection === "mcp" ? undefined : extensionsSection === "skills" ? (
             <div data-testid="skills-library-navigation-actions" className="flex items-center gap-4">
               <Button size="default" variant="outline" onClick={() => skillsViewRef.current?.refresh()} disabled={busy}>
                 <RefreshCw size={14} />

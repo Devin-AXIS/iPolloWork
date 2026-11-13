@@ -1,10 +1,9 @@
 /** @jsxImportSource react */
 import type { UIMessage } from "ai";
-import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
+import { classifyProviderFailure, providerFailureMessages, serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import type { FilePart, Part, ToolPart } from "@opencode-ai/sdk/v2/client";
 
 import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-server";
-import { safeStringify } from "../../../../app/utils";
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "../../../../app/types";
 import { parseDesignAiSelectionDisplayMetadata } from "@ipollowork/design-studio";
 import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
@@ -20,88 +19,36 @@ import {
   STRUCTURED_OUTPUT_TOOL,
 } from "./opencode-tool-parts";
 
-function recordValue(value: unknown, key: string) {
-  if (!value || typeof value !== "object") return undefined;
-  return (value as Record<string, unknown>)[key];
-}
-
-function firstStringValue(records: unknown[], keys: string[]) {
-  for (const record of records) {
-    for (const key of keys) {
-      const value = recordValue(record, key);
-      if (typeof value === "string" && value.trim()) return value.trim();
-    }
+export function describeConversationSessionError(error: unknown, fallback = t("message.session_failed")) {
+  const message = typeof error === "string" ? error.trim() : error instanceof Error ? error.message.trim() : "";
+  const name = error && typeof error === "object" && "name" in error ? error.name : undefined;
+  if (name === "MessageAbortedError" || /MessageAbortedError|run was interrupted before it finished/i.test(message)) {
+    return "The run was interrupted before it finished.";
   }
-  return null;
-}
-
-function firstNumberValue(records: unknown[], keys: string[]) {
-  for (const record of records) {
-    for (const key of keys) {
-      const value = recordValue(record, key);
-      if (typeof value === "number" && Number.isFinite(value)) return value;
-    }
-  }
-  return null;
-}
-
-function defaultErrorMessage(name: string | null, fallback: string) {
-  if (name === "ProviderAuthError") return "Provider authentication failed";
-  if (name === "MessageOutputLengthError") return "The model reached its output limit before finishing";
-  if (name === "StructuredOutputError") return "The model could not produce valid structured output";
-  if (name === "ContextOverflowError") return "The conversation is too large for the model context window";
-  if (name === "MessageAbortedError") return "The run was interrupted before it finished.";
-  return fallback;
-}
-
-/**
- * Unsupported file parts live in server-side session history, so the same
- * provider error replays on every later prompt. Tell the user how to escape.
- */
-function withAttachmentRecoveryHint(text: string) {
-  if (!text.includes("file part media type") || !text.includes("not supported")) return text;
-  return `${text}\nAn attached file in this conversation uses a format the model can't read. Revert the conversation to before the attachment was sent, or start a new session.`;
-}
-
-function withRateLimitRecoveryHint(text: string, status?: number | null) {
-  const failure = classifyProviderFailure({ status, message: text });
-  return failure?.code === "provider_rate_limited" ? t("message.rate_limit_error")
-    : failure?.message ?? serviceErrorMessage(text);
-}
-
-export function describeConversationSessionError(error: unknown, fallback = "Session failed") {
-  if (error instanceof Error) return withAttachmentRecoveryHint(withRateLimitRecoveryHint(error.message || fallback));
-  if (typeof error === "string") return withAttachmentRecoveryHint(withRateLimitRecoveryHint(error.trim() || fallback));
-  if (!error || typeof error !== "object") return fallback;
-
-  const data = recordValue(error, "data");
-  const cause = recordValue(error, "cause");
-  const causeData = recordValue(cause, "data");
-  const records = [error, data, cause, causeData].filter(Boolean);
-  const name = firstStringValue(records, ["name", "type"]);
-  const message = firstStringValue(records, ["message", "detail", "reason", "error"]);
-  const status = firstNumberValue(records, ["statusCode", "status"]);
-  const provider = firstStringValue(records, ["providerID", "providerId", "provider"]);
-  const code = firstStringValue(records, ["code", "errorCode"]);
-  const retries = firstNumberValue(records, ["retries", "retryCount"]);
-  const responseBody = firstStringValue(records, ["responseBody", "body", "response"]);
-
-  const failure = classifyProviderFailure({ status, code, message: `${message ?? ""} ${responseBody ?? ""}` });
+  if (name === "ProviderAuthError") return providerFailureMessages.provider_auth_failed;
+  const failure = classifyProviderFailure(error);
   if (failure) return failure.code === "provider_rate_limited" ? t("message.rate_limit_error") : failure.message;
+  if (message === t("session.deepseek_harness_model_unavailable")) return providerFailureMessages.provider_model_unavailable;
+  if (error instanceof Error || /^[{\[<]/.test(message)
+    || /(?:responseBody|responseHeaders|request[_-]?id|statusCode)\s*["']?\s*[:=]/i.test(message)) return fallback;
+  return message ? serviceErrorMessage(message) : fallback;
+}
 
-  const genericAbortMessage = name === "MessageAbortedError" && /^abort(?:ed)?$/i.test(message ?? "");
-  const lines = [genericAbortMessage ? defaultErrorMessage(name, fallback) : message ?? defaultErrorMessage(name, fallback)];
-  if (status && !lines[0]?.includes(String(status))) lines.push(`Status: ${status}`);
-  if (provider && !lines[0]?.includes(provider)) lines.push(`Provider: ${provider}`);
-  if (code) lines.push(`Code: ${code}`);
-  if (retries !== null) lines.push(`Retries: ${retries}`);
-  if (responseBody && responseBody !== message) lines.push(`Response: ${responseBody}`);
-  if (lines.some((line) => line !== fallback)) {
-    return withAttachmentRecoveryHint(withRateLimitRecoveryHint(lines.join("\n"), status));
+// Internal conversation events may carry friendly text from the engine
+// adapter. Only known provider reasons go into desktop notifications.
+export function conversationNotificationError(text: string) {
+  return classifyProviderFailure(text)?.message ?? t("session.run_failed_hint");
+}
+
+export function describeOpenCodeFinishError(finish: unknown) {
+  switch (finish) {
+    case "content-filter":
+    case "content_filter": return providerFailureMessages.provider_content_filtered;
+    case "length": return providerFailureMessages.provider_output_limit;
+    case "insufficient_system_resource": return providerFailureMessages.provider_unavailable;
+    case "error": return t("session.run_failed_title");
+    default: return null;
   }
-
-  const serialized = safeStringify(error);
-  return serialized && serialized !== "{}" ? serialized : fallback;
 }
 
 
@@ -311,10 +258,11 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
     // parent user message whenever available. Live runtime errors use that
     // same turn key, so a snapshot reload dedupes the error while consecutive
     // failed prompts remain independent rows.
-    const error = message.info.role === "assistant" && "error" in message.info ? message.info.error : undefined;
+    const assistant = message.info.role === "assistant" ? message.info : null;
+    const error = assistant?.error ? describeConversationSessionError(assistant.error) : describeOpenCodeFinishError(assistant?.finish);
     if (!error) return [uiMessage];
 
-    const errorMessage = createSessionErrorUIMessage(parentUserMessageId || message.info.id, describeConversationSessionError(error), {
+    const errorMessage = createSessionErrorUIMessage(parentUserMessageId || message.info.id, error, {
       created,
       ...(parentUserMessageId ? { parentUserMessageId } : {}),
     });

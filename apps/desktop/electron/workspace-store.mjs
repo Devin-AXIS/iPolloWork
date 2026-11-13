@@ -136,8 +136,8 @@ const DEFAULT_DESKTOP_BOOTSTRAP_PATH = (() => {
 const LEGACY_DESKTOP_BOOTSTRAP_PATH = path.join(os.homedir(), ".config", "ipollowork", "desktop-bootstrap.json");
 const DESKTOP_BOOTSTRAP_FILENAME = "desktop-bootstrap.json";
 const STANDARD_DESKTOP_INSTALLER_PATTERN = /^ipollowork-(?:mac-(?:arm64|x64)-.+\.dmg|win-x64-.+\.exe)$/i;
-const HOSTED_DESKTOP_WEB_URL = "http://i.ipollo.ai";
-const LEGACY_HOSTED_IPOLLO_HTTPS_WEB_URL = "https://i.ipollo.ai";
+const HOSTED_DESKTOP_WEB_URL = "https://i.ipollo.ai";
+const LEGACY_HOSTED_IPOLLO_HTTP_WEB_URL = "http://i.ipollo.ai";
 const LEGACY_HOSTED_DESKTOP_WEB_URL = "https://app.ipolloworklabs.com";
 const HOSTED_DESKTOP_API_URL = "https://api.ipolloworklabs.com";
 
@@ -154,7 +154,7 @@ function isHostedDesktopBootstrapConfig(config) {
   const baseUrlOrigin = bootstrapUrlOrigin(config?.baseUrl);
   return (
     baseUrlOrigin === HOSTED_DESKTOP_WEB_URL ||
-    baseUrlOrigin === LEGACY_HOSTED_IPOLLO_HTTPS_WEB_URL ||
+    baseUrlOrigin === LEGACY_HOSTED_IPOLLO_HTTP_WEB_URL ||
     baseUrlOrigin === LEGACY_HOSTED_DESKTOP_WEB_URL ||
     baseUrlOrigin === HOSTED_DESKTOP_API_URL
   );
@@ -162,7 +162,10 @@ function isHostedDesktopBootstrapConfig(config) {
 
 function normalizeHostedDesktopBootstrapConfig(config) {
   if (!isHostedDesktopBootstrapConfig(config)) return config;
-  const next = { ...config, baseUrl: HOSTED_DESKTOP_WEB_URL };
+  const baseUrl = bootstrapUrlOrigin(config.baseUrl) === LEGACY_HOSTED_IPOLLO_HTTP_WEB_URL
+    ? LEGACY_HOSTED_IPOLLO_HTTP_WEB_URL
+    : HOSTED_DESKTOP_WEB_URL;
+  const next = { ...config, baseUrl };
   if (bootstrapUrlOrigin(next.apiBaseUrl) === HOSTED_DESKTOP_API_URL) {
     delete next.apiBaseUrl;
   }
@@ -518,7 +521,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
   }
 
   async function setDesktopBootstrapConfig(config) {
-    const normalized = normalizeDesktopBootstrapConfig(config);
+    const normalized = normalizeHostedDesktopBootstrapConfig(normalizeDesktopBootstrapConfig(config));
     const outputPath = desktopBootstrapPath();
     const stamped = { ...normalized, writtenAt: new Date().toISOString() };
     await writeJsonFileAtomic(outputPath, stamped);
