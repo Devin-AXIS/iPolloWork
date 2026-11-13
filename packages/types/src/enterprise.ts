@@ -1,9 +1,9 @@
 import { z } from "zod";
 
-export const enterpriseResourceTypeSchema = z.enum(["template", "extension", "skill"]);
+export const enterpriseResourceTypeSchema = z.enum(["template", "extension", "skill", "mcp"]);
 export type EnterpriseResourceType = z.infer<typeof enterpriseResourceTypeSchema>;
 const id = z.string().trim().min(1).max(128);
-export const enterpriseMemberRoleSchema = z.enum(["owner", "admin", "template_admin", "extension_admin", "skill_admin", "member"]);
+export const enterpriseMemberRoleSchema = z.enum(["owner", "admin", "template_admin", "extension_admin", "skill_admin", "mcp_admin", "member"]);
 export type EnterpriseMemberRole = z.infer<typeof enterpriseMemberRoleSchema>;
 export const navigationShortcutSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("builtin"), id: z.enum(["template-market", "extensions", "schedule"]) }),
@@ -19,10 +19,13 @@ export const enterpriseNavigationSchema = z.object({
 });
 export type EnterpriseNavigation = z.infer<typeof enterpriseNavigationSchema>;
 export function canManageEnterpriseResource(role: EnterpriseMemberRole, type?: EnterpriseResourceType) {
-  return role === "owner" || role === "admin" || (role === "template_admin" && type === "template") || (role === "extension_admin" && type === "extension") || (role === "skill_admin" && type === "skill");
+  return role === "owner" || role === "admin" || (type !== undefined && role === `${type}_admin`);
 }
 export const enterpriseFeaturesSchema = z.object({
   membership: z.boolean().default(false),
+  sessionRefresh: z.boolean().optional(),
+  mcpResources: z.boolean().optional(),
+  mcpManagement: z.boolean().optional(),
   navigationShortcuts: z.boolean().default(false),
   directory: z.boolean().default(false),
   messaging: z.boolean().default(false),
@@ -41,6 +44,7 @@ export const enterpriseMemberSchema = z.object({
   email: z.string().max(254),
   role: enterpriseMemberRoleSchema,
   status: z.enum(["invited", "active", "suspended", "left"]),
+  removed: z.boolean().optional(),
   departmentId: id.nullable().default(null),
 });
 export type EnterpriseMember = z.infer<typeof enterpriseMemberSchema>;
@@ -123,9 +127,45 @@ export const enterpriseManagedResourceSchema = z.object({
   latestVersion: z.object({ version: z.string().max(80), reviewStatus: z.enum(["pending", "approved", "rejected"]) }).nullable(),
 });
 export type EnterpriseManagedResource = z.infer<typeof enterpriseManagedResourceSchema>;
-export const enterpriseMembershipResponseSchema = z.object({ membership: enterpriseMemberSchema });
+export const enterpriseSessionResponseSchema = z.object({ session: z.object({ token: z.string().min(1), expiresAt: z.iso.datetime() }) });
+export const enterpriseMembershipResponseSchema = z.object({
+  membership: enterpriseMemberSchema.extend({ departmentName: z.string().trim().min(1).max(160).nullable().optional() }),
+});
 export const enterpriseOkSchema = z.object({ ok: z.literal(true) });
 export const enterpriseCreatedSchema = z.object({ id });
 export const enterpriseSubmissionsResponseSchema = z.object({ items: z.array(enterpriseSubmissionSchema).max(100), nextCursor: id.nullable().default(null) });
 export const enterprisePendingImportSchema = z.object({ identity: z.string(), messageId: id });
 export const enterpriseShareTargetSchema = z.object({ workspaceId: id, sessionId: id });
+
+const catalogMcpUrl = z.url({ protocol: /^https$/u }).max(2048).refine(value => {
+  const url = new URL(value);
+  return !url.username && !url.password && !url.search && !url.hash;
+});
+
+export const enterpriseMcpResourceSchema = z.object({
+  id: z.uuid(),
+  name: z.string().trim().min(1).max(96),
+  description: z.string().nullable(),
+  mcpRequiresOAuth: z.boolean().default(true),
+  mcpUrl: catalogMcpUrl,
+  status: z.enum(["draft", "published", "archived"]).default("published"),
+});
+export type EnterpriseMcpResource = z.infer<typeof enterpriseMcpResourceSchema>;
+
+export const enterpriseMcpInputSchema = z.object({
+  name: z.string().trim().min(1).max(96),
+  url: catalogMcpUrl,
+  description: z.string().trim().max(240),
+  requiresOAuth: z.boolean(),
+});
+export type EnterpriseMcpInput = z.infer<typeof enterpriseMcpInputSchema>;
+
+const publicMcpSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/u),
+  name: z.string().min(1).max(100),
+  description: z.string().max(500),
+  url: catalogMcpUrl,
+  oauth: z.boolean(),
+});
+export const publicMcpCatalogSchema = z.object({ items: z.array(publicMcpSchema).max(100) });
+export type PublicMcp = z.infer<typeof publicMcpSchema>;

@@ -154,7 +154,7 @@ const Tool = ({ title, toolPart, defaultOpen = false, className, details, active
             {inFlight && active !== false ? (
               <LoaderCircle className={cn("size-4", pulsing && "chat-tool-pulse")} />
             ) : isError ? (
-              <CircleAlert className="text-destructive size-4" />
+              <CircleAlert className="size-4" />
             ) : (
               state === "output-available" ? <Check className="size-3.5" /> : <Icon className="size-3.5" />
             )}

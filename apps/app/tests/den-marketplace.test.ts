@@ -19,7 +19,7 @@ describe("iPolloWork Cloud plugin-package source", () => {
   });
 
   test("uses the hosted marketplace service by default", () => {
-    expect(DEFAULT_DEN_BASE_URL).toBe("http://i.ipollo.ai");
+    expect(DEFAULT_DEN_BASE_URL).toBe("https://i.ipollo.ai");
   });
 
   test("lists, acquires, and downloads complete V2 packages", async () => {

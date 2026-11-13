@@ -6,7 +6,7 @@ import {
   enterpriseMessageSchema, enterprisePageSchema, enterpriseShareInputSchema,
   enterpriseSubmissionSchema,
   enterpriseNavigationSchema, type EnterpriseNavigation,
-  enterpriseManagedResourceSchema,
+  enterpriseManagedResourceSchema, enterpriseMcpInputSchema, type EnterpriseMcpInput,
   canManageEnterpriseResource,
   enterpriseOkSchema, enterpriseCreatedSchema, enterpriseSubmissionsResponseSchema, enterprisePendingImportSchema,
   type EnterpriseAccess, type EnterpriseShareInput,
@@ -146,6 +146,10 @@ async function enterpriseManagementRequest<T>(connection: EnterpriseConnection, 
   return enterpriseRequest(verified, path, schema, init);
 }
 export const enterpriseApi = {
+  saveMcp: (connection: EnterpriseConnection, input: EnterpriseMcpInput, id?: string) =>
+    enterpriseManagementRequest(connection, "mcp", id ? `/api/v1/resources/${encodeURIComponent(id)}` : "/api/v1/resources", enterpriseCreatedSchema, {
+      method: id ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(enterpriseMcpInputSchema.parse(input)),
+    }),
   navigation: (connection: EnterpriseConnection, signal?: AbortSignal) =>
     enterpriseRequest(connection, "/api/v1/navigation-shortcuts", enterpriseNavigationSchema, { signal, cache: "no-store" }),
   setNavigation: async (connection: EnterpriseConnection, input: EnterpriseNavigation) => {

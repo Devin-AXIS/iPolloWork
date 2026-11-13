@@ -372,7 +372,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
   const modelProviders = props.providers.flatMap((provider) => {
     if (!connectedProviders.has(provider.id)) return [];
     const models = Object.fromEntries(
-      Object.entries(provider.models).filter(([modelId]) => isSupportedChatModelId(modelId)),
+      Object.entries(provider.models).filter(([modelId]) => isSupportedChatModelId(modelId, provider.id)),
     );
     return Object.keys(models).length > 0 ? [{ ...provider, models }] : [];
   });

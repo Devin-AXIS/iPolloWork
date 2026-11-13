@@ -993,12 +993,12 @@ export function createConnectionsStore(options: {
       } else {
         if (hasiPolloWorkTarget) {
           setStateField("mcpStatus", "iPolloWork server MCP config is read-only.");
-          return;
+          return false;
         }
         const projectDir = options.projectDir().trim();
         if (!projectDir) {
           setStateField("mcpStatus", t("mcp.pick_workspace_first"));
-          return;
+          return false;
         }
         await removeMcpFromConfig(projectDir, name);
       }
@@ -1012,11 +1012,13 @@ export function createConnectionsStore(options: {
         setStateField("selectedMcp", null);
       }
       setStateField("mcpStatus", null);
+      return true;
     } catch (error) {
       setStateField(
         "mcpStatus",
         error instanceof Error ? error.message : t("mcp.remove_failed"),
       );
+      return false;
     }
   }
 

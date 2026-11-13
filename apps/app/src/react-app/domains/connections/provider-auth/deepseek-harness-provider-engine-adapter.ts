@@ -116,7 +116,7 @@ function connection(client: unknown): ModelRuntimeConnection {
         const routeConnected = connectedRoutes.has(group.id);
         const exposedModels = connectedAccountProviders.has(providerId) && !routeConnected
           ? []
-          : group.models.filter((model) => isSupportedChatModelId(model.id));
+          : group.models.filter((model) => isSupportedChatModelId(model.id, providerId));
         const providerModels = Object.fromEntries(exposedModels.map((model) => {
           const efforts = model.reasoning?.efforts ?? [];
           return [model.id, {

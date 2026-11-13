@@ -28,6 +28,7 @@ import {
 } from "./conversation-engine";
 import {
   describeConversationSessionError,
+  describeOpenCodeFinishError,
   mapOpencodePartToUIParts,
   opencodePartHasVisibleAssistantOutput,
   snapshotToUIMessages,
@@ -309,6 +310,15 @@ export function mapOpenCodeConversationEvent(
     state?.messageRoles.set(info.id, info.role);
     if (info.role === "user") state?.latestUserMessageIds.set(info.sessionID, info.id);
     if (parentUserMessageId) state?.parentUserMessageIds.set(info.id, parentUserMessageId);
+    const finishError = info.role === "assistant" && !info.error ? describeOpenCodeFinishError(info.finish) : null;
+    if (finishError && isRecord(info.time) && typeof info.time.completed === "number") {
+      return {
+        type: "session.error",
+        sessionId: info.sessionID,
+        errorText: finishError,
+        ...(parentUserMessageId ? { parentUserMessageId } : {}),
+      };
+    }
     return {
       type: "message.upsert",
       sessionId: info.sessionID,

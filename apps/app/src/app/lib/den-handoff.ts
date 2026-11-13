@@ -1,5 +1,6 @@
 import {
   createDenClient,
+  readDenSettings,
   writeDenSettings,
   type DenDesktopHandoffExchange,
 } from "./den";
@@ -50,8 +51,14 @@ export async function exchangeHandoffAndSignIn(
       throw new Error(fallback);
     }
 
+    // A hosted sign-in form uses HTTPS even when the user has selected the
+    // legacy HTTP API endpoint. Keep that explicit setting after sign-in.
+    const configuredBaseUrl = readDenSettings().baseUrl;
+    const baseUrl = options.baseUrl === "https://i.ipollo.ai" && configuredBaseUrl === "http://i.ipollo.ai"
+      ? configuredBaseUrl
+      : options.baseUrl;
     writeDenSettings({
-      baseUrl: options.baseUrl,
+      baseUrl,
       authToken: exchange.token,
       activeOrgId: options.activeOrg?.id ?? null,
       activeOrgSlug: options.activeOrg?.slug ?? null,
@@ -60,13 +67,13 @@ export async function exchangeHandoffAndSignIn(
 
     dispatchDenSessionUpdated({
       status: "success",
-      baseUrl: options.baseUrl,
+      baseUrl,
       token: exchange.token,
       user: exchange.user,
       email: exchange.user?.email ?? null,
     });
 
-    return { ok: true, exchange, baseUrl: options.baseUrl };
+    return { ok: true, exchange, baseUrl };
   } catch (error) {
     const message = error instanceof Error ? error.message : fallback;
     dispatchDenSessionUpdated({ status: "error", message });

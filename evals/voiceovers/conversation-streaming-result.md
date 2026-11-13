@@ -28,9 +28,9 @@
 
 14. If one tool step fails while the assistant continues, the current process state still says it is thinking. It does not show a separate failed-step notice or raw tool output in the main conversation.
 
-15. During an automatic retry, the conversation shows a calm retry status and countdown. The transport error remains in collapsed technical details.
+15. During an automatic retry, the conversation shows why the model is unavailable and when it will try again.
 
-16. 重试仍未成功时，对话明确说明原因和恢复办法，原始错误默认收在技术详情中。
+16. 重试仍未成功时，对话说明模型请求过多，可以稍后重试或切换模型。
 
 17. 图片已经保存、但整个任务失败时，图片只展示一次，仍可打开或下载，旁边说明任务尚未全部完成。
 

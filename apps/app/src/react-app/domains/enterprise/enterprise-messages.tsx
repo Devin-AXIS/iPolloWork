@@ -16,6 +16,14 @@ function messageSource(connection: EnterpriseConnection | null) {
   return connection ? JSON.stringify([connection.origin, enterpriseIdentity(connection)]) : "";
 }
 
+function resourcePath(type: EnterpriseMessage["resourceType"], enterpriseId: string) {
+  if (type === "template") return `/session?enterpriseTemplates=${encodeURIComponent(enterpriseId)}`;
+  if (type === "skill" || type === "mcp") {
+    return `/settings/extensions/${type === "skill" ? "skills" : "mcp"}?source=enterprise`;
+  }
+  return "/settings/extensions/plugins";
+}
+
 export function useEnterpriseMessages(connection: EnterpriseConnection | null) {
   const identity = messageSource(connection);
   const clearedThrough = useNotificationStore((state) => state.clearedSources[identity] ?? 0);
@@ -117,7 +125,7 @@ export function EnterpriseMessageList({ connection, inbox, onExit, renderMessage
     <Dialog open={Boolean(selected)} onOpenChange={(value) => { if (!value && !busy) setSelected(null); }}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" data-testid="enterprise-message-preview"><DialogHeader><DialogTitle>{selected?.title}</DialogTitle><DialogDescription>{selected?.senderName} · {connection.name}</DialogDescription></DialogHeader>
       {selected?.markdown ? <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted/40 p-3 font-sans text-sm leading-7">{selected.markdown}</pre> : <p className="text-sm text-muted-foreground">{selected?.kind === "session_share" ? selected.revokedAt ? "这条分享已撤回，企业端已清理总结正文。" : selected.acceptedAt ? "总结已保存到接收设备，企业端不再向你提供正文。可在原设备打开已保存的会话。" : selected.ignoredAt ? "这条分享已忽略，不再领取总结。" : "这条分享暂不可领取。" : selected?.kind === "resource_granted" ? "你可以在当前企业的资源入口中查看已授权资源。" : "企业通知"}</p>}
       {error ? <Alert variant="destructive"><CircleAlert aria-hidden="true" /><AlertDescription>{error}</AlertDescription></Alert> : null}
-      <DialogFooter><Button variant="outline" disabled={busy || Boolean(selected?.revokedAt || selected?.acceptedAt || selected?.ignoredAt)} onClick={() => void ignore()}>忽略</Button>{selected?.kind === "session_share" ? <Button disabled={busy || Boolean(selected.revokedAt || selected.ignoredAt) || (!selected.markdown && !selected.acceptedAt)} onClick={() => { requestEnterpriseMessageImport(connection, selected.id); setSelected(null); onExit(); if (!matchPath("/session/:sessionId?", pathname) && !matchPath("/workspace/:workspaceId/session/:sessionId?", pathname)) navigate("/session"); }}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}{selected.acceptedAt ? "在本机打开分享会话" : "接收并新建会话"}</Button> : selected?.resourceType ? <Button disabled={busy} onClick={() => { const path = selected.resourceType === "template" ? `/session?enterpriseTemplates=${encodeURIComponent(connection.id)}` : selected.resourceType === "skill" ? "/settings/extensions/skills?source=enterprise" : "/settings/extensions/plugins"; setSelected(null); onExit(); navigate(path); }}>查看资源</Button> : <Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>}</DialogFooter>
+      <DialogFooter><Button variant="outline" disabled={busy || Boolean(selected?.revokedAt || selected?.acceptedAt || selected?.ignoredAt)} onClick={() => void ignore()}>忽略</Button>{selected?.kind === "session_share" ? <Button disabled={busy || Boolean(selected.revokedAt || selected.ignoredAt) || (!selected.markdown && !selected.acceptedAt)} onClick={() => { requestEnterpriseMessageImport(connection, selected.id); setSelected(null); onExit(); if (!matchPath("/session/:sessionId?", pathname) && !matchPath("/workspace/:workspaceId/session/:sessionId?", pathname)) navigate("/session"); }}>{busy ? <Loader2 className="size-4 animate-spin" /> : null}{selected.acceptedAt ? "在本机打开分享会话" : "接收并新建会话"}</Button> : selected?.resourceType ? <Button disabled={busy} onClick={() => { const path = resourcePath(selected.resourceType, connection.id); setSelected(null); onExit(); navigate(path); }}>查看资源</Button> : <Button disabled={busy} onClick={() => setSelected(null)}>关闭</Button>}</DialogFooter>
     </DialogContent></Dialog>
   </div></ButtonStyleScopeProvider>;
 }

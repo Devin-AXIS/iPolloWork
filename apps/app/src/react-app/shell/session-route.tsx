@@ -21,6 +21,7 @@ import { isOpenCodeZenPublicModel } from "@ipollowork/types/opencode-zen-public-
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
 import { isSupportedChatModelId } from "@/app/lib/model-behavior";
+import { describeConversationSessionError } from "@/react-app/domains/session/engine/opencode-message-adapter";
 import { createClient } from "@/app/lib/opencode";
 import {
   PERSONAL_WORK_CONTEXT_ID,
@@ -1374,7 +1375,7 @@ export function SessionRoute() {
         if (engineModelSelection && !effectiveSelectableModels.some((provider) => (
           provider.providerID === engineModelSelection.providerID && provider.modelIDs.includes(engineModelSelection.modelID)
         ))) {
-          toast.error(t("composer.model_unavailable"));
+          toast.error(t("session.model_unavailable_title"), { description: t("session.model_unavailable_hint") });
           return false;
         }
         const reliableVideoOrchestration = ["publish-douyin", "publish-wechat-channels"].includes(videoDeliveryIntentForPrompt(text) ?? "");
@@ -1398,7 +1399,7 @@ export function SessionRoute() {
           effectiveRuntimeProviderList
           && (
             !effectiveModel
-            || !isSupportedChatModelId(effectiveModel.modelID)
+            || !isSupportedChatModelId(effectiveModel.modelID, effectiveModel.providerID)
             || !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel)
           )
         ) {
@@ -2012,7 +2013,7 @@ export function SessionRoute() {
         }
         return { dispatched: true, sessionId: effectiveSessionId };
         } catch (error) {
-          await finishStartedExecution("failed", describeRouteError(error));
+          await finishStartedExecution("failed", describeConversationSessionError(error));
           throw error;
         }
       },
@@ -2076,9 +2077,6 @@ export function SessionRoute() {
             toast.error(t("session.branch_failed"));
           }
         })();
-      },
-      onChangeModel: (model: { providerID: string; modelID: string }) => {
-        setSelectedModel(model);
       },
       environmentRuntimeKey,
       onApplyEnvironmentChanges: isDesktopRuntime() && selectedWorkspace?.workspaceType !== "remote"

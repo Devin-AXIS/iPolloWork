@@ -43,16 +43,16 @@ const ORG_PROXY_HEADER = "x-ipollowork-legacy-org-id";
 const DEFAULT_DEN_TIMEOUT_MS = 12_000;
 
 export const DEFAULT_DEN_AUTH_NAME = "iPolloWork User";
+const HOSTED_DEFAULT_DEN_BASE_URL = "https://i.ipollo.ai";
 const BUILD_DEN_BASE_URL =
   (typeof import.meta !== "undefined" && typeof import.meta.env?.VITE_DEN_BASE_URL === "string"
     ? import.meta.env.VITE_DEN_BASE_URL
-    : "").trim() || "http://i.ipollo.ai";
+    : "").trim() || HOSTED_DEFAULT_DEN_BASE_URL;
 const BUILD_DEN_REQUIRE_SIGNIN =
   (typeof import.meta !== "undefined" && typeof import.meta.env?.VITE_DEN_REQUIRE_SIGNIN === "string"
     ? /^(1|true|yes|on)$/i.test(import.meta.env.VITE_DEN_REQUIRE_SIGNIN.trim())
     : false);
 
-const HOSTED_DEFAULT_DEN_BASE_URL = "http://i.ipollo.ai";
 export const DEFAULT_DEN_BASE_URL = BUILD_DEN_BASE_URL;
 export const DEN_INFERENCE_PATH = "/dashboard/inference";
 
@@ -694,6 +694,7 @@ export async function setDenBootstrapConfig(
 
 export function buildDenAuthUrl(baseUrl: string, mode: "sign-in" | "sign-up"): string {
   const target = new URL(resolveDenBaseUrls(baseUrl).baseUrl);
+  if (target.origin === "http://i.ipollo.ai") target.protocol = "https:";
   target.searchParams.set("mode", mode);
   if (isDesktopDeployment()) {
     target.searchParams.set("desktopAuth", "1");

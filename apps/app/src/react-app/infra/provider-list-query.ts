@@ -480,7 +480,7 @@ export function getChatModelCatalogEntries(
     .filter((provider) => chatProviderVisibleForEngine(provider.id, engineId))
     .flatMap((provider) => (
     Object.entries(provider.models)
-      .filter(([modelId]) => isSupportedChatModelId(modelId))
+      .filter(([modelId]) => isSupportedChatModelId(modelId, provider.id))
       .map(([modelId, model]) => ({ provider, modelId, model }))
   ));
 }
@@ -518,7 +518,7 @@ export function getSelectableChatModelSnapshot(
     .filter((provider) => chatProviderVisibleForEngine(provider.id, engineId))
     .map((provider) => ({
     providerID: provider.id,
-    modelIDs: Object.keys(provider.models ?? {}).filter(isSupportedChatModelId),
+    modelIDs: Object.keys(provider.models ?? {}).filter((modelId) => isSupportedChatModelId(modelId, provider.id)),
   }))
     .filter((provider) => provider.modelIDs.length > 0);
 }

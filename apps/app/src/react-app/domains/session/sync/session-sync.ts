@@ -30,6 +30,7 @@ import {
 } from "../engine/conversation-engine";
 import {
   createSessionErrorUIMessage,
+  conversationNotificationError,
   describeConversationSessionError,
 } from "../engine/opencode-message-adapter";
 
@@ -304,6 +305,16 @@ function assistantOutputAfterLatestUser(messages: UIMessage[]) {
   return messages.slice(lastUserIndex + 1).some(messageHasVisibleAssistantOutput);
 }
 
+function messageHasFinalAssistantOutput(message: UIMessage) {
+  return message.role === "assistant"
+    && !message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)
+    && message.parts.some((part) => (
+      part.type === "text" && part.text.trim().length > 0
+      || part.type === "dynamic-tool" && part.state === "output-available"
+      || part.type === "file"
+    ));
+}
+
 function finalAssistantOutputAfterLatestUser(messages: UIMessage[]) {
   let lastUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -312,15 +323,7 @@ function finalAssistantOutputAfterLatestUser(messages: UIMessage[]) {
       break;
     }
   }
-  return messages.slice(lastUserIndex + 1).some((message) => (
-    message.role === "assistant"
-    && !message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)
-    && message.parts.some((part) => (
-      part.type === "text" && part.text.trim().length > 0
-      || part.type === "dynamic-tool"
-      || part.type === "file"
-    ))
-  ));
+  return messages.slice(lastUserIndex + 1).some(messageHasFinalAssistantOutput);
 }
 
 function removeRecoveredNoFinalOutputError(messages: UIMessage[]) {
@@ -330,7 +333,7 @@ function removeRecoveredNoFinalOutputError(messages: UIMessage[]) {
   }
   const latestUserIndex = messages.findLastIndex((message) => message.id === latestUser.id);
   const recoveredOutput = messages.slice(latestUserIndex + 1).some((message) => {
-    if (!messageHasVisibleAssistantOutput(message)) return false;
+    if (!messageHasFinalAssistantOutput(message)) return false;
     const parentUserMessageId = conversationMessageParentUserMessageId(message);
     return !parentUserMessageId || parentUserMessageId === latestUser.id;
   });
@@ -1110,7 +1113,7 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
       captureAnalyticsEvent("task_run_errored", { duration_ms: Date.now() - runStartedAt });
       trackTaskFailed(event.sessionId, Date.now() - runStartedAt);
     }
-    notifyDesktopEvent({ type: "task.failed", sessionId: event.sessionId, errorText });
+    notifyDesktopEvent({ type: "task.failed", sessionId: event.sessionId, errorText: conversationNotificationError(errorText) });
     const turnId = event.parentUserMessageId
       ?? latestUserMessage(queryClient.getQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId)) ?? [])?.id;
     useSessionActivityStore.getState().setError(workspaceId, event.sessionId, errorText, turnId);

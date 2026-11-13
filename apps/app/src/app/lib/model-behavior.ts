@@ -4,13 +4,30 @@ import { t } from "../../i18n";
 
 type ProviderModel = ProviderListItem["models"][string];
 
+// The Alibaba (China) catalog also lists retired routes and models that need
+// a different API. These IDs failed on its OpenAI-compatible chat endpoint.
+const unavailableAlibabaChinaChatModels = new Set([
+  "deepseek-r1-distill-qwen-1-5b", "deepseek-r1-distill-qwen-7b",
+  "deepseek-r1-distill-qwen-14b", "deepseek-r1-distill-qwen-32b",
+  "qwen-deep-research", "qwen-math-plus", "qwen-math-turbo", "qwen-mt-turbo",
+  "qwen-omni-turbo", "qwen-omni-turbo-realtime", "qwen-turbo", "qwen-vl-max", "qwen-vl-plus",
+  "qwen2-5-7b-instruct", "qwen2-5-14b-instruct", "qwen2-5-32b-instruct", "qwen2-5-72b-instruct",
+  "qwen2-5-coder-7b-instruct", "qwen2-5-coder-32b-instruct", "qwen2-5-math-7b-instruct",
+  "qwen2-5-math-72b-instruct", "qwen2-5-omni-7b", "qwen2-5-vl-7b-instruct", "qwen2-5-vl-72b-instruct",
+  "qwen3-8b", "qwen3-14b", "qwen3-32b", "qwen3-235b-a22b", "qwen3-asr-flash",
+  "qwen3-coder-30b-a3b-instruct", "qwen3-coder-480b-a35b-instruct", "qwen3-coder-plus",
+  "qwen3-max", "qwen3-next-80b-a3b-instruct", "qwen3-next-80b-a3b-thinking",
+  "qwen3-omni-flash-realtime", "qwen3-vl-30b-a3b", "qwen3-vl-235b-a22b", "qwen3.6-max-preview",
+]);
+
 /**
  * GPT chat routes older than 5.5 are no longer accepted by the supported
  * account runtimes. Keep non-GPT products (for example gpt-image) and other
  * model families available while removing stale GPT chat selections.
  */
-export function isSupportedChatModelId(id: string) {
+export function isSupportedChatModelId(id: string, providerId?: string) {
   const modelId = id.trim().toLowerCase().split("/").at(-1) ?? "";
+  if (providerId === "alibaba-cn" && unavailableAlibabaChinaChatModels.has(modelId)) return false;
   const version = /^(?:chat)?gpt-(\d+)(?:\.(\d+))?/.exec(modelId);
   if (!version) return true;
   const major = Number(version[1]);

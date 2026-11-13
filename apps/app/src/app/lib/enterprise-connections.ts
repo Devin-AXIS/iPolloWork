@@ -1,7 +1,7 @@
 import { enterpriseResourceLifecycleSchema, type EnterpriseResourceLifecycle, type EnterpriseResourceType } from "@ipollowork/types/enterprise";
 export type { EnterpriseResourceType } from "@ipollowork/types/enterprise";
 import { comparePluginPackageVersions } from "@ipollowork/types/plugins";
-import { enterpriseFeaturesSchema, enterpriseMemberSchema, enterpriseMemberRoleSchema, enterpriseMembershipResponseSchema, type EnterpriseFeatures, type EnterpriseMember } from "@ipollowork/types/enterprise";
+import { enterpriseFeaturesSchema, enterpriseMemberSchema, enterpriseMemberRoleSchema, enterpriseMembershipResponseSchema, enterpriseSessionResponseSchema, type EnterpriseFeatures, type EnterpriseMember } from "@ipollowork/types/enterprise";
 import { enterpriseRequest } from "./enterprise-client";
 import { readPluginPackageArchive } from "./plugin-package-archive";
 import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "./ipollowork-server";
@@ -28,6 +28,7 @@ const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
 const CLOUD_RESOURCE_PATH_PREFIX = "/api/v1/enterprise-resources/";
 const ENTERPRISE_RESOURCE_PATH_PREFIX = "/api/v1/resources/";
 
+export const enterpriseMembershipChangedEvent = "ipollowork:enterprise-membership-changed";
 export const enterpriseConnectionsChangedEvent = "ipollowork:enterprise-connections-changed";
 
 type JsonRecord = Record<string, unknown>;
@@ -50,7 +51,9 @@ export type EnterpriseConnection = EnterpriseServer & {
     id: string;
     role: EnterpriseMemberRole;
     status?: EnterpriseMember["status"];
+    removed?: boolean;
     departmentId?: string | null;
+    departmentName?: string | null;
   };
   session: {
     token: string;
@@ -59,6 +62,12 @@ export type EnterpriseConnection = EnterpriseServer & {
 };
 
 
+
+export type EnterpriseMembershipChange = {
+  name: string;
+  before: EnterpriseConnection["membership"];
+  after: EnterpriseConnection["membership"];
+};
 
 export type EnterpriseResource = {
   id: string;
@@ -238,8 +247,20 @@ export async function refreshEnterpriseMembership(connection: EnterpriseConnecti
   // A slower poll cannot overwrite a newer role or member-status update.
   if (storedAtStart && latest && JSON.stringify(storedAtStart.membership) !== JSON.stringify(latest.membership)) return latest;
   const current = latest ?? connection;
-  const refreshed = { ...current, membership: { id: result.membership.id, role: result.membership.role, status: result.membership.status, departmentId: result.membership.departmentId } };
-  if (accountKey && JSON.stringify(current.membership) !== JSON.stringify(refreshed.membership)) saveEnterpriseConnection(refreshed);
+  const { id, role, status, removed, departmentId, departmentName } = result.membership;
+  const knownDepartmentName = departmentName === undefined && current.membership.departmentId === departmentId
+    ? current.membership.departmentName
+    : departmentName;
+  const refreshed = { ...current, membership: {
+    id, role, status, ...(removed ? { removed: true } : {}), departmentId,
+    ...(knownDepartmentName !== undefined ? { departmentName: knownDepartmentName } : {}),
+  } };
+  if (accountKey && JSON.stringify(current.membership) !== JSON.stringify(refreshed.membership)) {
+    saveEnterpriseConnection(refreshed);
+    window.dispatchEvent(new CustomEvent<EnterpriseMembershipChange>(enterpriseMembershipChangedEvent, {
+      detail: { name: refreshed.name, before: current.membership, after: refreshed.membership },
+    }));
+  }
   return refreshed;
 }
 
@@ -259,12 +280,19 @@ export async function refreshEnterpriseConnection(
     const verified = await refreshEnterpriseMembership(refreshed, fetcher);
     refreshed = { ...refreshed, membership: verified.membership };
   }
+  if (server.features?.sessionRefresh && refreshed.membership.status === "active"
+    && Date.parse(refreshed.session.expiresAt) - Date.now() <= 24 * 60 * 60 * 1000) {
+    const { session } = await enterpriseRequest(refreshed, "/api/v1/session/refresh", enterpriseSessionResponseSchema, { method: "POST" }, fetcher);
+    refreshed = { ...refreshed, session };
+  }
   if (accountKey !== connectionStorageKey()) return refreshed;
   const latest = readEnterpriseConnections().find((item) => item.id === connection.id);
   if (storedAtStart && !latest) return refreshed;
-  if (latest && (latest.membership.id !== current.membership.id || latest.session.token !== current.session.token)) return latest;
+  if (latest && (latest.membership.id !== current.membership.id || latest.session.token !== current.session.token
+    || (server.features?.membership && JSON.stringify(latest.membership) !== JSON.stringify(refreshed.membership)))) return latest;
   if (
-    current.name !== refreshed.name
+    current.session.token !== refreshed.session.token
+    || current.name !== refreshed.name
     || current.shortName !== refreshed.shortName
     || current.logoUrl !== refreshed.logoUrl
     || current.accent !== refreshed.accent
@@ -288,7 +316,7 @@ function parseJoinResult(value: unknown, server: EnterpriseServer): EnterpriseCo
   const token = readString(value.session, "token");
   const expiresAt = readString(value.session, "expiresAt");
   if (enterpriseId !== server.id || !memberId || !role || !token || !expiresAt) return null;
-  return { ...server, membership: { id: memberId, role }, session: { token, expiresAt } };
+  return { ...server, membership: { id: memberId, role, status: "active" }, session: { token, expiresAt } };
 }
 
 type EnterpriseResourceSource = "cloud" | "enterprise";
@@ -550,7 +578,13 @@ function parseStoredConnection(value: unknown): EnterpriseConnection | null {
   if (!memberId || !role || !token || !expiresAt) return null;
   const status = enterpriseMemberSchema.shape.status.safeParse(value.membership.status);
   const departmentId = value.membership.departmentId;
-  return { ...server, origin, authMode, membership: { id: memberId, role, ...(status.success ? { status: status.data } : {}), ...(departmentId === null || typeof departmentId === "string" ? { departmentId } : {}) }, session: { token, expiresAt } };
+  const departmentName = enterpriseMembershipResponseSchema.shape.membership.shape.departmentName.safeParse(value.membership.departmentName);
+  return { ...server, origin, authMode, membership: {
+    id: memberId, role, ...(status.success ? { status: status.data } : {}),
+    ...(value.membership.removed === true ? { removed: true } : {}),
+    ...(departmentId === null || typeof departmentId === "string" ? { departmentId } : {}),
+    ...(departmentName.success && departmentName.data !== undefined ? { departmentName: departmentName.data } : {}),
+  }, session: { token, expiresAt } };
 }
 
 function dispatchConnectionsChanged() {
@@ -586,6 +620,14 @@ export function setEnterpriseConnectionAccount(account: { userId: string; baseUr
     || settings.authToken?.trim() !== token) return;
   const storageKey = `${ENTERPRISE_CONNECTIONS_KEY}:${encodeURIComponent(baseUrl)}:${encodeURIComponent(userId)}`;
   if (connectionAccount?.storageKey === storageKey && connectionAccount.token === token) return;
+  if (baseUrl === "https://i.ipollo.ai") {
+    const oldHostedKey = `${ENTERPRISE_CONNECTIONS_KEY}:${encodeURIComponent("http://i.ipollo.ai")}:${encodeURIComponent(userId)}`;
+    const oldHostedBindings = window.localStorage.getItem(oldHostedKey);
+    if (oldHostedBindings !== null && window.localStorage.getItem(storageKey) === null) {
+      window.localStorage.setItem(storageKey, oldHostedBindings);
+      window.localStorage.removeItem(oldHostedKey);
+    }
+  }
   // Adopt the pre-account format once, on the first verified session after upgrading.
   const legacy = window.localStorage.getItem(ENTERPRISE_CONNECTIONS_KEY);
   if (legacy && window.localStorage.getItem(storageKey) === null) window.localStorage.setItem(storageKey, legacy);

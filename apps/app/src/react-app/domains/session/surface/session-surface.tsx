@@ -11,6 +11,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import type { TemplateCatalogItem, TemplateCategory } from "@ipollowork/types/templates";
 import { Check, Minimize2, Sparkles, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
@@ -50,6 +51,8 @@ import type {
   ConversationStatus,
 } from "../engine/conversation-engine";
 import { conversationMessageContextUsage, conversationWaitingFor } from "../engine/conversation-engine";
+import { classifyProviderFailure } from "@ipollowork/types/provider-errors";
+import { describeConversationSessionError } from "../engine/opencode-message-adapter";
 import {
   publishInspectorSlice,
   recordInspectorEvent,
@@ -154,11 +157,7 @@ const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
 
 type SessionError = {
   message: string;
-  kind?: "model-not-found" | "generic" | "stalled";
-  /** For model-not-found: the model that failed. */
-  failedModel?: { providerID: string; modelID: string };
-  /** For model-not-found: suggested replacements from the backend. */
-  suggestions?: Array<{ providerID: string; modelID: string }>;
+  kind?: "model-not-found" | "stalled";
 };
 
 type PendingImageStudioRefresh = {
@@ -234,7 +233,6 @@ export type SessionSurfaceProps = {
   assistantWaitLabel?: string;
   pendingProgrammaticDraft?: { id: string; draft: ComposerDraft; claim: (id: string) => boolean } | null;
   onPendingProgrammaticDraftSettled?: (id: string, dispatched: boolean) => void;
-  onChangeModel?: (model: { providerID: string; modelID: string }) => void;
   onConfigureModels?: (providerId?: string) => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
@@ -458,70 +456,27 @@ function TodoPanel(props: { todos: TodoItem[]; visible: boolean }) {
 }
 
 function parseSessionError(thrown: unknown): SessionError {
-  const raw = thrown instanceof Error ? thrown.message : String(thrown);
-  // Try to detect ProviderModelNotFoundError from the SDK error shape.
-  // The error message may be a JSON string from our serializer in session-route.
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed?.name === "ProviderModelNotFoundError" && parsed?.data) {
-      const { providerID, modelID, suggestions } = parsed.data;
-      return {
-        message: `Model ${providerID}/${modelID} is not available.`,
-        kind: "model-not-found",
-        failedModel: { providerID, modelID },
-        suggestions: Array.isArray(suggestions) ? suggestions : [],
-      };
-    }
-  } catch {
-    // Not JSON — fall through to plain message
-  }
-  // Check if the raw string mentions model-not-found patterns
-  if (/ProviderModelNotFoundError/i.test(raw) || /model.*not found/i.test(raw)) {
-    return { message: raw, kind: "model-not-found" };
-  }
-  return { message: raw || "Failed to send prompt." };
+  const message = describeConversationSessionError(thrown);
+  return classifyProviderFailure(message)?.code === "provider_model_unavailable"
+    ? { message, kind: "model-not-found" }
+    : { message };
 }
 
-function SessionErrorText({ error, onDismiss, onChangeModel, onOpenModelPicker }: {
+function SessionErrorText({ error, onDismiss, onOpenModelPicker }: {
   error: SessionError;
   onDismiss: () => void;
-  onChangeModel?: (model: { providerID: string; modelID: string }) => void;
   onOpenModelPicker?: () => void;
 }) {
   return (
     <div className="mx-auto max-w-[800px] px-3 py-3 sm:px-5">
       <div className="text-sm text-foreground" data-chat-readable-text="true" data-assistant-run-error="true">
-        <span>{t("session.run_failed_title")}：{error.message}</span>
-        <button type="button" className="ml-2 text-muted-foreground hover:text-foreground" onClick={onDismiss} aria-label={t("session.dismiss_error")}>×</button>
-            {error.kind === "model-not-found" ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {error.suggestions && error.suggestions.length > 0 ? (
-                  error.suggestions.map((s) => (
-                    <button
-                      key={`${s.providerID}/${s.modelID}`}
-                      type="button"
-                      className="rounded-full border border-dls-border bg-dls-surface px-3 py-1.5 text-xs font-medium text-dls-text transition-colors hover:bg-dls-hover"
-                      onClick={() => {
-                        onChangeModel?.(s);
-                        onDismiss();
-                      }}
-                    >
-                      Use {s.providerID}/{s.modelID}
-                    </button>
-                  ))
-                ) : null}
-                <button
-                  type="button"
-                  className="rounded-full border border-dls-border bg-dls-surface px-3 py-1.5 text-xs font-medium text-dls-text transition-colors hover:bg-dls-hover"
-                  onClick={() => {
-                    onOpenModelPicker?.();
-                    onDismiss();
-                  }}
-                >
-                  {t("model_picker.change_model")}
-                </button>
-              </div>
-            ) : null}
+        <RunIssueNotice detail={error.message} kind={error.kind} onDismiss={onDismiss}>
+          {error.kind === "model-not-found" && onOpenModelPicker ? (
+            <Button variant="outline" size="sm" onClick={() => { onOpenModelPicker(); onDismiss(); }}>
+              {t("model_picker.change_model")}
+            </Button>
+          ) : null}
+        </RunIssueNotice>
       </div>
     </div>
   );
@@ -1571,7 +1526,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         toast.success(t("composer.steer_sent"));
       } catch (error) {
         restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState);
-        toast.error(t("composer.steer_failed"), { description: error instanceof Error ? error.message : undefined });
+        toast.error(t("composer.steer_failed"), { description: describeConversationSessionError(error) });
       }
       return;
     }
@@ -2496,7 +2451,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   <SessionErrorText
                     error={error}
                     onDismiss={handleDismissError}
-                    onChangeModel={props.onChangeModel}
                     onOpenModelPicker={props.onModelClick}
                   />
                 ) : (
@@ -2511,7 +2465,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
               <SessionErrorText
                 error={error}
                 onDismiss={handleDismissError}
-                onChangeModel={props.onChangeModel}
                 onOpenModelPicker={props.onModelClick}
               />
             ) : (

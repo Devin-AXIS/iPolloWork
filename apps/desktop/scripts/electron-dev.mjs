@@ -67,7 +67,7 @@ const hyperframesDevPort = Number.isFinite(hyperframesPortValue) && hyperframesP
   ? hyperframesPortValue
   : 3002;
 const shouldStartHyperframes = process.env.IPOLLOWORK_DEV_HYPERFRAMES !== "0";
-const developmentCloudUrl = process.env.VITE_DEN_BASE_URL?.trim() || "http://i.ipollo.ai";
+const developmentCloudUrl = process.env.VITE_DEN_BASE_URL?.trim() || "https://i.ipollo.ai";
 const explicitStartUrl = process.env.IPOLLOWORK_ELECTRON_START_URL?.trim() || "";
 const startUrl = explicitStartUrl || `http://localhost:${devPort}`;
 const viteProbeUrls = explicitStartUrl

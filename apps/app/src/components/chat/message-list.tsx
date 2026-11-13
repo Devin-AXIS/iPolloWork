@@ -27,8 +27,7 @@ import {
   type UIMessage,
 } from "ai"
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
-import { classifyProviderFailure } from "@ipollowork/types/provider-errors"
-import { openDesktopUrl } from "@/app/lib/desktop"
+import { classifyProviderFailure, type ProviderFailureCode } from "@ipollowork/types/provider-errors"
 import { downloadBlobAsFile, downloadTextAsFile } from "@/app/lib/download"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t, translationKey } from "@/i18n"
@@ -1131,47 +1130,43 @@ interface AssistantRunErrorTextProps {
   error: string | null
 }
 
+const providerIssueCopy = {
+  provider_model_unavailable: ["session.model_unavailable_title", "session.model_unavailable_hint"],
+  provider_auth_failed: ["session.provider_auth_title", "session.provider_auth_hint"],
+  provider_quota_exhausted: ["session.provider_quota_title", "session.provider_quota_hint"],
+  provider_rate_limited: ["session.provider_rate_title", "session.provider_rate_hint"],
+  provider_unavailable: ["session.provider_unavailable_title", "session.run_failed_hint"],
+  provider_timeout: ["session.provider_timeout_title", "session.run_failed_hint"],
+  provider_network_error: ["session.provider_network_title", "session.run_failed_hint"],
+  provider_access_denied: ["session.provider_access_title", "session.provider_access_hint"],
+  provider_region_restricted: ["session.provider_region_title", "session.provider_switch_hint"],
+  provider_client_restricted: ["session.provider_client_title", "session.provider_switch_hint"],
+  provider_invalid_request: ["session.provider_invalid_title", "session.provider_invalid_hint"],
+  provider_content_filtered: ["session.provider_filtered_title", "session.provider_filtered_hint"],
+  provider_context_overflow: ["session.provider_context_title", "session.provider_context_hint"],
+  provider_output_limit: ["session.provider_output_limit_title", "session.run_failed_hint"],
+  provider_empty_response: ["session.provider_empty_title", "session.provider_empty_hint"],
+} satisfies Record<ProviderFailureCode, [string, string]>
+
 export function RunIssueNotice({ detail, kind, onDismiss, children }: {
   detail?: string | null
-  kind?: "stopped" | "model-not-found"
+  kind?: "stopped" | "model-not-found" | "stalled"
   onDismiss?: () => void
   children?: React.ReactNode
 }) {
   const interrupted = kind === "stopped" || /MessageAbortedError|run was interrupted before it finished/i.test(detail ?? "")
-  const modelUnavailable = kind === "model-not-found" || /model is not supported|model (?:is )?not (?:available|found)|unsupported model/i.test(detail ?? "")
-  const providerFailure = !interrupted && !modelUnavailable ? classifyProviderFailure(detail) : null
-  const title = interrupted ? t("session.run_stopped_title")
-    : modelUnavailable ? t("session.model_unavailable_title")
-      : providerFailure?.code === "provider_auth_failed" ? t("session.provider_auth_title")
-        : providerFailure?.code === "provider_quota_exhausted" ? t("session.provider_quota_title")
-          : providerFailure?.code === "provider_rate_limited" ? t("session.provider_rate_title")
-            : providerFailure?.code === "provider_unavailable" ? t("session.provider_unavailable_title")
-              : providerFailure?.code === "provider_timeout" ? t("session.provider_timeout_title")
-                : providerFailure?.code === "provider_network_error" ? t("session.provider_network_title")
-                  : t("session.run_failed_title")
-  const description = interrupted ? t("session.run_stopped_hint")
-    : modelUnavailable ? t("session.model_unavailable_hint")
-      : providerFailure?.code === "provider_auth_failed" ? t("session.provider_auth_hint")
-        : providerFailure?.code === "provider_quota_exhausted" ? t("session.provider_quota_hint")
-          : providerFailure?.code === "provider_rate_limited" ? t("session.provider_rate_hint")
-            : t("session.run_failed_hint")
+  const failureCode = kind === "model-not-found" ? "provider_model_unavailable" : classifyProviderFailure(detail)?.code
+  const [title, hint] = interrupted ? ["session.run_stopped_title", "session.run_stopped_hint"] as const
+    : failureCode ? providerIssueCopy[failureCode]
+      : ["session.run_failed_title", "session.run_failed_hint"] as const
 
   return (
     <Alert variant={interrupted ? "warning" : "destructive"} onDismiss={onDismiss} closeLabel={t("session.dismiss_error")} role={interrupted ? "status" : "alert"} data-testid="run-issue-notice">
       {interrupted ? <CirclePause aria-hidden /> : <CircleAlert aria-hidden />}
-      <AlertTitle>{title}</AlertTitle>
+      <AlertTitle>{t(title)}</AlertTitle>
       <AlertDescription>
-        <p>{description}</p>
+        <p>{kind === "stalled" && detail ? detail : t(hint)}</p>
         {children ? <div className="mt-2">{children}</div> : null}
-        {detail ? <details className="mt-2 text-xs text-muted-foreground">
-          <summary className="w-fit cursor-pointer hover:text-foreground">{t("session.error_details")}</summary>
-          <div className="mt-2 rounded-md border border-border bg-background p-2">
-            <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">{detail}</pre>
-            <button type="button" className="mt-2 inline-flex items-center gap-1 hover:text-foreground" onClick={() => void navigator.clipboard.writeText(detail)}>
-              <Copy size={12} aria-hidden />{t("session.copy_error_details")}
-            </button>
-          </div>
-        </details> : null}
       </AlertDescription>
     </Alert>
   )
@@ -1190,19 +1185,6 @@ interface RetryMessageProps {
   status: RetryStatus
 }
 
-function RetryActionButton(props: { link: string; label: string }) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-7 text-xs"
-      onClick={() => void openDesktopUrl(props.link)}
-    >
-      {props.label}
-    </Button>
-  )
-}
-
 const RetryMessage = React.memo(({ status, compact = false }: RetryMessageProps) => {
   const [seconds, setSeconds] = React.useState(() => retryDelaySeconds(status))
 
@@ -1218,7 +1200,7 @@ const RetryMessage = React.memo(({ status, compact = false }: RetryMessageProps)
     : seconds > 0
     ? t("session.retry_countdown", { seconds, attempt: status.attempt })
     : t("session.retry_attempt", { attempt: status.attempt })
-  const action = status.action
+  const failure = classifyProviderFailure(status.message)
 
   return (
     <Message className="not-prose mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0">
@@ -1229,21 +1211,9 @@ const RetryMessage = React.memo(({ status, compact = false }: RetryMessageProps)
             <div className="min-w-0 space-y-1">
               {!compact ? <p className="text-sm font-medium">{t("session.retry_recovering")}</p> : null}
               <p className="text-xs text-muted-foreground">{info}</p>
+              {failure ? <p className="text-xs text-muted-foreground">{t(providerIssueCopy[failure.code][0])}</p> : null}
             </div>
           </div>
-          {action ? (
-            <div className="ml-6 space-y-1 border-t border-border pt-2">
-              <p className="text-xs font-medium">{action.title}</p>
-              <p className="text-xs text-muted-foreground">{action.message}</p>
-              {action.link ? (
-                <RetryActionButton link={action.link} label={action.label} />
-              ) : null}
-            </div>
-          ) : null}
-          <details className="ml-6 text-xs text-muted-foreground">
-            <summary className="w-fit cursor-pointer hover:text-foreground">{t("session.error_details")}</summary>
-            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-background p-2 font-mono">{status.message}</pre>
-          </details>
         </div>
       </div>
     </Message>

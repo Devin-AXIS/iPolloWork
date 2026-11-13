@@ -1,11 +1,52 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  buildDenAuthUrl,
+  createDenClient,
   getDenMcpUrl,
   isLegacyWebAppMcpUrl,
   resolveCloudMcpResourceUrl,
   resolveDenBaseUrls,
 } from "../src/app/lib/den";
+import { exchangeHandoffAndSignIn } from "../src/app/lib/den-handoff";
+
+test("keeps hosted HTTP API requests and opens the account form over HTTPS", () => {
+  expect(resolveDenBaseUrls("http://i.ipollo.ai")).toEqual({
+    baseUrl: "http://i.ipollo.ai",
+    apiBaseUrl: "http://i.ipollo.ai/api/den",
+  });
+  const signup = new URL(buildDenAuthUrl("http://i.ipollo.ai", "sign-up"));
+  expect(signup.origin).toBe("https://i.ipollo.ai");
+  expect(signup.searchParams.get("mode")).toBe("sign-up");
+  expect(new URL(buildDenAuthUrl("http://localhost:3100", "sign-in")).origin).toBe("http://localhost:3100");
+});
+
+test("retains the configured HTTP API after an HTTPS desktop handoff", async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const values = new Map([["ipollowork.den.baseUrl", "http://i.ipollo.ai"]]);
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+      dispatchEvent: () => true,
+    },
+  });
+  try {
+    const client = createDenClient({ baseUrl: "https://i.ipollo.ai" });
+    client.exchangeDesktopHandoff = async () => ({ token: "test-session", user: null });
+    const result = await exchangeHandoffAndSignIn("test-grant", { baseUrl: "https://i.ipollo.ai", client });
+    expect(result).toMatchObject({ ok: true, baseUrl: "http://i.ipollo.ai" });
+    expect(values.get("ipollowork.den.authToken")).toBe("test-session");
+    expect(values.get("ipollowork.den.baseUrl")).toBe("http://i.ipollo.ai");
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "window", descriptor);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
+});
 
 describe("resolveDenBaseUrls", () => {
   test("always derives the API proxy from the base URL", () => {

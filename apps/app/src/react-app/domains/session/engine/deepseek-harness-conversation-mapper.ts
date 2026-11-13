@@ -1,5 +1,4 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
-import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { stripDeepSeekHarnessInternalContext } from "@ipollowork/types/workspace";
 
 import type { TodoItem } from "@/app/types";
@@ -17,7 +16,7 @@ import {
   conversationContextUsageFromTokens,
   conversationMessageMetadata,
 } from "./conversation-engine";
-import { createSessionErrorUIMessage } from "./opencode-message-adapter";
+import { createSessionErrorUIMessage, describeConversationSessionError } from "./opencode-message-adapter";
 import type { DeepSeekHarnessServerRequest } from "@/app/lib/deepseek-harness-client";
 
 type DshEvent = {
@@ -571,13 +570,13 @@ export function normalizeDeepSeekHarnessErrorText(value: unknown): string {
   if (/^(error|错误)$/iu.test(message)) {
     return t("session.deepseek_harness_run_failed");
   }
-  return serviceErrorMessage(message, t("session.deepseek_harness_run_failed"));
+  return describeConversationSessionError(value, t("session.deepseek_harness_run_failed"));
 }
 
 function turnErrorText(data: Record<string, unknown>): string | null {
   if (!isRecord(data.reason) || data.reason.kind !== "error") return null;
   const error = isRecord(data.reason.error) ? data.reason.error : null;
-  return normalizeDeepSeekHarnessErrorText(error?.message);
+  return normalizeDeepSeekHarnessErrorText(typeof error?.message === "string" && !error.code ? error.message : error);
 }
 
 export function mapDeepSeekHarnessEnvelope(
