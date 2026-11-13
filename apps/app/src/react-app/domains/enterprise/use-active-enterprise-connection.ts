@@ -34,6 +34,18 @@ function refreshConnection(connection: EnterpriseConnection) {
   return promise;
 }
 
+function membershipRoleLabels() {
+  return {
+    owner: t("enterprise_membership.role_owner"),
+    admin: t("enterprise_membership.role_admin"),
+    template_admin: t("enterprise_membership.role_template_admin"),
+    extension_admin: t("enterprise_membership.role_extension_admin"),
+    skill_admin: t("enterprise_membership.role_skill_admin"),
+    mcp_admin: t("enterprise_membership.role_mcp_admin"),
+    member: t("enterprise_membership.role_member"),
+  } satisfies Record<EnterpriseConnection["membership"]["role"], string>;
+}
+
 function notifyMembershipChange(event: Event) {
   if (!(event instanceof CustomEvent)) return;
   const { name, before, after }: EnterpriseMembershipChange = event.detail;
@@ -46,9 +58,10 @@ function notifyMembershipChange(event: Event) {
       : "enterprise_membership.restored"));
   }
   if (before.role !== after.role) {
+    const labels = membershipRoleLabels();
     changes.push(t("enterprise_membership.role_changed", {
-      before: t(`enterprise_membership.role_${before.role}`),
-      after: t(`enterprise_membership.role_${after.role}`),
+      before: labels[before.role],
+      after: labels[after.role],
     }));
   }
   const moved = before.departmentId !== undefined && before.departmentId !== after.departmentId;
