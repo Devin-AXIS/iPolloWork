@@ -4,7 +4,7 @@ import { createElectronBuilderConfig } from '../scripts/electron-builder-config.
 
 it('keeps Studio child-process dependencies on disk without relocating DSH services', () => {
   const config = createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.example.studio-layout', DSH_DESKTOP_UNSIGNED: '1' }, 'darwin', 'arm64')
-  const matcher = new FileMatcher('/app', '/out', value => value, config.asarUnpack)
+  const matcher = new FileMatcher('/app', '/out', value => value, [...config.asarUnpack])
   const patterns: Parameters<FileMatcher['computeParsedPatterns']>[0] = []
   matcher.computeParsedPatterns(patterns)
   for (const file of [
