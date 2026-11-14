@@ -40,8 +40,10 @@ import {
   type EnterpriseSkillScope,
 } from "./enterprise-skills.ts";
 import { Config, resolveConfig, type Config as ConfigInput } from "./config.ts";
+import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from "./app-data.ts";
+import type { IpolloData } from "../shared/app-data.ts";
 import { readMarket, type NativePluginManager } from "./market.ts";
-import { SuiteError } from "./errors.ts";
+import { AppDataRejection, SuiteError } from "./errors.ts";
 import {
   blocksSuiteManagement,
   MANAGEMENT_DENIAL,
@@ -73,6 +75,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   ): unknown;
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
+  provide?(name: "ipolloData", value: IpolloData): void;
   get?(name: "liveshareShares"): NativeSharing | undefined;
   on(
     event: "agent/pre-step",
@@ -250,6 +253,13 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     config.account,
   );
   ctx.provide?.("ipolloServices", services);
+  const appData = new AppDataService(account);
+  if (config.account) {
+    ctx.provide?.("ipolloData", appData);
+    ctx.tools?.register(
+      appDataTool(appData, (cwd) => ctx.workspaceRegistry.list().find((item) => item.path === cwd)?.title),
+    );
+  }
   ctx.inject?.(["agents"], mountOutputContinuation);
   ctx.inject?.(["llm", "agentDefaultModel", "sessionController"], (scope) => {
     if (!ctx.webServer.getOrigin) {
@@ -283,6 +293,11 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   ctx.inject?.(["skills"], (scope) => {
     refreshSkills = mountEnterpriseSkills(scope, account);
     void refreshSkills().catch(() => {});
+    if (config.account)
+      scope.effect(
+        () => scope.skills.register({ ...APP_DATA_SKILL, source: "runtime" }),
+        "ipollowork-suite: app data skill",
+      );
   });
   const enterprise = new EnterpriseService(account, ctx, config.accountOrigin);
   const archive = config.account && config.automaticOutputArchive
@@ -627,6 +642,20 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               );
               return;
             }
+            if (path === "/data/apps" || path.startsWith("/data/apps/")) {
+              if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);
+              json(
+                response,
+                200,
+                await appDataRoute(
+                  appData,
+                  request.method ?? "GET",
+                  path.slice("/data/apps".length),
+                  () => body(request, config.maxRequestBytes),
+                ),
+              );
+              return;
+            }
             if (path === "/enterprise" || path.startsWith("/enterprise/")) {
               if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);
               const value = await enterprise.request(
@@ -670,6 +699,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                     : error instanceof ZodError
                       ? "IPW_INVALID_INPUT"
                       : "IPW_SERVICE_UNAVAILABLE",
+                ...(error instanceof AppDataRejection ? { message: error.reason } : {}),
               },
             );
           }

@@ -1,4 +1,4 @@
-/** Each test fixture owns a PostgreSQL schema, including its Better Auth tables. */
+/** Each test fixture owns a PostgreSQL schema, including its Better Auth tables, and a sibling app data schema. */
 import { after } from "node:test";
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
@@ -17,12 +17,16 @@ export async function testConfig(env: NodeJS.ProcessEnv): Promise<Config> {
     const db = new Pool({ connectionString: databaseUrl });
     try {
       await db.query(`CREATE SCHEMA ${schema}`);
+      await db.query(`CREATE SCHEMA ${schema}_data`);
     } finally {
       await db.end();
     }
     schemas.set(key, schema);
   }
   return loadConfig({
+    APP_DATA_DATABASE_URL: databaseUrl,
+    APP_DATA_DATABASE_SCHEMA: schema + "_data",
+    APP_DATA_POOL_SIZE: "4",
     ...env,
     DATABASE_URL: databaseUrl,
     DATABASE_SCHEMA: schema,
@@ -33,8 +37,10 @@ export async function testConfig(env: NodeJS.ProcessEnv): Promise<Config> {
 after(async () => {
   const db = new Pool({ connectionString: databaseUrl });
   try {
-    for (const schema of schemas.values())
+    for (const schema of schemas.values()) {
       await db.query(`DROP SCHEMA ${schema} CASCADE`);
+      await db.query(`DROP SCHEMA IF EXISTS ${schema}_data CASCADE`);
+    }
   } finally {
     await db.end();
   }

@@ -39,19 +39,27 @@ function rowValue(value: unknown): string | number | boolean | null {
   throw new Error("Unexpected PostgreSQL business column type");
 }
 
+/** One PostgreSQL database; `Config` satisfies it for the account database, whose statements may run 15 seconds. */
+export interface StoreOptions {
+  databaseUrl: string;
+  databasePoolSize: number;
+  databaseSchema: string;
+  statementTimeoutMs?: number;
+}
 export class Store {
   readonly db: Pool;
   private readonly connection = new AsyncLocalStorage<PoolClient>();
   get inTransaction(): boolean {
     return this.connection.getStore() !== undefined;
   }
-  constructor(config: Config) {
+  constructor(options: StoreOptions) {
+    const timeout = options.statementTimeoutMs ?? 15000;
     this.db = new Pool({
-      connectionString: config.databaseUrl,
-      max: config.databasePoolSize,
+      connectionString: options.databaseUrl,
+      max: options.databasePoolSize,
       connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 30000,
-      options: `-c search_path=${config.databaseSchema} -c statement_timeout=15000 -c idle_in_transaction_session_timeout=15000`,
+      options: `-c search_path=${options.databaseSchema} -c statement_timeout=${timeout} -c idle_in_transaction_session_timeout=${Math.max(timeout, 15000)}`,
     });
     this.db.on("error", () => console.error("PostgreSQL idle connection lost"));
   }

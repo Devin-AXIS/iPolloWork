@@ -140,3 +140,7 @@ The embedded IM runtime uses Cordis’s public root-context symbol. Bundled Desi
 Account balances refresh when the application regains focus or becomes visible. Compatible DeepSeek and Bailian chat models inherit the installed provider catalog’s reasoning levels and request dialect; unknown models remain selectable without invented reasoning levels.
 
 Account and payment layouts contain their box sizing within the native settings panel. The suite resolves DSH services from the host through peer dependencies; installing it does not replace the host runtime packages.
+
+## App data
+
+The Data page, the `app_data` model tool and the `ipolloData` plugin service give plugins, sites and apps a record store in the account service without a database of their own. See [App data](docs/app-data.md).

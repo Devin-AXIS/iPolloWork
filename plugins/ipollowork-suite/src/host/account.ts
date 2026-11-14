@@ -5,7 +5,7 @@ import type {
   CredentialStore,
 } from "../shared/types.ts";
 import type { ResolvedConfig } from "./config.ts";
-import { SuiteError } from "./errors.ts";
+import { AppDataRejection, SuiteError } from "./errors.ts";
 
 const KEY = "ipollowork-suite/account";
 type Grant = { version: 1; origin: string; token: string };
@@ -91,6 +91,18 @@ export class AccountService {
       throw new SuiteError("IPW_ACCOUNT_UNAVAILABLE", 502, { cause });
     }
     if (!response.ok) {
+      if (path.startsWith("/api/data/v1/")) {
+        const data = await readJson(response, this.config.maxResponseBytes);
+        const code =
+          object(data) && typeof data.code === "string" && /^[A-Z_]+$/.test(data.code)
+            ? data.code
+            : response.status === 401
+              ? "IPW_SIGN_IN_REQUIRED"
+              : "IPW_ACCOUNT_UNAVAILABLE";
+        const reason =
+          object(data) && typeof data.error === "string" ? data.error.slice(0, 300) : code;
+        throw new AppDataRejection(code, response.status, reason);
+      }
       if (path.startsWith("/api/v1/")) {
         const data = await readJson(response, this.config.maxResponseBytes);
         const code =
