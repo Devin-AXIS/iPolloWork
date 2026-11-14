@@ -1,6 +1,7 @@
 /** Package directory and resource canonicalization through the active runtime carrier's filesystem. */
 
 import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { basename, dirname, join } from 'node:path'
 
 /**
@@ -31,7 +32,10 @@ export function physicalModuleDirectory(path: string): string {
   if (archive?.[1] && archive[2]) {
     const unpacked = `${archive[1]}.unpacked${archive[2]}`
     // Complete unpacked packages keep worker entrypoints and executable dependencies on disk.
-    if (existsSync(join(unpacked, 'package.json')) && statSync(archive[1]).isFile()) {
+    // Electron's patched stat reports an ASAR archive as a directory.
+    const filesystem = process.versions.electron === undefined ? { statSync }
+      : createRequire(import.meta.url)('original-fs') as Pick<typeof import('node:fs'), 'statSync'>
+    if (existsSync(join(unpacked, 'package.json')) && filesystem.statSync(archive[1]).isFile()) {
       return realpathSync.native(unpacked)
     }
   }
