@@ -17,6 +17,7 @@ import { AccountService } from "./account.ts";
 import {
   sharingStatus,
   nativeShareAudience,
+  configureNativeSharing,
   prepareNativeShare,
   createNativeShare,
   authorizeNativeShare,
@@ -447,13 +448,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               path === "/enterprise/native-sharing/configure" &&
               request.method === "POST"
             ) {
-              const sharing = ctx.get?.("liveshareShares");
-              if (!sharing)
-                throw new SuiteError("NATIVE_SHARING_DISABLED", 409);
-              if ((await account.state()).status !== "signed-in")
-                throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
-              await sharing.setRelay({ relayUrl: config.accountOrigin });
-              json(response, 200, { ok: true });
+              json(response, 200, await configureNativeSharing(ctx.get?.("liveshareShares"), account));
               return;
             }
             if (

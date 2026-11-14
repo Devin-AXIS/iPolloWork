@@ -42,7 +42,8 @@ export function mountLiveshare(
       throw new ServiceError("LIVESHARE_NOT_FOUND", 404);
     return c.redirect("/s/" + encodeURIComponent(id));
   });
-  const viewerPolicy = `sandbox allow-scripts allow-forms allow-downloads; default-src 'none'; script-src ${config.origin} 'unsafe-inline' 'wasm-unsafe-eval' blob:; style-src ${config.origin} 'unsafe-inline'; img-src ${config.origin} data: blob:; font-src ${config.origin} data:; connect-src ${config.origin}; worker-src blob:; base-uri ${config.origin}; form-action 'none'; frame-ancestors 'self'`;
+  // Native Cordis configuration evaluates expressions inside the opaque viewer frame.
+  const viewerPolicy = `sandbox allow-scripts allow-forms allow-downloads; default-src 'none'; script-src ${config.origin} 'unsafe-inline' 'unsafe-eval' blob:; style-src ${config.origin} 'unsafe-inline'; img-src ${config.origin} data: blob:; font-src ${config.origin} data:; connect-src ${config.origin}; worker-src blob:; base-uri ${config.origin}; form-action 'none'; frame-ancestors 'self'`;
   const carrier = readFileSync(
     new URL(
       import.meta.url.includes("/dist/")

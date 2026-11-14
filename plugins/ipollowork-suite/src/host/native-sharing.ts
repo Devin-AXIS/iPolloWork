@@ -10,6 +10,20 @@ export interface NativeSharing {
   create(request:{sessionId:string;sessionTitle:string;sessionMode:'view'|'write';allowsFork:boolean;accessMode:'selected';allowedSubjectIds:string[]}):Promise<{link:string;shareId:string}>
   stop(request:{shareId:string}):Promise<unknown>
 }
+/**
+ * Select the account's sharing server and inspect its native owner credential.
+ * @param service - Native sharing service, absent when its plugin is disabled.
+ * @param account - Current account whose server and identity sharing must use.
+ * @returns Whether native sharing already verifies the same account.
+ */
+export async function configureNativeSharing(service: NativeSharing | undefined, account: Pick<AccountService, 'state'>): Promise<{ok: true; ready: boolean}> {
+  if (!service) throw new SuiteError('NATIVE_SHARING_DISABLED', 409)
+  const owner = await account.state()
+  if (owner.status !== 'signed-in') throw new SuiteError('IPW_SIGN_IN_REQUIRED', 401)
+  await service.setRelay({relayUrl: owner.origin})
+  const identity = await service.identity({})
+  return {ok: true, ready: identity.state === 'verified' && identity.subjectId === owner.user.id}
+}
 export async function sharingStatus(service:NativeSharing|undefined,account:Pick<AccountService,'request'>) {
   if(!service)return{ready:false,reason:'NATIVE_SHARING_DISABLED',shares:[]}
   return{ready:true,reason:null,...await account.request('/api/v1/liveshare/shares') as {shares:unknown[]}}

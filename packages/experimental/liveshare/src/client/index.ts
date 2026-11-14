@@ -31,6 +31,7 @@ import * as viewerPermission from './viewer-permission.tsx'
 import * as viewerSession from './viewer-session-plugin.ts'
 import * as viewerSessionRow from './viewer-session-row.tsx'
 import * as viewerSharePath from './viewer-share-path.tsx'
+import type {} from './owner-preparation.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -104,7 +105,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           order: -7,
           locale: NS,
           children: { 'liveshare.share.audience': { kind: 'single', scope: 'session' } },
-          inject: () => ({ shares }),
+          inject: () => ({ shares, prepareOwner: (signal: AbortSignal) => scope.waterfall('liveshare/prepare-owner', signal, () => Promise.resolve({})) }),
         }, LiveshareShareAction),
       )
     })
@@ -121,3 +122,4 @@ export type { LiveshareShareDialogProps } from './ShareDialog.tsx'
 export type { LiveshareManageSharesDialogProps } from './ManageSharesDialog.tsx'
 
 export type { ShareAudienceProps, ShareAudienceSelection } from './share-audience.ts'
+export type { OwnerSharePreparation } from './owner-preparation.ts'

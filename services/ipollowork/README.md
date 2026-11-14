@@ -43,7 +43,7 @@ Memory contributions contain distilled facts and decisions. Maintainers explicit
 
 The suite uses the native DSH share dialog and viewer. A link permits anonymous visitors; organization sharing targets the organization or its departments. Session permission and fork controls remain native. Sharing does not change project grants. The service checks owner sessions and current audience membership and relays native frames over outbound WebSockets; the originating computer must remain online. The relay holds traffic in memory and does not persist transcripts or model keys.
 
-The sandboxed viewer receives only a short-lived share capability and cannot read account cookies. Revocation cancels access, and stopped shares retain tombstones. Set exact trusted proxy IPs in `TRUSTED_PROXY_IPS`, have the proxy overwrite `X-Real-IP`, and do not log authorization headers or share capability paths. [The proxy example](deploy/nginx.conf) includes HTTP and WebSocket routes.
+The sandboxed viewer receives only a short-lived share capability and cannot read account cookies. Its assets allow the opaque viewer origin and Cordis configuration evaluation; account pages retain same-origin resources and disallow evaluation. Revocation cancels access, and stopped shares retain tombstones. Set exact trusted proxy IPs in `TRUSTED_PROXY_IPS`, have the proxy overwrite `X-Real-IP`, and do not log authorization headers or share capability paths. [The proxy example](deploy/nginx.conf) includes HTTP and WebSocket routes.
 
 ## Official services and plans
 

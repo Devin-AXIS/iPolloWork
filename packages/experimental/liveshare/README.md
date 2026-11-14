@@ -59,6 +59,8 @@ Either route takes effect only on a recomposition. With the profile's HMR row en
 
 ### Owner configuration
 
+Application plugins can prepare a signed-in sharing account through the Client `liveshare/prepare-owner` waterfall before the dialog opens. Preparation failures leave the dialog closed and create no share. With no provider, or after its removal, the original manual server and sign-in flow remains available.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `LIVESHARE_OWNER_PROVIDER_ID` / `LIVESHARE_OWNER_TENANT_ID` / `LIVESHARE_OWNER_SUBJECT_ID` | unset | Owner identity used for legacy subject matching; it does not replace a server-issued credential |

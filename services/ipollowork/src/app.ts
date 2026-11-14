@@ -69,7 +69,9 @@ export async function createService(config: Config) {
         frameAncestors: ["'none'"],
       },
     });
-    const viewerHeaders = secureHeaders();
+    const viewerHeaders = secureHeaders({
+      crossOriginResourcePolicy: "cross-origin",
+    });
     const publicationHeaders = secureHeaders({
       contentSecurityPolicy: { sandbox: ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-downloads"] },
       referrerPolicy: "no-referrer",

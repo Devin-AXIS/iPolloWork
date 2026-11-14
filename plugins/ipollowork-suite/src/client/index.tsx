@@ -10,6 +10,8 @@ import { mountAgents } from './agents.tsx'
 import { mountCoordinator } from './coordinator.tsx'
 import { mountEnterprise } from './enterprise.tsx'
 import { mountConnections } from './connections.tsx'
+import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
+import { shareAudienceCopy } from './share-audience-copy.ts'
 import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
 export const inject = ['slots', 'theme', 'locale', 'remote', 'layout', 'uiWorkspace', 'connection', 'sessions', 'workspaces', 'contextMenus', 'conversation']
 export async function apply(ctx: ClientContext): Promise<void> {
@@ -36,6 +38,28 @@ export async function apply(ctx: ClientContext): Promise<void> {
   }
   if (info.account) {
     const account = new AccountController()
+    ctx.on('liveshare/prepare-owner', async (signal, next) => {
+      const previous = await next()
+      if (previous.error) return previous
+      const t = shareAudienceCopy(language(ctx))
+      await account.refresh()
+      signal.throwIfAborted()
+      const state = account.getSnapshot()
+      if (state.error) return { error: t.connectionFailed }
+      if (state.account?.status !== 'signed-in') {
+        account.openAccountSettings()
+        return { error: t.connectionSignIn }
+      }
+      try {
+        await prepareSharingConnection({
+          suite: (path, body, signal) => request(path, { method: 'POST', body: JSON.stringify(body), signal }),
+          native: callNativeSharing,
+        }, AbortSignal.any([signal, lifetime.signal]))
+        return { ...previous, connected: true }
+      } catch (_error) {
+        return { error: t.connectionFailed }
+      }
+    })
     mountEnterprise(ctx, account)
     ctx.effect(() => () => account.dispose(), 'ipollowork-suite: account state')
     const props = () => ({ origin: info.accountOrigin, refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })

@@ -217,6 +217,8 @@ test("native relay binds project permissions, identities, revocation and reconne
       headers: { Authorization: "Bearer " + member.token },
     });
     assert.equal(wrapper.status, 200);
+    assert(!wrapper.headers.get("content-security-policy")?.includes("'unsafe-eval'"));
+    assert.equal(wrapper.headers.get("cross-origin-resource-policy"), "same-origin");
     const framePath = (await wrapper.text()).match(
       /src="(\/__liveshare\/assets\/[^\"]+)"/,
     )?.[1];
@@ -252,6 +254,8 @@ test("native relay binds project permissions, identities, revocation and reconne
           ?.includes("allow-same-origin"),
       );
       assert.equal(document.headers.get("access-control-allow-origin"), "*");
+      assert.equal(document.headers.get("cross-origin-resource-policy"), "cross-origin");
+      assert(document.headers.get("content-security-policy")?.includes("'unsafe-eval'"));
     }
     frames.length = 0;
     const viewRequest = async (body: unknown) =>

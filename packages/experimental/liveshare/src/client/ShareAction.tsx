@@ -1,7 +1,7 @@
 /** Session-header action that opens the Liveshare owner-side share dialog. */
 
-import { useEffect, useState, type ReactNode } from 'react'
-import { IconShareOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { IconShareOutlineRegular, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { InjectFace, PropsLocale, PropsRuntime, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -11,6 +11,7 @@ import { openManagedSession, rememberManagedShare, takeManagedShare } from './sh
 import { LiveshareShareDialog } from './ShareDialog.tsx'
 import type { NS } from './locales.ts'
 import type { OwnerShares } from './owner-shares.ts'
+import type { OwnerSharePreparation } from './owner-preparation.ts'
 import type {} from './share-audience.ts'
 import css from './ShareAction.module.css'
 
@@ -18,6 +19,12 @@ import css from './ShareAction.module.css'
 export interface LiveshareShareActionInjected {
   /** Owner share management, addressed through the generated `liveshareShares` namespace. */
   readonly shares: OwnerShares
+  /**
+   * Prepare an application's sharing account before reading the native Relay state.
+   * @param signal - Cancelled when this action unmounts.
+   * @returns Preparation outcome, with localized recovery text on failure.
+   */
+  readonly prepareOwner?: (signal: AbortSignal) => Promise<OwnerSharePreparation>
 }
 
 /** Full props for the Liveshare Session-header utility. */
@@ -29,14 +36,47 @@ export type LiveshareShareActionProps =
  * @param props - Session runtime plus localized copy.
  * @returns the header action and optional dialog.
  */
-export function LiveshareShareAction({ sessionId, useSessions, shares, t, renderSlot }: LiveshareShareActionProps): ReactNode {
+export function LiveshareShareAction({
+  sessionId, useSessions, shares, prepareOwner, t, renderSlot,
+}: LiveshareShareActionProps): ReactNode {
   const [view, setView] = useState<'closed' | 'share' | 'manage'>('closed')
   const [managedShare, setManagedShare] = useState<{ readonly sessionId: SessionId; readonly sessionTitle: string }>()
   const [defaultRelay, setDefaultRelay] = useState('')
+  const [preparing, setPreparing] = useState(false)
+  const [preparationError, setPreparationError] = useState('')
+  const preparation = useRef<AbortController>()
   const sessionTitle = useSessions(state => state.byId[sessionId]?.displayTitle) ?? sessionId
 
+  useEffect(() => () => { preparation.current?.abort() }, [])
+
+  const openShare = async (): Promise<void> => {
+    if (preparation.current) return
+    if (prepareOwner === undefined) { setView('share'); return }
+    const attempt = new AbortController()
+    preparation.current = attempt
+    setPreparing(true)
+    setPreparationError('')
+    try {
+      const result = await prepareOwner(attempt.signal)
+      if (attempt.signal.aborted) return
+      if (result.error !== undefined) { setPreparationError(result.error); return }
+      if (!result.connected) { setView('share'); return }
+      const relay = await shares.relay()
+      // oxlint-disable-next-line typescript/no-unnecessary-condition -- Cancellation can happen while the Relay request is pending.
+      if (attempt.signal.aborted) return
+      if (!relay.ok) { setPreparationError(t('dialog.hostUnavailable')); return }
+      setDefaultRelay(relay.value.effective ?? '')
+      setView('share')
+    } catch (_error) {
+      if (!attempt.signal.aborted) setPreparationError(t('dialog.identity.loginFailed'))
+    } finally {
+      preparation.current = undefined
+      if (!attempt.signal.aborted) setPreparing(false)
+    }
+  }
+
   useEffect(() => {
-    if (takeManagedShare(sessionId)) setView('share')
+    if (takeManagedShare(sessionId)) void openShare()
   }, [sessionId])
 
   useEffect(() => {
@@ -58,11 +98,14 @@ export function LiveshareShareAction({ sessionId, useSessions, shares, t, render
         type="button"
         className={css.trigger}
         aria-label={t('header.action')}
-        onClick={() => { setManagedShare(undefined); setView('share') }}
+        aria-busy={preparing}
+        disabled={preparing}
+        onClick={() => { setManagedShare(undefined); void openShare() }}
       >
         <span>{t('header.action')}</span>
         <IconShareOutlineRegular size={12} />
       </button>
+      {preparationError === '' ? null : <Toast text={preparationError} onDone={() => { setPreparationError('') }} />}
       {view === 'share' && (
         <LiveshareShareDialog
           sessionId={managedShare?.sessionId ?? sessionId}

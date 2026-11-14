@@ -288,6 +288,7 @@ export const EVENT_SCOPE_PAGE: Record<string, string> = {
 export const EVENT_WALK_EXEMPTIONS: Record<string, string> = {
   'account-ui/change': 'client-side account lifecycle signal — packages/client/ui-settings-account/README.md owns the API',
   'account-ui/refresh': 'client-side account refresh signal — packages/client/ui-settings-account/README.md owns the API',
+  'liveshare/prepare-owner': 'client-face account preparation — packages/experimental/liveshare/README.md owns the API',
   'workspace/archive-notice': 'client-face archive follow-up copy — packages/client/ui-workspace/README.md owns the API',
   'workspace/archive-followup-failed': 'client-face archive follow-up failure — packages/client/ui-workspace/README.md owns the API',
   'workspace/archive-followup-settled': 'client-face archive follow-up settlement — packages/client/ui-workspace/README.md owns the API',

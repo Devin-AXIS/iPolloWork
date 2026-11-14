@@ -1,7 +1,21 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createNativeShare,prepareNativeShare, nativeShareAudience,sharingStatus,authorizeNativeShare,type NativeSharing} from '../src/host/native-sharing.ts'
+import {createNativeShare,prepareNativeShare, nativeShareAudience,sharingStatus,authorizeNativeShare,configureNativeSharing,type NativeSharing} from '../src/host/native-sharing.ts'
 import type {AccountService} from '../src/host/account.ts'
+test('sharing selects the account server and reuses only a matching verified owner',async()=>{
+ const account:Pick<AccountService,'state'>={state:async()=>({status:'signed-in',origin:'https://work.test',user:{id:'owner',email:'owner@example.test',name:'Owner'},points:0,balanceStatus:'available'})}
+ let relay='',subjectId='owner',state='unverified'
+ const changes:string[]=[]
+ const service:NativeSharing={identity:async()=>({state,relay,subjectId}),setRelay:async input=>{relay=input.relayUrl;changes.push(relay)},list:async()=>({shares:[]}),create:async()=>({shareId:'id',link:'https://work.test/s/id'}),stop:async()=>({})}
+ assert.deepEqual(await configureNativeSharing(service,account),{ok:true,ready:false})
+ state='verified'
+ assert.deepEqual(await configureNativeSharing(service,account),{ok:true,ready:true})
+ assert(changes.length>0&&changes.every(value=>value==='https://work.test'))
+ subjectId='another-owner'
+ assert.deepEqual(await configureNativeSharing(service,account),{ok:true,ready:false})
+ await assert.rejects(configureNativeSharing(undefined,account),{code:'NATIVE_SHARING_DISABLED'})
+ await assert.rejects(configureNativeSharing(service,{state:async()=>({status:'anonymous',origin:'https://work.test'})}),{code:'IPW_SIGN_IN_REQUIRED'})
+})
 test('native sharing binds authenticated project intent and never uploads transcripts',async()=>{
  const account:Pick<AccountService,'state'|'request'>={state:async()=>({status:'signed-in',origin:'https://native.test',user:{id:'owner',email:'owner@example.test',name:'Owner'},points:0,balanceStatus:'available'}),request:async path=>path.endsWith('/shares')?{shares:[]}:{intent:'ipollo-intent:one'}}
  assert.equal((await sharingStatus(undefined,account)).ready,false)

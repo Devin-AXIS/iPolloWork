@@ -59,6 +59,8 @@ profile 也可以改为选中组合包：在 `$DSH_HOME/profiles/<profile>/packa
 
 ### 所有者配置
 
+应用插件可以通过 Client 的 `liveshare/prepare-owner` 瀑布钩子，在弹窗打开前准备已登录的分享账号。准备失败不打开弹窗，也不创建分享。未注册或移除提供方后，保留原有的手动服务地址与登录流程。
+
 | 变量 | 默认值 | 含义 |
 |---|---|---|
 | `LIVESHARE_OWNER_PROVIDER_ID` / `LIVESHARE_OWNER_TENANT_ID` / `LIVESHARE_OWNER_SUBJECT_ID` | 未设置 | 用于旧主体匹配的所有者身份；不替代 Liveshare 服务端签发的凭据 |

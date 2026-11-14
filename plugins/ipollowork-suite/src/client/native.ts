@@ -1,6 +1,8 @@
 /** Minimal public DSH client capabilities consumed by the suite. */
 import type { ComponentType } from 'react'
 export interface NativeSessionBinding { readonly sessionId:string; readonly ctx:object }
+/** Credential-free result supplied to the optional native sharing hook. */
+interface SharingPreparation { readonly connected?:boolean; readonly error?:string }
 export interface SlotOptions<P> {
   name: string; id?: string; key?: string; order?: number; priority?: number; label?: () => string;
   inject?: () => Record<string, unknown>;
@@ -16,6 +18,7 @@ export interface ClientContext {
   locale: { getSnapshot(): { active?: string; locale?: string; language?: string } | string; subscribe(listener: () => void): () => void };
   remote: { $on(event: string, listener: () => void): () => void };
   on(name: string, listener: () => void): () => void;
+  on(name: 'liveshare/prepare-owner', listener: (signal: AbortSignal, next: () => Promise<SharingPreparation>) => Promise<SharingPreparation>): () => void;
   layout: { selectPanel(id: string): void };
   uiWorkspace: {
     openSession(sessionId: string): void;
