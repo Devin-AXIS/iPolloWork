@@ -1075,6 +1075,8 @@ export class ExecutionService {
       )
       .digest("hex");
     const existing = await this.store.transaction(async () => {
+      // Only identical request IDs share a reservation transaction; model calls run independently.
+      await this.store.run("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", input.requestId);
       const previous = await this.store.one<CallRow>(
         "SELECT * FROM service_calls WHERE id=?",
         input.requestId,
@@ -1084,13 +1086,6 @@ export class ExecutionService {
           throw new ServiceError("IDEMPOTENCY_CONFLICT", 409);
         return previous;
       }
-      if (
-        await this.store.one(
-          "SELECT id FROM service_calls WHERE user_id=? AND state='running'",
-          actor.id,
-        )
-      )
-        throw new ServiceError("SERVICE_BUSY", 409);
       if (points)
         await ledgerEntry(
           this.store,

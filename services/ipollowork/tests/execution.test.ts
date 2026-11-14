@@ -157,7 +157,8 @@ test("official execution shares server credentials, enforces plans and settles e
       requestId: pendingId,
     });
     await assert.rejects(
-      executor.invoke(actor, spec.id, { ...request, requestId: randomUUID() }),
+      executor.invoke(actor, spec.id, { ...request, requestId: pendingId }),
+      { code: "SERVICE_CALL_RUNNING" },
     );
     await pending.text();
     assert.equal(Number((await wallet(app.store, actor.id)).balance), 14);
@@ -360,4 +361,44 @@ test("administrators probe a connection without billing, and the stored key is r
     await app.close();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("one account runs independent services concurrently without duplicate charges", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ipw-parallel-execution-"));
+  const config = await loadConfig({ DATA_DIR: dir, SERVICE_ORIGIN: "http://localhost:4785" });
+  const app = await createService(config);
+  const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+  try {
+    const { user } = await app.auth.api.signUpEmail({ body: { email: "parallel@example.test", name: "Parallel", password: "Parallel-test-password" } });
+    const actor: Actor = { id: user.id, email: user.email, name: user.name, role: "admin", emailVerified: false };
+    await app.store.transaction(() => ledgerEntry(app.store, actor.id, 20, "parallel-funds", "Fixture"));
+    const executor = new ExecutionService(app.store, app.settings, async () => new Response(new ReadableStream<Uint8Array>({ start(controller) { streams.push(controller); } }), { headers: { "content-type": "application/json" } }));
+    const spec = { id: "parallel-a", title: "Parallel", provider: "bailian", baseUrl: "https://provider.example/v1", keyId: "bailian", key: "fixture-key", capabilities: ["chat"], routes: [{ method: "POST", path: "/chat/completions", points: 3 }], enabled: true };
+    await executor.save(actor, spec);
+    await executor.save(actor, { ...spec, id: "parallel-b" });
+    const requests = ["parallel-a", "parallel-b"].map(serviceId => ({ serviceId, input: { requestId: randomUUID(), path: "/chat/completions", method: "POST", body: "e30=", contentType: "application/json" } }));
+    const responses = await Promise.all(requests.map(request => executor.invoke(actor, request.serviceId, request.input)));
+    assert.equal(streams.length, 2);
+    assert.equal((await app.store.one("SELECT COUNT(*) AS total FROM service_calls WHERE user_id=? AND state='running'", actor.id))?.total, 2);
+    assert.equal((await wallet(app.store, actor.id)).balance, 14);
+    await assert.rejects(executor.invoke(actor, requests[0]!.serviceId, requests[0]!.input), { code: "SERVICE_CALL_RUNNING" });
+    for (const stream of streams) { stream.enqueue(new TextEncoder().encode('{"answer":"ok"}')); stream.close(); }
+    assert.deepEqual(await Promise.all(responses.map(response => response.json())), [{ answer: "ok" }, { answer: "ok" }]);
+    assert.equal((await app.store.one("SELECT COUNT(*) AS total FROM service_calls WHERE user_id=? AND state='running'", actor.id))?.total, 0);
+    assert.equal((await wallet(app.store, actor.id)).balance, 14);
+    await (await executor.invoke(actor, requests[0]!.serviceId, requests[0]!.input)).text();
+    assert.equal(streams.length, 2);
+    assert.equal((await wallet(app.store, actor.id)).balance, 14);
+    const shared = { ...requests[0]!.input, requestId: randomUUID() };
+    const duplicates = await Promise.allSettled([executor.invoke(actor, spec.id, shared), executor.invoke(actor, spec.id, shared)]);
+    assert.equal(duplicates.filter(result => result.status === "fulfilled").length, 1);
+    const rejected = duplicates.find(result => result.status === "rejected");
+    if (rejected?.status === "rejected") assert.equal(rejected.reason.code, "SERVICE_CALL_RUNNING");
+    assert.equal(streams.length, 3);
+    assert.equal((await wallet(app.store, actor.id)).balance, 11);
+    streams[2]!.enqueue(new TextEncoder().encode('{"answer":"once"}'));
+    streams[2]!.close();
+    for (const result of duplicates) if (result.status === "fulfilled") assert.deepEqual(await result.value.json(), { answer: "once" });
+    assert.equal((await wallet(app.store, actor.id)).balance, 11);
+  } finally { await app.close(); await rm(dir, { recursive: true, force: true }); }
 });
