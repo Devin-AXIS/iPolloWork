@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { SuiteError } from './errors.ts'
 import type { AccountService } from './account.ts'
+const audienceSchema=z.discriminatedUnion('kind',[z.object({kind:z.literal('link')}),z.object({kind:z.literal('team'),enterpriseId:z.string()}),z.object({kind:z.literal('departments'),enterpriseId:z.string(),departmentIds:z.array(z.string()).min(1).max(500)}),z.object({kind:z.literal('members'),enterpriseId:z.string(),userIds:z.array(z.string()).min(1).max(500)})])
 export interface NativeSharing {
   identity(request: Record<string,never>):Promise<{state:string;relay:string;subjectId?:string}>
   setRelay(request:{relayUrl:string}):Promise<unknown>
@@ -42,7 +43,7 @@ export async function stopNativeShare(service:NativeSharing|undefined,account:Pi
 
 /** Prepare recipients for the native dialog without replacing its permission controls. */
 export async function prepareNativeShare(service:NativeSharing|undefined,input:unknown,account:Pick<AccountService,'request'|'state'>){
-  const data=z.object({request:z.object({sessionId:z.string().min(1),sessionTitle:z.string().optional(),sessionMode:z.enum(['view','write']).optional(),allowsFork:z.boolean().optional(),ttlMinutes:z.number().positive().optional(),accessMode:z.enum(['open','selected']).optional(),allowedSubjectIds:z.array(z.string()).optional()}),projectId:z.string().optional(),audience:z.discriminatedUnion('kind',[z.object({kind:z.literal('link')}),z.object({kind:z.literal('team'),enterpriseId:z.string()}),z.object({kind:z.literal('departments'),enterpriseId:z.string(),departmentIds:z.array(z.string()).min(1).max(500)}),z.object({kind:z.literal('members'),enterpriseId:z.string(),userIds:z.array(z.string()).min(1).max(500)})])}).parse(input)
+  const data=z.object({request:z.object({sessionId:z.string().min(1),sessionTitle:z.string().optional(),sessionMode:z.enum(['view','write']).optional(),allowsFork:z.boolean().optional(),ttlMinutes:z.number().positive().optional(),accessMode:z.enum(['open','selected']).optional(),allowedSubjectIds:z.array(z.string()).optional()}),projectId:z.string().optional(),audience:audienceSchema}).parse(input)
   if(!service)throw new SuiteError('NATIVE_SHARING_DISABLED',409)
   const identity=await service.identity({}),owner=await account.state()
   if(data.audience.kind==='link'&&identity.relay!==owner.origin)return data.request
@@ -51,4 +52,17 @@ export async function prepareNativeShare(service:NativeSharing|undefined,input:u
     projectId:data.projectId,audience:data.audience,sessionId:data.request.sessionId,title:data.request.sessionTitle||data.request.sessionId,role:data.request.sessionMode==='write'?'participate':'view',allowsFork:data.request.allowsFork??false,
   }))
   return {...data.request,accessMode:'selected' as const,allowedSubjectIds:[intent]}
+}
+
+/** Read or update the connected owner's audience without replacing native permissions. */
+export async function nativeShareAudience(service:Pick<NativeSharing,'identity'>|undefined,account:Pick<AccountService,'request'|'state'>,shareId:string,input?:unknown){
+  if(!service)throw new SuiteError('NATIVE_SHARING_DISABLED',409)
+  const id=z.string().regex(/^[\w-]{1,200}$/).parse(shareId)
+  const identity=await service.identity({}),owner=await account.state()
+  if(identity.relay!==owner.origin){if(input!==undefined)throw new SuiteError('NATIVE_SHARING_LOGIN_REQUIRED',409);return{audience:null}}
+  if(owner.status!=='signed-in'||identity.state!=='verified'||identity.subjectId!==owner.user.id)throw new SuiteError('NATIVE_SHARING_LOGIN_REQUIRED',409)
+  const path='/api/v1/liveshare/shares/'+encodeURIComponent(id)+'/audience'
+  const request=input===undefined?undefined:z.object({audience:audienceSchema}).parse(input)
+  const result=await account.request(path,request,request===undefined?'GET':'PUT')
+  return z.object({audience:audienceSchema.or(z.object({kind:z.literal('project')}))}).parse(result)
 }

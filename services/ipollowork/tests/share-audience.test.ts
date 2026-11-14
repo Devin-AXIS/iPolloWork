@@ -15,7 +15,7 @@ test('native audiences follow membership and public links admit guests until rev
   const dir=await mkdtemp(join(tmpdir(),'ipw-audience-'));
   const service=await createService(loadConfig({DATA_DIR:dir,SERVICE_ORIGIN:'http://localhost:4785'}));
   let peer=0;
-  const http=async(path:string,token?:string,body?:unknown)=>service.app.request('http://localhost:4785'+path,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','x-ipollo-peer-ip':'192.0.2.'+(++peer),...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  const http=async(path:string,token?:string,body?:unknown,method?:string)=>service.app.request('http://localhost:4785'+path,{method:method??(body?'POST':'GET'),headers:{'Content-Type':'application/json','x-ipollo-peer-ip':'192.0.2.'+(++peer),...(token?{Authorization:'Bearer '+token}:{})},...(body?{body:JSON.stringify(body)}:{})});
   const account=async(name:string)=>{
     const response=await http('/api/auth/sign-up/email',undefined,{name,email:name+'@example.test',password:'Audience-test-password-2026'});
     const value=await response.json() as {token:string;user:{id:string;name:string;email:string}};
@@ -50,6 +50,17 @@ test('native audiences follow membership and public links admit guests until rev
     assert.equal(service.relay.snapshot(publicShare).accessMode,'open');
     assert.deepEqual(service.relay.snapshot(publicShare).allowedSubjectIds,[]);
     assert.equal(service.relay.snapshot(publicShare).allowsFork,false);
+    assert.equal((await http('/api/v1/liveshare/shares/native-public/audience',outsider.token)).status,403);
+    const changed=await http('/api/v1/liveshare/shares/native-public/audience',owner.token,{audience:{kind:'team',enterpriseId:enterprise.id}},'PUT');
+    assert.equal(changed.status,200);
+    assert.equal(service.relay.snapshot(service.relay.share('native-public')).accessMode,'selected');
+    const scope=await http('/api/v1/liveshare/shares/native-public/audience',owner.token);
+    assert.deepEqual(await scope.json(),{audience:{kind:'team',enterpriseId:enterprise.id}});
+    assert.equal((await http('/api/v1/liveshare/shares/native-public/audience',owner.token,{audience:{kind:'members',enterpriseId:enterprise.id,userIds:[outsider.user.id]}},'PUT')).status,400);
+    assert.equal((await http('/api/v1/liveshare/shares/native-public/audience',outsider.token,{audience:{kind:'link'}},'PUT')).status,403);
+    assert.equal((await http('/api/v1/liveshare/shares/native-public/audience',owner.token,{audience:{kind:'link'}},'PUT')).status,200);
+    const restored=service.relay.share('native-public');
+    assert.equal(restored.mode,'view');assert.equal(restored.allows_fork,0);
     const guest=service.relay.sign({purpose:'viewer',sessionId:'',subjectId:'guest:test',displayName:'Guest',shareId:'native-public',anonymous:true,expiresAt:Date.now()+3600000});
     assert.equal(service.relay.verify(guest,'viewer').anonymous,true);
     const nativeLink=await http('/?shareId=native-public');assert.equal(nativeLink.status,302);assert.equal(nativeLink.headers.get('location'),'/s/native-public');

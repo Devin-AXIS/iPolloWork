@@ -70,6 +70,21 @@ export function mountLiveshare(app: App, relay: LiveshareRelay, auth: Auth): voi
     });
     return c.json({ shares: items });
   });
+  app.get('/api/v1/liveshare/shares/:id/audience', c => {
+    const share = relay.share(c.req.param('id'));
+    if (share.owner_id !== c.get('actor').id) throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
+    return c.json({ audience: readShareAudience(share) });
+  });
+  app.put('/api/v1/liveshare/shares/:id/audience', async c => {
+    const share = relay.share(c.req.param('id'));
+    const actor = c.get('actor');
+    if (share.owner_id !== actor.id) throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
+    const input = z.object({ audience: shareAudienceSchema }).parse(await c.req.json());
+    const audience = resolveShareAudience(store, actor, input.audience, share.project_id ?? undefined);
+    store.run('UPDATE live_shares SET audience_json=? WHERE id=?', JSON.stringify(audience), share.id);
+    relay.refresh();
+    return c.json({ audience });
+  });
   app.get('/__liveshare/requests', c => c.json(relay.snapshot(relay.managed(c.req.query('shareId') ?? '', c.req.header('authorization') ?? ''))));
   app.delete('/__liveshare/share', c => {
     const share = relay.managed(c.req.query('shareId') ?? '', c.req.header('authorization') ?? '');

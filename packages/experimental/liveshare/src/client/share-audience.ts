@@ -4,6 +4,13 @@ import type { CreateShareRequest } from '../share-api-types.ts'
 
 /** One selection prepares native access fields immediately before creation. */
 export interface ShareAudienceSelection {
+  /** Whether an existing share has recipient changes to save. */
+  readonly dirty?: boolean
+  /**
+   * Save recipient changes without clearing the draft on failure.
+   * @returns Completes after the sharing service accepts the recipient scope.
+   */
+  readonly save?: () => Promise<void>
   /** Reason that blocks creation until the recipient selection is ready. */
   readonly blockedReason?: string
   /** Localized explanation when recipient preparation fails. */
@@ -18,6 +25,8 @@ export interface ShareAudienceSelection {
 
 /** Values passed to the optional recipient contribution. */
 export interface ShareAudienceProps {
+  /** Existing share whose recipients are editable, absent before creation. */
+  readonly currentShareId?: string
   /** Session being shared, including when opened from the share manager. */
   readonly shareSessionId: SessionId
   /** Whether native prerequisites or an in-flight creation disable editing. */

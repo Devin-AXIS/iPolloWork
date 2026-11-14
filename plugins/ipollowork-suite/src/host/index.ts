@@ -11,7 +11,7 @@ import type {Context} from '@deepseek-ai/cordis'
 import { Services } from './services.ts'
 import type { ServiceCenter,ServiceChoice } from '../shared/services.ts'
 import { AccountService } from './account.ts'
-import { sharingStatus, prepareNativeShare, createNativeShare, authorizeNativeShare, stopNativeShare, type NativeSharing } from './native-sharing.ts'
+import { sharingStatus, nativeShareAudience, prepareNativeShare, createNativeShare, authorizeNativeShare, stopNativeShare, type NativeSharing } from './native-sharing.ts'
 import { mountProjectContext, type MemoryContext } from './project-context.ts'
 import { EnterpriseService, type EnterpriseNative } from './enterprise.ts'
 import { Config, resolveConfig, type Config as ConfigInput } from './config.ts'
@@ -97,6 +97,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
         if((await account.state()).status!=='signed-in')throw new SuiteError('IPW_SIGN_IN_REQUIRED',401)
         await sharing.setRelay({relayUrl:config.accountOrigin});json(response,200,{ok:true});return
       }
+      if(path.startsWith('/enterprise/native-sharing/audience/')&&(request.method==='GET'||request.method==='PUT')){json(response,200,await nativeShareAudience(ctx.get?.('liveshareShares'),account,path.slice('/enterprise/native-sharing/audience/'.length),request.method==='PUT'?await body(request):undefined));return}
       if(path==='/enterprise/native-sharing/prepare'&&request.method==='POST'){json(response,200,await prepareNativeShare(ctx.get?.('liveshareShares'),await body(request),account));return}
       if(path==='/enterprise/native-sharing/authorize'&&request.method==='POST'){json(response,200,await authorizeNativeShare(account,await body(request)));return}
       if(path.startsWith('/enterprise/native-sharing/')&&request.method==='DELETE'){json(response,200,await stopNativeShare(ctx.get?.('liveshareShares'),account,path.slice('/enterprise/native-sharing/'.length)));return}

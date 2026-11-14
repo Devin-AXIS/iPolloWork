@@ -317,7 +317,7 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .serviceSource { display:grid;gap:8px;margin:12px 0 20px;font-size:13px; }
 .serviceSource select { width:100%;padding:10px;border:0;border-radius:8px;font:inherit;color:inherit;background:var(--ipw-muted-surface); }
 
-.shareAudience { display: grid; gap: 10px; padding-block: 12px; }
+.shareAudience { display: grid; gap: 10px; padding-block: 12px; font-size: 13px; }
 .shareAudience > label { display: grid; gap: 6px; font-size: 13px; }
 .shareAudience select { width: 100%; padding: 8px 10px; border: 1px solid var(--ipw-border); border-radius: 8px; color: inherit; background: var(--ipw-surface); font: inherit; }
 .shareAudience p { margin: 0; font-size: 12px; color: var(--ipw-muted); }

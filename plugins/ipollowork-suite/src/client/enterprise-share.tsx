@@ -6,46 +6,90 @@ import { shareAudienceCopy } from './share-audience-copy.ts'
 import css from './suite.module.css'
 
 type NativeRequest = { sessionId:string;sessionTitle?:string;sessionMode?:'view'|'write';allowsFork?:boolean;ttlMinutes?:number;accessMode?:'open'|'selected';allowedSubjectIds?:readonly string[] }
-type Selection = { blockedReason?:string;failureMessage:string;prepare(request:NativeRequest):Promise<NativeRequest> }
+type Audience = {kind:'link'}|{kind:'team';enterpriseId:string}|{kind:'departments';enterpriseId:string;departmentIds:string[]}|{kind:'members';enterpriseId:string;userIds:string[]}|{kind:'project'}
+type Selection = { blockedReason?:string;failureMessage:string;dirty?:boolean;save?:()=>Promise<void>;prepare(request:NativeRequest):Promise<NativeRequest> }
 type AudienceProps = Pick<Props,'useEnterpriseState'|'useLocale'|'controller'|'openAccountSettings'> & {
-  shareSessionId:string;disabled:boolean;onChange(value:Selection|undefined):void;
+  shareSessionId:string;currentShareId?:string;disabled:boolean;onChange(value:Selection|undefined):void;
 }
-export function ShareAudience({shareSessionId,disabled,onChange,useEnterpriseState,useLocale,controller,openAccountSettings}:AudienceProps){
+function audienceKey(value:Audience){return JSON.stringify(value.kind==='departments'?{...value,departmentIds:[...value.departmentIds].sort()}:value)}
+export function ShareAudience({shareSessionId,currentShareId,disabled,onChange,useEnterpriseState,useLocale,controller,openAccountSettings}:AudienceProps){
   const state=useEnterpriseState(value=>value),t=shareAudienceCopy(useLocale(value=>value))
-  const [kind,setKind]=useState<'link'|'team'|'departments'|'members'>('link')
-  const [team,setTeam]=useState(''),[picked,setPicked]=useState<string[]>([])
+  const [kind,setKind]=useState<'link'|'organization'|'legacy'>('link')
+  const [scope,setScope]=useState<'all'|'departments'>('all')
+  const [organization,setOrganization]=useState('')
+  const [picked,setPicked]=useState<{organizationId:string;ids:string[]}>({organizationId:'',ids:[]})
+  const [stored,setStored]=useState<{id:string;audience:Audience|null}|null>(null)
+  const [loadFailed,setLoadFailed]=useState(false)
   const [record,setRecord]=useState<{id:string;detail?:EnterpriseDetail;error?:boolean}|null>(null),[revision,setRevision]=useState(0)
-  const teamId=state.catalog?.enterprises.some(item=>item.id===team)?team:state.catalog?.enterprises[0]?.id||''
-  useLayoutEffect(()=>setPicked([]),[teamId])
+  const organizations=state.catalog?.enterprises??[]
+  const organizationId=organizations.some(item=>item.id===organization)?organization:organization===''&&organizations.length===1?organizations[0]!.id:''
+  const departmentIds=picked.organizationId===organizationId?picked.ids:[]
+  const needsDepartments=kind==='organization'&&scope==='departments'
+  const loading=!!currentShareId&&stored?.id!==currentShareId
   useEffect(()=>{
-    if(!state.signedIn||!teamId||kind==='link'||kind==='team')return
+    if(!currentShareId)return
     let active=true
-    setRecord({id:teamId})
-    void controller.call<EnterpriseDetail>('/organizations/'+teamId).then(detail=>{if(active)setRecord({id:teamId,detail})},()=>{if(active)setRecord({id:teamId,error:true})})
+    setLoadFailed(false)
+    void controller.call<{audience:Audience|null}>('/native-sharing/audience/'+currentShareId).then(({audience})=>{
+      if(!active)return
+      setStored({id:currentShareId,audience})
+      if(audience===null)return
+      setKind(audience.kind==='link'?'link':audience.kind==='team'||audience.kind==='departments'?'organization':'legacy')
+      if(audience.kind==='team'||audience.kind==='departments'){
+        setOrganization(audience.enterpriseId);setScope(audience.kind==='team'?'all':'departments')
+        setPicked({organizationId:audience.enterpriseId,ids:audience.kind==='departments'?audience.departmentIds:[]})
+      }
+    },()=>{if(active)setLoadFailed(true)})
     return()=>{active=false}
-  },[controller,state.signedIn,teamId,kind,revision])
-  const detail=record?.id===teamId?record.detail:undefined
-  const needsPeople=kind==='members'||kind==='departments'
-  const blockedReason=kind==='link'?undefined:!state.signedIn?t.signIn:!teamId?t.chooseTeam:needsPeople&&!detail?t.loading:needsPeople&&!picked.length?t.chooseRecipients:undefined
+  },[controller,currentShareId,revision])
+  useEffect(()=>{
+    if(!state.signedIn||!organizationId||!needsDepartments)return
+    let active=true
+    setRecord({id:organizationId})
+    void controller.call<EnterpriseDetail>('/organizations/'+organizationId).then(detail=>{if(active)setRecord({id:organizationId,detail})},()=>{if(active)setRecord({id:organizationId,error:true})})
+    return()=>{active=false}
+  },[controller,state.signedIn,organizationId,needsDepartments,revision])
+  const currentRecord=record?.id===organizationId?record:undefined
+  const detail=currentRecord?.detail
+  const blockedReason=loadFailed?t.failed:loading?t.loading:kind==='link'||kind==='legacy'?undefined:!state.signedIn?t.signIn:!organizationId?t.chooseOrganization:needsDepartments&&currentRecord?.error?t.failed:needsDepartments&&!detail?t.loading:needsDepartments&&!departmentIds.length?t.chooseDepartments:undefined
   const projectId=state.catalog?.projects.find(project=>project.sessionIds.includes(shareSessionId))?.cloudId??undefined
-  const selection=useMemo<Selection>(()=>({...blockedReason?{blockedReason}:{},failureMessage:t.failed,prepare:request=>controller.call<NativeRequest>('/native-sharing/prepare',{
-    request,projectId,audience:kind==='link'?{kind}:kind==='team'?{kind,enterpriseId:teamId}:kind==='departments'?{kind,enterpriseId:teamId,departmentIds:picked}:{kind,enterpriseId:teamId,userIds:picked},
-  })}),[blockedReason,t,controller,projectId,kind,teamId,picked])
-  useLayoutEffect(()=>{onChange(selection);return()=>onChange(undefined)},[onChange,selection])
-  const choose=(value:string)=>setPicked(current=>current.includes(value)?current.filter(id=>id!==value):[...current,value])
-  const rows=kind==='departments'?detail?.departments.map(row=>({id:row.id,label:row.name})):detail?.members.map(row=>({id:row.userId,label:row.name||row.email}))
+  const selection=useMemo<Selection>(()=>{
+    const audience:Audience=kind==='link'?{kind:'link'}:kind==='legacy'?{kind:'project'}:scope==='all'?{kind:'team',enterpriseId:organizationId}:{kind:'departments',enterpriseId:organizationId,departmentIds:picked.organizationId===organizationId?picked.ids:[]}
+    const dirty=!!currentShareId&&stored?.id===currentShareId&&stored.audience!==null&&kind!=='legacy'&&audienceKey(audience)!==audienceKey(stored.audience)
+    return{...blockedReason?{blockedReason}:{},failureMessage:t.failed,dirty,
+      save:async()=>{
+        if(!currentShareId||blockedReason)return
+        const result=await controller.call<{audience:Audience}>('/native-sharing/audience/'+currentShareId,{audience},'PUT')
+        setStored({id:currentShareId,audience:result.audience})
+      },
+      prepare:request=>controller.call<NativeRequest>('/native-sharing/prepare',{request,projectId,audience}),
+    }
+  },[blockedReason,t,controller,projectId,kind,scope,organizationId,picked,currentShareId,stored])
+  const unsupported=!!currentShareId&&stored?.id===currentShareId&&stored.audience===null
+  useLayoutEffect(()=>{onChange(unsupported?undefined:selection);return()=>onChange(undefined)},[onChange,selection,unsupported])
+  const choose=(value:string)=>setPicked(current=>{
+    const ids=current.organizationId===organizationId?current.ids:[]
+    return{organizationId,ids:ids.includes(value)?ids.filter(id=>id!==value):[...ids,value]}
+  })
+  if(unsupported)return null
+  const unavailable=disabled||loading
   return <div className={css.shareAudience}>
-    <label>{t.title}<select value={kind} disabled={disabled} onChange={event=>{setKind(event.target.value as typeof kind);setPicked([])}}>
-      <option value="link">{t.link}</option><option value="team">{t.team}</option><option value="departments">{t.departments}</option><option value="members">{t.members}</option>
+    <label>{t.title}<select value={kind} disabled={unavailable} onChange={event=>setKind(event.target.value as typeof kind)}>
+      <option value="link">{t.link}</option><option value="organization">{t.organization}</option>{kind==='legacy'&&<option value="legacy" disabled>{t.currentAccess}</option>}
     </select></label>
-    {kind==='link'?<p>{t.linkHint}</p>:!state.signedIn?<button type="button" onClick={openAccountSettings}>{t.signIn}</button>:<>
-      <label>{t.team}<select value={teamId} disabled={disabled} onChange={event=>{setTeam(event.target.value);setPicked([])}}>
-        <option value="">{t.chooseTeam}</option>{state.catalog?.enterprises.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
-      </select></label>
-      {needsPeople&&teamId&&(record?.error?<button type="button" onClick={()=>setRevision(value=>value+1)}>{t.retry}</button>:!detail?<p role="status">{t.loading}</p>:<div className={css.shareRecipients}>
-        {rows?.length?rows.map(row=><label key={row.id}><input type="checkbox" checked={picked.includes(row.id)} disabled={disabled} onChange={()=>choose(row.id)}/><span>{row.label}</span></label>):<p>{t.empty}</p>}
-      </div>)}
-      <p>{t.teamHint}</p>
-    </>}
+    {loadFailed?<button type="button" disabled={disabled} onClick={()=>setRevision(value=>value+1)}>{t.retry}</button>:loading?<p role="status">{t.loading}</p>:null}
+    {kind==='organization'&&(!state.signedIn?<button type="button" disabled={unavailable} onClick={openAccountSettings}>{t.signIn}</button>:<>
+      <select aria-label={t.chooseOrganization} value={organizationId} disabled={unavailable} onChange={event=>setOrganization(event.target.value)}>
+        <option value="">{t.chooseOrganization}</option>{organizations.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+      </select>
+      {organizationId&&<>
+        <select aria-label={t.scope} value={scope} disabled={unavailable} onChange={event=>setScope(event.target.value as typeof scope)}>
+          <option value="all">{t.wholeOrganization}</option><option value="departments">{t.departments}</option>
+        </select>
+        {needsDepartments&&(currentRecord?.error?<button type="button" disabled={unavailable} onClick={()=>setRevision(value=>value+1)}>{t.retry}</button>:!detail?<p role="status">{t.loading}</p>:<div className={css.shareRecipients}>
+          {detail.departments.length?detail.departments.map(row=><label key={row.id}><input type="checkbox" checked={departmentIds.includes(row.id)} disabled={unavailable} onChange={()=>choose(row.id)}/><span>{row.name}</span></label>):<p>{t.empty}</p>}
+        </div>)}
+      </>}
+    </>)}
   </div>
 }

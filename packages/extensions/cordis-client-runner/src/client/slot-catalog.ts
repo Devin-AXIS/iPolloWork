@@ -2671,7 +2671,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     doc: 'Optional application-specific recipients in the native share dialog.',
     registerOptions: [],
     ownerProps: [
-      '/** Values passed to the optional recipient contribution. */\nexport interface ShareAudienceProps {\n  /** Session being shared, including when opened from the share manager. */\n  readonly shareSessionId: SessionId\n  /** Whether native prerequisites or an in-flight creation disable editing. */\n  readonly disabled: boolean\n  /**\n   * Publish a selection and clear it when the contribution unmounts.\n   * @param selection - Current recipient preparation, or undefined after disposal.\n   */\n  readonly onChange: (selection: ShareAudienceSelection | undefined) => void\n}',
+      '/** Values passed to the optional recipient contribution. */\nexport interface ShareAudienceProps {\n  /** Existing share whose recipients are editable, absent before creation. */\n  readonly currentShareId?: string\n  /** Session being shared, including when opened from the share manager. */\n  readonly shareSessionId: SessionId\n  /** Whether native prerequisites or an in-flight creation disable editing. */\n  readonly disabled: boolean\n  /**\n   * Publish a selection and clear it when the contribution unmounts.\n   * @param selection - Current recipient preparation, or undefined after disposal.\n   */\n  readonly onChange: (selection: ShareAudienceSelection | undefined) => void\n}',
     ],
     ownerPropsReferences: [
       'SessionId',
@@ -2705,7 +2705,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     occupants: [],
     replaceRisk: 'none',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'liveshare.share.audience\', () => ctx.slots.register(\n      { name: \'liveshare.share.audience\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
-    source: 'packages/experimental/liveshare/src/client/share-audience.ts:35',
+    source: 'packages/experimental/liveshare/src/client/share-audience.ts:44',
   },
   {
     key: 'main',

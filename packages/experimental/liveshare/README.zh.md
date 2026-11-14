@@ -107,7 +107,9 @@ Owner Gateway 按调用指明的 Session 与工作区判定每次调用，并拒
 <details>
 <summary>实现内部机制 — 点击展开</summary>
 
-原生分享弹窗提供可选的 `liveshare.share.audience` slot。扩展提供接收对象控件和准备回调，在创建前返回原生访问字段，并可阻止未完成的选择。移除扩展后恢复原有的开放链接行为。会话权限、fork 控制、链接管理和渲染仍由本包管理。
+分享弹窗将服务地址、账号身份和连接状态收纳到分享设置中，主界面只显示生成的分享链接。
+
+原生分享弹窗提供可选的 `liveshare.share.audience` slot。扩展提供接收对象控件和准备回调，在创建前返回原生访问字段，并可阻止未完成的选择。已有分享向同一扩展提供分享 id，其未保存状态与保存回调接入原生保存操作。移除扩展后恢复原有的开放链接行为。会话权限、fork 控制、链接管理和渲染仍由本包管理。
 
 查看页就是 Owner 自己的 Web shell。Liveshare 服务端通过 `asset` 读取取得 Owner 渲染好的 index 文档，并把 [viewer-carrier.ts](../liveshare-protocol/src/viewer-carrier.ts) 生成的载体脚本放在文档最前面。Shell 资源、客户端插件 bundle，以及 index 相对文档基准引用的三个确切顶层文件（`manifest.webmanifest`、`favicon.svg`、`favicon-dark.svg`）都经同一读取取得，来自 Owner 的前端读取服务和客户端模块注册表，因此页面以 Owner 的版本运行 Owner 的全部插件。任何 asset 路径上的 source map 都被拒绝，且该判定是权威的：经 Liveshare 服务端转发的 `asset` 读取会原样到达这里，因此 Liveshare 服务端侧的同名规则只覆盖它自己的页面资源路由；被服务的文档还会去掉自己的 manifest 链接，否则浏览器会不带凭据地抓取它。载体把 Connection 调用和 Gateway 流转换为 `POST {base}/__share/rpc` 请求，并把 Liveshare 服务端无法作答的只读页面源 Owner 路由（`/open-in-app/apps` 与 `/api/present.host`）也经该通道转发，而不是留给 Liveshare 服务端尾部。Liveshare 服务端在不透明请求体之外提供已认证主体。Owner 读取处理器把每位读者的调用和流以「每个分享、每位读者一个 Peer」分派进自己的 Connection 与 Gateway，该 Peer 的 `share-viewer` principal 携带分享与服务端断言的身份。Gateway 依据本包注册的 `share-viewer` 策略，经 [`dsh-api-remote-access`](../../api/remote-access/README.zh.md) 判定该 Peer 的调用以及转发给它的会话通知：受服务的读者持有共享会话、其自己的 fork 及包含它们的工作区上的读取角色，持有条件按分享档位与其自身 fork 开关判定的 fork 与写入角色，此外别无授权；附件上传随读取角色生效。读取处理器保留分享生命周期拒绝、Liveshare 服务端授权刷新、冷会话准备和 fork 编排，在准备或分派提示词与停止之前读取策略的写入规则，并在授权结束、分享停止或过期、或复检拒绝时释放读者的 Peer。读者索取页面或打开流时也会开始准备该分享的源会话，因此宿主重启时该会话的 agent 尚未存活也能补上驱动所需的层；无法被 confine 的分享会如实说明该状态，而不再声明只读。存在载体写入的 `__DSH_LIVESHARE_VIEWER__` 全局变量时，本包的浏览器端挂载查看页界面，否则挂载分享操作。读者收到的 index 把读者自己的访问快照赋给每个 index 设为所有者基线的同一全局变量，页面随后跟随读者的 `remoteAccess/follow` 快照；CSS 隐藏不构成授权。
 

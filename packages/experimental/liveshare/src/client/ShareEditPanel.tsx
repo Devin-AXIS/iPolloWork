@@ -420,6 +420,10 @@ export function useShareEdit({
 export interface ShareEditPanelProps extends PropsLocale<typeof NS> {
   /** Whether a share exists to edit; the section renders nothing before one does. */
   readonly visible: boolean
+  /** Whether an application contribution already presents the recipient scope. */
+  readonly showAccessSummary?: boolean
+  /** Whether another save in the same dialog disables editing. */
+  readonly disabled?: boolean
   /** Stored values, owner picks, and the one save they share. */
   readonly edit: ShareEditState
 }
@@ -429,7 +433,7 @@ export interface ShareEditPanelProps extends PropsLocale<typeof NS> {
  * @param props - The edit state, whether a share exists, and localized copy.
  * @returns The permission section, or nothing while no share exists.
  */
-export function ShareEditPanel({ visible, edit, t }: ShareEditPanelProps): ReactNode {
+export function ShareEditPanel({ visible, edit, t, showAccessSummary = true, disabled = false }: ShareEditPanelProps): ReactNode {
   if (!visible) return null
   return (
     <>
@@ -440,7 +444,7 @@ export function ShareEditPanel({ visible, edit, t }: ShareEditPanelProps): React
           offered={edit.offered}
           pluginAccess={edit.pluginAccess}
           capabilities={edit.capabilities}
-          disabled={edit.saveBusy}
+          disabled={edit.saveBusy || disabled}
           sessionModeControlId={edit.shareModeControlId}
           capabilityControlId={edit.capabilityControlId}
           /* v8 ignore next -- the same control is exercised through the create form and dirty-close test. */
@@ -458,12 +462,12 @@ export function ShareEditPanel({ visible, edit, t }: ShareEditPanelProps): React
               : t('dialog.expiry.until', { time: new Date(edit.expiresAt).toISOString().slice(0, 10) })}
           </span>
           {edit.expiresAt === undefined ? null : (
-            <Button variant="ghost" size="sm" disabled={edit.saveBusy} onClick={edit.clearExpiry}>
+            <Button variant="ghost" size="sm" disabled={edit.saveBusy || disabled} onClick={edit.clearExpiry}>
               {t('dialog.expiry.clear')}
             </Button>
           )}
         </div>
-        <div className={css.field}>
+        {showAccessSummary ? <div className={css.field}>
           <span className={css.label}>{t('dialog.linkSharing')}</span>
           {edit.access === undefined ? (
             <p className={css.description}>{t('dialog.accessUnavailable')}</p>
@@ -483,7 +487,7 @@ export function ShareEditPanel({ visible, edit, t }: ShareEditPanelProps): React
                 : null}
             </>
           )}
-        </div>
+        </div> : null}
         {edit.saveNotice === '' ? null : <span className={css.testOk}>{edit.saveNotice}</span>}
         {edit.saveError === '' ? null : <span className={css.testFail} role="alert">{edit.saveError}</span>}
       </div>

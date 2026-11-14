@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createNativeShare,prepareNativeShare,sharingStatus,authorizeNativeShare,type NativeSharing} from '../src/host/native-sharing.ts'
+import {createNativeShare,prepareNativeShare, nativeShareAudience,sharingStatus,authorizeNativeShare,type NativeSharing} from '../src/host/native-sharing.ts'
 import type {AccountService} from '../src/host/account.ts'
 test('native sharing binds authenticated project intent and never uploads transcripts',async()=>{
  const account:Pick<AccountService,'state'|'request'>={state:async()=>({status:'signed-in',origin:'https://native.test',user:{id:'owner',email:'owner@example.test',name:'Owner'},points:0,balanceStatus:'available'}),request:async path=>path.endsWith('/shares')?{shares:[]}:{intent:'ipollo-intent:one'}}
@@ -30,4 +30,17 @@ test('native recipient preparation preserves permissions and external public rel
  assert.deepEqual(await prepareNativeShare(service,{request,audience:{kind:'link'}},account),request)
  await assert.rejects(prepareNativeShare(service,{request,audience:{kind:'team',enterpriseId:'team'}},account),{code:'NATIVE_SHARING_LOGIN_REQUIRED'})
  assert.equal(calls.length,1)
+})
+
+test('existing audience reads and updates use the connected owner and keep native permissions separate',async()=>{
+ const service:Pick<NativeSharing,'identity'>={identity:async()=>({state:'verified',relay:'http://localhost:4785',subjectId:'owner'})}
+ const calls:unknown[]=[]
+ const account={state:async()=>({status:'signed-in',origin:'http://localhost:4785',user:{id:'owner'}}),request:async(...args:unknown[])=>{calls.push(args);return{audience:{kind:'team',enterpriseId:'team'}}}} as Pick<AccountService,'state'|'request'>
+ assert.deepEqual(await nativeShareAudience(service,account,'share'),{audience:{kind:'team',enterpriseId:'team'}})
+ await nativeShareAudience(service,account,'share',{audience:{kind:'team',enterpriseId:'team'}})
+ assert.deepEqual(calls,[['/api/v1/liveshare/shares/share/audience',undefined,'GET'],['/api/v1/liveshare/shares/share/audience',{audience:{kind:'team',enterpriseId:'team'}},'PUT']])
+ await assert.rejects(nativeShareAudience(service,account,'../bad'))
+ const foreign={...service,identity:async()=>({state:'verified',relay:'https://other.test',subjectId:'owner'})}
+ assert.deepEqual(await nativeShareAudience(foreign,account,'share'),{audience:null})
+ await assert.rejects(nativeShareAudience(foreign,account,'share',{audience:{kind:'link'}}))
 })

@@ -25,7 +25,6 @@
   max-height: 100%;
 }
 
-.sessionTitle { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dsw-alias-label-secondary); font-size: 12px; }
 .panelHeader {
   display: flex;
   align-items: center;
@@ -33,7 +32,6 @@
   padding: 14px 16px 10px;
 }
 
-.panelTitleBlock { display: flex; flex-direction: column; min-width: 0; }
 .panelTitle {
   margin: 0;
   font-size: 15px;
@@ -64,6 +62,8 @@
     color: var(--dsw-alias-label-primary);
   }
 }
+
+.connectionSettings { display: flex; flex-direction: column; gap: 12px; }
 
 .body {
   display: flex;
