@@ -51,7 +51,37 @@ const environment = z.object({
     .int()
     .nonnegative()
     .default(3000),
+  APP_DATA_DATABASE_URL: z
+    .url()
+    .refine(
+      (value) => ["postgres:", "postgresql:"].includes(new URL(value).protocol),
+      "PostgreSQL URL required",
+    )
+    .optional(),
+  APP_DATA_DATABASE_SCHEMA: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]{0,62}$/)
+    .default("public"),
+  APP_DATA_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(10),
+  APP_DATA_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(100).max(60000).default(5000),
+  APP_DATA_MAX_RECORD_BYTES: z.coerce.number().int().min(256).max(1_048_576).default(16384),
+  APP_DATA_MAX_RECORDS_PER_APP: z.coerce.number().int().min(1).default(100_000),
+  APP_DATA_MAX_BYTES_PER_APP: z.coerce.number().int().min(1024).default(67_108_864),
+  APP_DATA_MAX_APPS_PER_OWNER: z.coerce.number().int().min(1).default(1000),
+  APP_DATA_ANONYMOUS_PER_MINUTE: z.coerce.number().int().min(1).default(120),
 });
+/** App data lives in its own PostgreSQL database; absent `databaseUrl` leaves the API unavailable. */
+export interface AppDataConfig {
+  databaseUrl: string;
+  databaseSchema: string;
+  databasePoolSize: number;
+  statementTimeoutMs: number;
+  maxRecordBytes: number;
+  maxRecordsPerApp: number;
+  maxBytesPerApp: number;
+  maxAppsPerOwner: number;
+  anonymousPerMinute: number;
+}
 export interface Config {
   host: string;
   port: number;
@@ -79,6 +109,7 @@ export interface Config {
   usageUtcOffsetMinutes: number;
   minimumMarginBps: number;
   membershipOperatingReserveFen: number;
+  appData?: AppDataConfig;
 }
 
 /** Resolve one deployment; the local secret persists across restarts. */
@@ -131,6 +162,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const secret = value.AUTH_SECRET ?? readFileSync(secretPath, "utf8").trim();
   if (secret.length < 32)
     throw new Error("AUTH_SECRET must have at least 32 characters");
+  if (
+    value.APP_DATA_DATABASE_URL === value.DATABASE_URL &&
+    value.APP_DATA_DATABASE_SCHEMA === value.DATABASE_SCHEMA
+  )
+    throw new Error(
+      "APP_DATA_DATABASE_URL must name a separate database or schema",
+    );
   const trustedProxyIps = value.TRUSTED_PROXY_IPS.split(",")
     .map((v) => v.trim())
     .filter(Boolean);
@@ -166,5 +204,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     usageUtcOffsetMinutes: value.USAGE_UTC_OFFSET_MINUTES,
     minimumMarginBps: value.MINIMUM_MARGIN_BPS,
     membershipOperatingReserveFen: value.MEMBERSHIP_OPERATING_RESERVE_FEN,
+    appData: value.APP_DATA_DATABASE_URL
+      ? {
+          databaseUrl: value.APP_DATA_DATABASE_URL,
+          databaseSchema: value.APP_DATA_DATABASE_SCHEMA,
+          databasePoolSize: value.APP_DATA_POOL_SIZE,
+          statementTimeoutMs: value.APP_DATA_STATEMENT_TIMEOUT_MS,
+          maxRecordBytes: value.APP_DATA_MAX_RECORD_BYTES,
+          maxRecordsPerApp: value.APP_DATA_MAX_RECORDS_PER_APP,
+          maxBytesPerApp: value.APP_DATA_MAX_BYTES_PER_APP,
+          maxAppsPerOwner: value.APP_DATA_MAX_APPS_PER_OWNER,
+          anonymousPerMinute: value.APP_DATA_ANONYMOUS_PER_MINUTE,
+        }
+      : undefined,
   };
 }

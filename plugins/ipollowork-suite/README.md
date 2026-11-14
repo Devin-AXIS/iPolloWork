@@ -144,3 +144,7 @@ Account and payment layouts contain their box sizing within the native settings 
 ## HTTP capabilities
 
 The native `ipollo_capabilities`, `ipollo_capability_describe`, `ipollo_capability_invoke` and `ipollo_capability_task` tools discover and call the [capability HTTP API](../../services/ipollowork/docs/capabilities.md). Detailed inputs load on demand; requests reuse native call identities for idempotency, preserve cancellation and respect read-only sessions. These tools do not expose account or provider keys.
+
+## App data
+
+The Data page, the `app_data` model tool and the `ipolloData` plugin service give plugins, sites and apps a record store in the account service without a database of their own. See [App data](docs/app-data.md).

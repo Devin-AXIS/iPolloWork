@@ -25,6 +25,8 @@ Personal unpublished outputs expire after seven days. Published project outputs 
 
 `compose.yml` provides PostgreSQL and the service with persistent volumes. Set `POSTGRES_PASSWORD` and an HTTPS `SERVICE_ORIGIN`; keep the database private. Public deployments require OSS by default. Without OSS, loopback development uses a private service cache. [Alibaba Cloud deployment](deploy/README.md) adds automatic HTTPS and scoped ECS credentials for OSS. The native session relay keeps live sockets in one process: this release supports one relay instance, even though PostgreSQL supports concurrent connections. Do not round-robin independent relay processes.
 
+[App data](docs/app-data.md) gives small plugins, sites and apps a record store in a separate PostgreSQL database named by `APP_DATA_DATABASE_URL`. Callers send JSON statements and never reach SQL; page code uses a per-app public key that only opted-in collections accept. Without that database, app data routes report that the feature is not configured.
+
 ## Accounts and permissions
 
 Users can work personally or create organizations. Organization owners and administrators manage departments, invitations, members, file packages, Skills, plugins and organization models. Invitations are email-bound and expire. Every request checks current membership and grants; a department move or revoked membership changes access immediately.

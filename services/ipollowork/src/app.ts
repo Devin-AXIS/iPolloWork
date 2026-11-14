@@ -28,6 +28,8 @@ import { mountResources } from "./resources.js";
 import { LiveshareRelay } from "./liveshare.js";
 import { mountLiveshare } from "./liveshare-http.js";
 import { mountPublications } from "./publications.js";
+import { AppData, migrateAppData } from "./app-data.js";
+import { mountAppData } from "./app-data-http.js";
 
 export const settingFields: Record<string, readonly string[]> = {
   stripe: ["secretKey", "webhookSecret"],
@@ -56,10 +58,18 @@ const secrets = new Set([
 /** Create the standalone HTTP service and its local persistence owner. */
 export async function createService(config: Config) {
   const store = new Store(config);
+  const dataStore = config.appData
+    ? new Store({ ...config.appData })
+    : undefined;
   try {
     const auth = await createAuth(config, store);
     await migrate(store, config);
     await seedOfficialServices(store);
+    if (dataStore) await migrateAppData(dataStore);
+    const appData =
+      dataStore && config.appData
+        ? new AppData(dataStore, store, config.appData, config.origin)
+        : undefined;
     const settings = new Settings(store, config.secret);
     const storage = new Storage(store, settings, config);
     const app: App = new Hono();
@@ -88,7 +98,9 @@ export async function createService(config: Config) {
         return publicationHeaders(c, next);
       }
       if (c.req.path.startsWith("/p/")) return c.notFound();
-      return c.req.path.startsWith("/__liveshare/assets/") ? viewerHeaders(c, next) : accountHeaders(c, next);
+      return c.req.path.startsWith("/__liveshare/assets/") || c.req.path.startsWith("/api/data/")
+        ? viewerHeaders(c, next)
+        : accountHeaders(c, next);
     });
     const regularBody = bodyLimit({
       maxSize: 25 * 1024 * 1024,
@@ -145,6 +157,7 @@ export async function createService(config: Config) {
           "enterprises",
           "sharing",
           "resources",
+          ...(appData ? ["app-data"] : []),
         ],
       }),
     );
@@ -367,6 +380,7 @@ export async function createService(config: Config) {
     mountResources(app, store, storage, config);
     mountStorage(app, store, storage);
     mountLiveshare(app, relay, auth);
+    mountAppData(app, appData, config.appData, auth);
     app.notFound((c) => c.json({ error: "接口不存在" }, 404));
     app.get("/api/*", (c) => c.json({ error: "接口不存在" }, 404));
     const webRoot = fileURLToPath(
@@ -379,6 +393,7 @@ export async function createService(config: Config) {
     app.get("/mark.svg", serveStatic({ root: webRoot, path: "mark.svg" }));
     app.get("*", serveStatic({ root: webRoot, path: "index.html" }));
     storage.start();
+    appData?.start();
     return {
       app,
       store,
@@ -386,13 +401,16 @@ export async function createService(config: Config) {
       settings,
       storage,
       relay,
+      appData,
       close: async () => {
         await storage.close();
         await relay.close();
+        await appData?.close();
         await store.close();
       },
     };
   } catch (error) {
+    await dataStore?.close();
     await store.close();
     throw error;
   }

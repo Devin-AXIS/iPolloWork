@@ -67,16 +67,16 @@ it('prepares an approval digest without an Environment and binds the approved jo
 })
 
 
-it('rejects non-master dispatch before scheduling a self-hosted job', () => {
+it('rejects non-main dispatch before scheduling a self-hosted job', () => {
   const command = workflow.jobs.route!.steps[0]!.run!
   expect(command.startsWith('node -e "')).toBe(true)
   const program = command.slice('node -e "'.length, -1)
-  for (const ref of ['refs/heads/master', 'refs/heads/stale-feature']) {
+  for (const ref of ['refs/heads/main', 'refs/heads/stale-feature']) {
     const result = spawnSync(process.execPath, ['-e', program], { env: { ...process.env, GITHUB_REF: ref }, encoding: 'utf8' })
     expect(result.signal).toBeNull()
     expect(result.error).toBeUndefined()
-    expect(result.status).toBe(ref === 'refs/heads/master' ? 0 : 1)
-    if (result.status !== 0) expect(result.stderr).toContain('must be dispatched from master')
+    expect(result.status).toBe(ref === 'refs/heads/main' ? 0 : 1)
+    if (result.status !== 0) expect(result.stderr).toContain('must be dispatched from main')
   }
 })
 

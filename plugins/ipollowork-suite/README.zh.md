@@ -137,3 +137,7 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 ## HTTP 能力
 
 原生工具 `ipollo_capabilities`、`ipollo_capability_describe`、`ipollo_capability_invoke` 和 `ipollo_capability_task` 发现并调用[能力 HTTP API](../../services/ipollowork/docs/capabilities.md)。详细参数按需加载，请求复用原生调用标识以防重复扣费，并传递取消信号、遵守只读会话限制；工具不暴露账号或供应商 Key。
+
+## 应用数据
+
+“数据”页面、模型工具 `app_data` 和插件服务 `ipolloData` 让插件、网站和应用把记录存进账号服务，无需自建数据库。详见[应用数据](docs/app-data.md)。

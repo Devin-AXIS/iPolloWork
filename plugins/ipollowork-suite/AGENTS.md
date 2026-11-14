@@ -12,4 +12,4 @@ Document the exact security guarantee: the model-facing plugin-manager guard is 
 
 ## Preview handoff
 
-Integrate related changes into the same `dsh` branch and existing DSH profile before handoff. Use the single DSH page as the review link for both UI and account-service changes. Stop temporary previews after verification and provide only that preview URL to the user. Preserve the profile's accounts, credentials and sessions.
+Integrate related changes into the same `main` branch and existing DSH profile before handoff. Use the single DSH page as the review link for both UI and account-service changes. Stop temporary previews after verification and provide only that preview URL to the user. Preserve the profile's accounts, credentials and sessions.

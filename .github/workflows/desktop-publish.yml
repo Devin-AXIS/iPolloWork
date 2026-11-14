@@ -36,8 +36,8 @@ jobs:
       selection: ${{ steps.route.outputs.selection }}
       runner: ${{ steps.route.outputs.runner }}
     steps:
-      - name: Require master for publication
-        run: node -e "if (process.env.GITHUB_REF !== 'refs/heads/master') throw new Error('Desktop publication must be dispatched from master')"
+      - name: Require main for publication
+        run: node -e "if (process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('Desktop publication must be dispatched from main')"
       - uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false

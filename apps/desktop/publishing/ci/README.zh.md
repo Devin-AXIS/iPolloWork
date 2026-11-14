@@ -30,7 +30,7 @@ description: "在专用 macOS 和 Windows runner 上发布留存的 Desktop 安�
 2. 通过 GitHub **Settings → Actions → Runners** 或组织的 runner 管理页面注册 runner。记录准确的注册名称，允许本仓库访问其 runner group，并分配[必需标签](#runner-labels)。注册时保留默认标签。
 3. 按平台指南安装并启动守护任务。Windows 计划任务和 macOS LaunchAgent 都要求配置的用户登录，不能在登录前无人值守启动。确认已连接 GitHub 且出现 `Listening for Jobs`，再检查 GitHub 中 runner 在线。
 4. 完成[本机发布配置](#machine-setup)、仓库变量 `DESKTOP_PUBLISH_RUNNERS` 和两个部署 Environment。仓库管理员负责路由与审批人；COS 管理员负责桶配置及对象读写权限；production 还需要配置 GitHub App。
-5. 按[打包与发布](#package-and-publish)完成一次 Windows 已签名或 macOS 已公证的 **test** 打包。确认打包 job 使用预期的注册 runner 并留存文件。从 `master` 发起发布，填写该 run ID 和 attempt；确认 `prepare` 确实在同一台机器上启动并生成审批摘要。
+5. 按[打包与发布](#package-and-publish)完成一次 Windows 已签名或 macOS 已公证的 **test** 打包。确认打包 job 使用预期的注册 runner 并留存文件。从 `main` 发起发布，填写该 run ID 和 attempt；确认 `prepare` 确实在同一台机器上启动并生成审批摘要。
 6. 审核摘要中的环境、版本、频道和 URL 后，再批准测试上传。验证发布记录、公开安装包下载和升级 feed。test 验收不能证明 production 权限可用：production 需独立配置与审批。保留 run/attempt 和验收结果，供故障恢复使用。
 
 <a id="runner-labels"></a>
@@ -61,7 +61,7 @@ job 排队时，先对照 job 页面请求的标签与 **Settings → Actions �
 
 将仓库变量 `DESKTOP_PUBLISH_RUNNERS` 配置为已注册 runner 名称到唯一标签和目标的 JSON 映射，例如 `{"mini":{"label":"dsh-mini-publish","target":["mac-arm64","mac-x64"]}}`。该标签只能分配给这台 runner。目标可为单个名称或非空列表；上述 Mac 条目允许同一台机器处理两种架构的打包工作流。Windows 使用目标 `win-x64`。留存包的目标必须与所选打包工作流一致。路由 job 检查原构建成功的 job，发布器再检查自身 runner 名称与记录一致。机器之间不需要共享文件系统或局域网连接。
 
-管理员必须创建 `desktop-test` 和 `desktop-production`，分别设置必需审批人并允许 `master` 部署分支。工作流会检查两种环境的审批人配置。test 可允许发起者自行审批。GitHub App 需要安装到本仓库、具有 Contents write 权限，并获准在 `desktop-v*` tag ruleset 下创建发布 tag。审批不会把审批人的 tag 权限传给 App。缺少配置会停止发布，不回退到个人 token。App action 创建短期 token，并在结束后撤销。使用发布账户的文件系统权限保护本机私钥及 COS 凭据文件。token action 需要密钥内容，因此已屏蔽日志的 PEM 在 job 期间也会经过 runner 临时 `GITHUB_OUTPUT` 文件；日志屏蔽不限制本地文件访问。
+管理员必须创建 `desktop-test` 和 `desktop-production`，分别设置必需审批人并允许 `main` 部署分支。工作流会检查两种环境的审批人配置。test 可允许发起者自行审批。GitHub App 需要安装到本仓库、具有 Contents write 权限，并获准在 `desktop-v*` tag ruleset 下创建发布 tag。审批不会把审批人的 tag 权限传给 App。缺少配置会停止发布，不回退到个人 token。App action 创建短期 token，并在结束后撤销。使用发布账户的文件系统权限保护本机私钥及 COS 凭据文件。token action 需要密钥内容，因此已屏蔽日志的 PEM 在 job 期间也会经过 runner 临时 `GITHUB_OUTPUT` 文件；日志屏蔽不限制本地文件访问。
 
 Environment 审批限制此工作流，不限制同一机器账户运行的任意代码。账户隔离和强制源分支限制属于独立运维工作。保持现有发布 Environment 不变。test job 使用自己的审批人，不创建真实发布 tag；本地模拟接口覆盖 tag 创建与恢复，但不验证 App 权限。
 
@@ -73,9 +73,9 @@ Environment 审批限制此工作流，不限制同一机器账户运行的任�
 
 发布到 test 或 production 都必须在 Windows 选择 `signing=signed`，或在 macOS 不勾选**跳过公证**。无签名、无公证的包仅限内部调试，不能发布或用于自动更新。托管路由 job 会在安装依赖前，依据所选 run 和 attempt 对应的 artifact 名称拒绝已标明的调试包。仅重跑归档时，artifact 名称保留原构建 attempt，早期检查可能未识别该包；本地清单资格校验仍会在发布前拒绝调试包。缺少 artifact 元数据不代表允许发布：原机器仍会验证留存清单和签名。遇到调试包拒绝提示时，需重新完成签名或公证，再使用新包的 run ID / attempt 发布；重跑发布不能使现有产物获得发布资格。
 
-选择对应平台的 `Package Desktop` 工作流、preset、源码、通道和版本模式。test 的 `source_ref` 接受仓库内分支名（如 `feature/desktop-update`）或 `dsh-v*` tag；production 仅接受 `master` 或 `dsh-v*` tag。符合 `dsh-v` 后接数字、其余为字母、数字、点或连字符的名称按 tag 处理，即使存在同名分支。tag 必须与所选产品版本一致。建议从 `master` 启动打包工作流，再单独填写打包源码；不支持直接填写 commit SHA、PR ref 或 fork 仓库。源码必须包含 CI 适配脚本，旧源码会在安装依赖前失败。仅选择可信分支：其构建代码将在签名机器上执行。这是操作约定，不提供工作流来源强制限制或凭据隔离。发布使用记录的 commit，并要求该提交仍在所选分支历史中；正常追加提交不影响发布，删除分支或导致历史分叉的强推会拒绝。tag 发布要求 tag 仍指向记录的提交。从 `master` 发起发布；托管路由 job 会在派发到原机器前拒绝其他 ref。实际打包源码提交单独记录。`version_mode=default` 对 production 选择 follow-dsh，对 test 选择 build-number；follow-dsh 跟随所选源码的 dsh 包版本号，build-number 在任一环境均追加日期/run/attempt，manual 要求填写 `build_version`。已有派发命令中的 `-f version_mode=auto` 须改为 `-f version_mode=build-number`，`-f version_mode=product` 改为 `-f version_mode=follow-dsh`；本地 CLI 的 `--build-version auto` 不变。工作流暂时传递旧模式名，以兼容已含 CI 适配脚本但早于模式改名的源码；当前解析器同时接受新旧名称。计划于 2027-01-04 同时删除 workflow 映射和解析器别名，并要求所选源码支持新模式名；该日期不会触发自动失效。操作人员选择的渠道接受任意受支持的构建版本，包括 alpha 和 RC 版本；渠道不改变版本优先级，也不允许客户端降级。可选 `test_release_id` 是测试 URL 前缀：留空沿用机器默认值，同一平台连续升级测试需保持相同值，并应定期轮换默认值。它不是 GitHub run ID。格式校验和轮换限制见[打包配置](../../packaging/README.zh.md#configuration-and-local-builds)。
+选择对应平台的 `Package Desktop` 工作流、preset、源码、通道和版本模式。test 的 `source_ref` 接受仓库内分支名（如 `feature/desktop-update`）或 `dsh-v*` tag；production 仅接受 `main` 或 `dsh-v*` tag。符合 `dsh-v` 后接数字、其余为字母、数字、点或连字符的名称按 tag 处理，即使存在同名分支。tag 必须与所选产品版本一致。建议从 `main` 启动打包工作流，再单独填写打包源码；不支持直接填写 commit SHA、PR ref 或 fork 仓库。源码必须包含 CI 适配脚本，旧源码会在安装依赖前失败。仅选择可信分支：其构建代码将在签名机器上执行。这是操作约定，不提供工作流来源强制限制或凭据隔离。发布使用记录的 commit，并要求该提交仍在所选分支历史中；正常追加提交不影响发布，删除分支或导致历史分叉的强推会拒绝。tag 发布要求 tag 仍指向记录的提交。从 `main` 发起发布；托管路由 job 会在派发到原机器前拒绝其他 ref。实际打包源码提交单独记录。`version_mode=default` 对 production 选择 follow-dsh，对 test 选择 build-number；follow-dsh 跟随所选源码的 dsh 包版本号，build-number 在任一环境均追加日期/run/attempt，manual 要求填写 `build_version`。已有派发命令中的 `-f version_mode=auto` 须改为 `-f version_mode=build-number`，`-f version_mode=product` 改为 `-f version_mode=follow-dsh`；本地 CLI 的 `--build-version auto` 不变。工作流暂时传递旧模式名，以兼容已含 CI 适配脚本但早于模式改名的源码；当前解析器同时接受新旧名称。计划于 2027-01-04 同时删除 workflow 映射和解析器别名，并要求所选源码支持新模式名；该日期不会触发自动失效。操作人员选择的渠道接受任意受支持的构建版本，包括 alpha 和 RC 版本；渠道不改变版本优先级，也不允许客户端降级。可选 `test_release_id` 是测试 URL 前缀：留空沿用机器默认值，同一平台连续升级测试需保持相同值，并应定期轮换默认值。它不是 GitHub run ID。格式校验和轮换限制见[打包配置](../../packaging/README.zh.md#configuration-and-local-builds)。
 
-打包只保留文件。成功后，在 `master` 上打开 **Publish Desktop · COS → Run workflow**，填写打包运行 URL 中的 `package_run_id`，并可填写 `package_run_attempt`。留空选择最新尝试及其成功的 package job；归档重跑继续使用原始构建 attempt，新的构建失败时不回退到较早成功构建。显式填写则选择对应构建，独立的 GitHub 归档失败不取消其资格。Windows 必须完成签名，macOS 必须完成公证和 stapling。GitHub job 证据确定原 runner，本机清单在审批前提供 preset、版本、源码和通道。不会下载安装包或请求 artifact。旧清单的 `publishRequested=false` 不影响发布资格；本机文件缺失或变化会停止发布。
+打包只保留文件。成功后，在 `main` 上打开 **Publish Desktop · COS → Run workflow**，填写打包运行 URL 中的 `package_run_id`，并可填写 `package_run_attempt`。留空选择最新尝试及其成功的 package job；归档重跑继续使用原始构建 attempt，新的构建失败时不回退到较早成功构建。显式填写则选择对应构建，独立的 GitHub 归档失败不取消其资格。Windows 必须完成签名，macOS 必须完成公证和 stapling。GitHub job 证据确定原 runner，本机清单在审批前提供 preset、版本、源码和通道。不会下载安装包或请求 artifact。旧清单的 `publishRequested=false` 不影响发布资格；本机文件缺失或变化会停止发布。
 
 在原 runner 安装依赖前，准备阶段和审批后的发布 job 都会检查所选 `publishing/<preset>.json` 是否为可读取的 JSON。配置缺失时会报告路径；补齐后可使用同一个包重试发布。之后仍会执行完整配置与签名校验。上传前，发布器校验全部留存文件的哈希、版本及目标信息，再复核平台签名。macOS 校验 DMG，并解压 ZIP 校验 app 票据；Windows 校验 Authenticode、配置的签名证书指纹及时间戳。准备阶段生成中文审批摘要，分别展示版本、通道、平台和环境，以及留存的 test release ID、安装包与升级 YAML 的完整 URL、原打包尝试链接、源码 ref/SHA、平台校验结果及拟创建的 tag。折叠详情包含 COS 存储桶，以及实际上传字节的大小和 SHA-256（包括改写后的 YAML）。公开仓库的摘要会公开测试前缀和下载 URL；前缀不提供访问鉴权。两种发布 job 均等待 **Review deployments → Approve and deploy**，随后重新核对已批准的 manifest 与上传计划摘要。文件或目标变化会被拒绝。审批不能修改版本；应拒绝并重新打包。两种环境都上传缺失文件、校验远端字节，再更新 YAML。此工作流没有只上传文件的模式。production 最后为记录的打包提交创建 `desktop-v<version>`；已有 tag 必须指向同一提交。
 
@@ -83,7 +83,7 @@ Environment 审批限制此工作流，不限制同一机器账户运行的任�
 
 ## 放量与官网发布
 
-按 10% → 30% → 100% 放量时，先通过 COS 流程以 `staging_percentage=10`、`upload_website=false` 完成首次发布，再从 `master` 发起 **Publish Desktop · Rollout & Website**，填写原打包 run ID 并选择 attempt（默认 1，请与原打包 run 核对）。逐步放量时将 `rollout_percentage` 分别设为 30、100；仅发布官网时留空。`upload_website` 默认为 false；必须填写比例或启用官网发布。在此示例中，最后一轮启用它即可上传生产官网安装器并刷新缓存。官网发布独立于放量比例，不要求达到 100%；官网安装包面向所有下载用户。修改放量比例前审批一次，官网上传前另行审批一次；上传成功后自动刷新缓存，不再重复审批。上传失败或取消时不执行刷新。仅发布官网时跳过放量 job，只需官网审批；上传 job 仍校验当前 feed，不修改放量比例。每个平台使用各自的打包 run。
+按 10% → 30% → 100% 放量时，先通过 COS 流程以 `staging_percentage=10`、`upload_website=false` 完成首次发布，再从 `main` 发起 **Publish Desktop · Rollout & Website**，填写原打包 run ID 并选择 attempt（默认 1，请与原打包 run 核对）。逐步放量时将 `rollout_percentage` 分别设为 30、100；仅发布官网时留空。`upload_website` 默认为 false；必须填写比例或启用官网发布。在此示例中，最后一轮启用它即可上传生产官网安装器并刷新缓存。官网发布独立于放量比例，不要求达到 100%；官网安装包面向所有下载用户。修改放量比例前审批一次，官网上传前另行审批一次；上传成功后自动刷新缓存，不再重复审批。上传失败或取消时不执行刷新。仅发布官网时跳过放量 job，只需官网审批；上传 job 仍校验当前 feed，不修改放量比例。每个平台使用各自的打包 run。
 
 准备阶段检查 GitHub 身份、保留清单、小体积更新 YAML 和已完成的首次发布记录，不重新计算安装包哈希，也不重复检查签名或公证。Environment 审批后，执行阶段读取当前 COS 更新清单，核对版本、安装包 URL、大小、哈希和其他元数据仍对应已发布包，只修改 `stagingPercentage`。更新清单缺失或已被其他包替换时拒绝执行。同一比例重复执行不写入；不允许降低比例。审批展示目标比例，当前比例在执行时从 COS 读取。
 

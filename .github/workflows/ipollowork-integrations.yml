@@ -1,7 +1,7 @@
 name: iPolloWork integrations
 on:
   push:
-    branches: [dsh]
+    branches: [main]
     paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml']
   pull_request:
     paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml']

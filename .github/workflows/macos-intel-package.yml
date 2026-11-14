@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       source_ref:
-        description: '打包源码：test 支持仓库内分支或 dsh-v* tag；production 仅支持 master 或 dsh-v* tag；源码须包含 CI 适配脚本'
+        description: '打包源码：test 支持仓库内分支或 dsh-v* tag；production 仅支持 main 或 dsh-v* tag；源码须包含 CI 适配脚本'
         type: string
-        default: master
+        default: main
         required: true
       preset:
         description: '打包环境：选择机器上的 test 或 production 配置；同时决定后续发布环境'
@@ -94,7 +94,7 @@ jobs:
           const cp=require('node:child_process'); const preset=process.env.DSH_PACKAGING_PRESET;
           if(!['test','production'].includes(preset)) throw Error('Unknown packaging preset');
           const tag=/^dsh-v[0-9][0-9A-Za-z.-]*$/.test(ref);
-          if(preset==='production' && ref!=='master' && !tag) throw Error('Production source must be master or dsh-v*');
+          if(preset==='production' && ref!=='main' && !tag) throw Error('Production source must be main or dsh-v*');
           if(tag) {
           const v=JSON.parse(fs.readFileSync('package.json','utf8')).version;
           if(ref!=='dsh-v'+v) throw Error('Source tag must match product version');
