@@ -102,3 +102,7 @@ Polling routes must declare job ownership: `jobResultField` names the submission
 ## Share audiences
 
 Schema version 7 retains existing project-based shares and adds per-share audiences. New public links need no project or viewer account. Team, department and member selections grant access only to that conversation and do not change project permissions. Department moves and membership removal revoke matching access on the next request and access refresh. The original owner must remain authorized, and stopping a share revokes its guest tickets as well. Native read/write permission and the fork switch are preserved independently. The relay also accepts the native open-link registration when the suite is absent and retains the native expiry. Public links are unlisted: they do not appear in other accounts’ share directories. Only the owner may read or update a share’s audience; updates immediately refresh admission without changing the share link, native permission or fork setting.
+
+## Enterprise assets
+
+Schema version 8 adds file packages, enterprise-owned model services and member or department grants for files, skills and models. Migration preserves existing accounts, balances and sharing records. The DSH suite is the user-facing management entry; see [Enterprise assets](../../plugins/ipollowork-suite/docs/enterprise-assets.md) for access rules and available operations.

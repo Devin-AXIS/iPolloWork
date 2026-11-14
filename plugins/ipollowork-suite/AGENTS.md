@@ -9,3 +9,7 @@ Use ESM and strict TypeScript. All registrations and subscriptions must release 
 Changes require `npm run check`, `npm run pack:check`, and focused real-DSH verification for affected composition or UI behavior. Verify both themes and a constrained viewport for style changes. Use a disposable DSH home and the repository's browser-picker overlay for browser checks. Do not install into the user's working profile without an explicit request.
 
 Document the exact security guarantee: the model-facing plugin-manager guard is not protection against arbitrary shell commands or same-process Host plugins. Never present it as enterprise isolation.
+
+## Preview handoff
+
+Integrate related changes into the same `dsh` branch and existing DSH profile before handoff. Use the single DSH page as the review link for both UI and account-service changes. Stop temporary previews after verification and provide only that preview URL to the user. Preserve the profile's accounts, credentials and sessions.

@@ -96,6 +96,8 @@ An optional `menuIntroductions` field in each channel's version-one state record
 
 ## Enterprise projects
 
+The enterprise page also manages departments, shared file packages, skills and enterprise models. Their member and department audiences are described in [Enterprise assets](docs/enterprise-assets.md). These features require account-service database version 8.
+
 Create a personal or enterprise project in the native directory form. Enterprise projects can be shared with a member or a department as View or Participate; project Access also supports Maintain. Department grants use current membership on every request. Project maintainers control access and accept changes. Files remain in the selected local directory until a member explicitly selects files to submit.
 
 Projects have Files, Project memory, and Changes. Participants submit selected file versions or distilled knowledge. These are immutable submissions, not comments or published reports. Maintainers accept file changes against the recorded file versions and edit the complete next memory version before accepting knowledge. Conflicts retain the draft and leave the main project untouched. The account service stores accepted file references, memory and submissions; it does not execute agents or require Git.
