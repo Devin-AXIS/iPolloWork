@@ -59,7 +59,8 @@
         "@deepseek-ai/dsh-api-workspace-controller",
         "@deepseek-ai/dsh-client-ui-context-menu",
         "@deepseek-ai/dsh-api-session-controller",
-        "@deepseek-ai/dsh-client-ui-conversation"
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings-account"
       ]
     }
   },
@@ -87,7 +88,8 @@
     "semver": "^7.8.5",
     "undici": "7.30.1",
     "zod": "^4.6.7",
-    "qrcode": "1.5.4"
+    "qrcode": "1.5.4",
+    "@deepseek-ai/dsh-client-ui-settings-account": "0.2.2-rc.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",

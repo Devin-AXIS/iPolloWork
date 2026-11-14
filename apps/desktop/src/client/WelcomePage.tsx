@@ -6,7 +6,7 @@ import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives/src/StateDot.tsx
 import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { WelcomeApi } from '../welcome-api.ts'
 
-type Page = 'entry' | 'key' | 'account'
+type Page = 'entry' | 'key' | 'account' | 'login'
 
 /**
  * Render the standalone welcome flow using shell-owned operations and localized copy.
@@ -27,6 +27,8 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const [copyFeedback, setCopyFeedback] = useState<{ status: 'idle' | 'busy' | 'copied' | 'failed' }>({ status: 'idle' })
   const copyState = copyFeedback.status
   const [draft, setDraft] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const busyRef = useRef(false)
@@ -41,7 +43,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     setPage(next)
   }
   function showAccount(state: AccountView) {
-    if (pageRef.current === 'key' || (state.attempt === null && pageRef.current === 'entry')) return
+    if (pageRef.current === 'key' || pageRef.current === 'login' || (state.attempt === null && pageRef.current === 'entry')) return
     attemptRef.current = state.attempt
     setAttempt(state.attempt)
     setStarting(false)
@@ -125,7 +127,19 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       if (mounted.current) setBusy(false)
     }
   }
+  async function signIn(event: FormEvent) {
+    event.preventDefault()
+    if (busyRef.current || api.signInAccount === undefined) return
+    busyRef.current = true
+    setBusy(true); setError('')
+    try {
+      const result = await api.signInAccount(email.trim(), password)
+      if (!result.ok && mounted.current) setError(m.welcomeAuthFailed)
+    } catch (_error) { if (mounted.current) setError(m.welcomeAuthFailed) }
+    finally { busyRef.current = false; if (mounted.current) { setBusy(false); setPassword('') } }
+  }
   async function start() {
+    if (api.signInAccount !== undefined) { setError(''); navigate('login'); return }
     navigate('account')
     setStarting(true)
     setAttempt(null)
@@ -169,7 +183,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const title = phase === 'initializing' ? m.welcomeAuthStarting
     : waiting ? m.welcomeAuthWaiting : phase === 'expired' ? m.welcomeAuthExpired
       : phase === 'failed' ? m.welcomeAuthFailed : m.welcomeAuthExchanging
-  const heading = page === 'entry' ? 'welcome-heading' : page === 'key' ? 'key-title' : 'auth-status'
+  const heading = page === 'entry' ? 'welcome-heading' : page === 'key' ? 'key-title' : page === 'login' ? 'login-title' : 'auth-status'
 
   return <>
     {expiryNotice && <Toast text={m.welcomeSessionExpired} onDone={() => { setExpiryNotice(false) }} />}
@@ -190,6 +204,20 @@ export function Welcome({ api }: { api: WelcomeApi }) {
           <p id="key-error" className="key-error" role="alert" hidden={error === ''}>{error}</p>
         </div>
       </form>
+      <form id="login-form" className="key-form" hidden={page !== 'login'} onSubmit={(event) => { void signIn(event) }} aria-busy={busy}>
+        <header className="key-heading"><h1 id="login-title">{m.welcomeSignIn} {m.welcomeBrand}</h1></header>
+        <div className="key-field">
+          <label className="visually-hidden" htmlFor="login-email">{m.welcomeEmail}</label>
+          <input id="login-email" type="email" autoComplete="username" placeholder={m.welcomeEmail} value={email} onChange={event => setEmail(event.target.value)} required disabled={busy}/>
+          <label className="visually-hidden" htmlFor="login-password">{m.welcomePassword}</label>
+          <input id="login-password" type="password" autoComplete="current-password" placeholder={m.welcomePassword} value={password} onChange={event => setPassword(event.target.value)} required disabled={busy}/>
+          {error && <p className="key-error" role="alert">{error}</p>}
+        </div>
+      </form>
+      <div className="actions" hidden={page !== 'login'}>
+        <button className="primary" type="submit" form="login-form" disabled={busy || !email || !password}>{m.welcomeSignIn}</button>
+        <button className="secondary" type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); navigate('entry') }}>{m.welcomeKeyBack}</button>
+      </div>
       <section id="auth-page" className={`key-heading ${waiting ? 'auth-waiting' : phase === 'expired' ? 'auth-expired' : ''}`}
         hidden={page !== 'account'} aria-live="polite">
         <h1 id="auth-status">{title}</h1>

@@ -19,7 +19,7 @@ await build({
   banner: { js: "import { createRequire as __imRequire } from 'node:module'; import { fileURLToPath as __imPath } from 'node:url'; import { dirname as __imDirname } from 'node:path'; const require = __imRequire(import.meta.url); const __filename = __imPath(import.meta.url); const __dirname = __imDirname(__filename);" },
   minify: true, legalComments: 'eof',
 })
-const browser = await build({ entryPoints: ['src/client/index.tsx'], outfile: 'lib/browser.cjs', bundle: true, platform: 'browser', format: 'cjs', target: 'es2022', external: ['react', 'react-dom', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives'], write: false })
+const browser = await build({ plugins: [{ name: 'native-onboarding-entry', setup(builder) { builder.onResolve({ filter: /^@deepseek-ai\/dsh-client-ui-settings-account\/client$/ }, () => ({ path: '@deepseek-ai/dsh-client-ui-settings-account', external: true })) } }], entryPoints: ['src/client/index.tsx'], outfile: 'lib/browser.cjs', bundle: true, platform: 'browser', format: 'cjs', target: 'es2022', external: ['react', 'react-dom', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives', '@deepseek-ai/dsh-client-ui-settings-account'], write: false })
 const js = browser.outputFiles.find(file => file.path.endsWith('.cjs'))
 const css = browser.outputFiles.find(file => file.path.endsWith('.css'))
 if (!js || !css) throw new Error('The client build must produce JavaScript and CSS')

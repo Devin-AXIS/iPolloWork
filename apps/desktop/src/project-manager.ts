@@ -29,7 +29,7 @@ const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
-const DESKTOP_PATCH = '- id: ipollowork-suite\n  config:\n    dedicatedDesktop: true\n- id: plugin-manager\n  config:\n    requiredBundles: ["@ipollo/dsh-suite"]\n'
+const DESKTOP_PATCH = '- id: ipollowork-suite\n  config:\n    dedicatedDesktop: true\n- id: plugin-manager\n  config:\n    requiredBundles: ["@ipollo/dsh-suite"]\n- id: ui-settings-account\n  disabled: false\n  config:\n    externalAccount: true\n'
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })

@@ -125,3 +125,22 @@ describe('desktop welcome Web operations', () => {
     expect(JSON.parse(init!.body as string)).toMatchObject({ payload: { args: { event } } })
   })
 })
+
+
+it('uses the iPolloWork account service without returning the session grant', async () => {
+  const host = transport()
+  const requests: Array<{ input: string; init?: RequestInit }> = []
+  const send: typeof fetch = async (input, init) => {
+    const address = String(input)
+    if (address.includes('/ipollowork-suite/account')) {
+      requests.push({ input: address, ...(init === undefined ? {} : { init }) })
+      return Response.json({ status: 'signed-in', user: { id: 'member' }, token: 'not-exposed' })
+    }
+    return host.send(address, init)
+  }
+  const backend = connectDesktopWelcome(url, cookie, send, 'ipollo')
+  expect(await backend.signInAccount?.('member@example.test', 'test-password')).toEqual({ ok: true })
+  expect(await backend.read()).toMatchObject({ loggedIn: true })
+  expect(requests[0]?.init?.headers).toMatchObject({ cookie })
+  expect(JSON.stringify(await backend.read())).not.toContain('not-exposed')
+})

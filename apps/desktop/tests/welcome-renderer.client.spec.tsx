@@ -341,3 +341,20 @@ it('reports each return to the welcome entry once, including account cancellatio
   await act(async () => { pending.resolve({ links: { usageUrl: 'http://localhost/usage', topUpUrl: 'http://localhost/top_up' }, status: 'signed-out', attempt: null }) })
   expect(view.api.analytics.mock.calls.map(([action]) => action)).toEqual(['auth_page_click', 'auth_page_view', 'auth_page_click', 'auth_page_view'])
 })
+
+
+it('keeps the welcome page and signs in inside the iPolloWork window', async () => {
+  const original = mount('zh-CN')
+  original.unmount()
+  const signInAccount = vi.fn(async () => ({ ok: false }))
+  render(<Welcome api={{ ...original.api, signInAccount }} />)
+  expect(document.getElementById('welcome-heading')?.textContent).toContain('iPolloWork')
+  fireEvent.click(document.getElementById('sign-in')!)
+  fireEvent.change(document.getElementById('login-email')!, { target: { value: 'member@example.test' } })
+  fireEvent.change(document.getElementById('login-password')!, { target: { value: 'example-secret' } })
+  fireEvent.submit(document.getElementById('login-form')!)
+  await vi.waitFor(() => { expect(signInAccount).toHaveBeenCalledExactlyOnceWith('member@example.test', 'example-secret') })
+  await vi.waitFor(() => { expect((document.getElementById('login-password') as HTMLInputElement).value).toBe('') })
+  expect(original.api.startSignIn).not.toHaveBeenCalled()
+  expect(document.getElementById('login-form')?.textContent).not.toContain('example-secret')
+})

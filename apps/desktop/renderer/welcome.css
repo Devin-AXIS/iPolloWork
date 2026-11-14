@@ -341,3 +341,5 @@ body {
 .actions .welcome-loading { color: inherit; }
 
 .auth-waiting .copy-link:disabled { cursor: default; }
+
+#login-password { margin-top: 12px; }

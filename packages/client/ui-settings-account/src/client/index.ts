@@ -34,6 +34,11 @@ import { AccountAvatarLoader } from './account-avatar.ts'
 export type { AccountSectionInjected, AccountSectionProps } from './AccountSection.tsx'
 export type { AccountMenuProps } from './AccountMenu.tsx'
 export type { AccountSnapshot } from './AccountSection.tsx'
+export { readOnboardingApiKeyPresence } from './onboarding-credentials.ts'
+export { DesktopOnboardingController } from './onboarding-state.ts'
+export { DesktopOnboardingEntry } from './DesktopOnboardingEntry.tsx'
+export type { DesktopOnboardingInjected } from './DesktopOnboardingEntry.tsx'
+export type { OnboardingSettings } from '../onboarding-settings.ts'
 export type { AccountKey } from './locales.ts'
 export type { AccountUi, AccountUiState, AccountNotificationsOwnerProps } from './account-ui.ts'
 
@@ -50,6 +55,7 @@ export function apply(ctx: Context): void {
   const t = ctx.locale.bind('settings.account')
   const page = globalThis as Partial<Record<typeof CONTACT_CONFIG_GLOBAL, unknown>>
   const config = ContactConfig(page[CONTACT_CONFIG_GLOBAL] ?? {})
+  if (config.externalAccount) return
   let snapshot: AccountSnapshot = {
     view: undefined, details: undefined, avatar: undefined, failed: false, loginVisible: false, desktopOnboardingVisible: desktop,
   }

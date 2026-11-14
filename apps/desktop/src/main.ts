@@ -555,7 +555,7 @@ async function main(): Promise<void> {
           .catch((error: unknown) => { console.error('desktop: legacy Host cookie cleanup failed', error) })
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
-        welcomeBackend = connectDesktopWelcome(ready.url, cookie)
+        welcomeBackend = connectDesktopWelcome(ready.url, cookie, fetch, 'ipollo')
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         stopAccount?.()
@@ -1411,6 +1411,11 @@ async function main(): Promise<void> {
           pendingWelcomeNotice = undefined
           return Promise.resolve(notice)
         },
+        signInAccount: async (email, password) => {
+          const result = await welcomeBackend?.signInAccount?.(email, password) ?? { ok: false }
+          if (result.ok) await enterWorkspace()
+          return result
+        },
         startSignIn: async () => {
           if (welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
           return welcomeBackend.account.start(desktopClientMetadata(locale.id))
@@ -1464,7 +1469,12 @@ async function main(): Promise<void> {
     writeDesktopLocaleCache(app.getPath('userData'), locale.id)
     windowsLanguage = locale.id
     refreshApplicationMenu()
-    await enterWorkspace()
+    if (!enteredWorkspace && needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })) {
+      raiseAfterUpdate = false
+      await showWelcome()
+    } else {
+      await enterWorkspace()
+    }
   }
   focusPrimaryWindow = () => {
     if (quitting) return

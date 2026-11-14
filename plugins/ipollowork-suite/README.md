@@ -125,4 +125,4 @@ Service records carry a stable `category` (`language`, `image`, `video`, `audio`
 
 Official media calls select a service by its allowed route and the requested model. This lets image generation and speech share a provider endpoint and key without selecting the wrong category. Regional provider origins remain owned by the account service. Disabling the suite or choosing native personal credentials removes official routing.
 
-The `dedicatedDesktop` deployment option requires iPolloWork sign-in before exposing the workspace. The desktop distribution embeds this bundle and its QR-code dependency; it does not require an npm installation at first launch.
+The `dedicatedDesktop` deployment option reuses the native welcome, credit, purpose and process pages with the iPolloWork account. API-key setup remains available. The desktop distribution embeds this bundle and its QR-code dependency; it does not require an npm installation at first launch.

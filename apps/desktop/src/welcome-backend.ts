@@ -19,6 +19,8 @@ export interface DesktopWelcomeBackend {
   /** @returns the current Host policy; every read observes live configuration. */
   analyticsEnabled(): Promise<boolean>
   readonly account: DesktopAccountBackend
+  /** Submit credentials to the owned iPolloWork Host and return no credential material. */
+  signInAccount?(email: string, password: string): Promise<{ ok: boolean }>
   /** @param event - desktop-owned fields. @returns after local Host intake. */
   report(event: ProductEvent): Promise<void>
   /** @returns Configured-key presence and the shared language and theme preferences, without credential values. */
@@ -41,12 +43,14 @@ function record(value: unknown): value is Record<string, unknown> {
  * @param hostUrl - URL of the running Desktop Host; only its origin is used.
  * @param cookie - Desktop-private authentication header for this owned Host.
  * @param send - HTTP client for Host requests.
+ * @param accountMode - Account provider selected by this desktop distribution.
  * @returns metadata reads and write-only credential operations over standard RPC.
  */
 export function connectDesktopWelcome(
   hostUrl: string,
   cookie: string,
   send: (input: string, init?: RequestInit) => Promise<Response> = fetch,
+  accountMode: 'deepseek' | 'ipollo' = 'deepseek',
 ): DesktopWelcomeBackend {
   const origin = new URL(hostUrl).origin
   const invoke = async (
@@ -69,6 +73,16 @@ export function connectDesktopWelcome(
     return envelope.result.value
   }
   const account = desktopAccountBackend(origin, invoke, cookie)
+  const suiteAccount = async (body?: { email: string; password: string }): Promise<boolean> => {
+    const response = await send(new URL(body === undefined ? '/ipollowork-suite/account' : '/ipollowork-suite/account/sign-in', origin).href, {
+      method: body === undefined ? 'GET' : 'POST', redirect: 'error',
+      headers: { cookie, 'content-type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    })
+    if (!response.ok) return false
+    const value: unknown = await response.json()
+    return record(value) && value.status === 'signed-in'
+  }
   const settingsAndReference = async () => {
     const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
     if (!record(settings) || !Array.isArray(settings.namespaces)) throw new Error('desktop welcome: missing settings namespaces')
@@ -122,7 +136,7 @@ export function connectDesktopWelcome(
     }
     if (ref !== undefined && !record(states[ref])) throw new Error('desktop welcome: missing credential metadata')
     return {
-      loggedIn: (await account.state()).status === 'credential-stored',
+      loggedIn: accountMode === 'ipollo' ? await suiteAccount() : (await account.state()).status === 'credential-stored',
       hasApiKey: Object.values(states).some(value => record(value) && value.configured === true),
       writable: ref !== undefined && record(states[ref]) && states[ref].writable === true,
       localePreference: localePreference(namespaces),
@@ -132,6 +146,12 @@ export function connectDesktopWelcome(
   return {
     account,
     read,
+    ...(accountMode === 'ipollo' ? {
+      async signInAccount(email: string, password: string) {
+        try { return { ok: await suiteAccount({ email, password }) } }
+        catch (_error) { return { ok: false } }
+      },
+    } : {}),
     async analyticsEnabled() {
       const enabled = await invoke({ namespace: 'productAnalytics', method: 'enabled', args: {} }, AbortSignal.timeout(1000))
       if (typeof enabled !== 'boolean') throw new Error('desktop analytics: invalid collection policy')

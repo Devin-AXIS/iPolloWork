@@ -411,4 +411,4 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 
 上线前 CDN 与容量决策见[桌面更新提案](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.zh.md#cdn-and-capacity-qualification)。
 
-本 iPolloWork 发行包内置套件及其本地 DSH 依赖。专用配置在首次启动时启用套件，在客户端内使用 iPolloWork 账号登录，并将套件设为应用必需组件。桌面数据保存在 iPolloWork 应用数据目录下，与已有 DSH 配置分离。
+本 iPolloWork 发行包内置套件及其本地 DSH 依赖。专用配置在首次启动时启用套件，保留原生欢迎和引导页面，在客户端内使用 iPolloWork 账号登录，并将套件设为应用必需组件。桌面数据保存在 iPolloWork 应用数据目录下，与已有 DSH 配置分离。

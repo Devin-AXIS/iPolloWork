@@ -88,6 +88,14 @@ async function harness(options: {
 }
 
 describe('desktop onboarding lifecycle', () => {
+  it('accepts external credit availability without a currency balance', async () => {
+    const h = await harness({ status: 'credential-stored' })
+    h.account.set({ ...h.account.getSnapshot(), onboardingCredit: true })
+    await h.controller.update({ step: 'credit' })
+    expect(h.controller.state.getSnapshot().creditFunded).toBe(true)
+    expect(h.account.getSnapshot().details).toBeUndefined()
+  })
+
   it('counts bonus-only credit before entry', async () => {
     const h = await harness({ status: 'credential-stored' })
     h.account.set({ ...h.account.getSnapshot(), details: { balance: { status: 'ready', value: [{ currency: 'CNY', balance: '0' }], bonusWallets: [{ currency: 'CNY', balance: '1' }] } } })
