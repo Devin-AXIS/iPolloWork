@@ -414,3 +414,5 @@ Pre-launch CDN and capacity decisions are tracked in the [Desktop update proposa
 This iPolloWork distribution embeds the suite and its local DSH dependency closure. The dedicated profile enables the suite on first launch, preserves the native welcome and introduction pages, uses iPolloWork sign-in inside the client, and keeps the suite required by the application. Desktop data lives below the iPolloWork application-data directory; existing DSH profiles remain separate.
 
 The iPolloWork distribution preserves the native welcome and onboarding pages and adds in-window email/password sign-in and registration. The Host resolves installation-owned plugins from the runtime root manifest, including the embedded iPolloWork suite.
+
+The prepared runtime omits `.gitkeep` directory placeholders before recording file integrity, matching the files included in the application archive.

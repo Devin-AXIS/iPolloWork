@@ -414,3 +414,5 @@ node apps/desktop/node_modules/pnpm/bin/pnpm.mjs --dir apps/desktop run test:upd
 本 iPolloWork 发行包内置套件及其本地 DSH 依赖。专用配置在首次启动时启用套件，保留原生欢迎和引导页面，在客户端内使用 iPolloWork 账号登录，并将套件设为应用必需组件。桌面数据保存在 iPolloWork 应用数据目录下，与已有 DSH 配置分离。
 
 iPolloWork 发行版保留原生欢迎与引导页面，并提供窗口内的邮箱密码登录和注册。Host 从运行时根清单解析安装包自带插件，包括内置的 iPolloWork 套件。
+
+准备运行时时，在记录文件完整性前排除 `.gitkeep` 目录占位文件，与应用归档实际包含的文件保持一致。
