@@ -11,14 +11,18 @@ const unitPrices = z.object({
   cacheWritePerMillion: price.optional(),
   inputUnitPrice: price.default(0),
   outputUnitPrice: price.default(0),
+  audioInputPerMillion: price.default(0),
+  cachedAudioInputPerMillion: price.optional(),
+  imageInputPerMillion: price.default(0),
+  layered: z.boolean().optional(),
   maxVideoPixels: z.number().int().positive().optional(),
 });
 /** Stored model rates use integer micro-CNY and explicit units. */
 export const rateSchema = unitPrices.extend({
   model: z.string().min(1),
   free: z.boolean().default(false),
-  unit: z.enum(["token", "video_token", "image", "video_second", "audio_second", "character", "request"]).optional(),
-  imageInputPerMillion: price.default(0),
+  unit: z.enum(["token", "video_token", "image", "video_second", "audio_second", "audio_minute", "audio_hour", "character", "request"]).optional(),
+  freeInputUnits: z.number().int().nonnegative().default(0),
   maxInputTokens: z.number().int().positive(),
   maxOutputTokens: z.number().int().positive(),
   maxUnits: z.number().positive().max(86400).default(60),
@@ -36,7 +40,7 @@ export type ModelRate = z.infer<typeof rateSchema>;
 export const billingSchema = z
   .object({
     kind: z.enum(["chat", "image", "speech", "video", "embedding", "audio", "request"]),
-    protocol: z.enum(["openai", "dashscope", "ark"]).default("openai"),
+    protocol: z.enum(["openai", "dashscope", "ark", "volcengine-speech"]).default("openai"),
     source: z.url(),
     verifiedAt: z.number().int().positive(),
     validUntil: z.number().int().positive(),
@@ -109,9 +113,9 @@ function imagePixels(size: unknown): number {
   return Number(match[1]) * Number(match[2]);
 }
 
-function imageRate(rate: ModelRate, pixels: number): ModelRate {
+function imageRate(rate: ModelRate, pixels: number, layered = false): ModelRate {
   if (!rate.tiers.some(tier => tier.upToPixels !== undefined)) return rate;
-  const tier = rate.tiers.filter(tier => tier.upToPixels !== undefined && pixels <= tier.upToPixels).sort((a, b) => a.upToPixels! - b.upToPixels!)[0];
+  const tier = rate.tiers.filter(tier => tier.upToPixels !== undefined && pixels <= tier.upToPixels && (tier.layered === undefined || tier.layered === layered)).sort((a, b) => a.upToPixels! - b.upToPixels!)[0];
   if (!tier) throw new ServiceError("SERVICE_PRICE_VARIANT_REQUIRED", 400);
   return { ...rate, ...tier };
 }
@@ -140,13 +144,14 @@ function meteredReservation(spec: BillingSpec, rate: ModelRate, body: Record<str
   const selected = spec.protocol === "ark" && rate.unit === "image" ? imageRate(rate,
     typeof body.size === "string" && /^\d+x\d+$/.test(body.size) ? imagePixels(body.size)
       : body.size === "1K" || body.size === "1.5K" ? 2_610_000 : 4_630_000,
+    body.layer_decomposition === true,
   ) : selectRate(rate, rate.unit === "video_token" ? { ...body, resolution: body.resolution ?? "720p" } : body, rate.maxInputTokens);
   let input = 0, output = 0;
   switch (selected.unit) {
     case "image":
       input = spec.protocol === "ark" ? (Array.isArray(body.image) ? z.array(z.string()).parse(body.image).length : typeof body.image === "string" ? 1 : 0) : inputImages(body.input ?? body.images ?? body.messages ?? {});
       if (input > selected.maxUnits) throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
-      output = z.number().int().positive().max(selected.maxUnits).parse(body.layer_decomposition === true ? object.parse(body.layer_decomposition_options ?? {}).max_images ?? 30 : object.parse(body.sequential_image_generation_options ?? {}).max_images ?? parameters.n ?? body.n ?? (body.sequential_image_generation === "auto" ? 15 : 1));
+      output = z.number().int().positive().max(selected.maxUnits).parse(body.layer_decomposition === true ? object.parse(body.layer_decomposition_options ?? {}).max_images ?? Math.min(30, selected.maxUnits) : object.parse(body.sequential_image_generation_options ?? {}).max_images ?? parameters.n ?? body.n ?? (body.sequential_image_generation === "auto" ? 15 : 1));
       break;
     case "video_token": {
       const content = z.array(object).parse(body.content);
@@ -167,15 +172,22 @@ function meteredReservation(spec: BillingSpec, rate: ModelRate, body: Record<str
     case "audio_second":
       input = selected.maxUnits;
       break;
+    case "audio_hour":
+    case "audio_minute": {
+      const inputUnits = selected.unit === "audio_hour" ? Math.ceil(selected.maxUnits * 1000) : 0;
+      const outputUnits = selected.unit === "audio_minute" ? Math.ceil(selected.maxUnits * 1000) : 0;
+      return { spec, rate: selected, model: rate.model, inputUnits, micros: scaled(inputUnits, selected.inputUnitPrice, 3600000) + scaled(outputUnits, selected.outputUnitPrice, 60000) };
+    }
     case "character": {
-      const content = object.parse(body.input ?? body).text;
+      const content = object.parse(body.req_params ?? body.input ?? body).text;
       input = Array.from(z.string().max(200000).parse(content ?? body.text)).reduce((count, character) => count + (spec.protocol === "dashscope" && /[\p{Script=Han}\p{Script=Hangul}]/u.test(character) ? 2 : 1), 0);
+      if (spec.protocol === "volcengine-speech" && input > selected.maxUnits) throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
       break;
     }
     case "request": output = 1; break;
     default: throw new ServiceError("SERVICE_PRICE_INVALID", 400);
   }
-  return { spec, rate: selected, model: rate.model, inputUnits: input, micros: Math.ceil(input * selected.inputUnitPrice + output * selected.outputUnitPrice) };
+  return { spec, rate: selected, model: rate.model, inputUnits: input, micros: Math.ceil(Math.max(0, input - selected.freeInputUnits) * selected.inputUnitPrice + output * selected.outputUnitPrice) };
 }
 
 function meteredCost(reservation: BillingReservation, response: unknown): number | null {
@@ -193,7 +205,7 @@ function meteredCost(reservation: BillingReservation, response: unknown): number
         const images = z.array(object).parse(state.body.data);
         const succeeded = images.filter(image => !image.error);
         if (succeeded.length !== output) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
-        return input * rate.inputUnitPrice + succeeded.reduce((sum, image) => sum + imageRate(rate, imagePixels(image.size)).outputUnitPrice, 0);
+        return Math.max(0, input-rate.freeInputUnits) * rate.inputUnitPrice + succeeded.reduce((sum, image) => sum + imageRate(rate, imagePixels(image.size), rate.layered === true).outputUnitPrice, 0);
       }
       break;
     }
@@ -203,8 +215,14 @@ function meteredCost(reservation: BillingReservation, response: unknown): number
       output = z.number().nonnegative().parse(usage.output_video_duration ?? usage.duration ?? usage.output_seconds);
       break;
     case "audio_second": input = z.number().nonnegative().parse(usage.duration ?? usage.audio_duration ?? usage.seconds); break;
+    case "audio_hour": {
+      const milliseconds = units.parse(object.parse(state.body.audio_info).duration);
+      return scaled(milliseconds, rate.inputUnitPrice, 3600000);
+    }
+    case "audio_minute": return scaled(Math.ceil(z.number().nonnegative().parse(state.body.original_duration) * 1000), rate.outputUnitPrice, 60000);
     case "character":
-      if (state.body.code || state.body.error) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
+      if ((state.body.code && state.body.code !== 20000000) || state.body.error) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
+      if (reservation.spec.protocol === "volcengine-speech") input = units.parse(usage.text_words);
       break;
     case "request": output = 1; break;
     default: throw new ServiceError("SERVICE_PRICE_INVALID", 503);
@@ -295,7 +313,8 @@ export function reserveUsage(
   const bytes = Buffer.byteLength(JSON.stringify(body));
   const inputBody = typeof body.input === "object" && body.input !== null && !Array.isArray(body.input) ? object.parse(body.input) : {};
   const messages = spec.kind === "embedding" || (spec.kind === "speech" && inputBody.text !== undefined) ? [object.parse({ content: body.input })] : z.array(object).min(1).parse(body.messages ?? inputBody.messages);
-  const multimodal = JSON.stringify(messages).includes('"image_url"');
+  const inputJSON = JSON.stringify(messages);
+  const multimodal = /"(?:image_url|input_image|image|input_audio|audio_url|video_url|input_video|file|file_id)"/.test(inputJSON);
   if (!multimodal && bytes + 2048 > rate.maxInputTokens)
     throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
   const input = multimodal ? rate.maxInputTokens : bytes + 2048;
@@ -305,7 +324,7 @@ export function reserveUsage(
     model: rate.model,
     rate: selected,
     micros:
-      scaled(input, Math.max(selected.inputPerMillion, selected.cachedInputPerMillion ?? 0, selected.cacheWritePerMillion ?? 0), 1000000) +
+      scaled(input, Math.max(selected.inputPerMillion, selected.cachedInputPerMillion ?? 0, selected.cacheWritePerMillion ?? 0, selected.audioInputPerMillion, selected.imageInputPerMillion), 1000000) +
       scaled(spec.kind === "embedding" ? 0 : maximum, selected.outputPerMillion, 1000000),
   };
 }
@@ -357,10 +376,15 @@ export function usageCost(
   const details = object.parse(usage.prompt_tokens_details ?? usage.input_tokens_details ?? {});
   const cached = units.parse(usage.prompt_cache_hit_tokens ?? details.cached_tokens ?? 0);
   const written = units.parse(usage.cache_creation_input_tokens ?? 0);
-  if (cached + written > input) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
+  const audio = units.parse(details.audio_tokens ?? 0), images = units.parse(details.image_tokens ?? 0);
+  const cachedAudio = units.parse(details.audio_cached_tokens ?? object.parse(details.cached_tokens_details ?? {}).audio_tokens ?? 0);
+  if (cached + written + audio + images - cachedAudio > input || cachedAudio > audio || cachedAudio > cached) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
   return (
-    scaled(input - cached - written, chosen.inputPerMillion, 1000000)
-    + scaled(cached, chosen.cachedInputPerMillion ?? chosen.inputPerMillion, 1000000)
+    scaled(input - cached - written - audio - images + cachedAudio, chosen.inputPerMillion, 1000000)
+    + scaled(cached-cachedAudio, chosen.cachedInputPerMillion ?? chosen.inputPerMillion, 1000000)
+    + scaled(audio-cachedAudio, chosen.audioInputPerMillion, 1000000)
+    + scaled(cachedAudio, chosen.cachedAudioInputPerMillion ?? chosen.audioInputPerMillion, 1000000)
+    + scaled(images, chosen.imageInputPerMillion || chosen.inputPerMillion, 1000000)
     + scaled(written, chosen.cacheWritePerMillion ?? chosen.inputPerMillion, 1000000)
     + scaled(units.parse(usage.completion_tokens ?? usage.output_tokens ?? (spec.kind === "embedding" ? 0 : undefined)), chosen.outputPerMillion, 1000000)
   );

@@ -278,7 +278,7 @@ export function Services({ user }: { user: User }) {
         )}
         {groups.map(group => <div className="provider-group" key={group[0].keyId ?? group[0].id}>
           <div className="provider-heading"><div><strong>{group[0].provider === "aliyun-bailian" ? "阿里云百炼" : group[0].provider === "minimax" ? "MiniMax" : group[0].provider === "volcengine-video" ? "火山方舟" : group[0].title}</strong><small>{group.some(row => row.configured) ? "Key 已配置" : "待配置 Key"} · 同一个 Key 供全部能力使用</small></div>{admin && <div className="row-actions">
-            {group[0].provider === "aliyun-bailian" && <button disabled={!group.some(row => row.configured) || syncing === group[0].keyId} onClick={() => void sync(group[0])}>{syncing === group[0].keyId ? "同步中…" : "同步全部模型"}</button>}
+            {["aliyun-bailian","volcengine-video"].includes(group[0].provider) && <button disabled={!group.some(row => row.configured) || syncing === group[0].keyId} onClick={() => void sync(group[0])}>{syncing === group[0].keyId ? "同步中…" : "同步全部模型"}</button>}
             <button onClick={() => setConnection(group)}>配置 Key</button>
           </div>}</div>
           {group.map((s) => {
@@ -461,19 +461,20 @@ export function Services({ user }: { user: User }) {
 
 function ProviderConnection({ services, close, saved }: { services: Service[]; close(): void; saved(): void }) {
   const service = services[0];
+  const multipleOrigins = service.provider === "volcengine-video" || new Set(services.map(service=>new URL(service.baseUrl!).origin)).size > 1;
   const [key, setKey] = useState("");
   const [origin, setOrigin] = useState(new URL(service.baseUrl!).origin);
   const [enabled, setEnabled] = useState(true);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const save = async () => {
     setBusy(true); setError("");
-    try { await api(`/api/v1/admin/service-connections/${service.keyId}`, { ...(key ? { key } : {}), origin, enabled }); saved(); }
+    try { await api(`/api/v1/admin/service-connections/${service.keyId}`, { ...(key ? { key } : {}), ...(!multipleOrigins ? {origin} : {}), enabled }); saved(); }
     catch (error) { setError(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(false); }
   };
   return <Modal title="配置服务连接" close={close}><div className="editor">
     <p>一个 Key 统一用于该服务商的语言、图像、视频和语音等能力</p>
-    <label className="field"><span>服务域名</span><input type="url" value={origin} onChange={e => setOrigin(e.target.value)} /></label>
+    {multipleOrigins ? <p>使用已授权方舟和豆包语音的 IAM 通用 API Key；各能力保留自己的官方接口地址</p> : <label className="field"><span>服务域名</span><input type="url" value={origin} onChange={e => setOrigin(e.target.value)} /></label>}
     <label className="field"><span>API Key</span><input type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)} placeholder={service.configured ? "已保存，留空保持不变" : "填写 API Key"} /></label>
     <label><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} /> 开放已定价的模型</label>
     <Status error={error} /><div className="editor-foot"><span className="grow" /><button onClick={close}>取消</button><button className="primary" disabled={busy || (!key && !service.configured)} onClick={() => void save()}>{busy ? "保存中…" : "保存连接"}</button></div>

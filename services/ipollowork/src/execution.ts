@@ -36,6 +36,8 @@ import {
 
 import { serviceCategories, serviceCategory } from "./service-categories.js";
 import { bailianOperations, parseBailianPage, serviceModelSchema, type ModelOperation } from "./model-catalog.js";
+import { arkProvider, arkBilling, parseArkModels } from "./ark-models.js";
+import { speechRequest, speechResponse } from "./volcengine-speech.js";
 
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,79}$/);
 const routeSchema = z
@@ -223,7 +225,7 @@ function definition(row: ServiceRow): Definition {
       category: model.category ?? category,
     })),
     enabled: Boolean(row.enabled),
-    billing: JSON.parse(row.plan_ids).billing,
+    billing: details.billing ? billingSchema.parse(details.billing) : undefined,
     timeoutMs: JSON.parse(row.plan_ids).timeoutMs ?? 120000,
   };
 }
@@ -487,6 +489,7 @@ export class ExecutionService {
     const rows = (await this.rows()).filter(row => row.key_id === keyId);
     if (!rows.length) throw new ServiceError("SERVICE_UNAVAILABLE", 404);
     if (input.origin && new URL(input.origin).pathname !== "/") throw new ServiceError("INVALID_INPUT", 400, "请只填写服务域名，不含接口路径");
+    if (input.origin && new Set(rows.map(row=>new URL(row.base_url).origin)).size > 1) throw new ServiceError("INVALID_INPUT",400,"该服务商使用多个官方域名，请在各服务中单独修改地址");
     await this.store.transaction(async () => {
       if (input.key) await this.settings.set("service-key/" + keyId, { key: input.key });
       if (input.origin) for (const row of rows) {
@@ -511,13 +514,20 @@ export class ExecutionService {
   async syncModels(actor: Actor, id: string) {
     requireAdmin(actor);
     const rows = await this.rows(), source = rows.find(row => row.id === id);
-    if (!source || source.provider !== "aliyun-bailian") throw new ServiceError("SERVICE_DISCOVERY_UNAVAILABLE", 400);
+    if (!source || !["aliyun-bailian",arkProvider].includes(source.provider)) throw new ServiceError("SERVICE_DISCOVERY_UNAVAILABLE", 400);
     const key = (await this.settings.get("service-key/" + source.key_id)).key;
-    if (!key) throw new ServiceError("SERVICE_UNCONFIGURED", 400, "请先配置百炼 Key");
+    if (!key) throw new ServiceError("SERVICE_UNCONFIGURED", 400, "请先配置服务商 Key");
     const entries: ReturnType<typeof parseBailianPage>["items"] = [];
     const seen = new Set<string>();
     let total = 1;
-    for (let page = 1; entries.length < total; page++) {
+    if (source.provider===arkProvider) {
+      const ark=rows.find(row=>row.key_id===source.key_id && row.provider===source.provider && definition(row).capabilities.includes("chat"));
+      if (!ark) throw new ServiceError("SERVICE_DISCOVERY_UNAVAILABLE",400);
+      const response=await this.fetcher(ark.base_url.replace(/\/$/,"")+"/models",{headers:{Authorization:"Bearer "+key},redirect:"error",signal:AbortSignal.timeout(20000)});
+      if(!response.ok)throw new ServiceError("SERVICE_DISCOVERY_FAILED",503,"无法同步火山模型，请检查 Key 和模型权限");
+      const parsed=parseArkModels(await response.json());
+      entries.push(...parsed.items); total=parsed.total;
+    } else for (let page = 1; entries.length < total; page++) {
       if (page > 50) throw new ServiceError("SERVICE_CATALOG_LIMIT", 503);
       const url = new URL("/api/v1/models", source.base_url);
       url.search = new URLSearchParams({ page_no: String(page), page_size: "100", language: "zh-CN" }).toString();
@@ -548,7 +558,7 @@ export class ExecutionService {
         if (entry.rate && !rates.has(entry.model.id)) rates.set(entry.model.id, entry.rate);
         if (!rates.has(entry.model.id)) unpriced++;
       }
-      const billing = service.billing ?? { kind: operation === "transcription" ? "audio" : operation === "embedding" ? "embedding" : operation, protocol: operation === "chat" || operation === "embedding" ? "openai" : "dashscope", source: "https://help.aliyun.com/zh/model-studio/model-pricing", verifiedAt: Date.now(), validUntil: Date.now() + 30 * 86400000, rates: [] };
+      const billing = service.billing ?? (source.provider===arkProvider ? arkBilling(operation) : undefined) ?? { kind: operation === "transcription" ? "audio" : operation === "embedding" ? "embedding" : operation, protocol: operation === "chat" || operation === "embedding" ? "openai" : "dashscope", source: "https://help.aliyun.com/zh/model-studio/model-pricing", verifiedAt: Date.now(), validUntil: Date.now() + 30 * 86400000, rates: [] };
       await this.save(actor, { ...service, models: [...models.values()], billing: rates.size ? { ...billing, rates: [...rates.values()] } : undefined });
     }
     });
@@ -991,7 +1001,7 @@ export class ExecutionService {
     let upstreamBody = input.body
       ? Buffer.from(input.body, "base64")
       : undefined;
-    if (s.models.length && input.method === "POST") {
+    if (s.models.length && input.method === "POST" && !route.jobField) {
       let payload: Record<string, unknown>;
       try {
         payload = JSON.parse(upstreamBody?.toString("utf8") ?? "{}");
@@ -1149,17 +1159,25 @@ export class ExecutionService {
       });
     let response: Response;
     try {
+      const speechJob = s.billing?.protocol === "volcengine-speech" && jobId
+        ? await this.store.one("SELECT billing_snapshot FROM service_calls WHERE user_id=? AND service_id=? AND job_id=? AND billing_snapshot IS NOT NULL", actor.id, id, jobId)
+        : undefined;
+      const speech = s.billing?.protocol === "volcengine-speech" && input.method === "POST"
+        ? speechRequest(upstreamBody, jobId ?? input.requestId, String(speechJob ? JSON.parse(String(speechJob.billing_snapshot)).model : JSON.parse(upstreamBody?.toString("utf8") ?? "{}").model), input.path)
+        : undefined;
       response = await this.fetcher(s.baseUrl.replace(/\/$/, "") + input.path, {
         method: input.method,
         headers: {
           [s.headerName]: s.headerPrefix + key,
           ...(route.async ? { "X-DashScope-Async": "enable" } : {}),
+          ...speech?.headers,
           ...(input.contentType ? { "content-type": input.contentType } : {}),
         },
-        body: input.method === "POST" ? upstreamBody : undefined,
+        body: input.method === "POST" ? speech?.body ?? upstreamBody : undefined,
         redirect: "error",
         signal: AbortSignal.timeout(s.timeoutMs),
       });
+      if (s.billing?.protocol === "volcengine-speech") response = await speechResponse(response, input.path, input.requestId);
     } catch {
       await fail("unknown");
       throw new ServiceError("SERVICE_OUTCOME_UNKNOWN", 503);

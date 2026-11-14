@@ -1,4 +1,5 @@
 /** Operator-owned starting catalog. Secrets are configured separately and no service starts enabled. */
+import { arkModelGroups, arkBilling, arkServiceId, arkProvider } from "./ark-models.js";
 import type { Store } from "./database.js";
 import { billingSchema, rateSchema, type BillingSpec } from "./pricing.js";
 import { bailianOperations, serviceModelSchema, type ModelOperation } from "./model-catalog.js";
@@ -196,6 +197,23 @@ export async function seedOfficialServices(store: Store): Promise<void> {
       0,
       Date.now(),
     );
+  for (const [operation, group] of Object.entries(arkModelGroups)) {
+    const kind = operation as keyof typeof arkModelGroups;
+    const id = arkServiceId(kind);
+    const row = await store.one("SELECT plan_ids FROM execution_services WHERE id=?", id);
+    const existing = row ? JSON.parse(String(row.plan_ids)) : {};
+    const models = new Map(serviceModelSchema.array().parse(existing.models ?? []).map(model => [model.id, model]));
+    const rates = new Map(rateSchema.array().parse(existing.billing?.rates ?? []).map(rate => [rate.model, rate]));
+    for (const model of group.models) if (!models.has(model.id)) models.set(model.id, serviceModelSchema.parse(model));
+    for (const rate of group.rates) if (!rates.has(rate.model)) rates.set(rate.model, rate);
+    const baseBilling = existing.billing ?? arkBilling(kind);
+    const billing = baseBilling && rates.size ? billingSchema.parse({ ...baseBilling, rates: [...rates.values()] }) : undefined;
+    const details = { ...existing, ids: existing.ids ?? [], category: group.category, vendor: arkProvider, models: [...models.values()], billing, timeoutMs: existing.timeoutMs ?? 600000 };
+    const speech = group.baseUrl === "https://openspeech.bytedance.com";
+    await store.run("INSERT INTO execution_services VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET plan_ids=excluded.plan_ids", id, "火山 · " + group.title, arkProvider, group.baseUrl, arkProvider, speech ? "X-Api-Key" : "Authorization", speech ? "" : "Bearer ", JSON.stringify([operation.startsWith("transcription")?"transcription":operation]), JSON.stringify(group.routes), JSON.stringify(details), 0, Date.now());
+  }
+  await store.run("UPDATE execution_services SET title=? WHERE id=? AND title=?", "火山 · Seedream 图像", "official-volcengine-image", "火山 · Seedream 5.5");
+  await store.run("UPDATE execution_services SET title=? WHERE id=? AND title=?", "火山 · Seedance 视频", "official-volcengine-video", "火山 · Seedance 2.0 / 2.5");
   for (const [operation, models] of Object.entries(bailianModels)) {
     const kind = operation as ModelOperation;
     const config = bailianOperations[kind];

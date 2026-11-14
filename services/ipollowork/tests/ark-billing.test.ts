@@ -30,7 +30,9 @@ test("Ark video tokens and image pixel tiers settle through one configured key",
     const video = catalog.items.find(item => item.id === "official-volcengine-video")!;
     const image = catalog.items.find(item => item.id === "official-volcengine-image")!;
     assert.equal(video.keyId, image.keyId);
-    assert.deepEqual(video.models.map(model => model.id), ["doubao-seedance-2-0-260128", "doubao-seedance-2-5-260628"]);
+    assert(video.models.some(model => model.id === "doubao-seedance-2-0-260128"));
+    assert(video.models.some(model => model.id === "doubao-seedance-2-5-260628"));
+    assert(video.models.some(model => model.id === "doubao-seedance-2-0-fast-260128"));
     const payload = { model: video.models[0].id, content: [{ type: "text", text: "Garden" }], duration: 5, resolution: "720p" };
     const reserved = reserveUsage(video.billing!, payload);
     assert.equal(usageCost(reserved, { status: "running" }), null);
