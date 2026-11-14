@@ -68,3 +68,7 @@ Tests allocate independent schemas and cover real Better Auth requests, organiza
 The service catalog classifies each connection and model as `language`, `image`, `video`, `audio`, `embedding` or `tool`, with a separate `vendor`. Existing rows are resolved from declared capabilities; no model-name guessing is used. Non-language model entries do not require token-limit fields. Organization connections require explicit routes for non-chat operations, and the same categorized connection controls department/member access.
 
 Schema 7 reconciles membership data and parallel execution from either schema-6 release. Back up PostgreSQL before upgrading; startup applies the migration atomically and removes the old single-request index.
+
+## HTTP capabilities
+
+[Capability HTTP API](docs/capabilities.md) describes typed discovery, invocation, asynchronous results and application access keys over the same gateway.

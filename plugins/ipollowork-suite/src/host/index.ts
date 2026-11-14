@@ -18,6 +18,7 @@ import type {} from "@deepseek-ai/dsh-api-session-controller";
 import { Services } from "./services.ts";
 import type { ServiceCenter, ServiceChoice } from "../shared/services.ts";
 import { AccountService } from "./account.ts";
+import { mountCapabilityTools } from "./capability-tools.ts";
 import {
   sharingStatus,
   nativeShareAudience,
@@ -237,6 +238,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   const lifetime = new AbortController();
   ctx.effect(() => () => lifetime.abort(), "ipollowork-suite: requests");
   const account = new AccountService(ctx.credentials, config, lifetime.signal);
+  ctx.inject?.(["tools", "sandboxPolicy"], scope => mountCapabilityTools(scope, account, config.uploadTimeoutMs));
   let refreshModels = async () => {};
   let refreshSkills = async () => {};
   // Account changes and enterprise grant edits change both the official model list and the granted enterprise skills.

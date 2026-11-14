@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { api, text, count, type Row, type User } from "./api.js";
 import { Modal, Status, Table, useData } from "./components.js";
+import { AccessKeys } from "./access-keys.js";
 import { ModelPricing } from "./model-pricing.js";
 import { billingSchema, type BillingSpec } from "../src/pricing.js";
 import type { ServiceModel } from "../src/model-catalog.js";
@@ -145,6 +146,7 @@ export function Services({ user }: { user: User }) {
     usage = useData<{ items: Row[] }>(
       admin ? "/api/v1/admin/service-calls" : "/api/v1/services/usage",
     );
+  const [accessKeys, setAccessKeys] = useState(false);
   const [category, setCategory] = useState<ServiceCategory | "all">("all");
   const [editing, setEditing] = useState<Service | null>();
   const [connection, setConnection] = useState<Service[]>();
@@ -227,6 +229,7 @@ export function Services({ user }: { user: User }) {
     <>
       <div className="toolbar">
         <span>官方服务由后台统一配置，插件按账号积分调用</span>
+        <button onClick={() => setAccessKeys(true)}>API 接入</button>
         {admin && (
           <button className="primary" onClick={() => setEditing(null)}>
             <Plus size={15} />
@@ -453,6 +456,7 @@ export function Services({ user }: { user: User }) {
           }}
         />
       )}
+      {accessKeys && <AccessKeys close={() => setAccessKeys(false)} />}
       {connection && <ProviderConnection services={connection} close={() => setConnection(undefined)} saved={() => { setConnection(undefined); data.reload(); }} />}
     </>
   );

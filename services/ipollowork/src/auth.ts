@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { randomUUID } from "node:crypto";
 import { admin, bearer } from "better-auth/plugins";
+import { apiKey } from "@better-auth/api-key";
 import { getMigrations } from "better-auth/db/migration";
 import type { Config } from "./config.js";
 import type { Store } from "./database.js";
@@ -39,7 +40,10 @@ export async function createAuth(config: Config, store: Store) {
       sendVerificationEmail: async ({ user, url }) =>
         await deliver(user.email, "verify-email", url),
     },
-    plugins: [bearer(), admin({ defaultRole: "user", adminRoles: ["admin"] })],
+    plugins: [bearer(), admin({ defaultRole: "user", adminRoles: ["admin"] }), apiKey({
+      defaultPrefix: "ipw_", requireName: true, enableSessionForAPIKeys: false,
+      rateLimit: { enabled: false }, permissions: { defaultPermissions: { capabilities: ["read", "invoke"] } },
+    })],
     rateLimit: { enabled: true, storage: "database", window: 60, max: 100 },
     advanced: {
       database: { generateId: () => randomUUID() },

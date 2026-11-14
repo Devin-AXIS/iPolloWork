@@ -1,0 +1,53 @@
+[
+  {
+    "type": "call",
+    "name": "ipollo_capabilities",
+    "input": {
+      "kind": "image"
+    }
+  },
+  {
+    "type": "result",
+    "error": false,
+    "state": null
+  },
+  {
+    "type": "call",
+    "name": "ipollo_capability_describe",
+    "input": {
+      "capability": "qa-image:image"
+    }
+  },
+  {
+    "type": "result",
+    "error": false,
+    "state": null
+  },
+  {
+    "type": "call",
+    "name": "ipollo_capability_invoke",
+    "input": {
+      "capability": "qa-image:image",
+      "input": {
+        "prompt": "Native capability verification"
+      }
+    }
+  },
+  {
+    "type": "result",
+    "error": false,
+    "state": "succeeded"
+  },
+  {
+    "type": "call",
+    "name": "ipollo_capability_task",
+    "input": {
+      "requestId": "<request-id>"
+    }
+  },
+  {
+    "type": "result",
+    "error": false,
+    "state": "succeeded"
+  }
+]

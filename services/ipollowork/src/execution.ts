@@ -354,6 +354,10 @@ export class ExecutionService {
                 basePath: new URL(s.baseUrl).pathname.replace(/\/$/, ""),
                 routes: s.routes,
                 models: s.models,
+                protocol: s.billing?.protocol ?? "openai",
+                limits: s.billing?.rates.map(rate => ({ model: rate.model, maxUnits: rate.maxUnits,
+                  maxInputTokens: rate.maxInputTokens, maxOutputTokens: rate.maxOutputTokens,
+                  resolutions: [...new Set(rate.tiers.flatMap(tier => tier.resolution ? [tier.resolution] : []))] })) ?? [],
                 available:
                   (await allowed(this.store, actor, s)) &&
                   Boolean(
@@ -378,6 +382,8 @@ export class ExecutionService {
               basePath: new URL(s.baseUrl).pathname.replace(/\/$/, ""),
               routes: s.routes,
               models: s.models,
+              protocol: s.billing?.protocol ?? "openai",
+              limits: [],
               billing: undefined,
               available: Boolean(
                 (await this.settings.get("service-key/" + s.keyId)).key,
@@ -1240,7 +1246,7 @@ export class ExecutionService {
               "UPDATE service_calls SET state='succeeded',response_type=?,response_body=?,job_id=?,updated_at=? WHERE id=? AND state='running'",
               type,
               Buffer.concat(chunks).toString("base64"),
-              returnedJob,
+              returnedJob ?? jobId ?? null,
               now(),
               input.requestId,
             );

@@ -133,3 +133,7 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 账户与支付布局在原生设置面板内管理盒模型尺寸。套件通过 peer dependencies 使用宿主提供的 DSH 服务；安装套件不会替换宿主运行时包。
 
 内置 IM 使用 Cordis 的公开根上下文标识。Design 和 Video 从其已验证的原生源码构建原样导入。运行 `node scripts/prepare-studio-releases.mjs <archive-directory> <version>` 同步更新两个压缩包及目录；各插件自行声明 rc.3 鉴权依赖。
+
+## HTTP 能力
+
+原生工具 `ipollo_capabilities`、`ipollo_capability_describe`、`ipollo_capability_invoke` 和 `ipollo_capability_task` 发现并调用[能力 HTTP API](../../services/ipollowork/docs/capabilities.md)。详细参数按需加载，请求复用原生调用标识以防重复扣费，并传递取消信号、遵守只读会话限制；工具不暴露账号或供应商 Key。

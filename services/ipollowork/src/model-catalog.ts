@@ -15,6 +15,8 @@ export const serviceModelSchema = z.object({
   recommended: z.boolean().optional(),
   vendor: z.string().max(100).optional(),
   capabilities: z.array(z.string()).max(50).optional(),
+  inputModalities: z.array(z.enum(["text", "image", "audio", "video"])).min(1).max(4).optional(),
+  invocationPath: z.string().startsWith("/").max(500).optional(),
 });
 /** Public model metadata without credentials or billing records. */
 export type ServiceModel = z.infer<typeof serviceModelSchema>;

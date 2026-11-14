@@ -140,3 +140,7 @@ The embedded IM runtime uses Cordis’s public root-context symbol. Bundled Desi
 Account balances refresh when the application regains focus or becomes visible. Compatible DeepSeek and Bailian chat models inherit the installed provider catalog’s reasoning levels and request dialect; unknown models remain selectable without invented reasoning levels.
 
 Account and payment layouts contain their box sizing within the native settings panel. The suite resolves DSH services from the host through peer dependencies; installing it does not replace the host runtime packages.
+
+## HTTP capabilities
+
+The native `ipollo_capabilities`, `ipollo_capability_describe`, `ipollo_capability_invoke` and `ipollo_capability_task` tools discover and call the [capability HTTP API](../../services/ipollowork/docs/capabilities.md). Detailed inputs load on demand; requests reuse native call identities for idempotency, preserve cancellation and respect read-only sessions. These tools do not expose account or provider keys.

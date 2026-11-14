@@ -68,3 +68,7 @@ npm run bench:database
 服务目录按 `language`、`image`、`video`、`audio`、`embedding`、`tool` 分类各连接及模型，另有 `vendor` 标识供应商。旧记录根据已声明能力归类，不猜测模型名称。非语言模型无需 Token 上限字段，组织服务的非对话操作必须明确声明接口路径，同一份分类连接用于部门和成员授权。
 
 Schema 7 将两个 Schema 6 版本的会员数据与并发执行能力合并。升级前备份 PostgreSQL；启动会原子执行迁移并移除旧的单请求索引。
+
+## HTTP 能力
+
+[能力 HTTP API](docs/capabilities.md) 说明如何通过同一网关查询参数、调用能力、读取异步结果，以及管理应用访问 Key。

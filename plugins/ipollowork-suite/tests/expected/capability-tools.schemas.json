@@ -1,0 +1,83 @@
+[
+  {
+    "name": "ipollo_capabilities",
+    "description": "List account-authorized AI capabilities, including image generation, video, speech, transcription, embeddings and reranking. Returns capability IDs; use ipollo_capability_describe to read inputs and models.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "image",
+            "video",
+            "speech",
+            "transcription",
+            "embedding",
+            "rerank"
+          ]
+        }
+      }
+    }
+  },
+  {
+    "name": "ipollo_capability_describe",
+    "description": "Read one capability’s input JSON schema, authorized models, limits and next model-page offset before invoking it.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Nonnegative model-page offset returned by the previous result."
+        }
+      },
+      "required": [
+        "capability"
+      ]
+    }
+  },
+  {
+    "name": "ipollo_capability_invoke",
+    "description": "Run an AI capability using inputs from ipollo_capability_describe. Charges actual account usage. Returns a requestId and a result or pending task; query pending or uncertain requests with ipollo_capability_task instead of submitting another call.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "capability": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "required": [
+        "capability",
+        "input"
+      ]
+    }
+  },
+  {
+    "name": "ipollo_capability_task",
+    "description": "Read the result or current status of a capability request by requestId. Checks pending provider tasks without submitting another generation request.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "requestId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "requestId"
+      ]
+    }
+  }
+]

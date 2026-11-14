@@ -80,6 +80,27 @@ class FixtureAdapter extends LlmAdapter {
       model: options.model,
     });
     const body = JSON.stringify(options.messages);
+    if (body.includes("CAPABILITY_FLOW")) {
+      const results = options.messages.filter(message => message.role === "tool");
+      const request = results.at(-1)?.content.find(block => block.type === "text");
+      const receipt: { requestId?: string } = request?.type === "text" ? JSON.parse(request.text) : {};
+      const steps = [
+        { name: "ipollo_capabilities", args: { kind: "image" } },
+        { name: "ipollo_capability_describe", args: { capability: "qa-image:image" } },
+        { name: "ipollo_capability_invoke", args: { capability: "qa-image:image", input: { prompt: "Native capability verification" } } },
+        { name: "ipollo_capability_task", args: { requestId: receipt.requestId } },
+      ];
+      const next = steps[results.length];
+      if (next) {
+        if (!options.tools?.some(tool => tool.name === next.name)) throw new Error(`Missing native capability tool: ${next.name}`);
+        const id = ToolCallId(`capability-${results.length}`), args = JSON.stringify(next.args);
+        yield { type: "block-start", index: 0, blockType: "tool-call" };
+        yield { type: "tool-call-delta", index: 0, id, name: next.name, argumentsDelta: args };
+        yield { type: "block-end", index: 0, block: { type: "tool-call", id, name: next.name, arguments: args } };
+        yield { type: "finish", reason: { kind: "tool-calls" } };
+        return;
+      }
+    }
     if (body.includes("TRUNCATE_ONCE") && !body.includes("ipollowork-output-continuation")) {
       yield { type: "block-start", index: 0, blockType: "text" };
       yield { type: "text-delta", index: 0, text: "Saved partial work." };
@@ -270,6 +291,18 @@ export function apply(ctx: FixtureContext): void {
                 ).length,
               continuations: agent.session.snapshotEvents().filter(event => event.type === "user/message"
                 && event.data.source.kind === "ipollowork-output-continuation").length,
+              ...(String(input.prompt).includes("CAPABILITY_FLOW") ? { capabilityTrace: agent.session.snapshotEvents().flatMap<Record<string, unknown>>(event => {
+                if (event.type === "tool/call") {
+                  const args: Record<string, unknown> = JSON.parse(event.data.arguments);
+                  return [{ type: "call", name: event.data.name, input: { ...args, ...("requestId" in args ? { requestId: "<request-id>" } : {}) } }];
+                }
+                if (event.type === "tool/result") {
+                  const content = event.data.message.content.find(block => block.type === "text");
+                  const value: { state?: string } = content?.type === "text" ? JSON.parse(content.text) : {};
+                  return [{ type: "result", error: event.data.message.isError === true, state: value.state ?? null }];
+                }
+                return [];
+              }) } : {}),
             };
           } else value = { requests };
           response.writeHead(200, { "Content-Type": "application/json" });

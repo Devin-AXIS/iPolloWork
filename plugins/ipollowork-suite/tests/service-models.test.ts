@@ -69,6 +69,7 @@ test("official models register lazily, retain native providers and withdraw on o
                 name: "Model",
                 contextWindow: 32768,
                 maxTokens: 2048,
+                inputModalities: ["text", "image"],
               },
             ],
             routes: [],
@@ -106,6 +107,7 @@ test("official models register lazily, retain native providers and withdraw on o
     );
     const models = await ctx.llm.listModels("ipollo-chat");
     assert.equal(models[0]?.id, "model");
+    assert.deepEqual(models[0]?.inputModalities, ["text", "image"]);
     await center.choose("bailian", { source: "own" });
     await refresh();
     assert.equal(ctx.llm.listProviders().length, 0);

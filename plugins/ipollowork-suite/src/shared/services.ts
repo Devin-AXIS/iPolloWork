@@ -9,6 +9,8 @@ export interface OfficialService {
     category?: ServiceCategory | undefined;
     contextWindow?: number | undefined;
     maxTokens?: number | undefined;
+    capabilities?: string[] | undefined;
+    inputModalities?: ("text" | "image" | "audio" | "video")[] | undefined;
   }[];
   id: string;
   title: string;

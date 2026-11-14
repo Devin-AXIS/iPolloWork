@@ -1,4 +1,6 @@
 import { ExecutionService, mountExecution } from "./execution.js";
+import { Capabilities, mountCapabilities } from "./capabilities.js";
+import { authenticateCapabilityKey, mountAccessKeys } from "./access-keys.js";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
@@ -173,6 +175,12 @@ export async function createService(config: Config) {
         origin !== config.origin
       )
         throw new ServiceError("ORIGIN_FORBIDDEN", 403);
+      const keyActor = await authenticateCapabilityKey(auth, store, c.req.raw.headers, c.req.path, c.req.method);
+      if (keyActor) {
+        c.set("actor", keyActor);
+        await next();
+        return;
+      }
       const session = await auth.api.getSession({ headers: c.req.raw.headers });
       if (!session || session.user.banned)
         throw new ServiceError("SIGN_IN_REQUIRED", 401, "请先登录");
@@ -347,6 +355,8 @@ export async function createService(config: Config) {
     );
     await execution.recover();
     mountExecution(app, execution);
+    mountCapabilities(app, new Capabilities(execution, store));
+    mountAccessKeys(app, auth);
     mountEnterpriseAssets(app, store, storage, config);
     mountEnterprise(app, store, config);
     mountProjectSpace(app, store, storage, config);

@@ -39,6 +39,8 @@ const serviceSchema = z.object({
       category: z.enum(serviceCategories).optional(),
       contextWindow: z.number().optional(),
       maxTokens: z.number().optional(),
+      capabilities: z.array(z.string()).optional(),
+      inputModalities: z.array(z.enum(["text", "image", "audio", "video"])).optional(),
     }),
   ),
   routes: z.array(

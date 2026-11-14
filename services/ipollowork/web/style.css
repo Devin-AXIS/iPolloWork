@@ -42,3 +42,5 @@ button.primary{background:var(--action);border-color:var(--action);color:var(--a
 .price-tier{border-top:1px solid var(--line);padding-top:12px}.model-add{display:flex;gap:8px}.model-add input{flex:1;min-width:0}
 .budget-preview{padding:12px;border-radius:12px;background:var(--track);font-size:12px;line-height:1.8}.budget-preview[data-ok=false]{color:var(--bad)}
 @media(max-width:760px){.provider-heading{align-items:flex-start;flex-direction:column}.provider-heading .row-actions{margin-left:0;flex-wrap:wrap}.model-costs-head{flex-direction:column;gap:3px}.model-cost-summary{align-items:flex-start}.model-cost-list{max-height:50vh}}
+
+.access-key-list table{min-width:0;table-layout:fixed}.access-key-list th,.access-key-list td{padding:10px 8px}.access-key-list th:first-child{width:50%}.access-key-list td{overflow-wrap:anywhere}

@@ -209,7 +209,7 @@ export function mountServiceModels(
                 provider,
                 baseUrl: baseURL,
                 api: "openai-completions" as const,
-                input: ["text" as const],
+                input: ["text" as const, ...(model.inputModalities?.includes("image") || model.capabilities?.includes("input:image") || known?.input.includes("image") ? ["image" as const] : [])],
                 ...capabilities,
                 cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               },

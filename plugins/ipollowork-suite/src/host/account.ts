@@ -126,6 +126,30 @@ export class AccountService {
     if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
     return this.send(path, grant.token, body, method);
   }
+  /** Call a capability with the operation lifetime and keep the account token inside the Host.
+   * @param path Allowlisted capability or receipt URL path.
+   * @param body JSON input for POST, or undefined for GET.
+   * @param signal Caller cancellation signal.
+   * @returns Parsed server JSON; rejects if the account changes during the request.
+   */
+  async capability(path: string, body: unknown | undefined, signal: AbortSignal): Promise<unknown> {
+    if (!/^\/api\/v1\/(capabilities(?:\/[^/]+(?:\/invoke)?)?(?:\?[^#]*)?|capability-tasks\/[^/?]+)$/.test(path))
+      throw new SuiteError("IPW_INVALID_CAPABILITY_PATH", 400);
+    const revision = this.revision;
+    const grant = await this.grant();
+    if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
+    if (revision !== this.revision) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    const response = await this.fetcher(this.config.accountOrigin + path, {
+      method: body === undefined ? "GET" : "POST", redirect: "error",
+      headers: { Authorization: `Bearer ${grant.token}`, "Content-Type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.any([this.signal, signal, AbortSignal.timeout(this.config.uploadTimeoutMs)]),
+    });
+    const result = await readJson(response, this.config.maxResponseBytes);
+    if (revision !== this.revision) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    if (!response.ok) throw new SuiteError(object(result) && typeof result.code === "string" ? result.code : "IPW_CAPABILITY_FAILED", response.status);
+    return result;
+  }
   /** Stream a project file without buffering it or exposing the account token. */
   async uploadProject(
     projectId: string,
