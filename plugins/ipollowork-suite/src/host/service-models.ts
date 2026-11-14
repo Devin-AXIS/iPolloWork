@@ -196,7 +196,9 @@ export function mountServiceModels(
               entry.id === model.id && entry.api === "openai-completions");
             const capabilities = known && known.api === "openai-completions" ? {
               reasoning: known.reasoning,
-              ...(known.thinkingLevelMap ? { thinkingLevelMap: known.thinkingLevelMap } : {}),
+              ...(known.thinkingLevelMap ? { thinkingLevelMap: known.thinkingLevelMap }
+                : known.reasoning && known.compat?.supportsReasoningEffort === false
+                  ? { thinkingLevelMap: { minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null } } : {}),
               ...(known.compat ? { compat: known.compat } : {}),
             } : { reasoning: false };
             return [

@@ -161,7 +161,7 @@ test("account model calls use their private token and report insufficient points
   } finally { await ctx.fiber.dispose(); }
 });
 
-for (const provider of ['deepseek', 'aliyun-bailian']) test(`${provider} retains its native reasoning levels and wire fields`, async () => {
+for (const [provider, id] of [['deepseek', 'deepseek-v4-pro'], ['aliyun-bailian', 'deepseek-v4-pro'], ['aliyun-bailian', 'qwen3.7-plus']]) test(`${provider}/${id} retains its native reasoning levels and wire fields`, async () => {
   const { default: WebServer } = await import('@deepseek-ai/dsh-host-webserver');
   const ctx = new Context();
   await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 });
@@ -172,7 +172,7 @@ for (const provider of ['deepseek', 'aliyun-bailian']) test(`${provider} retains
   };
   let request: Record<string, unknown> | undefined;
   const account = new AccountService(credentials, resolveConfig({ accountOrigin: 'https://accounts.test' }), new AbortController().signal, async (url, init) => {
-    if (String(url).endsWith('/services')) return Response.json({ items: [{ id: 'chat', title: 'Chat', provider, capabilities: ['chat'], origin: 'https://upstream.test', basePath: '/v1', available: true, routes: [], models: [{ id: 'deepseek-v4-pro', name: 'DeepSeek', contextWindow: 32768, maxTokens: 2048 }] }], points: 0 });
+    if (String(url).endsWith('/services')) return Response.json({ items: [{ id: 'chat', title: 'Chat', provider, capabilities: ['chat'], origin: 'https://upstream.test', basePath: '/v1', available: true, routes: [], models: [{ id, name: id, contextWindow: 32768, maxTokens: 2048 }] }], points: 0 });
     const envelope = JSON.parse(String(init?.body));
     request = JSON.parse(Buffer.from(envelope.body, 'base64').toString());
     return Response.json({ code: 'INSUFFICIENT_POINTS' }, { status: 409 });
@@ -183,18 +183,19 @@ for (const provider of ['deepseek', 'aliyun-bailian']) test(`${provider} retains
   } });
   try {
     await refresh();
-    const model = await ctx.llm.resolveModelInfo('ipollo-chat', 'deepseek-v4-pro');
-    assert.deepEqual(model.reasoning?.efforts.map(entry => entry.id), provider === 'deepseek' ? ['off', 'high', 'max'] : ['high', 'max']);
+    const model = await ctx.llm.resolveModelInfo('ipollo-chat', id!);
+    assert.deepEqual(model.reasoning?.efforts.map(entry => entry.id), id === 'qwen3.7-plus' ? ['off', 'high'] : provider === 'deepseek' ? ['off', 'high', 'max'] : ['high', 'max']);
     assert.equal(model.context?.contextWindow, 32768);
-    for await (const _chunk of ctx.llm.stream({ provider: 'ipollo-chat', model: 'deepseek-v4-pro', messages: [], reasoningEffort: ReasoningEffortId('max') })) { /* Drain the gateway response to capture its request. */ }
-    assert.equal(request?.reasoning_effort, 'max');
+    const effort = id === 'qwen3.7-plus' ? 'high' : 'max';
+    for await (const _chunk of ctx.llm.stream({ provider: 'ipollo-chat', model: id!, messages: [], reasoningEffort: ReasoningEffortId(effort) })) { /* Drain the gateway response to capture its request. */ }
+    assert.equal(request?.reasoning_effort, id === 'qwen3.7-plus' ? undefined : 'max');
     if (provider === 'deepseek') assert.deepEqual(request?.thinking, { type: 'enabled' });
     else assert.equal(request?.enable_thinking, true);
     const failures = [];
-    for await (const chunk of ctx.llm.stream({ provider: 'ipollo-chat', model: 'deepseek-v4-pro', messages: [], reasoningEffort: ReasoningEffortId('medium') })) failures.push(chunk);
+    for await (const chunk of ctx.llm.stream({ provider: 'ipollo-chat', model: id!, messages: [], reasoningEffort: ReasoningEffortId('medium') })) failures.push(chunk);
     const failure = failures.find(chunk => chunk.type === 'finish');
     assert.equal(failure?.reason.kind, 'error');
     if (failure?.reason.kind === 'error') assert.equal(failure.reason.failure.code, 'UNSUPPORTED_REASONING_EFFORT');
-    assert.equal(request?.reasoning_effort, 'max');
+    assert.equal(request?.reasoning_effort, id === 'qwen3.7-plus' ? undefined : 'max');
   } finally { await ctx.fiber.dispose(); }
 });
