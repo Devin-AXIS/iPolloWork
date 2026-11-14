@@ -198,6 +198,23 @@ it.each(['exports', 'legacy'] as const)('loads unpacked package files through %s
   expect(createRequire(join(f.profile.dir, 'entry.cjs'))(name)).toEqual({ marker: 4 })
 })
 
+it('resolves archived core dependencies from an unpacked installation package', async () => {
+  const f = fixture()
+  const name = 'unpacked-plugin'
+  const directory = join(f.root, 'app.asar.unpacked', 'dsh', 'node_modules', name)
+  pkg(directory, name, 4)
+  file(join(directory, 'index.js'), "export { marker } from '@deepseek-ai/dsh-core'\n")
+  file(join(directory, 'index.cjs'), "module.exports = require('@deepseek-ai/dsh-core')\n")
+  const base = await resolutionOf(f)
+  const registration = installRuntimeInterception({ ...base, entries: [...base.entries, {
+    name, packageDir: directory, version: '4.0.0', scope: 'installation',
+    declarer: join(f.root, 'app.asar', 'dsh', 'package.json'),
+  }] })
+  registrations.push(registration)
+  expect(await importFrom(name, pathToFileURL(join(f.profile.dir, 'entry.mjs')).href)).toMatchObject({ marker: 1 })
+  expect(createRequire(join(f.profile.dir, 'entry.cjs'))(name)).toEqual({ marker: 1 })
+})
+
 /**
  * Ancestor node_modules layers of a profile importer, innermost first:
  * private (plugin-private), profile (profile node_modules), shared

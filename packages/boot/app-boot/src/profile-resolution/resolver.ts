@@ -112,6 +112,7 @@ interface CompiledResolution {
   readonly profilePaths: readonly string[]
   readonly profile: readonly string[]
   readonly installationPaths: readonly string[]
+  readonly unpackedInstallationPaths: readonly string[]
   readonly linkedPaths: readonly string[]
   readonly localPackageNames: ReadonlySet<string>
   readonly esmRoutes: ResolutionRoutes
@@ -207,6 +208,9 @@ function compileResolution(resolution: RuntimeResolution): CompiledResolution {
     installationPaths: [...new Set(resolution.entries
       .filter(entry => entry.scope === 'installation')
       .flatMap(entry => prefixes(entry.packageDir)))],
+    unpackedInstallationPaths: resolution.entries
+      .filter(entry => entry.scope === 'installation' && entry.packageDir.includes('.asar.unpacked' + sep))
+      .flatMap(entry => prefixes(entry.packageDir)).sort((left, right) => right.length - left.length),
     linkedPaths: resolution.linkedRoots.flatMap(root => prefixes(root.realPath)),
     localPackageNames: new Set(resolution.localPackageNames),
     esmRoutes: new Map(),
@@ -234,6 +238,9 @@ function findInterceptionLayer(path: string, resolution: CompiledResolution): In
   const activeProfile = resolution.profile.find(prefix => path.startsWith(prefix))
   const dir = treeRoot !== undefined ? profileChild(path, treeRoot) : activeProfile?.slice(0, -1)
   if (dir !== undefined) return computeProfileLayer(dir, activeProfile !== undefined)
+  const unpacked = resolution.unpackedInstallationPaths.find(prefix => path.startsWith(prefix))
+  // Native lookup cannot cross from the unpacked tree back to shared core packages in the archive.
+  if (unpacked !== undefined) return computeProfileLayer(unpacked.slice(0, -1), false)
   if (!startsWithin(path, resolution.linkedPaths)) return undefined
   if (startsWithin(path, resolution.installationPaths)) return undefined
   return { kind: 'linked' }
