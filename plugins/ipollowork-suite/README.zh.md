@@ -131,3 +131,5 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 应用重新获得焦点或恢复可见时会刷新账户余额。兼容的 DeepSeek 和百炼聊天模型沿用已安装提供方目录中的推理等级及请求格式；未知模型仍可选择，但不会虚构推理等级。
 
 账户与支付布局在原生设置面板内管理盒模型尺寸。套件通过 peer dependencies 使用宿主提供的 DSH 服务；安装套件不会替换宿主运行时包。
+
+内置 IM 使用 Cordis 的公开根上下文标识。Design 和 Video 从其已验证的原生源码构建原样导入。运行 `node scripts/prepare-studio-releases.mjs <archive-directory> <version>` 同步更新两个压缩包及目录；各插件自行声明 rc.3 鉴权依赖。

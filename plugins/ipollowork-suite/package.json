@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-suite",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
   "icon": "./assets/mark.svg",
   "type": "module",
@@ -36,8 +36,8 @@
     "vendor/dsh-im/README.md",
     "catalog/index.json",
     "catalog/bundled-releases.json",
-    "catalog/packages/deepseek-idesign-1.0.0-beta.19.ipollo.1-3beceb0346fb.tgz",
-    "catalog/packages/deepseek-ivideo-1.0.0-beta.19.ipollo.1-23e65e2906e7.tgz"
+    "catalog/packages/deepseek-idesign-1.0.0-beta.21-7eea1735ca17.tgz",
+    "catalog/packages/deepseek-ivideo-1.0.0-beta.21-9f509b3c4525.tgz"
   ],
   "dsh": {
     "bundle": {

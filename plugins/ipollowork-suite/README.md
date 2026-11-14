@@ -135,7 +135,7 @@ Suite 0.1.10 requires DSH 0.2.2-rc.3 or later in the 0.2.2 release line. Its HTT
 
 Registered account model channels display their backend names under iPolloWork. Login selects an available account channel when no personal provider key is configured; an existing selected account channel is retained. Users can add and choose personal API-key providers through the native Models settings. Account inference uses a private local gateway token, and insufficient points produce an account-quota failure rather than a key error.
 
-The embedded IM runtime uses Cordis’s public root-context symbol. Bundled Design and Video 1.0.0-beta.19.ipollo.1 retain the reviewed beta.19 code and add the `connection.authentication` dependency required by rc.3 asset and API requests. `scripts/prepare-studio-releases.mjs` reproduces these local archives from reviewed beta.19 tarballs.
+The embedded IM runtime uses Cordis’s public root-context symbol. Bundled Design and Video are imported byte-for-byte from their checked native source builds. Run `node scripts/prepare-studio-releases.mjs <archive-directory> <version>` to update both archives and the catalog together; each bundle declares its own rc.3 authentication dependency.
 
 Account balances refresh when the application regains focus or becomes visible. Compatible DeepSeek and Bailian chat models inherit the installed provider catalog’s reasoning levels and request dialect; unknown models remain selectable without invented reasoning levels.
 

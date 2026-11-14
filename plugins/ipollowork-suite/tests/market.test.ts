@@ -49,7 +49,7 @@ test('the default market shows Design and Video first without installing or enab
   const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'zh', 1048576)
   assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
   for (const item of state.items.slice(0, 2)) {
-    assert.equal(item.version, '1.0.0-beta.19.ipollo.1')
+    assert.equal(item.version, '1.0.0-beta.21')
     assert.equal(item.categoryTitle, '创作')
     assert.equal(item.compatible, true)
     assert.equal(item.installed, false)
@@ -65,7 +65,7 @@ test('a custom operator catalog keeps its declared source for the same package v
     const path = join(dir, 'index.json')
     await writeFile(path, await readFile('catalog/index.json'))
     const state = await readMarket(path, { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576)
-    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.19.ipollo.1', 'deepseek-ivideo@1.0.0-beta.19.ipollo.1'])
+    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.21', 'deepseek-ivideo@1.0.0-beta.21'])
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 

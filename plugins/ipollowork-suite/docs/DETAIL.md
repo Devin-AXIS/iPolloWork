@@ -14,4 +14,4 @@ The dedicated desktop distribution preserves the native welcome, credit, purpose
 
 Account model channels display their backend names under iPolloWork. Login chooses an available account channel when no personal provider key is configured and retains an existing account selection. Native Models settings remain available for personal-key providers. Account inference uses a private local gateway token; insufficient points produce an account-quota failure.
 
-Embedded IM uses the public Cordis root-context symbol. The local Design and Video 1.0.0-beta.19.ipollo.1 packages retain reviewed beta.19 code and add the authentication dependency required by rc.3 assets and APIs.
+Embedded IM uses the public Cordis root-context symbol. Design and Video use their checked native source builds, including automatic slide detection and the native Video entry point.
