@@ -4,7 +4,7 @@ App data lets plugins, websites, apps and mini programs built in DSH keep record
 
 ## Data page
 
-The sidebar's Data entry lists the account's personal apps and the apps of its organizations, grouped by the workspace that created them. Each app shows its owner, whether any collection is public and its size. Selecting an app shows one tab per collection and a read-only table of its records, fifty at a time. Public apps also show the endpoint and public key that page code uses. Managers can delete an app after confirming. Records cannot be edited on this page.
+The sidebar's Data entry opens one tab for personal apps and one per organization the account belongs to, including organizations without apps. Filters show all apps, plugins or public apps; an app counts as public once any collection admits anonymous access. Each card shows the app's type, the workspace it was created in, its table and record counts and its last change. Opening a card shows the app's tables beside a read-only table of the selected one, fifty records at a time. Public apps also show the endpoint and public key that page code uses. Managers can delete an app after confirming. Records cannot be edited on this page.
 
 ## Model
 

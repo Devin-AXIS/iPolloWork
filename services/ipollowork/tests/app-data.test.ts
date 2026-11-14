@@ -202,8 +202,9 @@ test("organization apps follow membership, quotas roll back and deletions purge 
     const run = (body: unknown, token: string) => call<Json>(`/api/data/v1/apps/${app.id}/run`, { token, body });
 
     assert.equal((await run({ insert: "tasks", values: { title: "Plan" } }, member.token)).status, 200);
-    const listed = await call<{ items: Json[] }>("/api/data/v1/apps", { token: member.token });
+    const listed = await call<{ items: Json[]; organizations: Json[] }>("/api/data/v1/apps", { token: member.token });
     assert.deepEqual(listed.data.items.map((a) => [a.owner.kind, a.owner.name, a.canManage]), [["enterprise", "Acme", false]]);
+    assert.deepEqual(listed.data.organizations, [{ id: enterprise, name: "Acme" }]);
     assert.equal((await run({ define: "tasks", public: ["read"] }, member.token)).data.code, "DATA_FORBIDDEN");
     assert.equal((await call(`/api/data/v1/apps/${app.id}`, { method: "DELETE", token: member.token })).status, 403);
     assert.equal((await run({ find: "tasks" }, outsider.token)).status, 404);

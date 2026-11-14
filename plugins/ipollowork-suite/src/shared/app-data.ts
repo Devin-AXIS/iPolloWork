@@ -24,6 +24,11 @@ export interface DataAppSummary {
   createdAt: number
   updatedAt: number
 }
+/** The Data page listing: apps plus every organization the account belongs to, including organizations without apps. */
+export interface DataAppList {
+  items: DataAppSummary[]
+  organizations: { id: string; name: string }[]
+}
 /** A collection's declared fields, anonymous access and size. */
 export interface DataCollectionInfo {
   name: string

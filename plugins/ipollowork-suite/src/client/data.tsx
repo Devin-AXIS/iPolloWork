@@ -1,16 +1,21 @@
-/** The Data page: a read-only view of the records that plugins, sites and apps keep through app data. */
+/**
+ * The Data page. App cards are grouped by owner, personal or one organization, and filtered by plugin or public app;
+ * an opened app lists its collections beside a read-only record table.
+ */
 import { useEffect, useMemo, useState } from 'react'
 import {
   Button,
+  IconChevronLeftOutlineRegular,
   IconCopyOutlineRegular,
   IconDatabaseOutlineRegular,
+  IconFolderOpenOutlineRegular,
   IconRefreshOutlineRegular,
   IconSearchOutlineRegular,
   IconTrashOutlineRegular,
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
-import type { DataAppDetail, DataAppSummary, DataFieldType, DataRecord, DataValue } from '../shared/app-data.ts'
+import type { DataAppDetail, DataAppList, DataAppSummary, DataFieldType, DataRecord, DataValue } from '../shared/app-data.ts'
 import type { ClientContext } from './native.ts'
 import type { AccountController, AccountSnapshot } from './account-controller.ts'
 import { request } from './api.ts'
@@ -22,7 +27,9 @@ import css from './suite.module.css'
 
 const PANEL = 'ipollowork-data'
 const PAGE = 50
+const PERSONAL = ':personal'
 const GLYPH: Record<DataFieldType, string> = { text: 'Aa', number: '#', boolean: '◐', json: '{}' }
+type Filter = 'all' | 'plugin' | 'public'
 
 interface Props {
   useDataLabels<T>(selector: (labels: DataLabels) => T): T
@@ -32,49 +39,60 @@ interface Props {
 
 const size = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB`
+const ownerKey = (app: DataAppSummary) => (app.owner.kind === 'user' ? PERSONAL : app.owner.id)
+const origin = (app: DataAppSummary, t: DataLabels) =>
+  app.workspace ? workspaceDisplayTitle(app.workspace, t.defaultWorkspace) : t.unknownOrigin
 
 function DataPanel(props: Props) {
   const t = props.useDataLabels(v => v)
   const signedIn = props.useAccount(s => s.account?.status === 'signed-in')
-  const [apps, setApps] = useState<DataAppSummary[] | null>(null)
+  const [list, setList] = useState<DataAppList | null>(null)
   const [failed, setFailed] = useState(false)
+  const [owner, setOwner] = useState(PERSONAL)
+  const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [open, setOpen] = useState<DataAppSummary | null>(null)
   const load = async () => {
     setFailed(false)
     try {
-      const items = (await request<{ items: DataAppSummary[] }>('/data/apps')).items
-      setApps(items)
-      setSelected(current => (current && items.some(app => app.id === current) ? current : items[0]?.id ?? null))
+      setList(await request<DataAppList>('/data/apps'))
     } catch (_error) {
       setFailed(true)
     }
   }
   useEffect(() => {
     if (signedIn) void load()
-    else setApps(null)
+    else {
+      setList(null)
+      setOpen(null)
+    }
   }, [signedIn])
-  const groups = useMemo(() => {
-    const needle = query.trim().toLowerCase()
-    const visible = (apps ?? []).filter(app => !needle || app.name.toLowerCase().includes(needle) || app.owner.name.toLowerCase().includes(needle))
-    const byWorkspace = new Map<string, DataAppSummary[]>()
-    for (const app of visible) byWorkspace.set(app.workspace, [...(byWorkspace.get(app.workspace) ?? []), app])
-    return [...byWorkspace.entries()].sort(([a], [b]) => (a === '' ? 1 : b === '' ? -1 : a.localeCompare(b)))
-  }, [apps, query])
+  const tabs = useMemo(() => [
+    { id: PERSONAL, name: t.personal },
+    ...(list?.organizations ?? []).map(org => ({ id: org.id, name: org.name })),
+  ], [list, t])
+  const owned = (list?.items ?? []).filter(app => ownerKey(app) === owner)
+  const needle = query.trim().toLowerCase()
+  const visible = owned.filter(app =>
+    (filter === 'all' || (filter === 'public') === app.public) &&
+    (!needle || app.name.toLowerCase().includes(needle) || origin(app, t).toLowerCase().includes(needle)))
 
-  const heading = (
-    <div className={css.heading}>
-      <div>
-        <h1>{t.title}</h1>
-        <p>{t.intro}</p>
-      </div>
-      {signedIn && (
-        <button type="button" className={css.iconGhost} aria-label={t.refresh} title={t.refresh} onClick={() => void load()}>
-          <IconRefreshOutlineRegular size={16} />
-        </button>
-      )}
-    </div>
-  )
+  if (open)
+    return (
+      <section className={css.page + ' ' + css.enterprisePage + ' ' + css.dataPage} data-ipw-data>
+        <AppDetail
+          summary={open}
+          ownerName={tabs.find(tab => tab.id === ownerKey(open))?.name ?? open.owner.name}
+          t={t}
+          back={() => setOpen(null)}
+          deleted={() => {
+            setOpen(null)
+            void load()
+          }}
+        />
+      </section>
+    )
+
   let body
   if (!signedIn)
     body = (
@@ -88,58 +106,78 @@ function DataPanel(props: Props) {
         <Button variant="outline" onClick={() => void load()}>{t.retry}</Button>
       </EmptyState>
     )
-  else if (!apps) body = <ListSkeleton rows={4} />
-  else if (!apps.length) body = <EmptyState title={t.empty} hint={t.emptyHint} />
+  else if (!list) body = <ListSkeleton rows={4} />
   else
     body = (
-      <div className={css.dataLayout}>
-        <nav className={css.dataNav} aria-label={t.title}>
-          <label className={css.dataSearch}>
-            <IconSearchOutlineRegular size={14} />
+      <>
+        <div className={css.lineTabs} role="tablist" aria-label={t.owners}>
+          {tabs.map(tab => (
+            <button key={tab.id} type="button" role="tab" aria-selected={tab.id === owner} onClick={() => setOwner(tab.id)}>
+              {tab.name}
+              <small className={css.dataTabCount}>{list.items.filter(app => ownerKey(app) === tab.id).length}</small>
+            </button>
+          ))}
+        </div>
+        <div className={css.dataToolbar}>
+          <div className={css.dataFilters} role="group" aria-label={t.kind}>
+            {([['all', t.all], ['plugin', t.plugins], ['public', t.publicApps]] as const).map(([id, label]) => (
+              <button key={id} type="button" className={css.filterChip} aria-pressed={filter === id} onClick={() => setFilter(id)}>
+                {label}
+                <small>{id === 'all' ? owned.length : owned.filter(app => (id === 'public') === app.public).length}</small>
+              </button>
+            ))}
+          </div>
+          <label className={css.miniSearch}>
+            <IconSearchOutlineRegular size={13} />
             <input value={query} placeholder={t.search} aria-label={t.search} onChange={event => setQuery(event.target.value)} />
           </label>
-          {groups.length === 0 && <p className={css.dataFaint}>{t.noMatch}</p>}
-          {groups.map(([workspace, items]) => (
-            <div key={workspace} className={css.dataGroup}>
-              <h3>{workspace ? workspaceDisplayTitle(workspace, t.defaultWorkspace) : t.other}</h3>
-              {items.map(app => (
-                <button
-                  key={app.id}
-                  type="button"
-                  className={css.departmentItem}
-                  aria-current={app.id === selected ? 'true' : undefined}
-                  onClick={() => setSelected(app.id)}
-                >
-                  <Monogram id={app.id} label={app.name} size={24} />
-                  <span>{app.name}</span>
-                  <small>{app.owner.kind === 'user' ? t.personal : app.owner.name}</small>
-                </button>
-              ))}
-            </div>
-          ))}
-        </nav>
-        {selected && (
-          <AppView
-            key={selected}
-            id={selected}
-            t={t}
-            onDeleted={() => {
-              setSelected(null)
-              void load()
-            }}
-          />
+        </div>
+        {visible.length === 0 ? (
+          owned.length ? <EmptyState title={t.noMatch} /> : <EmptyState title={t.empty} hint={t.emptyHint} />
+        ) : (
+          <div className={css.dataGrid}>
+            {visible.map(app => (
+              <button key={app.id} type="button" className={css.dataCard} onClick={() => setOpen(app)}>
+                <span className={css.dataCardTop}>
+                  <Monogram id={app.id} label={app.name} size={34} />
+                  <span className={css.chip} data-static data-tone={app.public ? 'strong' : undefined}>{app.public ? t.publicApp : t.plugin}</span>
+                </span>
+                <strong>{app.name}</strong>
+                <span className={css.dataOrigin}>
+                  <IconFolderOpenOutlineRegular size={12} />
+                  <span>{format(t.createdIn, { name: origin(app, t) })}</span>
+                </span>
+                <span className={css.dataCardFoot}>
+                  <span>{format(t.tables, { count: app.collections })} · {format(t.records, { count: app.records })}</span>
+                  <span>{new Date(app.updatedAt).toLocaleDateString()}</span>
+                </span>
+              </button>
+            ))}
+          </div>
         )}
-      </div>
+      </>
     )
   return (
     <section className={css.page + ' ' + css.enterprisePage + ' ' + css.dataPage} data-ipw-data>
-      {heading}
+      <div className={css.heading}>
+        <div>
+          <h1>{t.title}</h1>
+          <p>{t.intro}</p>
+        </div>
+        {signedIn && (
+          <button type="button" className={css.iconGhost} aria-label={t.refresh} title={t.refresh} onClick={() => void load()}>
+            <IconRefreshOutlineRegular size={16} />
+          </button>
+        )}
+      </div>
       {body}
     </section>
   )
 }
 
-function AppView({ id, t, onDeleted }: { id: string; t: DataLabels; onDeleted(): void }) {
+function AppDetail({ summary, ownerName, t, back, deleted }: {
+  summary: DataAppSummary; ownerName: string; t: DataLabels; back(): void; deleted(): void
+}) {
   const [app, setApp] = useState<DataAppDetail | null>(null)
   const [failed, setFailed] = useState(false)
   const [collection, setCollection] = useState('')
@@ -149,7 +187,7 @@ function AppView({ id, t, onDeleted }: { id: string; t: DataLabels; onDeleted():
   const [confirming, setConfirming] = useState(false)
   useEffect(() => {
     let live = true
-    request<{ app: DataAppDetail }>(`/data/apps/${id}`)
+    request<{ app: DataAppDetail }>(`/data/apps/${summary.id}`)
       .then(value => {
         if (!live) return
         setApp(value.app)
@@ -157,9 +195,9 @@ function AppView({ id, t, onDeleted }: { id: string; t: DataLabels; onDeleted():
       })
       .catch(() => { if (live) setFailed(true) })
     return () => { live = false }
-  }, [id])
+  }, [summary.id])
   const page = async (after: string | null) => {
-    const value = await request<{ items: DataRecord[]; next: string | null }>(`/data/apps/${id}/run`, {
+    const value = await request<{ items: DataRecord[]; next: string | null }>(`/data/apps/${summary.id}/run`, {
       method: 'POST',
       body: JSON.stringify({ find: collection, limit: PAGE, ...(after ? { after } : {}) }),
     })
@@ -171,90 +209,109 @@ function AppView({ id, t, onDeleted }: { id: string; t: DataLabels; onDeleted():
     setNext(null)
     if (collection) void page(null).catch(() => setFailed(true))
   }, [collection])
-  if (failed) return <div className={css.dataMain}><EmptyState title={t.loadFailed} /></div>
-  if (!app) return <div className={css.dataMain}><ListSkeleton rows={5} /></div>
-  const info = app.collectionList.find(c => c.name === collection)
+  const info = app?.collectionList.find(c => c.name === collection)
   const fields = info ? Object.entries(info.fields) : []
   return (
-    <div className={css.dataMain}>
-      <header className={css.dataHeader}>
-        <Monogram id={app.id} label={app.name} size={36} />
-        <div>
-          <h2>{app.name}</h2>
-          <div className={css.dataChips}>
-            <span className={css.chip} data-static>{app.owner.kind === 'user' ? t.personal : app.owner.name}</span>
-            <span className={css.chip} data-static data-tone={app.public ? 'strong' : undefined}>{app.public ? t.external : t.internal}</span>
-            <span className={css.dataFaint}>{format(t.records, { count: app.records })} · {size(app.bytes)}</span>
-          </div>
-        </div>
-        {app.canManage && (
-          <button type="button" className={css.iconGhost} aria-label={t.deleteApp} title={t.deleteApp} onClick={() => setConfirming(true)}>
-            <IconTrashOutlineRegular size={16} />
-          </button>
-        )}
-      </header>
-      {app.public && (
-        <div className={css.dataKeys}>
-          <CopyRow label={t.endpoint} value={app.endpoint} t={t} />
-          <CopyRow label={t.publicKey} value={app.publicKey} t={t} />
-          <p>{t.publicHint}</p>
-        </div>
-      )}
-      {app.collectionList.length === 0 ? (
-        <EmptyState title={t.noCollections} />
-      ) : (
-        <>
-          <div className={css.lineTabs} role="tablist">
+    <>
+      <nav className={css.dataCrumbs} aria-label={t.title}>
+        <button type="button" onClick={back}><IconChevronLeftOutlineRegular size={14} />{t.title}</button>
+        <span aria-hidden>/</span>
+        <span>{ownerName}</span>
+        <span aria-hidden>/</span>
+        <strong>{summary.name}</strong>
+      </nav>
+      {failed ? <EmptyState title={t.loadFailed} /> : !app ? <ListSkeleton rows={5} /> : (
+        <div className={css.dataDetail}>
+          <aside className={css.dataSide}>
+            <div className={css.dataSideHead}>
+              <Monogram id={app.id} label={app.name} size={40} />
+              <strong>{app.name}</strong>
+              <span className={css.dataChips}>
+                <span className={css.chip} data-static>{ownerName}</span>
+                <span className={css.chip} data-static data-tone={app.public ? 'strong' : undefined}>{app.public ? t.publicApp : t.plugin}</span>
+              </span>
+              <span className={css.dataOrigin}>
+                <IconFolderOpenOutlineRegular size={12} />
+                <span>{format(t.createdIn, { name: origin(app, t) })}</span>
+              </span>
+              <span className={css.dataFaint}>{format(t.records, { count: app.records })} · {size(app.bytes)}</span>
+            </div>
+            <div className={css.dataSideLabel}>{t.tablesLabel}</div>
+            {app.collectionList.length === 0 && <p className={css.dataFaint}>{t.noCollections}</p>}
             {app.collectionList.map(c => (
-              <button key={c.name} type="button" role="tab" aria-selected={c.name === collection} onClick={() => setCollection(c.name)}>
-                {c.name}
-                <small className={css.dataTabCount}>{c.records}</small>
-                {c.public.includes('create') && <span className={css.dataTabTag}>{t.publicCreate}</span>}
-                {c.public.includes('read') && <span className={css.dataTabTag}>{t.publicRead}</span>}
+              <button key={c.name} type="button" className={css.departmentItem} aria-current={c.name === collection ? 'true' : undefined}
+                onClick={() => setCollection(c.name)}>
+                <IconDatabaseOutlineRegular size={14} />
+                <span>{c.name}</span>
+                {c.public.length > 0 && <i className={css.dataPublicDot} title={c.public.map(p => (p === 'read' ? t.publicRead : t.publicCreate)).join(' · ')} />}
+                <small>{c.records}</small>
               </button>
             ))}
-          </div>
-          <div className={css.dataTableWrap}>
-            <table className={css.dataTable}>
-              <thead>
-                <tr>
-                  <th className={css.dataIndex} />
-                  {fields.map(([name, type]) => (
-                    <th key={name}><span className={css.dataGlyph}>{GLYPH[type]}</span>{name}</th>
-                  ))}
-                  <th><span className={css.dataGlyph}><IconDatabaseOutlineRegular size={11} /></span>{t.createdAt}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(rows ?? []).map((row, index) => (
-                  <tr key={row.id}>
-                    <td className={css.dataIndex}>{index + 1}</td>
-                    {fields.map(([name, type]) => (
-                      <td key={name} data-type={type} title={cellTitle(row[name])}>{cell(row[name], type, t)}</td>
-                    ))}
-                    <td className={css.dataFaint}>{new Date(row.createdAt).toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {rows === null && <ListSkeleton rows={3} />}
-            {rows?.length === 0 && <p className={css.dataEmptyRows}>{t.noRecords}</p>}
-          </div>
-          <footer className={css.dataFooter}>
-            <span>{format(t.records, { count: info?.records ?? 0 })} · {format(t.fields, { count: fields.length })}</span>
-            {next && (
-              <Button variant="outline" disabled={busy} onClick={() => {
-                setBusy(true)
-                void page(next).catch(() => setFailed(true)).finally(() => setBusy(false))
-              }}>{t.loadMore}</Button>
+            {app.canManage && (
+              <button type="button" className={css.dataDanger} onClick={() => setConfirming(true)}>
+                <IconTrashOutlineRegular size={13} />{t.deleteApp}
+              </button>
             )}
-          </footer>
-        </>
+          </aside>
+          <div className={css.dataMain}>
+            {app.public && (
+              <div className={css.dataKeys}>
+                <CopyRow label={t.endpoint} value={app.endpoint} t={t} />
+                <CopyRow label={t.publicKey} value={app.publicKey} t={t} />
+                <p>{t.publicHint}</p>
+              </div>
+            )}
+            {info ? (
+              <>
+                <header className={css.dataTableHead}>
+                  <h2>{info.name}</h2>
+                  {info.public.includes('create') && <span className={css.dataTabTag}>{t.publicCreate}</span>}
+                  {info.public.includes('read') && <span className={css.dataTabTag}>{t.publicRead}</span>}
+                  <span className={css.dataFaint}>{format(t.records, { count: info.records })} · {format(t.fields, { count: fields.length })}</span>
+                </header>
+                <div className={css.dataTableWrap}>
+                  <table className={css.dataTable}>
+                    <thead>
+                      <tr>
+                        <th className={css.dataIndex} />
+                        {fields.map(([name, type]) => (
+                          <th key={name}><span className={css.dataGlyph}>{GLYPH[type]}</span>{name}</th>
+                        ))}
+                        <th>{t.createdAt}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(rows ?? []).map((row, index) => (
+                        <tr key={row.id}>
+                          <td className={css.dataIndex}>{index + 1}</td>
+                          {fields.map(([name, type]) => (
+                            <td key={name} data-type={type} title={cellTitle(row[name])}>{cell(row[name], type, t)}</td>
+                          ))}
+                          <td className={css.dataFaint}>{new Date(row.createdAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {rows === null && <ListSkeleton rows={3} />}
+                  {rows?.length === 0 && <p className={css.dataEmptyRows}>{t.noRecords}</p>}
+                </div>
+                {next && (
+                  <div className={css.dataFooter}>
+                    <Button variant="outline" disabled={busy} onClick={() => {
+                      setBusy(true)
+                      void page(next).catch(() => setFailed(true)).finally(() => setBusy(false))
+                    }}>{t.loadMore}</Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <EmptyState title={t.noCollections} hint={t.noCollectionsHint} />
+            )}
+          </div>
+        </div>
       )}
-      {confirming && (
-        <DeleteDialog app={app} t={t} close={() => setConfirming(false)} deleted={onDeleted} />
-      )}
-    </div>
+      {confirming && app && <DeleteDialog app={app} t={t} close={() => setConfirming(false)} deleted={deleted} />}
+    </>
   )
 }
 

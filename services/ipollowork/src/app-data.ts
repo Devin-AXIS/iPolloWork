@@ -350,9 +350,9 @@ export class AppData {
   /**
    * List personal apps and apps of the caller's organizations.
    * @param actor - the signed-in account.
-   * @returns apps, most recently changed first.
+   * @returns apps, most recently changed first, and every organization the caller belongs to, including those without apps.
    */
-  async apps(actor: Actor): Promise<AppSummary[]> {
+  async apps(actor: Actor): Promise<{ items: AppSummary[]; organizations: { id: string; name: string }[] }> {
     const orgs = await this.organizations(actor);
     const rows = await this.data.all<
       AppRow & { collections: number; is_public: boolean }
@@ -366,7 +366,7 @@ export class AppData {
       actor.id,
       JSON.stringify([...orgs.keys()]),
     );
-    return rows.map((row) => {
+    const items = rows.map((row) => {
       const org = orgs.get(row.owner_id);
       return this.summary(
         row,
@@ -378,6 +378,7 @@ export class AppData {
         row.is_public,
       );
     });
+    return { items, organizations: [...orgs].map(([id, org]) => ({ id, name: org.name })) };
   }
 
   /**

@@ -8,7 +8,7 @@ import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { AccountService } from './account.ts'
 import { AppDataRejection, SuiteError } from './errors.ts'
 import type {
-  DataApp, DataAppDetail, DataAppSummary, DataCollection, DataRecord, DataStatement, IpolloData,
+  DataApp, DataAppDetail, DataAppList, DataCollection, DataRecord, DataStatement, IpolloData,
 } from '../shared/app-data.ts'
 
 const BASE = '/api/data/v1/apps'
@@ -34,9 +34,10 @@ const asRecord = (value: unknown) => record.parse(value) as DataRecord
 export class AppDataService implements IpolloData {
   constructor(private readonly account: AccountService) {}
 
-  /** @returns the signed-in account's personal and organization apps. */
-  async apps(): Promise<DataAppSummary[]> {
-    return z.object({ items: z.array(summary) }).parse(await this.account.request(BASE)).items
+  /** @returns the signed-in account's personal and organization apps, and every organization it belongs to. */
+  async apps(): Promise<DataAppList> {
+    return z.object({ items: z.array(summary), organizations: z.array(z.object({ id: z.string(), name: z.string() })) })
+      .parse(await this.account.request(BASE))
   }
   /**
    * Return the app with this name, creating it on first use.
@@ -106,7 +107,7 @@ export class AppDataService implements IpolloData {
  * @returns the JSON response body.
  */
 export async function appDataRoute(service: AppDataService, method: string, path: string, read: () => Promise<unknown>): Promise<unknown> {
-  if (path === '' && method === 'GET') return { items: await service.apps() }
+  if (path === '' && method === 'GET') return service.apps()
   const match = /^\/([0-9a-f-]{36})(\/run)?$/.exec(path)
   if (!match) throw new SuiteError('IPW_NOT_FOUND', 404)
   const id = match[1]!

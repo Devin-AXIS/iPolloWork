@@ -88,7 +88,7 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
   };
   app.get("/api/data/v1/apps", async (c) => {
     const who = await member(c);
-    return c.json({ items: await ready().apps(who.actor) });
+    return c.json(await ready().apps(who.actor));
   });
   app.post("/api/data/v1/apps", async (c) => {
     const who = await member(c);

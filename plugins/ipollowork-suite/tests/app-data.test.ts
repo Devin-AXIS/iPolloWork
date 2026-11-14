@@ -27,7 +27,7 @@ function fixture() {
     calls.push({ method: init?.method ?? 'GET', path, body })
     if (path === '/api/v1/me/orgs') return json({ items: [{ id: 'org-1', name: 'Acme', role: 'member' }] })
     if (path === '/api/data/v1/apps' && init?.method === 'POST') return json({ app: detail, created: true }, 201)
-    if (path === '/api/data/v1/apps') return json({ items: [detail] })
+    if (path === '/api/data/v1/apps') return json({ items: [detail], organizations: [{ id: 'org-1', name: 'Acme' }] })
     if (path.endsWith('/run')) {
       if ('update' in body) return json({ error: '字段 title 是文本，不能写入数字', code: 'DATA_FIELD_TYPE' }, 400)
       if ('insert' in body || 'get' in body) return json({ item: book })
