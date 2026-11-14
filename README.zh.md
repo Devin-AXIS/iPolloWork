@@ -1,96 +1,104 @@
-# DeepSeek Harness
+# iPolloWork
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+<p align="center">
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/latest"><img src="https://img.shields.io/github/v/release/Devin-AXIS/iPolloWork?display_name=tag&amp;sort=semver" alt="Latest release" /></a>
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases"><img src="https://img.shields.io/github/downloads/Devin-AXIS/iPolloWork/total" alt="GitHub downloads" /></a>
+  <a href="https://github.com/Devin-AXIS/iPolloWork/stargazers"><img src="https://img.shields.io/github/stars/Devin-AXIS/iPolloWork?style=flat" alt="GitHub stars" /></a>
+  <a href="https://x.com/iPolloWork"><img src="https://img.shields.io/badge/X%20Global-%40iPolloWork-000000?logo=x&amp;logoColor=white" alt="Follow iPolloWork on X" /></a>
+  <a href="https://x.com/iPolloCN"><img src="https://img.shields.io/badge/X%20%E4%B8%AD%E6%96%87-%40iPolloCN-000000?logo=x&amp;logoColor=white" alt="Follow iPolloCN on X" /></a>
+  <a href="https://www.bestpractices.dev/projects/14127"><img src="https://www.bestpractices.dev/projects/14127/badge" alt="OpenSSF Best Practices" /></a>
+  <a href="https://www.cloudflare.com/startups/"><img src="https://img.shields.io/badge/Cloudflare-for%20Startups-F38020?logo=cloudflare&amp;logoColor=white" alt="Cloudflare for Startups" /></a>
+  <a href="https://github.com/opea-project"><img src="https://img.shields.io/badge/OPEA-Open%20Platform%20for%20Enterprise%20AI-ff7a00" alt="OPEA: Open Platform for Enterprise AI" /></a>
+</p>
 
-它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
+<p align="center">
+  <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/daily?language=TypeScript" alt="TypeScript repository daily trend | Trendshift" width="250" height="55" /></a>
+  <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/weekly?language=TypeScript" alt="TypeScript repository weekly trend | Trendshift" width="250" height="55" /></a>
+</p>
 
-文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+**面向人与 AI 智能体团队的企业级协作平台，基于开源 DeepSeek Harness 构建。**
 
-## 开发者预览
+https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
-DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
+[下载原版演示视频](docs/assets/ipollowork-demo.mp4)
 
-运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
+iPolloWork 把多 Agent 团队、共享项目、插件、Skills 和可编辑成果放进同一个工作空间。总助手协调专业智能体，人可以共享上下文、查看进度，并围绕代码、文档、演示文稿、网站、设计和视频继续协作。
+
+上方保留 iPolloWork 原版演示视频。当前 `main` 分支使用原生 DeepSeek Harness 运行时；之前的多引擎版保留在 [`ipollowork-multi-engine`](https://github.com/Devin-AXIS/iPolloWork/tree/ipollowork-multi-engine) 分支。
+
+<div align="center">
+  <h3>加入 iPolloWork 官方微信交流群</h3>
+  <p>使用微信扫码，获取产品更新并参与社区交流。</p>
+  <img src="./docs/assets/ipollowork-official-wechat-group.jpg" alt="iPolloWork 官方微信交流群二维码" width="220" />
+</div>
+
+## 主要能力
+
+- **人与智能体团队协作** — 在同一个工作空间使用总助手、可复用专业智能体和原生任务委派。
+- **企业项目** — 组织成员和部门，授予项目权限，共享文件与项目记忆，并审核提交的改动。
+- **实时协作** — 分享原生会话，让获授权的人查看或参与，也可以通过分支独立继续。
+- **插件与 Skills** — 沿用原生插件生命周期和精选市场，集成即时通信与项目专属智能体指令。
+- **可编辑创作** — 使用 Design、Video 页面制作演示文稿、网站和视觉内容，生成后继续编辑。
+- **共享服务与应用数据** — 通过 HTTP 发现账号获授权的 AI 能力，为小型应用提供记录存储，无需另建数据库。
 
 <a id="run"></a>
 
-## 运行
-
-### 通过 `npm` 运行
-
-安装 `Node.js`，然后运行：
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
-
 <a id="run-from-source"></a>
 
-### 从源码运行
+## 从源码启动
 
-如需从仓库源码运行：
+需要 **Node.js 24.15 或更新版本**及 **pnpm 11**。在 macOS 或 Linux 终端执行：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git
+cd iPolloWork
 pnpm install
-pnpm run build
+cd plugins/ipollowork-suite
+npm ci --ignore-scripts --workspaces=false
+cd ../..
+pnpm run build --profile local
+cd plugins/ipollowork-suite
+npm run link:workspace
+npm run build
+cd ../..
+pnpm dsh plugin --profile web add "link:$(pwd)/plugins/ipollowork-suite"
 pnpm dsh web
 ```
 
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
+Windows PowerShell 使用相同命令，但将安装插件的一行替换为：
 
-## 社区与支持
-
-- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群！扫描下方二维码填写入群问卷，小助手会定期发送入群邀请。
-
-<table>
-  <thead>
-    <tr>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
-
-## 参与贡献
-
-参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
-
-## 开发
-
-请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
-
-`pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。
-
-面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
-
-## 引用
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
+```powershell
+pnpm dsh plugin --profile web add "link:$((Get-Location).Path)/plugins/ipollowork-suite"
 ```
+
+打开启动器输出的本地地址。套件会在原生 Web 界面中加入 iPolloWork 的账号、智能体和插件页面。已配置的账号服务和组织功能需要登录；本地模型提供方继续使用各自的凭据。不要把账号或供应商 Key 粘贴进项目页面。
+
+账号服务单独部署。[部署说明](services/ipollowork/README.zh.md)介绍 PostgreSQL、账号配置和存储；[能力 API 文档](services/ipollowork/docs/capabilities.md)介绍对外 HTTP 接入。套件默认连接 `https://work.ipollo.net`；自建服务请按[套件说明](plugins/ipollowork-suite/README.zh.md)配置 `accountOrigin`。
+
+## 桌面端与开发
+
+源码 Web 界面可在 macOS、Windows 和 Linux 运行。原生桌面开发和安装包构建参见[桌面说明](apps/desktop/README.zh.md)及[打包说明](apps/desktop/packaging/README.zh.md)。[GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases)中的已发布文件可能属于之前的多引擎版，安装前请查看对应版本说明。
+
+日常开发参见[开发指南](docs/development.zh.md)、[集成概览](integrations/README.zh.md)和[架构文档](docs/architecture.zh.md)。智能体工作规范见 [AGENTS.md](AGENTS.md)。本分支使用 DeepSeek Harness 执行任务，不会另启一套智能体引擎。
+
+## 社区与贡献
+
+通过 [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues)提交 iPolloWork 问题和需求。贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.zh.md)，运行智能体任务前请阅读 [SAFETY.md](SAFETY.zh.md)。上游运行时由 [DeepSeek](https://github.com/deepseek-ai/deepseek-harness)维护。
+
+## Star History
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=Devin-AXIS%2FiPolloWork&amp;type=date&amp;legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" />
+      <img alt="iPolloWork Star History" src="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" width="900" />
+    </picture>
+  </a>
+</p>
 
 ## 许可证
 
-[MIT](LICENSE)
-
-第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+DeepSeek Harness 核心保留 [MIT 许可证](LICENSE)及上游署名。iPolloWork 套件和账号服务目前声明为 `UNLICENSED`；提供源码用于查看，并不等于授予开源使用许可。第三方组件保留各自条款，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

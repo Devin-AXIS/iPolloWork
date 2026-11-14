@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-The `dsh` branch contains the upstream DSH runtime, the iPolloOS enterprise connector, the iPolloWork suite and its independent account service. Each application keeps its own dependencies, tests and deployment lifecycle.
+The `main` branch contains the upstream DSH runtime, the iPolloOS enterprise connector, the iPolloWork suite and its independent account service. Each application keeps its own dependencies, tests and deployment lifecycle.
 
 | Location | Included capability |
 | --- | --- |

@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-`dsh` 分支包含上游 DSH 运行时、iPolloOS 企业连接器、iPolloWork 套件及其独立账号服务。每个应用分别管理自己的依赖、测试和部署生命周期。
+`main` 分支包含上游 DSH 运行时、iPolloOS 企业连接器、iPolloWork 套件及其独立账号服务。每个应用分别管理自己的依赖、测试和部署生命周期。
 
 | 位置 | 包含的能力 |
 | --- | --- |

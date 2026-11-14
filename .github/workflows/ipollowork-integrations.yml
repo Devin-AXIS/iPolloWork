@@ -26,11 +26,18 @@ jobs:
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '24.15.0'
+      - uses: pnpm/action-setup@v5.0.0
+      - name: Build matching DSH workspace
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build:artifacts
       - name: Check enterprise connector
         run: npm run check --prefix plugins/ipollo-enterprise
       - name: Install suite dependencies
         working-directory: plugins/ipollowork-suite
-        run: npm ci --ignore-scripts --workspaces=false
+        run: |
+          npm ci --ignore-scripts --workspaces=false
+          npm run link:workspace
       - name: Check and package suite
         working-directory: plugins/ipollowork-suite
         run: |

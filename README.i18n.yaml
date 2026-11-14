@@ -2,33 +2,24 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write README.md
-/deepseek-harness:
-  en: f68c4f080ce55ff2
-  zh: 88a76d7f7f0b260e
-/deepseek-harness/developer-preview:
-  en: 4ef4d8a71ac143f0
-  zh: 1bfc3149ba8e5543
-/deepseek-harness/run:
-  en: 4e0248e4c6474fc6
-  zh: eb2fb8d78c7d6bc0
-/deepseek-harness/run/run-from-npm:
-  en: e22005cd42e6cbad
-  zh: 0f536f4208df1d60
-/deepseek-harness/run/run-from-source:
-  en: 819e3f7c144d0d64
-  zh: de815f040975dba7
-/deepseek-harness/community-and-support:
-  en: 20acf6451fdc869b
-  zh: d06246dd019ecef7
-/deepseek-harness/contributing:
-  en: cabc2d3e9f8898bd
-  zh: 83b6d238bae29ce3
-/deepseek-harness/development:
-  en: 803ca2b11b497bed
-  zh: 8b4071eb0e7783ef
-/deepseek-harness/citation:
-  en: 6704e9e5a8d49a91
-  zh: 85c9cdd8d56f8e9d
-/deepseek-harness/license:
-  en: 926995344fc1c72b
-  zh: c92fab5abf85932f
+/ipollowork:
+  en: 63cbd00466644512
+  zh: 6760c097b5f467f8
+/ipollowork/what-makes-it-different:
+  en: 9b5b498a1e3b0cbd
+  zh: 3753e46ef8b52729
+/ipollowork/start-from-source:
+  en: dedcb88fb156fbc7
+  zh: b002b2c1e0888515
+/ipollowork/desktop-and-development:
+  en: eb5b1ae10798b755
+  zh: 4187c3f530538faa
+/ipollowork/community-and-contributing:
+  en: 76b09d14ba813ef8
+  zh: 1d486b6643711b3c
+/ipollowork/star-history:
+  en: 822c9bc9d88a7204
+  zh: 822c9bc9d88a7204
+/ipollowork/license:
+  en: 3787524baf282e4a
+  zh: 238264556a50f217

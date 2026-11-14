@@ -6,7 +6,7 @@
 
 ## 开发
 
-需要 Node 24.9 或更新版本。运行 `npm ci`、`npm run check` 和 `npm pack`。软件包包含编译后的 Host 与 Client 入口、样式、品牌资源和人工维护的目录。安装期间不会运行构建脚本。
+需要 Node 24.15 或更新版本。在本仓库中先安装并构建根工作区，再从本目录执行 `npm ci --ignore-scripts --workspaces=false`、`npm run link:workspace`、`npm run check` 和 `npm pack`。链接命令使用版本匹配的本地 DSH 包；同版本的注册表发行包可能尚未包含本工作区的原生扩展。包内包含编译后的 Host、Client、样式、品牌资源和精选目录，安装时不运行构建脚本。
 
 `dependencies` 声明 DSH 软件包、共享的原生 pi-ai 提供方库和 `@matrix-org/olm`；后者的 WASM 文件从磁盘加载。其余第三方库在构建时打包进 `lib`。DSH 在每个进程内将已启用 Bundle 的依赖闭包中的每个包名映射到一个目录。如果与其他 Bundle 共享库名，例如 `qrcode` 引入的 `yargs`，停用套件时该库会切换到另一个 Bundle 的副本，DSH 因而会要求重启，而不能立即停用套件。
 

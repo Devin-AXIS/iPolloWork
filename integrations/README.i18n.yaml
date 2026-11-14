@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write integrations/README.md
 /ipollowork-dsh-integration:
-  en: 7c6a058752e80e23
-  zh: 729c08b460e4f01a
+  en: 962bc32dcb68da01
+  zh: 483cb2029fe82103
