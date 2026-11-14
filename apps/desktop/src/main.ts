@@ -8,6 +8,7 @@ import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -73,6 +74,9 @@ import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 
 app.setName('iPolloWork')
+const productData = join(app.getPath('appData'), 'iPolloWork Desktop')
+mkdirSync(productData, { recursive: true })
+app.setPath('userData', productData)
 process.env.DSH_HOME ??= join(app.getPath('userData'), 'harness')
 
 let focusPrimaryWindow = (): void => {}
