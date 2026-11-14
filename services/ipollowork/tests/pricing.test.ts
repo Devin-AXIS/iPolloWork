@@ -9,6 +9,7 @@ import { createService } from "../src/app.js";
 import { ExecutionService } from "../src/execution.js";
 import {
   billingSchema,
+  rateSchema,
   reserveUsage,
   usageCost,
   validatePlanPrice,
@@ -254,12 +255,12 @@ test("pricing rejects stale cards and below-cost plans, and separates image toke
     { code: "SERVICE_PRICE_EXPIRED" },
   );
   const image = spec("image");
-  image.rates[0] = {
+  image.rates[0] = rateSchema.parse({
     ...rate,
     inputPerMillion: 15000000,
     imageInputPerMillion: 10000000,
     outputPerMillion: 25000000,
-  };
+  });
   const reserved = reserveUsage(image, {
     model: "fixture",
     n: 1,

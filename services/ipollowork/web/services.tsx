@@ -11,6 +11,9 @@ import {
 } from "lucide-react";
 import { api, text, count, type Row, type User } from "./api.js";
 import { Modal, Status, Table, useData } from "./components.js";
+import { ModelPricing } from "./model-pricing.js";
+import { billingSchema, type BillingSpec } from "../src/pricing.js";
+import type { ServiceModel } from "../src/model-catalog.js";
 
 import {
   serviceCategories,
@@ -18,22 +21,11 @@ import {
   type ServiceCategory,
 } from "../src/service-categories.js";
 
-type Model = {
-  category?: ServiceCategory;
-  id: string;
-  name: string;
-  contextWindow?: number;
-  maxTokens?: number;
-};
+type Model = ServiceModel;
 type Service = {
   category?: ServiceCategory;
   vendor?: string;
-  billing?: {
-    kind: string;
-    source: string;
-    validUntil: number;
-    [key: string]: unknown;
-  };
+  billing?: BillingSpec;
   timeoutMs?: number;
   models?: Model[];
   id: string;
@@ -156,6 +148,9 @@ export function Services({ user }: { user: User }) {
     );
   const [category, setCategory] = useState<ServiceCategory | "all">("all");
   const [editing, setEditing] = useState<Service | null>();
+  const [connection, setConnection] = useState<Service[]>();
+  const [syncing, setSyncing] = useState<string>();
+  const [notice, setNotice] = useState("");
   const [results, setResults] = useState<
     Record<string, { result: Probe; chat?: Probe } | "busy">
   >({});
@@ -172,7 +167,7 @@ export function Services({ user }: { user: User }) {
       const result = await api<Probe>("/api/v1/admin/services/probe", draft);
       const model = s.models?.[0]?.id;
       const chat =
-        result.ok && model
+        result.ok && model && s.category === "language"
           ? await api<Probe>("/api/v1/admin/services/probe", {
               ...draft,
               model,
@@ -222,6 +217,13 @@ export function Services({ user }: { user: User }) {
     }
   };
   const visibleServices=(data.data?.items??[]).filter(s=>category==="all"||(s.category??"language")===category);
+  const groups = Object.values(visibleServices.reduce<Record<string, Service[]>>((result, service) => { const key = service.keyId ?? service.id; (result[key] ??= []).push(service); return result; }, {}));
+  const sync = async (service: Service) => {
+    setSyncing(service.keyId); setError(""); setNotice("");
+    try { const result = await api<{ total: number; imported: number; unpriced: number }>(`/api/v1/admin/services/${service.id}/sync-models`, {}); setNotice(`已同步 ${result.total} 个模型，新增 ${result.imported} 个；${result.unpriced} 个需要配置价格`); data.reload(); }
+    catch (error) { setError(error instanceof Error ? error.message : "同步失败"); }
+    finally { setSyncing(undefined); }
+  };
   return (
     <>
       <div className="toolbar">
@@ -234,6 +236,7 @@ export function Services({ user }: { user: User }) {
         )}
       </div>
       <Status error={error} />
+      {notice && <p role="status">{notice}</p>}
       <div className="presets" role="group" aria-label="服务类型">
         <button
           aria-pressed={category === "all"}
@@ -273,7 +276,12 @@ export function Services({ user }: { user: User }) {
             )}
           </div>
         )}
-        {visibleServices.map((s) => {
+        {groups.map(group => <div className="provider-group" key={group[0].keyId ?? group[0].id}>
+          <div className="provider-heading"><div><strong>{group[0].provider === "aliyun-bailian" ? "阿里云百炼" : group[0].provider === "minimax" ? "MiniMax" : group[0].title}</strong><small>{group.some(row => row.configured) ? "Key 已配置" : "待配置 Key"} · 同一个 Key 供全部能力使用</small></div>{admin && <div className="row-actions">
+            {group[0].provider === "aliyun-bailian" && <button disabled={!group.some(row => row.configured) || syncing === group[0].keyId} onClick={() => void sync(group[0])}>{syncing === group[0].keyId ? "同步中…" : "同步全部模型"}</button>}
+            <button onClick={() => setConnection(group)}>配置 Key</button>
+          </div>}</div>
+          {group.map((s) => {
             const entry = results[s.id];
             const done = entry && entry !== "busy" ? entry : undefined;
             const passed = done
@@ -358,6 +366,7 @@ export function Services({ user }: { user: User }) {
               </div>
             );
           })}
+        </div>)}
       </section>
       <section className="panel usage">
         <div className="section-title">服务用量</div>
@@ -445,8 +454,30 @@ export function Services({ user }: { user: User }) {
           }}
         />
       )}
+      {connection && <ProviderConnection services={connection} close={() => setConnection(undefined)} saved={() => { setConnection(undefined); data.reload(); }} />}
     </>
   );
+}
+
+function ProviderConnection({ services, close, saved }: { services: Service[]; close(): void; saved(): void }) {
+  const service = services[0];
+  const [key, setKey] = useState("");
+  const [origin, setOrigin] = useState(new URL(service.baseUrl!).origin);
+  const [enabled, setEnabled] = useState(true);
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const save = async () => {
+    setBusy(true); setError("");
+    try { await api(`/api/v1/admin/service-connections/${service.keyId}`, { ...(key ? { key } : {}), origin, enabled }); saved(); }
+    catch (error) { setError(error instanceof Error ? error.message : "保存失败"); }
+    finally { setBusy(false); }
+  };
+  return <Modal title="配置服务连接" close={close}><div className="editor">
+    <p>一个 Key 统一用于该服务商的语言、图像、视频和语音等能力</p>
+    <label className="field"><span>服务域名</span><input type="url" value={origin} onChange={e => setOrigin(e.target.value)} /></label>
+    <label className="field"><span>API Key</span><input type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)} placeholder={service.configured ? "已保存，留空保持不变" : "填写 API Key"} /></label>
+    <label><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} /> 开放已定价的模型</label>
+    <Status error={error} /><div className="editor-foot"><span className="grow" /><button onClick={close}>取消</button><button className="primary" disabled={busy || (!key && !service.configured)} onClick={() => void save()}>{busy ? "保存中…" : "保存连接"}</button></div>
+  </div></Modal>;
 }
 
 function ServiceEditor({
@@ -488,7 +519,6 @@ function ServiceEditor({
   const [billingText, setBillingText] = useState(
     service?.billing ? JSON.stringify(service.billing, null, 2) : "",
   );
-  const [listed, setListed] = useState<string[]>([]);
   const [probe, setProbe] = useState<
     { result: Probe; chat?: Probe } | "busy"
   >();
@@ -503,7 +533,6 @@ function ServiceEditor({
   const choose = (id: string) => {
     setPreset(id);
     setProbe(undefined);
-    setListed([]);
     const p = presets.find((x) => x.provider === id);
     if (!p) {
       set({
@@ -539,7 +568,6 @@ function ServiceEditor({
       const result = await api<Probe>("/api/v1/admin/services/probe", draft());
       let selected = models;
       if (result.ok && result.models.length) {
-        setListed(result.models);
         if (!models.length) {
           selected = result.models
             .slice(0, result.models.length <= 6 ? 6 : 3)
@@ -560,12 +588,6 @@ function ServiceEditor({
       setError(e instanceof Error ? e.message : "测试失败");
     }
   };
-  const toggleModel = (id: string) =>
-    updateModels(
-      models.some((m) => m.id === id)
-        ? models.filter((m) => m.id !== id)
-        : [...models, { id, name: id, ...MODEL_DEFAULTS }],
-    );
   const save = async () => {
     setBusy(true);
     setError("");
@@ -620,7 +642,9 @@ function ServiceEditor({
       setBusy(false);
     }
   };
-  const chips = Array.from(new Set([...models.map((m) => m.id), ...listed]));
+  let parsedBilling: BillingSpec | undefined;
+  try { const parsed = billingSchema.safeParse(billingText ? JSON.parse(billingText) : undefined); if (parsed.success) parsedBilling = parsed.data; }
+  catch (_error) { /* The advanced editor preserves incomplete JSON until Save validates it. */ }
   const p = probe && probe !== "busy" ? probe : undefined;
   const passed = p ? p.result.ok && (p.chat?.ok ?? true) : false;
   return (
@@ -688,7 +712,7 @@ function ServiceEditor({
               placeholder="https://…/v1"
             />
           </label>
-          <label className="pill-field">
+          {fresh && <label className="pill-field">
             <span>
               <KeyRound size={13} />
               Key
@@ -698,9 +722,7 @@ function ServiceEditor({
               onChange={(e) => set({ key: e.target.value })}
               type="password"
               autoComplete="new-password"
-              placeholder={
-                service?.configured ? "已保存，留空保持不变" : "粘贴 API Key"
-              }
+              placeholder="粘贴 API Key"
             />
             <button
               type="button"
@@ -709,14 +731,14 @@ function ServiceEditor({
                 probe === "busy" ||
                 !form.baseUrl ||
                 !form.keyId ||
-                (!form.key && !service?.configured)
+                !form.key
               }
               onClick={() => void runProbe()}
             >
               <Zap size={13} />
               {probe === "busy" ? "测试中…" : "测试"}
             </button>
-          </label>
+          </label>}
         </div>
         {p && (
           <p className="probe wide" data-ok={passed}>
@@ -724,24 +746,7 @@ function ServiceEditor({
             {probeText(p.result, p.chat)}
           </p>
         )}
-        {chips.length > 0 && (
-          <div className="model-picker">
-            <small>开放给用户的模型</small>
-            <div>
-              {chips.map((id) => (
-                <button
-                  key={id}
-                  type="button"
-                  aria-pressed={models.some((m) => m.id === id)}
-                  onClick={() => toggleModel(id)}
-                >
-                  {models.some((m) => m.id === id) && <Check size={12} />}
-                  {id}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+        <ModelPricing models={models} setModels={updateModels} billing={parsedBilling} setBilling={value => setBillingText(JSON.stringify(value, null, 2))} category={form.category} source={form.baseUrl} />
         <details className="advanced">
           <summary>
             <ChevronRight size={14} />

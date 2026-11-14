@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, ArrowLeft, Copy, Download, Search } from "lucide-react";
 import { StorageQuota } from "./storage.js";
+import { planBudget } from "../src/pricing.js";
 import { api, count, date, text, type Row, type User } from "./api.js";
 import {
   ActionForm,
@@ -542,6 +543,8 @@ export function Plans({ user }: { user: User }) {
     );
   const [edit, setEdit] = useState<Row>(),
     [message, setMessage] = useState("");
+  const [planDraft, setPlanDraft] = useState({ amount: 99, points: 40000, kind: "membership" });
+  const openPlan = (row: Row) => { setPlanDraft({ amount: Number(row.amount ?? 9900) / 100, points: Number(row.points ?? 40000), kind: String(row.kind ?? "membership") }); setEdit(row); };
   const purchase = async (plan: Row, provider: string) => {
     try {
       const response = await api<{ url?: string; paid?: boolean }>(
@@ -558,7 +561,7 @@ export function Plans({ user }: { user: User }) {
     <>
       <div className="toolbar">
         <span>充值积分或开通会员权益</span>
-        {admin && <Add onClick={() => setEdit({})}>添加套餐</Add>}
+        {admin && <Add onClick={() => openPlan({})}>添加套餐</Add>}
       </div>
       <Message content={message} />
       <Status error={result.error} loading={!result.data} />
@@ -580,7 +583,7 @@ export function Plans({ user }: { user: User }) {
             </p>
             <div className="actions">
               {admin ? (
-                <button onClick={() => setEdit(r)}>编辑套餐</button>
+                <button onClick={() => openPlan(r)}>编辑套餐</button>
               ) : (
                 <>
                   <button
@@ -638,7 +641,7 @@ export function Plans({ user }: { user: User }) {
             </Field>
             <div className="form-grid">
               <Field label="类型">
-                <select name="kind" defaultValue={text(edit.kind) || "points"}>
+                <select name="kind" value={planDraft.kind} onChange={event => setPlanDraft({ ...planDraft, kind: event.target.value })}>
                   <option value="points">积分充值</option>
                   <option value="membership">会员</option>
                 </select>
@@ -658,7 +661,8 @@ export function Plans({ user }: { user: User }) {
                   step="0.01"
                   min="0"
                   required
-                  defaultValue={Number(edit.amount ?? 0) / 100}
+                  value={planDraft.amount}
+                  onChange={event => setPlanDraft({ ...planDraft, amount: Number(event.target.value) })}
                 />
               </Field>
               <Field label="到账积分">
@@ -667,7 +671,8 @@ export function Plans({ user }: { user: User }) {
                   type="number"
                   min="0"
                   required
-                  defaultValue={Number(edit.points ?? 0)}
+                  value={planDraft.points}
+                  onChange={event => setPlanDraft({ ...planDraft, points: Number(event.target.value) })}
                 />
               </Field>
               <Field label="会员天数">
@@ -688,6 +693,7 @@ export function Plans({ user }: { user: User }) {
                 />
               </Field>
             </div>
+            <PlanBudgetPreview {...planDraft} />
             <Field label="App Store 商品 ID（可选）">
               <input name="apple" defaultValue={text(edit.apple_product_id)} />
             </Field>
@@ -704,6 +710,16 @@ export function Plans({ user }: { user: User }) {
       )}
     </>
   );
+}
+function PlanBudgetPreview({ amount, points, kind }: { amount: number; points: number; kind: string }) {
+  const policy = useData<{ paymentFeeBps: number; minimumMarginBps: number; membershipOperatingReserveFen: number }>("/api/v1/admin/billing-policy");
+  if (!policy.data) return <Status loading={!policy.error} error={policy.error} />;
+  const budget = planBudget(Math.round(amount * 100), points, kind, policy.data);
+  return <div className="budget-preview" data-ok={budget.allowed}>
+    <div>模型成本上限 {(budget.modelCostFen / 100).toFixed(2)} 元 · 支付手续费预留 {(budget.feeFen / 100).toFixed(2)} 元</div>
+    <div>运营预留 {(budget.reserveFen / 100).toFixed(2)} 元 · 剩余 {(budget.remainingFen / 100).toFixed(2)} 元</div>
+    <div>当前策略最多发放 {budget.maximumPoints.toLocaleString("zh-CN")} 积分{!budget.allowed && "，请减少到账积分"}</div>
+  </div>;
 }
 export function UsersPage() {
   const [q, setQ] = useState(""),

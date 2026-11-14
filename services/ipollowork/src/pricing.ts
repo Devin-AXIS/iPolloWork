@@ -4,21 +4,37 @@ import type { Config } from "./config.js";
 import { ServiceError } from "./errors.js";
 
 const price = z.number().int().nonnegative().max(1_000_000_000);
-const rateSchema = z.object({
+const unitPrices = z.object({
+  inputPerMillion: price.default(0),
+  outputPerMillion: price.default(0),
+  cachedInputPerMillion: price.optional(),
+  cacheWritePerMillion: price.optional(),
+  inputUnitPrice: price.default(0),
+  outputUnitPrice: price.default(0),
+});
+export const rateSchema = unitPrices.extend({
   model: z.string().min(1),
-  inputPerMillion: price,
-  outputPerMillion: price,
+  free: z.boolean().default(false),
+  unit: z.enum(["token", "image", "video_second", "audio_second", "character", "request"]).optional(),
   imageInputPerMillion: price.default(0),
   maxInputTokens: z.number().int().positive(),
   maxOutputTokens: z.number().int().positive(),
+  maxUnits: z.number().positive().max(86400).default(60),
+  tiers: z.array(unitPrices.extend({
+    upToInputTokens: z.number().int().positive().optional(),
+    resolution: z.string().max(60).optional(),
+    audio: z.boolean().optional(),
+  })).max(30).default([]),
 });
+export type ModelRate = z.infer<typeof rateSchema>;
 export const billingSchema = z
   .object({
-    kind: z.enum(["chat", "image", "speech", "video"]),
+    kind: z.enum(["chat", "image", "speech", "video", "embedding", "audio", "request"]),
+    protocol: z.enum(["openai", "dashscope"]).default("openai"),
     source: z.url(),
     verifiedAt: z.number().int().positive(),
     validUntil: z.number().int().positive(),
-    rates: z.array(rateSchema).min(1).max(100),
+    rates: z.array(rateSchema).min(1).max(5000),
     charactersPerTenThousand: price.default(0),
     second768: price.default(0),
     second2k: price.default(0),
@@ -32,6 +48,20 @@ export interface BillingReservation {
   model: string;
   resolution?: string;
   micros: number;
+  rate?: ModelRate;
+  inputUnits?: number;
+}
+
+/** Provider-cost value of one credit, in millionths of CNY. */
+export const CREDIT_MICROS = 1000;
+
+/** A zero-valued draft is not a free model unless an operator explicitly marks it free. */
+export function hasModelPrice(spec: BillingSpec | undefined, model: string): boolean {
+  const rate = spec?.rates.find(rate => rate.model === model);
+  if (!spec || !rate) return false;
+  return rate.free || rate.inputPerMillion > 0 || rate.outputPerMillion > 0 || rate.inputUnitPrice > 0 || rate.outputUnitPrice > 0
+    || rate.tiers.some(tier => tier.inputPerMillion > 0 || tier.outputPerMillion > 0 || tier.inputUnitPrice > 0 || tier.outputUnitPrice > 0)
+    || (rate.unit === undefined && (spec.charactersPerTenThousand > 0 || spec.second768 > 0 || spec.second2k > 0));
 }
 
 function scaled(units: number, rate: number, divisor: number): number {
@@ -41,9 +71,92 @@ function scaled(units: number, rate: number, divisor: number): number {
     (BigInt(units) * BigInt(rate) + BigInt(divisor - 1)) / BigInt(divisor),
   );
 }
-export const costCredits = (micros: number): number => scaled(micros, 1, 1000);
+export const costCredits = (micros: number): number => scaled(micros, 1, CREDIT_MICROS);
 const object = z.record(z.string(), z.unknown());
 const units = z.number().int().nonnegative();
+
+/** Select a model's resolution/audio variant or context tier; absent variants are rejected. */
+function selectRate(rate: ModelRate, body: Record<string, unknown>, tokens: number): ModelRate {
+  if (!rate.tiers.length) return rate;
+  const parameters = object.parse(body.parameters ?? {});
+  const resolution = String(parameters.resolution ?? body.resolution ?? parameters.size ?? body.size ?? "").toLowerCase();
+  const audio = parameters.audio ?? body.audio;
+  const matches = rate.tiers.filter(tier =>
+    (tier.resolution === undefined || tier.resolution.toLowerCase() === resolution)
+    && (tier.audio === undefined || tier.audio === audio)
+    && (tier.upToInputTokens === undefined || tokens <= tier.upToInputTokens),
+  ).sort((a, b) => (a.upToInputTokens ?? Infinity) - (b.upToInputTokens ?? Infinity));
+  const selected = matches[0];
+  if (!selected) throw new ServiceError("SERVICE_PRICE_VARIANT_REQUIRED", 400, "请选择已定价的分辨率或模型参数");
+  return { ...rate, ...selected };
+}
+
+function inputImages(value: unknown): number {
+  if (Array.isArray(value)) return value.reduce<number>((sum, entry) => sum + inputImages(entry), 0);
+  if (!value || typeof value !== "object") return 0;
+  const entry = object.parse(value);
+  if (typeof entry.image === "string" || entry.type === "image_url" || entry.type === "input_image") return 1;
+  return Object.values(entry).reduce<number>((sum, entry) => sum + inputImages(entry), 0);
+}
+
+/** Read a terminal provider result. Pending tasks retain their pre-debited credits. */
+export function terminalUsage(response: unknown): { body: Record<string, unknown>; pending: boolean; failed: boolean } {
+  const body = object.parse(response);
+  const task = object.parse(body.output ?? body.task ?? body);
+  const status = String(task.task_status ?? task.status ?? "").toLowerCase();
+  return { body, pending: ["pending", "running", "processing", "queued"].includes(status), failed: ["failed", "cancelled", "canceled"].includes(status) };
+}
+
+function meteredReservation(spec: BillingSpec, rate: ModelRate, body: Record<string, unknown>): BillingReservation {
+  const parameters = object.parse(body.parameters ?? {});
+  const selected = selectRate(rate, body, rate.maxInputTokens);
+  let input = 0, output = 0;
+  switch (selected.unit) {
+    case "image":
+      input = inputImages(body.input ?? body.images ?? body.messages ?? {});
+      if (input > selected.maxUnits) throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
+      output = z.number().int().positive().max(selected.maxUnits).parse(parameters.n ?? body.n ?? 1);
+      break;
+    case "video_second":
+      output = z.number().positive().max(selected.maxUnits).parse(parameters.duration ?? body.duration);
+      input = selected.inputUnitPrice > 0 ? selected.maxUnits : 0;
+      break;
+    case "audio_second":
+      input = selected.maxUnits;
+      break;
+    case "character": {
+      const content = object.parse(body.input ?? body).text;
+      input = Array.from(z.string().max(200000).parse(content ?? body.text)).reduce((count, character) => count + (spec.protocol === "dashscope" && /[\p{Script=Han}\p{Script=Hangul}]/u.test(character) ? 2 : 1), 0);
+      break;
+    }
+    case "request": output = 1; break;
+    default: throw new ServiceError("SERVICE_PRICE_INVALID", 400);
+  }
+  return { spec, rate: selected, model: rate.model, inputUnits: input, micros: Math.ceil(input * selected.inputUnitPrice + output * selected.outputUnitPrice) };
+}
+
+function meteredCost(reservation: BillingReservation, response: unknown): number | null {
+  const state = terminalUsage(response);
+  if (state.pending) return null;
+  if (state.failed) return 0;
+  const rate = reservation.rate!;
+  const usage = object.parse(state.body.usage ?? object.parse(state.body.output ?? {}).usage ?? {});
+  let input = reservation.inputUnits ?? 0, output = 0;
+  switch (rate.unit) {
+    case "image": output = units.parse(usage.image_count ?? usage.output_image_count); break;
+    case "video_second":
+      input = z.number().nonnegative().parse(usage.input_video_duration ?? usage.input_seconds ?? 0);
+      output = z.number().nonnegative().parse(usage.output_video_duration ?? usage.duration ?? usage.output_seconds);
+      break;
+    case "audio_second": input = z.number().nonnegative().parse(usage.duration ?? usage.audio_duration ?? usage.seconds); break;
+    case "character":
+      if (state.body.code || state.body.error) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
+      break;
+    case "request": output = 1; break;
+    default: throw new ServiceError("SERVICE_PRICE_INVALID", 503);
+  }
+  return Math.ceil(input * rate.inputUnitPrice + output * rate.outputUnitPrice);
+}
 
 /** Prepare a conservative hold before dispatch and request authoritative usage when supported. */
 export function reserveUsage(
@@ -57,14 +170,21 @@ export function reserveUsage(
       "服务价格需要重新核对",
     );
   const rate = spec.rates.find((rate) => rate.model === body.model);
-  if (!rate) throw new ServiceError("SERVICE_MODEL_UNAVAILABLE", 403);
-  if (spec.kind === "speech") {
+  if (!rate || !hasModelPrice(spec, String(body.model))) throw new ServiceError("SERVICE_MODEL_UNAVAILABLE", 403);
+  if (body.enable_search === true || (Array.isArray(body.tools) && body.tools.some(tool => tool && typeof tool === "object" && "type" in tool && /web_search|web_fetch/.test(String(tool.type)))))
+    throw new ServiceError("SERVICE_OPERATION_UNPRICED", 400, "模型内置联网工具尚未配置计费");
+  if (rate.free) {
+    if (body.stream) body.stream_options = { ...object.parse(body.stream_options ?? {}), include_usage: true };
+    return { spec, model: rate.model, micros: 0 };
+  }
+  if (rate.unit && rate.unit !== "token") return meteredReservation(spec, rate, body);
+  if (spec.kind === "speech" && rate.unit === undefined) {
     const text = z.string().max(20000).parse(object.parse(body.input).text);
     return {
       spec,
       model: rate.model,
       micros: scaled(
-        Array.from(text).length,
+        Array.from(text).reduce((count, character) => count + (spec.protocol === "dashscope" && /[\p{Script=Han}\p{Script=Hangul}]/u.test(character) ? 2 : 1), 0),
         spec.charactersPerTenThousand,
         10000,
       ),
@@ -111,7 +231,7 @@ export function reserveUsage(
     .positive()
     .max(rate.maxOutputTokens)
     .parse(
-      body.max_completion_tokens ?? body.max_tokens ?? rate.maxOutputTokens,
+      body.max_completion_tokens ?? body.max_tokens ?? object.parse(body.parameters ?? {}).max_tokens ?? rate.maxOutputTokens,
     );
   if (body.stream)
     body.stream_options = {
@@ -119,17 +239,20 @@ export function reserveUsage(
       include_usage: true,
     };
   const bytes = Buffer.byteLength(JSON.stringify(body));
-  const messages = z.array(object).min(1).parse(body.messages);
+  const inputBody = typeof body.input === "object" && body.input !== null && !Array.isArray(body.input) ? object.parse(body.input) : {};
+  const messages = spec.kind === "embedding" || (spec.kind === "speech" && inputBody.text !== undefined) ? [object.parse({ content: body.input })] : z.array(object).min(1).parse(body.messages ?? inputBody.messages);
   const multimodal = JSON.stringify(messages).includes('"image_url"');
   if (!multimodal && bytes + 2048 > rate.maxInputTokens)
     throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
   const input = multimodal ? rate.maxInputTokens : bytes + 2048;
+  const selected = selectRate(rate, body, input);
   return {
     spec,
     model: rate.model,
+    rate: selected,
     micros:
-      scaled(input, rate.inputPerMillion, 1000000) +
-      scaled(maximum, rate.outputPerMillion, 1000000),
+      scaled(input, Math.max(selected.inputPerMillion, selected.cachedInputPerMillion ?? 0, selected.cacheWritePerMillion ?? 0), 1000000) +
+      scaled(spec.kind === "embedding" ? 0 : maximum, selected.outputPerMillion, 1000000),
   };
 }
 
@@ -141,6 +264,8 @@ export function usageCost(
   const body = object.parse(response),
     spec = reservation.spec,
     rate = spec.rates.find((rate) => rate.model === reservation.model)!;
+  if (rate.free) return 0;
+  if (reservation.rate?.unit && reservation.rate.unit !== "token") return meteredCost(reservation, body);
   if (spec.kind === "video") {
     const task = object.parse(body.task ?? body);
     if (["failed", "cancelled", "canceled"].includes(String(task.status)))
@@ -155,7 +280,7 @@ export function usageCost(
       Math.max(0, units.parse(usage.input_image_count) - 5) * spec.imageInput
     );
   }
-  if (spec.kind === "speech") {
+  if (spec.kind === "speech" && rate.unit === undefined) {
     if (body.code || body.error)
       throw new ServiceError("SERVICE_INVALID_USAGE", 503);
     return reservation.micros;
@@ -173,9 +298,17 @@ export function usageCost(
       scaled(units.parse(usage.output_tokens), rate.outputPerMillion, 1000000)
     );
   }
+  const input = units.parse(usage.prompt_tokens ?? usage.input_tokens ?? usage.total_tokens);
+  const chosen = reservation.rate && rate.tiers.some(tier => tier.upToInputTokens !== undefined) ? selectRate(rate, { parameters: {} }, input) : reservation.rate ?? rate;
+  const details = object.parse(usage.prompt_tokens_details ?? usage.input_tokens_details ?? {});
+  const cached = units.parse(usage.prompt_cache_hit_tokens ?? details.cached_tokens ?? 0);
+  const written = units.parse(usage.cache_creation_input_tokens ?? 0);
+  if (cached + written > input) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
   return (
-    scaled(units.parse(usage.prompt_tokens), rate.inputPerMillion, 1000000) +
-    scaled(units.parse(usage.completion_tokens), rate.outputPerMillion, 1000000)
+    scaled(input - cached - written, chosen.inputPerMillion, 1000000)
+    + scaled(cached, chosen.cachedInputPerMillion ?? chosen.inputPerMillion, 1000000)
+    + scaled(written, chosen.cacheWritePerMillion ?? chosen.inputPerMillion, 1000000)
+    + scaled(units.parse(usage.completion_tokens ?? usage.output_tokens ?? (spec.kind === "embedding" ? 0 : undefined)), chosen.outputPerMillion, 1000000)
   );
 }
 
@@ -226,16 +359,20 @@ export function validatePlanPrice(
       400,
       "请先配置该币种的成本汇率",
     );
-  const net =
-    (BigInt(plan.amount) * BigInt(10000 - policy.paymentFeeBps)) / 10000n -
-    BigInt(
-      plan.kind === "membership" ? policy.membershipOperatingReserveFen : 0,
-    );
-  const budget = (net * BigInt(10000 - policy.minimumMarginBps)) / 10000n;
-  if (budget < (BigInt(plan.points) + 9n) / 10n)
+  if (!planBudget(plan.amount, plan.points, plan.kind, policy).allowed)
     throw new ServiceError(
       "PLAN_BELOW_COST",
       400,
       "套餐价格低于成本保护线，请调整价格或积分",
     );
+}
+
+/** Calculate the sellable credit ceiling after configured fees, operating reserve and margin. */
+export function planBudget(amount: number, points: number, kind: string, policy: Pick<Config, "paymentFeeBps" | "minimumMarginBps" | "membershipOperatingReserveFen">) {
+  const feeFen = Math.ceil(amount * policy.paymentFeeBps / 10000);
+  const reserveFen = kind === "membership" ? policy.membershipOperatingReserveFen : 0;
+  const netFen = Math.max(0, amount - feeFen - reserveFen);
+  const maximumPoints = Math.floor(netFen * (10000 - policy.minimumMarginBps) / 10000) * 10;
+  const modelCostFen = Math.ceil(points / 10);
+  return { feeFen, reserveFen, maximumPoints, modelCostFen, remainingFen: amount - feeFen - reserveFen - modelCostFen, allowed: points <= maximumPoints };
 }

@@ -207,6 +207,13 @@ export class Services implements ServiceCenter {
         ]),
       );
     };
+    const select = async (candidates: OfficialService[], request: Request) => {
+      if (request.method !== "POST") return candidates[0];
+      let model: unknown;
+      try { const payload: unknown = await request.clone().json(); model = payload && typeof payload === "object" && "model" in payload ? payload.model : undefined; }
+      catch (_error) { /* Non-JSON requests have no model selector; the gateway validates their route. */ }
+      return typeof model === "string" ? candidates.find(service => service.models.some(entry => entry.id === model)) : candidates[0];
+    };
     return {
       ...(this.enabled && choices["aliyun-oss"]?.source !== "own"
         ? {
@@ -293,14 +300,17 @@ export class Services implements ServiceCenter {
       request: async (provider, path, init) => {
         if (!path.startsWith("/") || path.startsWith("//"))
           throw new SuiteError("IPW_INVALID_INPUT");
-        const service = (await resolve())
+        const candidates = (await resolve())
           .get(provider)
-          ?.find((service) => matches(service, path, init?.method ?? "GET"));
+          ?.filter((service) => matches(service, path, init?.method ?? "GET")) ?? [];
+        if (!candidates.length) throw new SuiteError("IPW_SERVICE_UNAVAILABLE", 403);
+        const request = new Request(new URL(path, candidates[0]!.origin), init);
+        const service = await select(candidates, request);
         if (!service) throw new SuiteError("IPW_SERVICE_UNAVAILABLE", 403);
         return invoke(
           service,
           path,
-          new Request(service.origin + service.basePath + path, init),
+          request,
         );
       },
       fetch: async (input, init) => {
@@ -318,11 +328,12 @@ export class Services implements ServiceCenter {
           return fetch(input, init);
         const entries = await resolve(),
           url = new URL(input instanceof Request ? input.url : String(input));
-        const service = [...entries.values()]
+        const request = new Request(input, init);
+        const candidates = [...entries.values()]
           .flat()
-          .find(
+          .filter(
             (s) =>
-              s.origin === url.origin &&
+              (s.origin === url.origin || (s.provider === "aliyun-bailian" && /^dashscope(?:-intl|-us)?\.aliyuncs\.com$/.test(url.hostname))) &&
               (url.pathname === s.basePath ||
                 url.pathname.startsWith(s.basePath + "/")) &&
               matches(
@@ -332,12 +343,13 @@ export class Services implements ServiceCenter {
                   (input instanceof Request ? input.method : "GET"),
               ),
           );
+        const service = await select(candidates, request);
         if (!service)
           throw new SuiteError("IPW_SERVICE_ENDPOINT_MISMATCH", 409);
         return invoke(
           service,
           url.pathname.slice(service.basePath.length) + url.search,
-          new Request(input, init),
+          request,
         );
       },
     };

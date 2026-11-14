@@ -52,7 +52,7 @@ test("official execution shares server credentials, enforces plans and settles e
           "Bearer provider-secret",
         );
         if (unavailable) throw new Error("network");
-        return new Response(JSON.stringify({ answer: "hello" }), {
+        return new Response(JSON.stringify({ answer: "hello", usage: { prompt_tokens: 1, completion_tokens: 2 } }), {
           status: failure ? 400 : 200,
           headers: { "content-type": "application/json" },
         });
@@ -90,7 +90,7 @@ test("official execution shares server credentials, enforces plans and settles e
       method: "POST",
       path: "/chat/completions",
       contentType: "application/json",
-      body: Buffer.from('{"model":"test"}').toString("base64"),
+      body: Buffer.from('{"model":"test","messages":[{"role":"user","content":"Hello"}]}').toString("base64"),
     };
     assert.equal(
       (await (await executor.invoke(actor, spec.id, request)).json()).answer,
@@ -181,6 +181,7 @@ test("official execution shares server credentials, enforces plans and settles e
     );
     await executor.save(actor, {
       ...spec,
+      billing: { kind: "chat", source: "https://provider.example/pricing", verifiedAt: Date.now(), validUntil: Date.now() + 60000, rates: [{ model: "test", inputPerMillion: 1000000, outputPerMillion: 1000000, maxInputTokens: 4096, maxOutputTokens: 32 }] },
       models: [
         { id: "test", name: "Test", contextWindow: 4096, maxTokens: 32 },
       ],
@@ -213,8 +214,10 @@ test("official execution shares server credentials, enforces plans and settles e
       "hello",
     );
     jobMode = true;
+    const jobService = spec.id + "-jobs";
     await executor.save(actor, {
       ...spec,
+      id: jobService,
       models: [],
       routes: [
         { method: "POST", path: "/jobs", points: 1, jobResultField: "id" },
@@ -222,7 +225,7 @@ test("official execution shares server credentials, enforces plans and settles e
       ],
     });
     await (
-      await executor.invoke(actor, spec.id, {
+      await executor.invoke(actor, jobService, {
         ...request,
         requestId: randomUUID(),
         path: "/jobs",
@@ -235,10 +238,10 @@ test("official execution shares server credentials, enforces plans and settles e
       method: "GET",
     };
     await assert.rejects(
-      executor.invoke({ ...actor, id: "another-user" }, spec.id, poll),
+      executor.invoke({ ...actor, id: "another-user" }, jobService, poll),
     );
     assert.equal(
-      (await (await executor.invoke(actor, spec.id, poll)).json()).status,
+      (await (await executor.invoke(actor, jobService, poll)).json()).status,
       "done",
     );
   } finally {

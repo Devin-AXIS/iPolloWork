@@ -30,10 +30,12 @@ import {
   costCredits,
   usageCost,
   usageResponse,
+  hasModelPrice,
   type BillingReservation,
 } from "./pricing.js";
 
 import { serviceCategories, serviceCategory } from "./service-categories.js";
+import { bailianOperations, parseBailianPage, serviceModelSchema, type ModelOperation } from "./model-catalog.js";
 
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,79}$/);
 const routeSchema = z
@@ -44,6 +46,7 @@ const routeSchema = z
       .regex(/^\/[A-Za-z0-9_/:.~-]*$/)
       .max(300),
     points: z.number().int().min(0).max(1000000),
+    async: z.boolean().optional(),
     jobField: z
       .string()
       .regex(/^[a-zA-Z][a-zA-Z0-9_]*$/)
@@ -72,16 +75,8 @@ export const executionServiceSchema = z
       );
     }),
     models: z
-      .array(
-        z.object({
-          id: z.string().min(1).max(200),
-          name: z.string().min(1).max(200),
-          category: z.enum(serviceCategories).optional(),
-          contextWindow: z.number().int().min(1024).optional(),
-          maxTokens: z.number().int().min(1).optional(),
-        }),
-      )
-      .max(200)
+      .array(serviceModelSchema)
+      .max(5000)
       .default([]),
     keyId: identifier,
     key: z
@@ -101,7 +96,7 @@ export const executionServiceSchema = z
     category: z.enum(serviceCategories).optional(),
     vendor: identifier.optional(),
     capabilities: z.array(identifier).min(1).max(30),
-    routes: z.array(routeSchema).min(1).max(50),
+    routes: z.array(routeSchema).max(50),
     planIds: z.array(z.string().min(1).max(100)).max(100).default([]),
     enabled: z.boolean().default(false),
     billing: billingSchema.optional(),
@@ -331,13 +326,18 @@ export class ExecutionService {
     );
   }
   async catalog(actor: Actor) {
+    const official = await Promise.all((await this.rows()).filter(row => row.enabled).map(async row => {
+      const service = definition(row);
+      const configured = Boolean((await this.settings.get("service-key/" + service.keyId)).key);
+      if (!configured) return [];
+      const models = service.models.filter(model => model.enabled !== false && service.billing?.validUntil && service.billing.validUntil > Date.now() && hasModelPrice(service.billing, model.id));
+      if (service.models.length && !models.length) return [];
+      return [{ ...service, models }];
+    }));
     return {
       items: (
         await Promise.all(
-          (await this.rows())
-            .filter((r) => r.enabled)
-            .map(async (row) => {
-              const s = definition(row);
+          official.flat().map(async (s) => {
               return {
                 id: s.id,
                 title: s.title,
@@ -349,7 +349,6 @@ export class ExecutionService {
                 basePath: new URL(s.baseUrl).pathname.replace(/\/$/, ""),
                 routes: s.routes,
                 models: s.models,
-                billing: s.billing,
                 available:
                   (await allowed(this.store, actor, s)) &&
                   Boolean(
@@ -405,6 +404,7 @@ export class ExecutionService {
   async save(actor: Actor, raw: unknown) {
     requireAdmin(actor);
     const s = executionServiceSchema.parse(raw);
+    if (s.enabled && !s.routes.length) throw new ServiceError("SERVICE_ROUTES_REQUIRED", 400, "请先配置该模型类型的调用接口");
     s.category = serviceCategory(s.category, s.capabilities);
     s.vendor ??= s.provider;
     s.models = s.models.map((model) => ({
@@ -426,10 +426,12 @@ export class ExecutionService {
     if (saved && !s.billing) s.billing = definition(saved).billing;
     if (s.enabled && s.billing && s.billing.validUntil <= Date.now())
       throw new ServiceError("SERVICE_PRICE_EXPIRED", 400);
+    if (s.enabled && s.models.some(model => model.enabled !== false) && !s.billing)
+      throw new ServiceError("SERVICE_MODEL_UNPRICED", 400, "请先为模型设置计费单价");
     if (
-      s.billing?.kind === "chat" &&
+      s.enabled && s.billing &&
       s.models.some(
-        (model) => !s.billing!.rates.some((rate) => rate.model === model.id),
+        (model) => model.enabled !== false && !hasModelPrice(s.billing, model.id),
       )
     )
       throw new ServiceError("SERVICE_MODEL_UNPRICED", 400);
@@ -476,6 +478,81 @@ export class ExecutionService {
       await audit(this.store, actor, "service.save", s.id);
     });
     return { ok: true };
+  }
+  /** Save one shared provider key; an optional origin applies to every service using that key. */
+  async connection(actor: Actor, keyId: string, raw: unknown) {
+    requireAdmin(actor);
+    identifier.parse(keyId);
+    const input = z.object({ key: executionServiceSchema.shape.key, origin: executionServiceSchema.shape.baseUrl.optional(), enabled: z.boolean().optional() }).strict().parse(raw);
+    const rows = (await this.rows()).filter(row => row.key_id === keyId);
+    if (!rows.length) throw new ServiceError("SERVICE_UNAVAILABLE", 404);
+    if (input.origin && new URL(input.origin).pathname !== "/") throw new ServiceError("INVALID_INPUT", 400, "请只填写服务域名，不含接口路径");
+    await this.store.transaction(async () => {
+      if (input.key) await this.settings.set("service-key/" + keyId, { key: input.key });
+      if (input.origin) for (const row of rows) {
+        const url = new URL(row.base_url);
+        const origin = new URL(input.origin);
+        url.protocol = origin.protocol; url.host = origin.host;
+        await this.store.run("UPDATE execution_services SET base_url=? WHERE id=?", url.href.replace(/\/$/, ""), row.id);
+      }
+      if (input.enabled !== undefined) {
+        const configured = Boolean((await this.settings.get("service-key/" + keyId)).key);
+        for (const row of rows) {
+          const service = definition(row);
+          const ready = configured && service.routes.length > 0 && service.billing && service.billing.validUntil > Date.now() && service.models.some(model => model.enabled !== false && hasModelPrice(service.billing, model.id));
+          await this.store.run("UPDATE execution_services SET enabled=? WHERE id=?", Number(input.enabled && ready), row.id);
+        }
+      }
+      await audit(this.store, actor, "service.connection", keyId);
+    });
+    return { ok: true };
+  }
+  /** Import every supported category from the official, paginated model directory without replacing operator edits. */
+  async syncModels(actor: Actor, id: string) {
+    requireAdmin(actor);
+    const rows = await this.rows(), source = rows.find(row => row.id === id);
+    if (!source || source.provider !== "aliyun-bailian") throw new ServiceError("SERVICE_DISCOVERY_UNAVAILABLE", 400);
+    const key = (await this.settings.get("service-key/" + source.key_id)).key;
+    if (!key) throw new ServiceError("SERVICE_UNCONFIGURED", 400, "请先配置百炼 Key");
+    const entries: ReturnType<typeof parseBailianPage>["items"] = [];
+    const seen = new Set<string>();
+    let total = 1;
+    for (let page = 1; entries.length < total; page++) {
+      if (page > 50) throw new ServiceError("SERVICE_CATALOG_LIMIT", 503);
+      const url = new URL("/api/v1/models", source.base_url);
+      url.search = new URLSearchParams({ page_no: String(page), page_size: "100", language: "zh-CN" }).toString();
+      const response = await this.fetcher(url, { headers: { Authorization: "Bearer " + key }, redirect: "error", signal: AbortSignal.timeout(20000) });
+      if (!response.ok) throw new ServiceError("SERVICE_DISCOVERY_FAILED", 503, "无法同步百炼模型，请检查 Key 和地域");
+      const result = parseBailianPage(await response.json());
+      total = result.total;
+      if (!result.items.length && entries.length < total) throw new ServiceError("SERVICE_DISCOVERY_INCOMPLETE", 503);
+      for (const entry of result.items) {
+        if (seen.has(entry.model.id)) throw new ServiceError("SERVICE_DISCOVERY_INCOMPLETE", 503);
+        seen.add(entry.model.id);
+      }
+      entries.push(...result.items);
+    }
+    let imported = 0, unpriced = 0;
+    await this.store.transaction(async () => {
+    const currentRows = await this.rows();
+    if (currentRows.find(row => row.id === id)?.base_url !== source.base_url || (await this.settings.get("service-key/" + source.key_id)).key !== key)
+      throw new ServiceError("CONCURRENT_UPDATE", 409, "服务连接已变更，请重新同步");
+    for (const operation of Object.keys(bailianOperations) as ModelOperation[]) {
+      const row = currentRows.find(row => row.key_id === source.key_id && row.provider === source.provider && definition(row).capabilities.includes(operation));
+      if (!row) continue;
+      const service = definition(row);
+      const models = new Map(service.models.map(model => [model.id, model]));
+      const rates = new Map(service.billing?.rates.map(rate => [rate.model, rate]) ?? []);
+      for (const entry of entries.filter(entry => entry.operation === operation)) {
+        if (!models.has(entry.model.id)) { models.set(entry.model.id, entry.model); imported++; }
+        if (entry.rate && !rates.has(entry.model.id)) rates.set(entry.model.id, entry.rate);
+        if (!rates.has(entry.model.id)) unpriced++;
+      }
+      const billing = service.billing ?? { kind: operation === "transcription" ? "audio" : operation === "embedding" ? "embedding" : operation, protocol: operation === "chat" || operation === "embedding" ? "openai" : "dashscope", source: "https://help.aliyun.com/zh/model-studio/model-pricing", verifiedAt: Date.now(), validUntil: Date.now() + 30 * 86400000, rates: [] };
+      await this.save(actor, { ...service, models: [...models.values()], billing: rates.size ? { ...billing, rates: [...rates.values()] } : undefined });
+    }
+    });
+    return { imported, total: entries.length, unpriced };
   }
   /**
    * Probe a draft or saved connection before or after saving it. Without `model` this lists `/models`;
@@ -923,8 +1000,8 @@ export class ExecutionService {
       }
       if (!payload || typeof payload !== "object" || Array.isArray(payload))
         throw new ServiceError("SERVICE_INVALID_MODEL_REQUEST", 400);
-      const model = s.models.find((model) => model.id === payload.model);
-      if (!model) throw new ServiceError("SERVICE_MODEL_UNAVAILABLE", 403);
+      const model = s.models.find((model) => model.id === payload.model && model.enabled !== false);
+      if (!model || (!owner && !hasModelPrice(s.billing, model.id))) throw new ServiceError("SERVICE_MODEL_UNAVAILABLE", 403);
       const limit = payload.max_completion_tokens ?? payload.max_tokens;
       if ((model.category ?? s.category) === "language") {
         if (
@@ -973,8 +1050,11 @@ export class ExecutionService {
         id,
         jobId,
       ))
-    )
+    ) {
+      const parent = await this.store.one<{ service_id: string }>("SELECT c.service_id FROM service_calls c JOIN execution_services s ON s.id=c.service_id WHERE c.user_id=? AND c.job_id=? AND s.provider=? AND s.key_id=? LIMIT 1", actor.id, jobId, s.provider, s.keyId);
+      if (parent && parent.service_id !== s.id) return this.invoke(actor, parent.service_id, raw);
       throw new ServiceError("SERVICE_JOB_FORBIDDEN", 403);
+    }
     if (!owner && s.billing && input.method === "POST" && !jobId) {
       const payload = z
         .record(z.string(), z.unknown())
@@ -1073,6 +1153,7 @@ export class ExecutionService {
         method: input.method,
         headers: {
           [s.headerName]: s.headerPrefix + key,
+          ...(route.async ? { "X-DashScope-Async": "enable" } : {}),
           ...(input.contentType ? { "content-type": input.contentType } : {}),
         },
         body: input.method === "POST" ? upstreamBody : undefined,
@@ -1100,11 +1181,11 @@ export class ExecutionService {
     let size = 0;
     const store = this.store;
     const settle = async (bytes: Buffer) => {
-      if (reservation && reservation.spec.kind !== "video") {
+        if (reservation && !route.jobResultField) {
         const cost = usageCost(reservation, usageResponse(bytes, type));
         if (cost === null) throw new ServiceError("SERVICE_USAGE_MISSING", 503);
         await this.settleUsage(input.requestId, cost);
-      } else if (jobId && s.billing?.kind === "video") {
+      } else if (jobId) {
         const parent = await store.one(
           "SELECT id,billing_snapshot FROM service_calls WHERE user_id=? AND service_id=? AND job_id=? AND billing_snapshot IS NOT NULL",
           actor.id,
@@ -1143,7 +1224,7 @@ export class ExecutionService {
                 /* A non-JSON result supplies no job reference. */
               }
             }
-            if (reservation?.spec.kind === "video" && !returnedJob)
+            if (reservation && route.jobResultField && !returnedJob)
               throw new ServiceError("SERVICE_JOB_MISSING", 503);
             await store.run(
               "UPDATE service_calls SET state='succeeded',response_type=?,response_body=?,job_id=?,updated_at=? WHERE id=? AND state='running'",
@@ -1194,6 +1275,12 @@ export function mountExecution(app: App, service: ExecutionService) {
   );
   app.put("/api/v1/admin/services", async (c) =>
     c.json(await service.save(c.get("actor"), await c.req.json())),
+  );
+  app.post("/api/v1/admin/service-connections/:keyId", async (c) =>
+    c.json(await service.connection(c.get("actor"), c.req.param("keyId"), await c.req.json())),
+  );
+  app.post("/api/v1/admin/services/:id/sync-models", async (c) =>
+    c.json(await service.syncModels(c.get("actor"), c.req.param("id"))),
   );
   app.get("/api/v1/enterprises/:id/services", async (c) =>
     c.json({

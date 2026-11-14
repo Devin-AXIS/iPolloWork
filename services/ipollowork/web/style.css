@@ -31,3 +31,14 @@ button.primary{background:var(--action);border-color:var(--action);color:var(--a
 .editor-foot{display:flex;align-items:center;gap:8px}.grow{flex:1}
 @media(max-width:760px){.service-row{flex-wrap:wrap}.probe{order:5;margin-left:42px}.row-actions{margin-left:auto}.presets{grid-template-columns:repeat(2,1fr)}.pill-field>span{width:58px}}
 @media(prefers-reduced-motion:reduce){.switch,.switch span,.icon-field,.advanced summary svg{transition:none}}
+.provider-group+.provider-group{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.provider-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px}
+.provider-heading>div:first-child{display:flex;flex-direction:column;gap:4px}.provider-heading strong,.model-costs strong{font-weight:500}
+.model-costs{display:flex;flex-direction:column;gap:10px}.model-costs-head{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.model-cost-list{max-height:420px;overflow:auto;border-radius:12px;background:var(--track)}
+.model-cost-row+.model-cost-row{border-top:1px solid var(--line)}.model-cost-summary{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:10px}
+.model-cost-summary label{display:flex;align-items:center;gap:10px;min-width:0}.model-cost-summary label>span{display:flex;flex-direction:column;min-width:0;overflow-wrap:anywhere}.model-cost-summary input{width:15px;height:15px;flex-shrink:0}
+.model-cost-summary button{flex-shrink:0;font-size:12px}.model-cost-editor{padding:2px 12px 14px;display:flex;flex-direction:column;gap:10px}.model-cost-editor .field{margin:0}
+.price-tier{border-top:1px solid var(--line);padding-top:12px}.model-add{display:flex;gap:8px}.model-add input{flex:1;min-width:0}
+.budget-preview{padding:12px;border-radius:12px;background:var(--track);font-size:12px;line-height:1.8}.budget-preview[data-ok=false]{color:var(--bad)}
+@media(max-width:760px){.provider-heading{align-items:flex-start;flex-direction:column}.provider-heading .row-actions{margin-left:0;flex-wrap:wrap}.model-costs-head{flex-direction:column;gap:3px}.model-cost-summary{align-items:flex-start}.model-cost-list{max-height:50vh}}

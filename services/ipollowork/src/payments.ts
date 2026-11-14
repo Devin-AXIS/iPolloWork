@@ -66,6 +66,10 @@ export function mountPayments(
       ),
     });
   });
+  app.get("/api/v1/admin/billing-policy", (c) => {
+    requireAdmin(c.get("actor"));
+    return c.json({ paymentFeeBps: config.paymentFeeBps, minimumMarginBps: config.minimumMarginBps, membershipOperatingReserveFen: config.membershipOperatingReserveFen });
+  });
   app.post("/api/v1/admin/plans", async (c) => {
     const actor = c.get("actor");
     requireAdmin(actor);

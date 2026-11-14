@@ -25,7 +25,7 @@ test("catalog and organization grants retain categories and vendors without trea
     const catalog = await execution.admin(actor);
     assert.deepEqual(
       new Set(catalog.items.map((item) => item.category)),
-      new Set(["language", "image", "video", "audio"]),
+      new Set(["language", "image", "video", "audio", "embedding", "tool"]),
     );
     assert(
       catalog.items.every((item) =>
