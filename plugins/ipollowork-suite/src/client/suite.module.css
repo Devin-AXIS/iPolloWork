@@ -457,3 +457,10 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .teamView input:focus-visible { outline:none; }
 @media (max-width:600px) { .teamBar { flex-direction:column;align-items:stretch; }.miniSearch input { width:100%; }.inviteBar { flex-wrap:wrap; }.inviteBar .fieldPill { flex-basis:100%; }.person { flex-wrap:wrap; }.personText { flex-basis:calc(100% - 44px); }.person > .chip:first-of-type { margin-left:44px; } }
 @media (prefers-reduced-motion:reduce) { .person,.filterChip,.chip { transition:none; } }
+
+.shareAudience { display: grid; gap: 10px; padding-block: 12px; font-size: 13px; }
+.shareAudience > label { display: grid; gap: 6px; font-size: 13px; }
+.shareAudience select { width: 100%; padding: 8px 10px; border: 1px solid var(--ipw-border); border-radius: 8px; color: inherit; background: var(--ipw-surface); font: inherit; }
+.shareAudience p { margin: 0; font-size: 12px; color: var(--ipw-muted); }
+.shareRecipients { display: grid; gap: 8px; max-height: 180px; overflow: auto; }
+.shareRecipients label { display: flex; align-items: center; gap: 8px; font-size: 13px; }

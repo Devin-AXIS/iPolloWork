@@ -132,16 +132,15 @@ export interface CreateShareRequest {
   /** Display title; the Session id is used when this is absent or empty. */
   readonly sessionTitle?: string
   /**
-   * Access mode to store with the share. Legacy and direct-API use only: the shipped Share dialog
-   * creates `open` shares and sends no access mode, while stored `selected` records and callers that
-   * invoke this Remote directly still set it.
+   * Access mode to store with the share. The native dialog defaults to an open link; an optional
+   * recipient contribution or a direct API caller may instead supply a selected audience.
    */
   readonly accessMode?: 'open' | 'selected'
   /** Lifetime in minutes; absent means the share never expires. */
   readonly ttlMinutes?: number
   /**
-   * Viewers named on a `selected` share, stored beside the deployment's allowed subjects. Legacy and
-   * direct-API use only: the shipped Share dialog creates `open` shares and sends no subjects.
+   * Viewers named on a selected share, stored beside the deployment's allowed subjects. The native
+   * dialog sends no subjects unless a recipient contribution supplies them.
    */
   readonly allowedSubjectIds?: readonly string[]
   readonly allowsFork?: boolean

@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Button, IconChevronDownOutlineRegular, IconRefreshOutlineRegular, IconShareOutlineRegular, IconUsersOutlineRegular, IconWorkspaceTreeOutlineRegular, Menu, Modal, SegmentedTabs, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconChevronDownOutlineRegular, IconRefreshOutlineRegular, IconUsersOutlineRegular, IconWorkspaceTreeOutlineRegular, Menu, Modal, SegmentedTabs, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { EnterpriseCatalog, EnterpriseDetail, ProjectWork, ProjectGrant } from '../shared/enterprise.ts'
 import type { ClientContext } from './native.ts'
 import type { AccountController } from './account.tsx'
@@ -10,7 +10,7 @@ import { createOwnedProject } from './project-creation-actions.ts'
 import { EnterpriseDirectoryFlow, ProjectCreationDialog, type ProjectCreationProps } from './project-creation.tsx'
 import { ActivityTab, ProjectView, ProjectsTab, type CollaborationActions, type ViewProps } from './collaboration.tsx'
 import { InviteDialog, MemberDialog, MembersTab, NoEnterprise } from './enterprise-members.tsx'
-import { ShareDialog } from './enterprise-share.tsx'
+import { ShareAudience } from './enterprise-share.tsx'
 import { ConfirmDialog, EmptyState, Field, FormError, ListSkeleton, Notice, ToastHost, roleName, useRecord, useTask } from './enterprise-ui.tsx'
 import css from './suite.module.css'
 
@@ -23,14 +23,6 @@ export interface Props extends Pick<ProjectCreationProps, 'createProject' | 'lis
   controller: EnterpriseController
   actions: CollaborationActions
   openAccountSettings(): boolean
-  viewShare(id: string): void
-}
-
-/** Keep the share entry visible while account loading and sign-in are handled by its action. */
-function ProjectShareAction({sessionId,useSessions,useEnterpriseLabels,openShare}:{sessionId:string;useSessions<T>(selector:(state:{byId:Record<string,{displayTitle?:string}>})=>T):T;openShare(sessionId:string,title:string):void}&Pick<Props,'useEnterpriseLabels'>){
-  const t=useEnterpriseLabels(value=>value)
-  const title=useSessions(state=>state.byId[sessionId]?.displayTitle??'')
-  return <Button variant="ghost" size="sm" onClick={()=>openShare(sessionId,title)}>{t.share}<IconShareOutlineRegular size={12}/></Button>
 }
 
 function EnterpriseSwitcher({ catalog, enterpriseId, t, controller }: { catalog: EnterpriseCatalog; enterpriseId: string; t: EnterpriseLabels; controller: EnterpriseController }) {
@@ -151,7 +143,7 @@ function WithDetail({ enterpriseId, t, controller, children }: { enterpriseId: s
 }
 
 function DialogHost(props: Props) {
-  const state = props.useEnterpriseState(v => v), t = props.useEnterpriseLabels(v => v), language = props.useLocale(v => v)
+  const state = props.useEnterpriseState(v => v), t = props.useEnterpriseLabels(v => v)
   const { controller } = props, dialog = state.dialog, close = () => controller.open(null)
   if (!dialog || !state.signedIn) return null
   switch (dialog.kind) {
@@ -162,14 +154,9 @@ function DialogHost(props: Props) {
     case 'member': return <WithDetail enterpriseId={dialog.enterpriseId} t={t} controller={controller}>{detail => <MemberDialog enterpriseId={dialog.enterpriseId} userId={dialog.userId} t={t} call={controller.call} controller={controller} detail={detail}/>}</WithDetail>
   }
   const catalog = state.catalog
-  if (!catalog) return dialog.kind==='share'?<Modal open title={t.share} closeLabel={t.close} className={css.enterpriseModal!} onClose={close}>
-    {state.error?<Notice error={state.error} t={t} retry={controller.load}/>:<ListSkeleton rows={2}/>}
-  </Modal>:null
-  switch (dialog.kind) {
-    case 'assign': return <AssignDialog key={dialog.projectId} projectId={dialog.projectId} t={t} controller={controller} catalog={catalog}/>
-    case 'share': return catalog.enterprises.length ? <ShareDialog key={dialog.sessionId} sessionId={dialog.sessionId} title={dialog.title} t={t} call={controller.call} controller={controller} catalog={catalog} viewShare={props.viewShare} language={language}/>
-      : <Modal open title={t.share} closeLabel={t.close} className={css.enterpriseModal!} onClose={close}><NoEnterprise t={t} controller={controller}/></Modal>
-  }
+  if (!catalog) return null
+  if (dialog.kind === 'assign') return <AssignDialog key={dialog.projectId} projectId={dialog.projectId} t={t} controller={controller} catalog={catalog}/>
+  return null
 }
 
 /** Sidebar row mark for native conversations that continue team work. */
@@ -186,13 +173,6 @@ export function mountEnterprise(ctx: ClientContext, account: AccountController):
   ctx.effect(() => { window.addEventListener('focus', controller.refreshIfStale); return () => window.removeEventListener('focus', controller.refreshIfStale) }, 'ipollowork-suite: refresh collaboration')
   const pendingOwnership = new Set<string>()
   const actions: CollaborationActions = { openProject: id => { void ctx.uiWorkspace.openWorkspace(id) } }
-  const viewShare = (id: string) => { ctx.layout.selectPanel(PANEL); controller.show({ kind: 'project', id }) }
-  const openShare=(sessionId:string,title:string)=>{
-    const state=controller.getSnapshot()
-    if(!state.signedIn){if(!account.openAccountSettings())ctx.layout.selectPanel(PANEL);return}
-    controller.open({kind:'share',sessionId,title})
-    if(!state.catalog)void controller.load()
-  }
   const creation = {
     refreshEnterprises: controller.load,
     listDirectory: (path?: string, signal?: AbortSignal) => ctx.uiWorkspace.listDirectory(path, signal),
@@ -220,7 +200,7 @@ export function mountEnterprise(ctx: ClientContext, account: AccountController):
     },
   }
   const creationProps = () => ({ hooks: { enterpriseState: controller, enterpriseLabels: labels }, ...creation })
-  const props = () => ({ ...creationProps(), hooks: { enterpriseState: controller, enterpriseLabels: labels, locale }, controller, actions, viewShare, openAccountSettings: account.openAccountSettings })
+  const props = () => ({ ...creationProps(), hooks: { enterpriseState: controller, enterpriseLabels: labels, locale }, controller, actions, openAccountSettings: account.openAccountSettings })
   for (const name of ['sidebar.workspaces.directoryFlow', 'conversation.hero.workspace.directoryFlow']) {
     ctx.slots.inject(name, () => ctx.slots.register({ name, priority: -100, inject: creationProps }, EnterpriseDirectoryFlow))
   }
@@ -229,7 +209,7 @@ export function mountEnterprise(ctx: ClientContext, account: AccountController):
   ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'ipollowork-enterprise-toast', inject: () => ({ hooks: { enterpriseState: controller }, dismiss: controller.dismissToast }) }, ToastHost))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: PANEL, order: 9, label: () => enterpriseCopy(ctx).title }, IconWorkspaceTreeOutlineRegular))
   ctx.slots.inject('sidebar.session.row.trailing', () => ctx.slots.register({ name: 'sidebar.session.row.trailing', id: 'ipollowork-enterprise.row', order: 30, inject: () => ({ hooks: { enterpriseState: controller, enterpriseLabels: labels } }) }, CollaborationMark))
-  ctx.slots.inject('conversation.session.header.utilities',()=>ctx.slots.register({name:'conversation.session.header.utilities',id:'liveshare-share',priority:-100,order:-7,inject:()=>({openShare,hooks:{enterpriseLabels:labels}})},ProjectShareAction))
+  ctx.slots.inject('liveshare.share.audience',()=>ctx.slots.register({name:'liveshare.share.audience',id:'ipollowork-recipients',inject:props},ShareAudience))
   let userId: string | undefined
   const syncAccount = () => {
     const current = account.getSnapshot().account
@@ -240,17 +220,10 @@ export function mountEnterprise(ctx: ClientContext, account: AccountController):
   syncAccount()
   ctx.effect(() => account.subscribe(syncAccount), 'ipollowork-suite: enterprise account')
   ctx.slots.inject('contextMenu.icon', function* () {
-    yield ctx.slots.register({ name: 'contextMenu.icon', key: 'ipollowork.enterprise.share' }, IconShareOutlineRegular)
     yield ctx.slots.register({ name: 'contextMenu.icon', key: 'ipollowork.enterprise.ownership' }, IconWorkspaceTreeOutlineRegular)
   })
   ctx.effect(() => ctx.contextMenus.register({ id: 'ipollo.enterprise.project', target: 'workspace', order: 350, resolve: (value) => {
     if (!controller.getSnapshot().signedIn || !value.workspaceId) return []
     return [{ id: 'enterprise-ownership', label: enterpriseCopy(ctx).ownership, icon: { key: 'ipollowork.enterprise.ownership' }, run: async () => { await controller.load(); controller.open({ kind: 'assign', projectId: value.workspaceId! }) } }]
   } }), 'ipollowork-suite: project ownership action')
-  for (const target of ['session', 'sessionHeader'] as const) {
-    ctx.effect(() => ctx.contextMenus.register({ id: 'ipollo.enterprise.share.' + target, target, order: 350, resolve: (value) => {
-      if (!value.sessionId) return []
-      return [{ id: 'enterprise-share', label: enterpriseCopy(ctx).share, icon: { key: 'ipollowork.enterprise.share' }, run: () => openShare(value.sessionId!,value.displayTitle??'') }]
-    } }), 'ipollowork-suite: conversation share action')
-  }
 }

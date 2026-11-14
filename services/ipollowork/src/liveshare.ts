@@ -7,13 +7,14 @@ import { z } from 'zod';
 import type { Actor } from './auth.js';
 import type { Config } from './config.js';
 import type { Row, Store } from './database.js';
-import { projectRole, type Project } from './domain.js';
+import { enterpriseAccess, projectRole, uid, type Project } from './domain.js';
+import { audienceAllows, readShareAudience } from './share-audience.js';
 import { ServiceError } from './errors.js';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('base64url');
-const ticket = z.object({ purpose: z.enum(['owner', 'viewer']), sessionId: z.string(), subjectId: z.string(), displayName: z.string(), expiresAt: z.number(), instanceKey: z.string().optional(), shareId: z.string().optional() });
+const ticket = z.object({ purpose: z.enum(['owner', 'viewer']), sessionId: z.string(), subjectId: z.string(), displayName: z.string(), expiresAt: z.number(), instanceKey: z.string().optional(), shareId: z.string().optional(), anonymous: z.literal(true).optional() });
 type Ticket = z.infer<typeof ticket>;
-export type LiveShare = Row & { id: string; owner_id: string; project_id: string; source_session: string; mode: 'view' | 'write'; native_id: string | null; gateway_hash: string | null; instance_key: string | null; title: string; revoked_at: number | null; access_json: string; access_version: number };
+export type LiveShare = Row & { id: string; owner_id: string; project_id: string | null; audience_json: string; allows_fork: number; expires_at: number | null; source_session: string; mode: 'view' | 'write'; native_id: string | null; gateway_hash: string | null; instance_key: string | null; title: string; revoked_at: number | null; access_json: string; access_version: number };
 type Answer = { status: number; body: unknown };
 type Pending = { actor: Actor; grant?: Ticket; finish(answer: Answer): void };
 type Tunnel = { socket: WebSocket; owner: Ticket; pending: Map<number, Pending>; nextId: number; alive: boolean };
@@ -50,6 +51,10 @@ export class LiveshareRelay {
   }
   /** Resolve the current identity; deleted sessions and banned accounts immediately lose access. */
   actor(value: Ticket): Actor {
+    if (value.anonymous) {
+      if (value.purpose !== 'viewer' || !value.shareId || !value.subjectId.startsWith('guest:') || value.expiresAt <= Date.now() || readShareAudience(this.share(value.shareId)).kind !== 'link') throw new ServiceError('LIVESHARE_UNAUTHORIZED', 401);
+      return { id: value.subjectId, name: 'Guest', email: '', role: 'guest' };
+    }
     const user = this.store.one('SELECT u.id,u.name,u.email,u.role,u.banned,s.expiresAt FROM session s JOIN "user" u ON u.id=s.userId WHERE s.id=? AND u.id=?', value.sessionId, value.subjectId);
     if (!user || user.banned || !(sessionExpiry(user.expiresAt) > Date.now()) || value.expiresAt <= Date.now()) throw new ServiceError('LIVESHARE_UNAUTHORIZED', 401);
     return { id: String(user.id), name: String(user.name), email: String(user.email), role: String(user.role ?? 'user') };
@@ -58,29 +63,40 @@ export class LiveshareRelay {
   share(id: string): LiveShare {
     const share = this.store.one<LiveShare>('SELECT * FROM live_shares WHERE native_id=? AND revoked_at IS NULL', id);
     if (!share) throw new ServiceError('LIVESHARE_NOT_FOUND', 404);
+    if (share.expires_at && share.expires_at <= Date.now()) throw new ServiceError('LIVESHARE_EXPIRED', 401);
     return share;
   }
   /** Re-evaluate both the sharer and the recipient against current project membership. */
   admit(share: LiveShare, actor: Actor): void {
-    const project = this.store.one<Project>('SELECT * FROM projects WHERE id=?', share.project_id);
+    if (share.expires_at && share.expires_at <= Date.now()) throw new ServiceError('LIVESHARE_EXPIRED', 401);
     const owner = this.store.one('SELECT id,name,email,role,banned FROM "user" WHERE id=?', share.owner_id);
-    if (!project || !owner || owner.banned) throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
+    if (!owner || owner.banned) throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
     const sharer: Actor = { id: String(owner.id), name: String(owner.name), email: String(owner.email), role: String(owner.role ?? 'user') };
-    const ownerRole = projectRole(this.store, sharer, project), role = projectRole(this.store, actor, project);
-    if (!ownerRole || ownerRole === 'view' || !role || share.mode === 'write' && role === 'view') throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
+    if (share.project_id) {
+      const project = this.store.one<Project>('SELECT * FROM projects WHERE id=?', share.project_id);
+      const role = project && projectRole(this.store, sharer, project);
+      if (!role || role === 'view') throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
+    }
+    const audience = readShareAudience(share);
+    if (audience.kind !== 'link' && audience.kind !== 'project') enterpriseAccess(this.store, sharer, audience.enterpriseId);
+    if (!audienceAllows(this.store, share, actor)) throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
   }
+
   /** DSH ACL snapshots use qualified identities and a durable increasing revision. */
   snapshot(share: LiveShare) {
-    const members = this.store.all('SELECT u.id,u.name,u.email,u.role FROM "user" u JOIN members m ON m.user_id=u.id JOIN projects p ON p.enterprise_id=m.enterprise_id WHERE p.id=? AND COALESCE(u.banned,0)=0 UNION SELECT id,name,email,role FROM "user" WHERE (id=? OR role=\'admin\') AND COALESCE(banned,0)=0', share.project_id, share.owner_id);
+    const audience = readShareAudience(share);
+    const members = audience.kind === 'link' ? [] : audience.kind !== 'project'
+      ? this.store.all('SELECT u.id,u.name,u.email,u.role FROM "user" u JOIN members m ON m.user_id=u.id WHERE m.enterprise_id=? AND COALESCE(u.banned,0)=0 UNION SELECT id,name,email,role FROM \"user\" WHERE id=? AND COALESCE(banned,0)=0', audience.enterpriseId, share.owner_id)
+      : this.store.all('SELECT u.id,u.name,u.email,u.role FROM "user" u WHERE COALESCE(u.banned,0)=0 AND (u.id=? OR u.role=\'admin\' OR EXISTS(SELECT 1 FROM members m JOIN projects p ON p.enterprise_id=m.enterprise_id WHERE p.id=? AND m.user_id=u.id))', share.owner_id, share.project_id);
     const allowedSubjectIds: string[] = [];
     for (const member of members) {
       try {
         this.admit(share, { id: String(member.id), name: String(member.name), email: String(member.email), role: String(member.role ?? 'user') });
-        allowedSubjectIds.push(['ipollo', share.project_id, String(member.id)].map(encodeURIComponent).join(':'));
+        allowedSubjectIds.push(['ipollo', share.project_id ?? share.id, String(member.id)].map(encodeURIComponent).join(':'));
       } catch (error) { if (!(error instanceof ServiceError)) throw error; }
     }
     allowedSubjectIds.sort();
-    const state = { accessMode: 'selected' as const, allowedSubjectIds, sessionMode: share.mode, allowsFork: share.mode === 'write' };
+    const state = { accessMode: audience.kind === 'link' ? 'open' as const : 'selected' as const, allowedSubjectIds, sessionMode: share.mode, allowsFork: share.allows_fork === 1, ...(share.expires_at ? {expiresAt: new Date(share.expires_at).toISOString()} : {}) };
     const json = JSON.stringify(state);
     if (json !== share.access_json) {
       this.store.run('UPDATE live_shares SET access_json=?,access_version=access_version+1 WHERE id=?', json, share.id);
@@ -112,7 +128,7 @@ export class LiveshareRelay {
       tunnel.pending.set(id, { actor, grant, finish });
       signal?.addEventListener('abort', cancel, { once: true });
       if (signal?.aborted) { cancel(); return; }
-      tunnel.socket.send(JSON.stringify({ type: 'share-rpc', id, body, actor: { providerId: 'ipollo', tenantId: share.project_id, subjectId: actor.id, displayName: actor.name } }));
+      tunnel.socket.send(JSON.stringify({ type: 'share-rpc', id, body, actor: { providerId: 'ipollo', tenantId: share.project_id ?? share.id, subjectId: actor.id, displayName: actor.name } }));
     });
   }
   private push(share: LiveShare, tunnel: Tunnel): void {
@@ -134,7 +150,7 @@ export class LiveshareRelay {
       } catch { tunnel.socket.close(1008, 'access ended'); }
     }
   }
-  /** Bind outbound owner connections to one pre-authorized project intent. */
+  /** Bind native owner connections to an authorized audience or an explicitly open link. */
   attach(server: Server): () => void {
     const upgrade = (request: IncomingMessage, socket: Socket, head: Buffer) => {
       try {
@@ -149,12 +165,27 @@ export class LiveshareRelay {
         if (!share) {
           const intent = url.searchParams.getAll('allowedSubjectId').find(value => value.startsWith('ipollo-intent:'))?.slice(14);
           share = this.store.one<LiveShare>('SELECT * FROM live_shares WHERE id=? AND native_id IS NULL AND created_at>?', intent ?? '', Date.now() - 300_000);
+          if (!share && !intent && url.searchParams.get('accessMode') === 'open' && url.searchParams.getAll('allowedSubjectId').length === 0) {
+            const sessionId = z.string().min(1).max(200).parse(url.searchParams.get('sessionId'));
+            const mode = z.enum(['view','write']).parse(url.searchParams.get('sessionMode') ?? 'view');
+            const title = z.string().min(1).max(4096).parse(url.searchParams.get('sessionTitle') || sessionId);
+            const key = uid();
+            this.store.run('INSERT INTO live_shares(id,owner_id,source_session,mode,title,created_at,allows_fork,audience_json) VALUES(?,?,?,?,?,?,?,?)',key,owner.subjectId,sessionId,mode,title,Date.now(),url.searchParams.get('allowsFork') === '1' ? 1 : 0,JSON.stringify({kind:'link'}));
+            share = this.store.one<LiveShare>('SELECT * FROM live_shares WHERE id=?',key);
+          }
           if (!share || share.owner_id !== owner.subjectId || share.source_session !== url.searchParams.get('sessionId') || share.mode !== url.searchParams.get('sessionMode')) throw new ServiceError('LIVESHARE_INTENT_REQUIRED', 403);
           this.admit(share, this.actor(owner));
           this.store.run('UPDATE live_shares SET native_id=?,gateway_hash=?,instance_key=? WHERE id=?', id, hash(token), owner.instanceKey, share.id);
           share.native_id = id; share.gateway_hash = hash(token); share.instance_key = owner.instanceKey;
         }
         if (share.revoked_at || share.owner_id !== owner.subjectId || share.instance_key !== owner.instanceKey || share.gateway_hash !== hash(token) || share.source_session !== url.searchParams.get('sessionId') || share.mode !== url.searchParams.get('sessionMode')) throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
+        if (share.expires_at && share.expires_at <= Date.now()) throw new ServiceError('LIVESHARE_EXPIRED',401);
+        const expiry = url.searchParams.get('expiresAt');
+        if (expiry) {
+          const timestamp = Date.parse(expiry);
+          if (!Number.isFinite(timestamp) || timestamp <= Date.now()) throw new ServiceError('LIVESHARE_EXPIRED',401);
+          this.store.run('UPDATE live_shares SET expires_at=? WHERE id=?',timestamp,share.id);share.expires_at=timestamp;
+        }
         this.admit(share, this.actor(owner));
         const bound = share;
         this.ws.handleUpgrade(request, socket, head, ws => {

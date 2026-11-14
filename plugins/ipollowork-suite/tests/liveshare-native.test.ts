@@ -19,7 +19,7 @@ test('native relay carries continuation, forks and streams and revokes project a
  assert(cookie)
  const native=async<T,>(path:string,input?:unknown,method='POST'):Promise<T>=>{
   const response=await fetch(origin+path,{method,headers:{Cookie:cookie,Origin:origin,'Content-Type':'application/json'},...(input===undefined?{}:{body:JSON.stringify(input)})})
-  const result=await response.json();assert.equal(response.status,200,JSON.stringify(result));return result as T
+  const text=await response.text();assert.equal(response.status,200,path+': '+text);return JSON.parse(text) as T
  }
  const account=async(email:string):Promise<Account>=>{
   const response=await fetch(relay+'/api/auth/sign-in/email',{method:'POST',headers:{'Content-Type':'application/json','x-ipollo-peer-ip':email.startsWith('qa-owner')?'198.51.100.1':'198.51.100.2'},body:JSON.stringify({email,password})})
@@ -46,9 +46,12 @@ test('native relay carries continuation, forks and streams and revokes project a
  const shares:Share[]=[]
  try {
   for(const role of ['view','participate'])shares.push(await native('/ipollowork-suite/enterprise/native-sharing',{projectId:project.id,sessionId:session.sessionId,title:'Native relay test',role}))
+  const prepared=await native('/ipollowork-suite/enterprise/native-sharing/prepare',{request:{sessionId:session.sessionId,sessionTitle:'Public native link',sessionMode:'view',allowsFork:false},audience:{kind:'link'}})
+  const published=await native<{result:{ok:boolean;value:Share}}>('/api/liveshareShares/create',{type:'client-request',rpcId:randomUUID(),method:'liveshareShares/create',payload:{args:{request:prepared}}})
+  assert(published.result.ok);shares.push(published.result.value)
   const tickets:string[]=[]
   for(const share of shares){
-   const response=await fetch(share.link,{headers:{Authorization:'Bearer '+member.token}})
+   const response=await fetch(share.link,share===shares[2]?{}:{headers:{Authorization:'Bearer '+member.token}})
    const wrapper=await response.text();assert.equal(response.status,200)
    assert(wrapper.includes('sandbox="allow-scripts allow-forms allow-downloads"'))
    const frame=wrapper.match(/src="(\/__liveshare\/assets\/([^/]+)\/)"/)
@@ -62,6 +65,7 @@ test('native relay carries continuation, forks and streams and revokes project a
    return {status:response.status,body:await response.json() as Envelope}
   }
   const rpc=(index:number,method:string,request:unknown)=>send(index,{op:'call',path:'/api/'+method,body:{type:'client-request',rpcId:randomUUID(),method,payload:{args:{request}}}})
+  const publicPage=await rpc(2,'session/page',{address:{kind:'session',sessionId:session.sessionId}});assert(publicPage.body.result.ok)
   const prompt={sessionId:session.sessionId,requestId:randomUUID(),mode:'queue',content:[{type:'text',text:'COLLEAGUE_NATIVE_RELAY_TEST'}]}
   const denied=await rpc(0,'session/prompt',prompt);assert.equal(denied.status,403)
   assert.equal((await rpc(0,'session/fork',{sessionId:session.sessionId,operationId:randomUUID()})).status,403)
@@ -73,6 +77,7 @@ test('native relay carries continuation, forks and streams and revokes project a
   const page=await rpc(1,'session/page',{address:{kind:'session',sessionId:session.sessionId}});assert(page.body.result.ok);assert(JSON.stringify(page).includes('COLLEAGUE_NATIVE_RELAY_TEST'))
   await business('projects/'+project.id+'/access',{mode:'selected',grants:[]},'PUT')
   assert.equal((await rpc(1,'session/prompt',{...prompt,requestId:randomUUID()})).status,403)
+  assert.equal((await rpc(2,'session/page',{address:{kind:'session',sessionId:session.sessionId}})).status,200)
  } finally {
   // Explicitly opt-in disposable fixture; stop both native shares without touching working profiles.
   for(const share of shares)await native('/ipollowork-suite/enterprise/native-sharing/'+share.shareId,undefined,'DELETE')

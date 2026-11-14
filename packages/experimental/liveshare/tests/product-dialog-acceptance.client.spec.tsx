@@ -3,8 +3,10 @@
 
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useLayoutEffect, useState } from 'react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '../src/client/index.ts'
+import type { ShareAudienceProps } from '../src/client/share-audience.ts'
 import { LiveshareShareDialog, type LiveshareShareDialogProps } from '../src/client/ShareDialog.tsx'
 import { en, zh } from '../src/client/locales.ts'
 import css from '../src/client/ShareDialog.module.css'
@@ -73,6 +75,8 @@ function probes(host: OwnerSharesDouble): number {
  * @param identityPending - A pending identity answer this case resolves itself.
  * @param shareExtra - Fields overlaid on the create answer.
  * @param relayExtra - Connectivity and permission answers.
+ * @param renderSlot - Optional audience contribution.
+ * @param connectionOpen - Whether this case inspects connection settings.
  * @returns The scripted Remote and the calls it recorded.
  */
 async function showDialog(
@@ -87,6 +91,8 @@ async function showDialog(
   identityPending?: Promise<OwnerIdentityStatus>,
   shareExtra?: Partial<CreatedShare>,
   relayExtra?: { readonly connectivity?: RelayConnectivityView; readonly permission?: RelayPublishView },
+  renderSlot?: LiveshareShareDialogProps['renderSlot'],
+  connectionOpen = true,
 ): Promise<OwnerSharesDouble> {
   const host = ownerSharesDouble({
     list: async () => accepted({ shares: (existingShare ? [existingItem] : []) as never }),
@@ -120,8 +126,10 @@ async function showDialog(
       onClose={onClose}
       {...(onManage === undefined ? {} : { onManage })}
       t={translate}
+      {...(renderSlot === undefined ? {} : { renderSlot })}
     />)
   })
+  if (connectionOpen) fireEvent.click(screen.getByRole('button', { name: en['dialog.connectionSettings'] }))
   return host
 }
 
@@ -221,6 +229,7 @@ describe('Liveshare dialog product acceptance', () => {
         t={translate}
       />)
     })
+    fireEvent.click(screen.getByRole('button', { name: en['dialog.connectionSettings'] }))
     /** The body this page submitted to redeem a code, when it submitted one. */
     const redeemed = (): Record<string, unknown> | undefined => {
       const call = fetcher.mock.calls.find(([input]) => input === 'api/liveshare.ownerLoginRedeem')
@@ -371,7 +380,8 @@ describe('Liveshare dialog product acceptance', () => {
         t={zhTranslate}
       />)
     })
-    expect(screen.getByText('分享会话')).toBeDefined()
+    expect(screen.getByRole('heading', { name: '分享' })).toBeDefined()
+    expect(screen.queryByText('验收会话')).toBeNull()
     // The dialog states the tier it will grant, not a fixed description of what a share shows.
     expect(screen.getByText(/^仅可查看：/u)).toBeDefined()
     expect(document.body.textContent).not.toContain('历史消息、工具输出、文件路径与附件')
@@ -385,9 +395,38 @@ describe('Liveshare dialog product acceptance', () => {
     expect(onManage).toHaveBeenCalledOnce()
   })
 
-  it('[P1] names the Session this dialog shares', async () => {
-    await showDialog(200, false)
-    expect(document.body.textContent).toContain('Acceptance session')
+  it('opens connection settings when sharing requires sign-in', async () => {
+    await showDialog(200, false, undefined, undefined, undefined, { state: 'unverified', relay: RELAY }, undefined, undefined, undefined, undefined, false)
+    expect(screen.queryByRole('textbox', { name: en['dialog.relay'] })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: en['dialog.connectionRequired'] }))
+    expect(screen.getByRole('textbox', { name: en['dialog.relay'] })).toBeDefined()
+    expect(screen.getByRole('button', { name: en['dialog.identity.verify'] })).toBeDefined()
+    expect(screen.getByRole('button', { name: en['dialog.create'] })).toHaveProperty('disabled', true)
+  })
+
+  it('keeps connection details out of the main share view while exposing them in settings', async () => {
+    const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, false)
+    expect(screen.queryByRole('textbox', { name: en['dialog.relay'] })).toBeNull()
+    expect(screen.queryByText('许翰翔')).toBeNull()
+    expect(screen.queryByText(en['dialog.permissionOk'])).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Create share' }))
+    await vi.waitFor(() => { expect(shareCreates(host)).toBe(1) })
+    expect(await screen.findByRole('textbox', { name: en['dialog.shareLink'] })).toHaveProperty('value', existing.link)
+    expect(screen.getAllByRole('textbox')).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: en['dialog.connectionSettings'] }))
+    expect(screen.getByRole('textbox', { name: en['dialog.relay'] })).toHaveProperty('value', RELAY)
+    expect(screen.getByText('许翰翔')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: en['dialog.connectionSettings'] }))
+    expect(screen.queryByRole('textbox', { name: en['dialog.relay'] })).toBeNull()
+  })
+
+  it('[P1] uses a compact title while retaining the shared Session identity', async () => {
+    const host = await showDialog(200, false)
+    expect(screen.getByRole('heading', { name: 'Share' })).toBeDefined()
+    expect(document.body.textContent).not.toContain('Acceptance session')
+    fireEvent.click(screen.getByRole('button', { name: 'Create share' }))
+    await vi.waitFor(() => { expect(shareCreates(host)).toBe(1) })
+    expect(shareRequest(host)).toMatchObject({ sessionId: 'session', sessionTitle: 'Acceptance session' })
   })
 
   it('[P1] offers the session permission and still searches nobody', async () => {
@@ -501,6 +540,7 @@ describe('Liveshare dialog product acceptance', () => {
     const verified = await showDialog(200, false)
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create share' })) })
     expect(shareCreates(verified)).toBe(1)
+    cleanup()
 
     // Every other state refuses in the page as well as in the host: no request leaves the dialog.
     for (const identity of [
@@ -674,8 +714,8 @@ describe('Liveshare dialog product acceptance', () => {
   it('traps dialog focus and closes candidates before the modal on Escape', async () => {
     const onClose = vi.fn()
     await showDialog(200, false, onClose)
-    // Focus lands on the panel's first control: the help affordance beside the title.
-    const help = screen.getByRole('button', { name: /Shares this Session only/u })
+    // Focus lands on the settings control beside the title.
+    const help = screen.getByRole('button', { name: en['dialog.connectionSettings'] })
     expect(document.activeElement).toBe(help)
     const focusable = enabledFocusables()
     expect(document.activeElement).toBe(focusable[0])
@@ -761,6 +801,7 @@ async function showControlled(control: {
       t={translate}
     />)
   })
+  fireEvent.click(screen.getByRole('button', { name: en['dialog.connectionSettings'] }))
   return host
 }
 
@@ -1345,5 +1386,85 @@ describe('Liveshare dialog stored-record branches', () => {
     fireEvent.focus(link)
     expect(link.selectionStart).toBe(0)
     expect(link.selectionEnd).toBe(existing.link.length)
+  })
+})
+
+
+describe('native share audience contributions', () => {
+  it('keeps native permission editing available when recipient loading fails', async () => {
+    const Audience = ({ onChange }: ShareAudienceProps) => {
+      useLayoutEffect(() => {
+        onChange({ blockedReason: 'Recipient service unavailable', failureMessage: 'Could not save recipients', dirty: false, prepare: async request => request })
+        return () => onChange(undefined)
+      }, [onChange])
+      return null
+    }
+    const host = await showDialog(200, true, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    fireEvent.click(screen.getByRole('switch', { name: en['dialog.allowsFork'] }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await vi.waitFor(() => { expect(host.calls.some(call => call.method === 'updatePermissions')).toBe(true) })
+  })
+
+  it('keeps existing recipients visible and saves their changes through the native save action', async () => {
+    const saved = vi.fn().mockRejectedValueOnce(new Error('private server detail')).mockResolvedValue(undefined)
+    const Audience = ({ onChange, currentShareId }: ShareAudienceProps) => {
+      const [dirty, setDirty] = useState(true)
+      useLayoutEffect(() => {
+        onChange({ dirty, failureMessage: 'Could not save recipients', prepare: async request => request, save: async () => { await saved(currentShareId); setDirty(false) } })
+        return () => onChange(undefined)
+      }, [onChange, currentShareId, dirty])
+      return <span>Recipients for {currentShareId}</span>
+    }
+    const host = await showDialog(200, true, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    expect(await screen.findByText('Recipients for existing')).toBeDefined()
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    expect(await screen.findByText('Could not save recipients')).toBeDefined()
+    expect(screen.queryByText('private server detail')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await vi.waitFor(() => { expect(saved).toHaveBeenCalledTimes(2) })
+    expect(saved).toHaveBeenLastCalledWith('existing')
+    await vi.waitFor(() => { expect(screen.getByRole('button', { name: 'Save changes' })).toHaveProperty('disabled', true) })
+    expect(host.calls.filter(call => call.method === 'updatePermissions')).toHaveLength(0)
+  })
+
+  it('prepares recipient fields while preserving the native permission choices', async () => {
+    const Audience = ({ onChange }: ShareAudienceProps) => {
+      useLayoutEffect(() => {
+        onChange({ failureMessage: 'Recipient preparation failed', prepare: async request => ({ ...request, sessionMode: 'write', allowsFork: true, accessMode: 'selected', allowedSubjectIds: ['team-intent'] }) })
+        return () => onChange(undefined)
+      }, [onChange])
+      return <span>Team recipients</span>
+    }
+    const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    expect(screen.getByText('Team recipients')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Create share' }))
+    await vi.waitFor(() => { expect(shareCreates(host)).toBe(1) })
+    expect(shareRequest(host)).toMatchObject({ accessMode: 'selected', allowedSubjectIds: ['team-intent'], sessionMode: 'view', allowsFork: false })
+  })
+
+
+  it('reports failed recipient preparation without creating a share or exposing the server error', async () => {
+    const Audience = ({ onChange }: ShareAudienceProps) => {
+      useLayoutEffect(() => {
+        onChange({ failureMessage: 'Could not prepare recipients', prepare: async () => { throw new Error('private server detail') } })
+        return () => onChange(undefined)
+      }, [onChange])
+      return null
+    }
+    const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    fireEvent.click(screen.getByRole('button', { name: 'Create share' }))
+    await vi.waitFor(() => { expect(screen.getByText('Could not prepare recipients')).toBeTruthy() })
+    expect(screen.queryByText('private server detail')).toBeNull()
+    expect(shareCreates(host)).toBe(0)
+  })
+
+  it('does not create while the recipient contribution is incomplete', async () => {
+    const Audience = ({ onChange }: ShareAudienceProps) => {
+      useLayoutEffect(() => { onChange({ blockedReason: 'Choose recipients', failureMessage: 'Recipient preparation failed', prepare: async request => request }); return () => onChange(undefined) }, [onChange])
+      return <span>Choose recipients</span>
+    }
+    const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    expect((screen.getByRole('button', { name: 'Create share' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(shareCreates(host)).toBe(0)
   })
 })

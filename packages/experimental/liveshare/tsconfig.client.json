@@ -11,6 +11,7 @@
     "src/client/endpoint-classification.ts",
     "src/client/index.ts",
     "src/client/ShareAction.tsx",
+    "src/client/share-audience.ts",
     "src/client/ShareDialog.tsx",
     "src/client/owner-identity-login.ts",
     "src/client/share-relay-address.ts",

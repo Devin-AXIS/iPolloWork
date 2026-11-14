@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import {
-  Button, IconCloseOutlineRegular, IconQuestionOutlineRegular, Input, Modal,
+  Button, IconCloseOutlineRegular, IconSettingsOutlineRegular, Input, Modal,
   Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { CreatedShare } from '../share-api-types.ts'
 import type { NS } from './locales.ts'
@@ -17,9 +17,10 @@ import { ShareEditPanel, useShareEdit } from './ShareEditPanel.tsx'
 import { ShareCreateForm, useShareCreateForm, type CreatedShareInfo } from './ShareCreateForm.tsx'
 import { useShareRelayAddress } from './share-relay-address.ts'
 import css from './ShareDialog.module.css'
+import type { ShareAudienceSelection } from './share-audience.ts'
 
 /** Props for one session-scoped share dialog. */
-export interface LiveshareShareDialogProps extends PropsLocale<typeof NS> {
+export interface LiveshareShareDialogProps extends PropsLocale<typeof NS>, Partial<PropsRenderSlots<'liveshare.share.audience'>> {
   /** Session this share exposes. */
   readonly sessionId: SessionId
   /** Human-facing Session title sent with the share; the panel deliberately does not print it. */
@@ -40,11 +41,14 @@ export interface LiveshareShareDialogProps extends PropsLocale<typeof NS> {
  * @returns the share modal.
  */
 export function LiveshareShareDialog({
-  sessionId, sessionTitle, defaultRelay, shares, onManage, onClose, t,
+  sessionId, sessionTitle, defaultRelay, shares, onManage, onClose, t, renderSlot,
 }: LiveshareShareDialogProps): ReactNode {
   const [link, setLink] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [connectionOpen, setConnectionOpen] = useState(false)
+  const [audienceSaving, setAudienceSaving] = useState(false)
+  const [audience, setAudience] = useState<ShareAudienceSelection>()
   const {
     draft: relayDraft, busy: relayBusy, error: relayError, reverify: relayReverify,
     effectiveRelay, named: relayNamed, connectivity, connectivityError,
@@ -92,14 +96,27 @@ export function LiveshareShareDialog({
    */
   const onCreated = async (data: CreatedShare, info: CreatedShareInfo): Promise<void> => {
     setLink(data.link)
+    setConnectionOpen(false)
     await edit.adoptCreated(data, info.reportedMode, info.allowsFork)
   }
 
   const createForm = useShareCreateForm({
     shares, sessionId, sessionTitle, connectivity, permission, ownerIdentity, offered: edit.offered,
-    testConnectivity, testPermission, onError: setError, onCreated, identityStateLine, t,
+    testConnectivity, testPermission, onError: setError, onCreated, identityStateLine, ...(audience === undefined ? {} : { audience }), t,
   })
-  const { busy, modeOutcome, create, isCreating } = createForm
+  const { busy: createBusy, modeOutcome, create, isCreating } = createForm
+  const busy = createBusy || audienceSaving
+  const dirty = edit.dirty || audience?.dirty === true
+  const saveChanges = async (): Promise<void> => {
+    if (busy || edit.saveBusy) return
+    setError('')
+    setAudienceSaving(true)
+    try {
+      if (audience?.dirty && audience.save) await audience.save()
+      if (edit.dirty) await edit.savePermissions()
+    } catch { setError(audience?.failureMessage ?? t('dialog.permissions.failed')) }
+    finally { setAudienceSaving(false) }
+  }
 
   const copy = async (): Promise<void> => {
     const ok = await writeClipboard(link)
@@ -113,9 +130,9 @@ export function LiveshareShareDialog({
    * A second close after the warning discards them: the warning states that before it happens.
    */
   const requestClose = (): void => {
-    if (isCreating()) return
+    if (isCreating() || audienceSaving) return
     /* v8 ignore start -- the edit panel's dirty close is covered through its own surface. */
-    if (edit.dirty && !edit.discardWarned) {
+    if (dirty && !edit.discardWarned) {
       edit.warnDiscard()
       return
     }
@@ -212,13 +229,10 @@ export function LiveshareShareDialog({
       >
         <div className={css.panel}>
           <header className={css.panelHeader}>
-            <div className={css.panelTitleBlock}>
-              <h2 className={css.panelTitle}>{t('dialog.title')}</h2>
-              <span className={css.sessionTitle} title={sessionTitle}>{sessionTitle}</span>
-            </div>
-            <Tooltip label={t('dialog.help')} side="bottom">
-              <button type="button" className={css.iconAction} aria-label={t('dialog.help')}>
-                <IconQuestionOutlineRegular size={14} />
+            <h2 className={css.panelTitle}>{t('dialog.title')}</h2>
+            <Tooltip label={t('dialog.connectionSettings')} side="bottom">
+              <button type="button" className={css.iconAction} aria-label={t('dialog.connectionSettings')} aria-expanded={connectionOpen} disabled={busy} onClick={() => { setConnectionOpen(value => !value) }}>
+                <IconSettingsOutlineRegular size={14} />
               </button>
             </Tooltip>
             <span className={css.headerGap} />
@@ -237,34 +251,87 @@ export function LiveshareShareDialog({
             </button>
           </header>
           <div className={css.body}>
-            {/* The address comes first: nothing downstream — connectivity, sign-in, or creating the
-            share — can be settled before the owner has saved one. An untouched field states that no
-            address is set; the owner types one and saves it, which is what puts it in force. */}
-            <div className={css.field}>
-              <span className={css.label}>{t('dialog.relay')}</span>
-              <div className={css.linkRow}>
-                <Input
-                  className={css.relayInput as string}
-                  value={relayDraft}
-                  disabled={relayBusy}
-                  aria-label={t('dialog.relay')}
-                  title={relayDraft}
-                  placeholder={t('dialog.relayUnset')}
-                  onChange={(event) => { editDraft(event.target.value) }}
-                  onBlur={() => {
-                    if (relayDraft.trim() !== '' && (!relayNamed || relayDraftUnsaved())) void saveRelay(relayDraft)
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      void saveRelay(relayDraft)
-                    }
-                  }}
-                />
+            {connectionOpen ? <div className={css.connectionSettings}>
+              {/* The address comes first: nothing downstream — connectivity, sign-in, or creating the
+              share — can be settled before the owner has saved one. An untouched field states that no
+              address is set; the owner types one and saves it, which is what puts it in force. */}
+              <div className={css.field}>
+                <span className={css.label}>{t('dialog.relay')}</span>
+                <div className={css.linkRow}>
+                  <Input
+                    className={css.relayInput as string}
+                    value={relayDraft}
+                    disabled={relayBusy}
+                    aria-label={t('dialog.relay')}
+                    title={relayDraft}
+                    placeholder={t('dialog.relayUnset')}
+                    onChange={(event) => { editDraft(event.target.value) }}
+                    onBlur={() => {
+                      if (relayDraft.trim() !== '' && (!relayNamed || relayDraftUnsaved())) void saveRelay(relayDraft)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        void saveRelay(relayDraft)
+                      }
+                    }}
+                  />
+                </div>
+                {relayDraftUnsaved() ? <span className={css.hint}>{t('dialog.relayUnsavedHint')}</span> : null}
+                {relayError === '' ? null : <span className={css.testFail} role="alert">{relayError}</span>}
               </div>
-              {relayDraftUnsaved() ? <span className={css.hint}>{t('dialog.relayUnsavedHint')}</span> : null}
-              {relayError === '' ? null : <span className={css.testFail} role="alert">{relayError}</span>}
-            </div>
+              {/* The account comes before the share's own settings: configuration is unavailable until
+              the owner is signed in. The address row that used to carry both facts is gone; the status
+              line below is now the one place the dialog states what is missing. */}
+              <div className={css.accountRow}>
+                {ownerIdentity.state === 'verified' ? (
+                  <>
+                    {ownerIdentity.avatarUrl !== undefined
+                  && <img className={css.identityAvatar} src={ownerIdentity.avatarUrl} alt="" />}
+                    <span className={css.identityName} title={identityTooltip()}>{identityName()}</span>
+                    <span className={css.headerGap} />
+                    <button
+                      type="button"
+                      className={css.textAction}
+                      disabled={busy || loginBusy || !mayVerify()}
+                      title={mayVerify() ? undefined : t('dialog.identity.verifyBlocked')}
+                      onClick={beginLogin}
+                    >
+                      {t('dialog.identity.reverify')}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    {needsVerification ? (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        disabled={busy || loginBusy || !mayVerify()}
+                        title={mayVerify() ? undefined : t('dialog.identity.verifyBlocked')}
+                        onClick={beginLogin}
+                      >
+                        {t('dialog.identity.verify')}
+                      </Button>
+                    ) : ownerIdentity.state === 'unknown' ? (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={busy || !mayVerify()}
+                        title={mayVerify() ? undefined : t('dialog.identity.verifyBlocked')}
+                        onClick={() => { refreshIdentity() }}
+                      >
+                        {t('dialog.identity.retry')}
+                      </Button>
+                    ) : null}
+                  </>
+                )}
+              </div>
+              {/* One status line named by the first unsettled state: the sign-in phase never stacks under
+              it, and every sentence the Host produced is printed unchanged. */}
+              <span className={statusClass()} role={statusAlerts() ? 'alert' : 'status'}>
+                {statusLine()}
+              </span>
+            </div> : null}
             {link === '' ? null : (
               <div className={css.field}>
                 <span className={css.label}>{t('dialog.shareLink')}</span>
@@ -280,65 +347,15 @@ export function LiveshareShareDialog({
                     {t(copied ? 'dialog.copied' : 'dialog.copy')}
                   </Button>
                 </div>
-                <span className={css.hint}>{t('dialog.linkHelp')}</span>
               </div>
             )}
-            {/* The account comes before the share's own settings: configuration is unavailable until
-            the owner is signed in. The address row that used to carry both facts is gone; the status
-            line below is now the one place the dialog states what is missing. */}
-            <div className={css.accountRow}>
-              {ownerIdentity.state === 'verified' ? (
-                <>
-                  {ownerIdentity.avatarUrl !== undefined
-                && <img className={css.identityAvatar} src={ownerIdentity.avatarUrl} alt="" />}
-                  <span className={css.identityName} title={identityTooltip()}>{identityName()}</span>
-                  <span className={css.headerGap} />
-                  <button
-                    type="button"
-                    className={css.textAction}
-                    disabled={busy || loginBusy || !mayVerify()}
-                    title={mayVerify() ? undefined : t('dialog.identity.verifyBlocked')}
-                    onClick={beginLogin}
-                  >
-                    {t('dialog.identity.reverify')}
-                  </button>
-                </>
-              ) : (
-                <>
-                  {needsVerification ? (
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      disabled={busy || loginBusy || !mayVerify()}
-                      title={mayVerify() ? undefined : t('dialog.identity.verifyBlocked')}
-                      onClick={beginLogin}
-                    >
-                      {t('dialog.identity.verify')}
-                    </Button>
-                  ) : ownerIdentity.state === 'unknown' ? (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={busy || !mayVerify()}
-                      title={mayVerify() ? undefined : t('dialog.identity.verifyBlocked')}
-                      onClick={() => { refreshIdentity() }}
-                    >
-                      {t('dialog.identity.retry')}
-                    </Button>
-                  ) : null}
-                </>
-              )}
-            </div>
-            {/* One status line named by the first unsettled state: the sign-in phase never stacks under
-            it, and every sentence the Host produced is printed unchanged. */}
-            <span className={statusClass()} role={statusAlerts() ? 'alert' : 'status'}>
-              {statusLine()}
-            </span>
+            {!connectionOpen && link === '' && !testing && createBlockedReason() !== undefined ? <Button variant="outline" onClick={() => { setConnectionOpen(true) }}>{t('dialog.connectionRequired')}</Button> : null}
+            {renderSlot?.('liveshare.share.audience', { shareSessionId: sessionId, ...(link !== '' && edit.editableShare !== undefined ? { currentShareId: edit.editableShare } : {}), disabled: busy || edit.saveBusy || !canConfigure(), onChange: setAudience })}
             {link === '' ? <ShareCreateForm form={createForm} disabled={!canConfigure()} t={t} /> : null}
             {/* What the share grants, edited here for an existing share. It belongs to the share, not to
             the address and account flow above it, so it renders only once a share exists; the panel
             footer carries the one save that submits all three fields. */}
-            <ShareEditPanel visible={link !== ''} edit={edit} t={t} />
+            <ShareEditPanel visible={link !== ''} edit={edit} showAccessSummary={audience === undefined} disabled={audienceSaving} t={t} />
             {modeOutcome === 'notGranted' ? <p className={css.testWarn}>{t('dialog.sessionMode.notGranted')}</p> : null}
             {error === '' ? null : <div className={css.error} role="alert">{error}</div>}
           </div>
@@ -349,8 +366,8 @@ export function LiveshareShareDialog({
                 <Button
                   variant="primary"
                   disabled={busy || testing || !relayNamed || relayDraftUnsaved() || connectivity === 'unreachable'
-                  || permission === 'blocked' || !mayCreateShare(ownerIdentity)}
-                  title={createBlockedReason()}
+                  || permission === 'blocked' || !mayCreateShare(ownerIdentity) || audience?.blockedReason !== undefined}
+                  title={audience?.blockedReason ?? createBlockedReason()}
                   onClick={() => { void create() }}
                 >
                   {busy ? t('dialog.creating') : testing ? t('dialog.testing') : t('dialog.create')}
@@ -358,7 +375,7 @@ export function LiveshareShareDialog({
               </>
               : <>
                 {/* The save sits outside the scrolling body, so a long list cannot push it out of view. */}
-                {edit.dirty ? (
+                {dirty ? (
                   <span className={edit.discardWarned ? css.testWarn : css.hint}>
                     {t(edit.discardWarned ? 'dialog.permissions.discard' : 'dialog.permissions.unsaved')}
                   </span>
@@ -367,10 +384,11 @@ export function LiveshareShareDialog({
                 <Button variant="outline" onClick={requestClose}>{t('dialog.done')}</Button>
                 <Button
                   variant="primary"
-                  disabled={!edit.dirty || edit.saveBusy || edit.editableShare === undefined}
-                  onClick={() => { void edit.savePermissions() }}
+                  disabled={!dirty || busy || edit.saveBusy
+                  || (audience?.dirty === true && audience.blockedReason !== undefined) || edit.editableShare === undefined}
+                  onClick={() => { void saveChanges() }}
                 >
-                  {t(edit.saveBusy ? 'dialog.permissions.saving' : 'dialog.permissions.save')}
+                  {t(edit.saveBusy || audienceSaving ? 'dialog.permissions.saving' : 'dialog.permissions.save')}
                 </Button>
               </>}
           </footer>

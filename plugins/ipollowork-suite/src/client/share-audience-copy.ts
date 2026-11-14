@@ -1,0 +1,4 @@
+/** Copy owned by the suite's recipient selector. */
+const en = { currentAccess:'Existing sharing scope',title:'Share with',link:'Anyone with the link',organization:'Organization',scope:'Sharing scope',wholeOrganization:'Entire organization',departments:'Departments in the organization',chooseOrganization:'Choose an organization',chooseDepartments:'Select at least one department',signIn:'Sign in to choose an organization',loading:'Loading departments…',failed:'Could not prepare the share. Check your account and sharing server.',empty:'No departments available',retry:'Retry' }
+const zh:typeof en = { currentAccess:'已有分享范围',title:'分享给',link:'任何获得链接的人',organization:'组织',scope:'分享范围',wholeOrganization:'整个组织',departments:'组织内的部门',chooseOrganization:'选择组织',chooseDepartments:'请至少选择一个部门',signIn:'登录后可选择组织',loading:'正在加载部门…',failed:'未能准备分享，请检查账号和共享服务',empty:'暂无可选部门',retry:'重试' }
+export function shareAudienceCopy(language:string){return language==='zh'?zh:en}

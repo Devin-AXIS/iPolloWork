@@ -103,6 +103,7 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
           // review action instead of beyond the overflow.
           order: -7,
           locale: NS,
+          children: { 'liveshare.share.audience': { kind: 'single', scope: 'session' } },
           inject: () => ({ shares }),
         }, LiveshareShareAction),
       )
@@ -118,3 +119,5 @@ export async function apply(ctx: ClientContext): Promise<() => Promise<void>> {
 export type { LiveshareShareActionProps } from './ShareAction.tsx'
 export type { LiveshareShareDialogProps } from './ShareDialog.tsx'
 export type { LiveshareManageSharesDialogProps } from './ManageSharesDialog.tsx'
+
+export type { ShareAudienceProps, ShareAudienceSelection } from './share-audience.ts'

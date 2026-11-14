@@ -7,6 +7,7 @@ copyFileSync("src/migration-003.sql", "dist/server/migration-003.sql");
 copyFileSync("src/migration-004.sql", "dist/server/migration-004.sql");
 copyFileSync("src/migration-005.sql", "dist/server/migration-005.sql");
 copyFileSync("src/migration-006.sql", "dist/server/migration-006.sql");
+copyFileSync("src/migration-007.sql", "dist/server/migration-007.sql");
 copyFileSync("web/liveshare-carrier.js", "dist/server/liveshare-carrier.js");
 copyFileSync("web/liveshare-carrier.LICENSE", "dist/server/liveshare-carrier.LICENSE");
 execFileSync(process.execPath, ["node_modules/vite/bin/vite.js", "build"], { stdio: "inherit" });

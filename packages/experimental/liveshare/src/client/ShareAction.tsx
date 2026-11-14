@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import { IconShareOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { InjectFace, PropsLocale, PropsRuntime, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type {} from '@deepseek-ai/dsh-client-ui-session/client'
@@ -11,6 +11,7 @@ import { openManagedSession, rememberManagedShare, takeManagedShare } from './sh
 import { LiveshareShareDialog } from './ShareDialog.tsx'
 import type { NS } from './locales.ts'
 import type { OwnerShares } from './owner-shares.ts'
+import type {} from './share-audience.ts'
 import css from './ShareAction.module.css'
 
 /** Business face the header action receives: the owner's share-management Remote. */
@@ -21,14 +22,14 @@ export interface LiveshareShareActionInjected {
 
 /** Full props for the Liveshare Session-header utility. */
 export type LiveshareShareActionProps =
-  PropsRuntime<'conversation.session.header.utilities'> & InjectFace<LiveshareShareActionInjected> & PropsLocale<typeof NS>
+  PropsRuntime<'conversation.session.header.utilities'> & InjectFace<LiveshareShareActionInjected> & PropsLocale<typeof NS> & Partial<PropsRenderSlots<'liveshare.share.audience'>>
 
 /**
  * Render the Session Header Share action and its dialog for a local owner.
  * @param props - Session runtime plus localized copy.
  * @returns the header action and optional dialog.
  */
-export function LiveshareShareAction({ sessionId, useSessions, shares, t }: LiveshareShareActionProps): ReactNode {
+export function LiveshareShareAction({ sessionId, useSessions, shares, t, renderSlot }: LiveshareShareActionProps): ReactNode {
   const [view, setView] = useState<'closed' | 'share' | 'manage'>('closed')
   const [managedShare, setManagedShare] = useState<{ readonly sessionId: SessionId; readonly sessionTitle: string }>()
   const [defaultRelay, setDefaultRelay] = useState('')
@@ -68,6 +69,7 @@ export function LiveshareShareAction({ sessionId, useSessions, shares, t }: Live
           sessionTitle={managedShare?.sessionTitle ?? sessionTitle}
           defaultRelay={defaultRelay}
           shares={shares}
+          {...(renderSlot === undefined ? {} : { renderSlot })}
           onManage={() => { setView('manage') }}
           onClose={() => { setManagedShare(undefined); setView('closed') }}
           t={t}

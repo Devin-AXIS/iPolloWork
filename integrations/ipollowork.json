@@ -43,7 +43,7 @@
   "files": {
     "plugins/ipollowork-suite/.gitignore": "a35acbae4cc64fb775bf5fa46757a1118d9766e5720aba5a995b0f5b4dccf2be",
     "plugins/ipollowork-suite/AGENTS.md": "778314d9ced6f051d2f2e6ee4240e944188d94495f4be6db346420f7c69d7141",
-    "plugins/ipollowork-suite/README.md": "2b71037a9700a212a3cf4122f841ae38769a8fc5dd9bd5e2db0b4db1d119a20e",
+    "plugins/ipollowork-suite/README.md": "41a99cb0b7661d44c4ca1219495f50924e60de02e36f763286bf339aaca3e864",
     "plugins/ipollowork-suite/assets/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
     "plugins/ipollowork-suite/catalog/bundled-releases.json": "5d1b47a17a18d80b2577c6e329f2663830ed7b4539b3616d8c40cefb3fcc3df4",
     "plugins/ipollowork-suite/catalog/index.json": "b7cf8d21fc8dc6b175f55d5f238e62ad7b5c80cea27f47420d473d213d043bbc",
@@ -71,26 +71,26 @@
     "plugins/ipollowork-suite/src/client/agent-locale.ts": "2283859eab3dbcb810b5915cafdd216a3e81a0f094ab16d6c129555708b0fed7",
     "plugins/ipollowork-suite/src/client/agents.tsx": "b4d5dad00c676419d873567346c817fc8afaa057cf644c99f6b9aa82c1849b83",
     "plugins/ipollowork-suite/src/client/api.ts": "7c0cf05e171d6b1ad5b8b3136e42829c18b7565ebf2a029836f63df318261788",
-    "plugins/ipollowork-suite/src/client/collaboration.tsx": "84e2ab05eff7ddf7ef823b51a152eaaa3fa5323a6a8d5f8cb84f8ce2ddf9e0b9",
+    "plugins/ipollowork-suite/src/client/collaboration.tsx": "80f398e4daf5ad3e770a389ad7643ba7fb300ce5a6694c31cb7194542ff899d3",
     "plugins/ipollowork-suite/src/client/connections-model.ts": "00d57a112f69c978d0d792247d65aeb1e2f7b4c3b59188a79c98efa6541ee2bd",
     "plugins/ipollowork-suite/src/client/connections.tsx": "910762fbc22b999e85e0badb66a5d3b5814b7e072e76aef5af3b6a78b14161d4",
     "plugins/ipollowork-suite/src/client/coordinator.tsx": "d98c03ac4992e5897c6557fa1105e18bb28434219ed3d5621ace21503d02ea75",
     "plugins/ipollowork-suite/src/client/css.d.ts": "dbe8004fa39fd2b7ba84d1d0c7dd626fc63d1756d054f3019e212e324f626047",
-    "plugins/ipollowork-suite/src/client/enterprise-controller.ts": "8c4e46d27b7b625abe3ad265c203530403e5176b463195f895f89ca9e9716b48",
+    "plugins/ipollowork-suite/src/client/enterprise-controller.ts": "fad913ff0c653aff7bd0f01e4afc795b8d73aa94275d32613a87a231cbf32338",
     "plugins/ipollowork-suite/src/client/enterprise-locale.ts": "927759f5ef8f2714f4616da79aabb827a2d1ab5c878027508225a454aae91cea",
     "plugins/ipollowork-suite/src/client/enterprise-members.tsx": "2ab02249c9f5ed40224d0e1e1b06e4f1162b1e45bbd493470206d071966e87dd",
-    "plugins/ipollowork-suite/src/client/enterprise-share.tsx": "b1797ae5cbce6976352df6479acf3b061c81bfe6b29c8c1c8c43226054b7d63f",
+    "plugins/ipollowork-suite/src/client/enterprise-share.tsx": "feb3d053820fbe9e8c7e4f62a094b218b3b64e751c68ab10348acd1299cbe57a",
     "plugins/ipollowork-suite/src/client/enterprise-ui.tsx": "c2d6327eb46fab0ee8773259927d7d33134951677424b3bda7238c82e5f5c33c",
-    "plugins/ipollowork-suite/src/client/enterprise.tsx": "4af0e7b6afc577977bd0e8e618c6d1922e66c04d579467c41d925f66f2a71108",
+    "plugins/ipollowork-suite/src/client/enterprise.tsx": "8b10b882dc79df0d18cbafd4bdde7970aefeb2f7190f756f04a1bd21b6b378ad",
     "plugins/ipollowork-suite/src/client/index.tsx": "32b37824a765d2d6c0afd81a71be6fc85c2372f6a6cc984e3bd556d613d2b5f6",
     "plugins/ipollowork-suite/src/client/locale.ts": "f6bfe9f7222fc9970c484382bbb863413404c9b8d77bdcab3731360c2e9e2800",
     "plugins/ipollowork-suite/src/client/market.tsx": "ef75cef4cf2bdd13b01799b1613216892ab1792ae96f958cbb8411d90b875856",
     "plugins/ipollowork-suite/src/client/native.ts": "5326e95823c3e1eebbbb7554c5ed5c913f5df0fc0b82d5922fc81f3a1ba2543d",
-    "plugins/ipollowork-suite/src/client/project-copy.ts": "39f73da3a5937baabbebb335497eae02cf1bb42ce435073f20f69a8ef8e1a685",
+    "plugins/ipollowork-suite/src/client/project-copy.ts": "c2a4e4aa214363c4fe126a820d581dd45b0c28968306ae91dff221a1cb34047e",
     "plugins/ipollowork-suite/src/client/project-creation-actions.ts": "80f5739ff87e7f2549c2e734fb8353768c285ce105f706308109b92da94e1209",
     "plugins/ipollowork-suite/src/client/project-creation.tsx": "20362b4a57e35c908723d74de897b9e4ccd180270bbd786838a85efbac5ce501",
     "plugins/ipollowork-suite/src/client/service-source.tsx": "ba8076a50436e262375de6fd7996a20b8b056fddf15f863c2d6b0cff8b346e76",
-    "plugins/ipollowork-suite/src/client/suite.module.css": "86ace1c6f71ee9cb6e9ff5f992f6668071945de6c77161d5d88a461d5282325a",
+    "plugins/ipollowork-suite/src/client/suite.module.css": "f5dabca3fc5a17f5dd5dd66c4f7785a4dce5780039b1bfd181ef72403e22453e",
     "plugins/ipollowork-suite/src/client/theme.tsx": "5b631ce850f053b140bb02e5e8c4e204419dc93cbebba87012c49008ef10877a",
     "plugins/ipollowork-suite/src/host/account.ts": "f323f6b1c330b79f92136c81f6b86e30b5cae94729c053687e2872cc5f88c7a6",
     "plugins/ipollowork-suite/src/host/agent-avatar.ts": "cd4f4f11014ba1e5372b2088fa04dbc685809ba11517dfdc422fd9ee77497ea4",
@@ -105,10 +105,10 @@
     "plugins/ipollowork-suite/src/host/errors.ts": "f4283c3368344567e1242b9dfec34e8c887cd84542aebcabd6a916fb516a1406",
     "plugins/ipollowork-suite/src/host/im-media.ts": "ccdf1e66c7e62c6824c11ab1a9f369dce59703a08bad04667c6834e5494a0204",
     "plugins/ipollowork-suite/src/host/im.ts": "07cc9575723c0a2eaa74a222f328929336158b4f91cd98287a1e5fa3f306d6b2",
-    "plugins/ipollowork-suite/src/host/index.ts": "8a1c32e59e0a43ffda437e368b720f5dcaed29dbe7df942a6566198d3172f9a7",
+    "plugins/ipollowork-suite/src/host/index.ts": "34a3fd2ece1a670f4bdc2bd7cd197a551105f955db4fd5daff048d1e8b1a0554",
     "plugins/ipollowork-suite/src/host/management.ts": "985033e4644757a3b91b0889f2a7a4a0d6a9ec653c86ba40200105935c21f3ff",
     "plugins/ipollowork-suite/src/host/market.ts": "cf8be27c24207f2f474686347f47dd0635d36ff4251b04a5b78efda98800ad8d",
-    "plugins/ipollowork-suite/src/host/native-sharing.ts": "94bc68d469e737944eb098c09523f099648eb73fe6e3eb44cdd77de5e9d1e8a0",
+    "plugins/ipollowork-suite/src/host/native-sharing.ts": "a514cf99885b311d934b357267e891e71ac8d0edac6272a48f97df5a047d5169",
     "plugins/ipollowork-suite/src/host/project-context.ts": "758446e7a19a388c44569d66a47268f5f2513e5263370090f12e88a8db574cda",
     "plugins/ipollowork-suite/src/host/service-models.ts": "ece71c9049d7d1f72b0253e5dec3d5c0119c8e3031a80e3a3bdb360756851094",
     "plugins/ipollowork-suite/src/host/services.ts": "4fdfeb2e938927e36da7013b89b20478840d9a2ff31b39ca329f8a239bbd27b4",
@@ -139,12 +139,12 @@
     "plugins/ipollowork-suite/tests/im-native.expected.json": "97f8cb945f2bb49605492ec1c0b0bd08a89c990e22cdea1c448c70b6f44d2bca",
     "plugins/ipollowork-suite/tests/im-native.patch.yml": "4ebac78ce9fe6cbee45d8d2c7e1f773bee0c82300187db3de9d0385d9dfe5972",
     "plugins/ipollowork-suite/tests/im-native.test.mjs": "58defa402de8a644d0bb820abb42c2ee461a3353fb840dbda7e9ca7ecacd5253",
-    "plugins/ipollowork-suite/tests/liveshare-native.test.ts": "19da9d05fc5e2693000bbb0fef89cf9e8176e2232027de40de28dc25ba32dc11",
+    "plugins/ipollowork-suite/tests/liveshare-native.test.ts": "29556b57f46fbd8df0412392938f58efa7742c9b874917d2ae691f46470e05d7",
     "plugins/ipollowork-suite/tests/management.test.ts": "7953a85ef9f99d64ff5bb7dd17236725f63c89b382e5959718d34f332436ff54",
     "plugins/ipollowork-suite/tests/market.test.ts": "7e0d8e8a342213bdb17d3b530b4c345f22b897b93f6c306182147aa92b4f7742",
     "plugins/ipollowork-suite/tests/mcp-fixture.ts": "b7cccf88157959894be8d78646da8591927df5cc3079a4c5ae7807137c1c8061",
     "plugins/ipollowork-suite/tests/native-fixture.ts": "9298881ca25037f9cb0bd3cc742a9c740cbddda5524b4e234ea6169502785c9b",
-    "plugins/ipollowork-suite/tests/native-sharing.test.ts": "ef067800456822a8c09fe85037288a253f746f9ae27a78319a7748ee8e1da243",
+    "plugins/ipollowork-suite/tests/native-sharing.test.ts": "0be6984cda10c4d17002a2740d6d510934c3ab341f8ba43450010dd71f059206",
     "plugins/ipollowork-suite/tests/native.expected.json": "66095a1781a33dc41f7033a116be0c1e231f1c618098d370d20c8d666dbb5127",
     "plugins/ipollowork-suite/tests/native.patch.yml": "8c58aecccd4e075e3ea080d5f79770461e4fa91a2b2970b6008d85f386565d13",
     "plugins/ipollowork-suite/tests/native.test.ts": "69a7de9bf499658c6b74285e3a6c9481dbedb907ac855a07a17c0cc94e09ce2c",
@@ -650,7 +650,7 @@
     "plugins/ipollowork-suite/vendor/dsh-im/test/image-input.test.mjs": "54ad1e79a6b217ccaeabe18cb25376aaa604ea2c7048c7657fb431b1edf9c479",
     "plugins/ipollowork-suite/vendor/dsh-im/test/support/filesystem.mjs": "00da83f222779dd51f98d0a3956718e57fbb6f664187447d0bb64b8c195460dc",
     "services/ipollowork/Dockerfile": "6e036db391dc9bc677d8cff66bc21549a2ef0ee85b101931a8d9e499f7da6bdc",
-    "services/ipollowork/README.md": "6a39d27ec16a5f85bd8a526fc3a463fe659de647e45afcba07114d8196798a53",
+    "services/ipollowork/README.md": "e105394a24eda3a0ab1c7632fe7d48779a8086b4a6dc8a7bf6344b2fc638310c",
     "services/ipollowork/.dockerignore": "1145c9824935d3d02a60c10e9e451382769d03d6e8651f35336f96f5a8f5e49f",
     "services/ipollowork/.gitignore": "335ae60275a2292d9744e1e9cd347e1cda26834d84ec20f4ef906d3304092ccb",
     "services/ipollowork/package-lock.json": "4cc233058237e0bf09d0a446ac5d4747224fd845d6298e6327def30507eed586",
@@ -672,17 +672,17 @@
     "services/ipollowork/web/pages.tsx": "cd89ef447a87cef3daf821bbd2b3741cfc4bdea9c4433e2f9d6b9ec7787ba37d",
     "services/ipollowork/web/public/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
     "services/ipollowork/deploy/nginx.conf": "d5751c70b34a3bc37f91a04ae87b19ed976cc5f4e4880e1efe5e688244bf3290",
-    "services/ipollowork/tests/service.test.ts": "2d45c03bbd5a66151adbc0078d579bd03f1bcd7842094d81d64905f50f10572b",
+    "services/ipollowork/tests/service.test.ts": "fbffa4cdce1bcdd1400ba6c7c4f2b1f8fdbab53183a1a88f4a055dfdb8ba4c05",
     "services/ipollowork/tests/execution.test.ts": "7233c91a6add3edf37c456b095d1182262b164b3108fa7c2b5e532f6fc23ca6c",
     "services/ipollowork/tests/liveshare.test.ts": "e1cd24b9802360d9ecf67614377daadf6016c03cb2eec0aeb2cb60968ec84d90",
     "services/ipollowork/tests/project-space.test.ts": "42db12a1c829d7c262238bac531dd6a40c8f46ac51f50b40e08043dab1bc5994",
     "services/ipollowork/scripts/liveshare-carrier.mjs": "6003bfc29b467ad78bdec1ad34b702d63192a1a0bbdbad03cf221553683256b2",
     "services/ipollowork/scripts/admin.ts": "a491693b1b4d5019d3dbbd3f5cf21d2eb166c34ac38470b4c38f896fb6c64b7c",
-    "services/ipollowork/scripts/build.mjs": "e578ceedbd57c972afdc67e8af7b55a5f57b62dccd573d40292822028f537683",
+    "services/ipollowork/scripts/build.mjs": "ae42eda2abfb540776e81a9d42d511e26005b59670992f8e7a5375f3d1f73c6c",
     "services/ipollowork/scripts/backup.ts": "72c46c28633bb803b08c572d25b63ce6d1098db03c51ed632920632c73793947",
     "services/ipollowork/src/migration-004.sql": "65ebe68df8deae7c9eec9d137db851783924926fee0ce23eb17f3da0cddf8a4c",
     "services/ipollowork/src/migration-005.sql": "3ac52564fc4e84048f8844bc0a019ed27996b684d7d9c9532246a0ef395a992e",
-    "services/ipollowork/src/liveshare.ts": "5570f5b9185294efea5cf20e25951dae36c09e7a4df19125e7ce8bbaf0e8911f",
+    "services/ipollowork/src/liveshare.ts": "d10aa1dcd5ca73c5f8490d443de10c8e79d83e14b70fd8d2881d619307e5ff0e",
     "services/ipollowork/src/migration-006.sql": "1a788da5191583095b0215f3fd58c85043615bfde8ba3a1e31770a5d80c19d43",
     "services/ipollowork/src/migration-002.sql": "797909a67649dad0d75242b4539ed9edfd1580ebb211a1bf3b8e914b02f19aa8",
     "services/ipollowork/src/migration-003.sql": "b3eec3672da90f8c36f0b221bb9959f69432421746a17a39fe8f02551ea17976",
@@ -695,14 +695,22 @@
     "services/ipollowork/src/collaboration.ts": "ed2c4aa42cab1da5d950aec481bc5f3b5520bc7e8202a666e56f01e6330a8905",
     "services/ipollowork/src/http.ts": "4010cee90581d5d0c60a5438c4966f8c375710283b32840f05a449fae5454c8c",
     "services/ipollowork/src/project-space.ts": "aeb9547e54befbb8afe38159872b40a76145b432655f2608257d1c5976524e7f",
-    "services/ipollowork/src/database.ts": "82008f213e9ca182298eb860e0f67a94000958a495e605b33c184d020b33b4b9",
+    "services/ipollowork/src/database.ts": "bdcc804cd6f342102711c58cc37f84f89e974d571831484762222b06cb1a31af",
     "services/ipollowork/src/domain.ts": "bb62e55b14f9b27cdfb5b48459cb321d4c7c37e27fcca70e68cb69c27bfe6b37",
-    "services/ipollowork/src/liveshare-http.ts": "ed5edba4a3d2181a81ac70cf3b5128a13329d062e1dc38d67a65ec919e9f1730",
+    "services/ipollowork/src/liveshare-http.ts": "8e96829ef0c5c8c950754251f3c76d952ebe5229dcf717752c15afed6e7e1a28",
     "services/ipollowork/src/config.ts": "9438b48ef89e9f0ed88f5c1e66c77fb1d78584252d5fbf7882e3972ec097eb1b",
     "services/ipollowork/src/execution.ts": "4ee9de08ff7877ed40ef9e10705d11c70b961049b5795483c787ed20611781c0",
     "services/ipollowork/src/payments.ts": "ec041c9ea98fab30a3d6aa248dba824ddada1f626682ab65fde9e5ced5be2ef4",
     "services/ipollowork/src/server.ts": "c950ce0711cd063debc44f9a373a3a4947d7f5fb25f40f4fc51754205ea4fe74",
-    "services/ipollowork/src/auth.ts": "c97a646780b1b5252482f2691d783ff141f6567ce1b5a0a52cddfc7fe800bb10"
+    "services/ipollowork/src/auth.ts": "c97a646780b1b5252482f2691d783ff141f6567ce1b5a0a52cddfc7fe800bb10",
+    "plugins/ipollowork-suite/README.i18n.yaml": "b9ab895b74b94a0d139c59417c59b89a1efb2514e636a64ab582da92dc79f57a",
+    "plugins/ipollowork-suite/README.zh.md": "e1f890336a58e8ceec79e6269286f348e16f055aa5cd003e1b79ef3cd134bf3f",
+    "services/ipollowork/README.i18n.yaml": "77f5bdb448c41228045cf98ed949df0fd488dc00dbb073ca686cf2996415775f",
+    "services/ipollowork/README.zh.md": "b6b3250c3835640bbcebae79a81bac872afe67c9d1e6eec03e62cb22e8f826c4",
+    "plugins/ipollowork-suite/src/client/share-audience-copy.ts": "8463c9f2c7bf09eff420c6b023222917370c39dd985956600d7ba14b029135f3",
+    "services/ipollowork/src/migration-007.sql": "8d1ce23acf2c22fb9fedae6af03a21485494e71373991c42d16024581654ae5c",
+    "services/ipollowork/src/share-audience.ts": "3cb865dfe217a841f772eea74b236a4a0d9fe626bd6414a29e04cfddae4e585c",
+    "services/ipollowork/tests/share-audience.test.ts": "cac91d0e986cc7a807a7ce6330902fa9c4504a3297473203a82f8bcf7e605aea"
   },
   "adjustments": [
     {
@@ -744,6 +752,186 @@
     {
       "path": "plugins/ipollowork-suite/tests/host.test.ts",
       "reason": "Expect the local default in the owner-authenticated account route."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.i18n.yaml",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.md",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.zh.md",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/collaboration.tsx",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/enterprise-controller.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/enterprise-share.tsx",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/enterprise.tsx",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/project-copy.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/suite.module.css",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/host/index.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/host/native-sharing.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/tests/liveshare-native.test.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/tests/native-sharing.test.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/README.i18n.yaml",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/README.md",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/README.zh.md",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/scripts/build.mjs",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/src/database.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/src/liveshare-http.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/src/liveshare.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/tests/service.test.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/share-audience-copy.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/src/migration-007.sql",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/src/share-audience.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "services/ipollowork/tests/share-audience.test.ts",
+      "reason": "Unify native sharing with optional team recipients, public links and preserved project permissions."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.i18n.yaml",
+      "reason": "Simplify sharing to public links or organizations, with departments nested inside an organization."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.md",
+      "reason": "Simplify sharing to public links or organizations, with departments nested inside an organization."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.zh.md",
+      "reason": "Simplify sharing to public links or organizations, with departments nested inside an organization."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/enterprise-share.tsx",
+      "reason": "Simplify sharing to public links or organizations, with departments nested inside an organization."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/share-audience-copy.ts",
+      "reason": "Simplify sharing to public links or organizations, with departments nested inside an organization."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/suite.module.css",
+      "reason": "Simplify sharing to public links or organizations, with departments nested inside an organization."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.i18n.yaml",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.md",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.zh.md",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/enterprise-share.tsx",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/share-audience-copy.ts",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/suite.module.css",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/host/index.ts",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/host/native-sharing.ts",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/tests/native-sharing.test.ts",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "services/ipollowork/README.i18n.yaml",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "services/ipollowork/README.md",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "services/ipollowork/README.zh.md",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "services/ipollowork/src/liveshare-http.ts",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "services/ipollowork/tests/share-audience.test.ts",
+      "reason": "Keep audience selection visible and save organization or department changes on existing native links."
     }
   ]
 }
