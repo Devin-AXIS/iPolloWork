@@ -104,6 +104,17 @@ import { inspect } from 'node:util'
 import { readFile } from 'node:fs/promises'
 export function apply(ctx) {
   if (!(ctx instanceof Context)) throw new Error('desktop runtime: external plugin loaded another Cordis instance')
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-studio-build',
+    async handler(_request, response) {
+      try {
+        const { transform } = await import('esbuild')
+        const result = await transform('const value: number = 1', { loader: 'ts' })
+        response.end(result.code)
+      } catch (error) {
+        response.statusCode = 500
+        response.end(String(error))
+      }
+    } }))
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke',
     handler(_request, response) { response.end('plugin route ready') } }))
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke-install',
@@ -200,6 +211,11 @@ export function apply(ctx) {
       if (!account.ok || (await account.json() as { status?: string }).status !== 'anonymous') {
         throw new Error('desktop runtime: embedded account route did not start signed out')
       }
+      const studioBuild = await fetch(new URL('/desktop-smoke-studio-build', ready.url), { headers: { cookie } })
+      const studioCode = await studioBuild.text()
+      if (!studioBuild.ok || !studioCode.includes('const value = 1') || studioCode.includes(': number')) {
+        throw new Error('desktop runtime: Studio compilation failed: ' + studioCode)
+      }
       const anonymous = await fetch(new URL('/ipollowork-suite/account', ready.url))
       const foreignOrigin = await fetch(new URL('/ipollowork-suite/account', ready.url), {
         headers: { cookie, origin: 'https://untrusted.example' },
@@ -218,7 +234,7 @@ export function apply(ctx) {
       const rows = inventory.result.value?.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
       if (!inventory.result.ok || rows?.length !== 3
         || rows.some(row => row.fiberPhase !== 'active' || row.readOnlyReason !== 'management-required')) {
-        throw new Error('desktop runtime: required iPolloWork components are inactive or mutable')
+        throw new Error('desktop runtime: required iPolloWork components are inactive or mutable: ' + JSON.stringify({ ok: inventory.result.ok, rows: rows?.map(row => ({ moduleName: row.moduleName, fiberPhase: row.fiberPhase, readOnlyReason: row.readOnlyReason })) }))
       }
       const imMethod = 'dsh-im/weixin'
       const imResponse = await fetch(new URL(`/api/${imMethod}`, ready.url), {

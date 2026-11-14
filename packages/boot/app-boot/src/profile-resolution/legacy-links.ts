@@ -1,6 +1,7 @@
 /** Package directory and resource canonicalization through the active runtime carrier's filesystem. */
 
-import { lstatSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { basename, dirname, join } from 'node:path'
 
 /**
@@ -17,7 +18,28 @@ function isPackagedExecutable(): boolean {
  * @returns the canonical directory path.
  */
 export function realModuleDirectory(path: string): string {
-  return isPackagedExecutable() ? realpathSync(path) : realpathSync.native(path)
+  const physical = physicalModuleDirectory(path)
+  return isPackagedExecutable() ? realpathSync(physical) : realpathSync.native(physical)
+}
+
+/**
+ * Select a complete unpacked Electron package without canonicalizing ordinary package links.
+ * @param path - Package directory as resolved from its importing package.
+ * @returns Physical unpacked directory when available, otherwise the original path.
+ */
+export function physicalModuleDirectory(path: string): string {
+  const archive = /^(.*\.asar)([/\\].+)$/u.exec(path)
+  if (archive?.[1] && archive[2]) {
+    const unpacked = `${archive[1]}.unpacked${archive[2]}`
+    // Complete unpacked packages keep worker entrypoints and executable dependencies on disk.
+    // Electron's patched stat reports an ASAR archive as a directory.
+    const filesystem = process.versions.electron === undefined ? { statSync }
+      : createRequire(import.meta.url)('original-fs') as Pick<typeof import('node:fs'), 'statSync'>
+    if (existsSync(join(unpacked, 'package.json')) && filesystem.statSync(archive[1]).isFile()) {
+      return realpathSync.native(unpacked)
+    }
+  }
+  return path
 }
 
 /** Canonicalize a module resource, preserving physical file aliases.

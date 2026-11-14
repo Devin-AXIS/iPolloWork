@@ -114,7 +114,7 @@ test("paginated discovery preserves operator prices and atomically rejects an in
   } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });
 
-test("one provider key enables only priced models; asynchronous image polling refunds unused output once", async () => {
+test("one provider key enables only priced models; asynchronous image polling charges actual output once", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-models-"));
   const service = await createService(await testConfig({ DATA_DIR: dir }));
   try {
@@ -145,7 +145,7 @@ test("one provider key enables only priced models; asynchronous image polling re
     await service.store.transaction(() => ledgerEntry(service.store, user.id, 10000, "grant", "Test"));
     const request = { requestId: randomUUID(), method: "POST", path: "/api/v1/services/aigc/text2image/image-synthesis", contentType: "application/json", body: Buffer.from(JSON.stringify({ model: "wan2.6-t2i", input: { prompt: "Test" }, parameters: { n: 2 } })).toString("base64") };
     await (await executor.invoke(actor, image.id, request)).text();
-    assert.equal((await wallet(service.store, user.id)).balance, 9600);
+    assert.equal((await wallet(service.store, user.id)).balance, 10000);
     const poll = { requestId: randomUUID(), method: "GET", path: "/api/v1/tasks/test-task" };
     await (await executor.invoke(actor, "official-bailian-video", poll)).text();
     assert.equal((await wallet(service.store, user.id)).balance, 9800);

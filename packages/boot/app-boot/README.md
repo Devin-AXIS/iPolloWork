@@ -84,6 +84,8 @@ The generated JSON Schema 2020-12 describes the composed entry list, with `$defs
 
 The projector preserves native omission behavior by checking literal defaults against generated schemas with Ajv, without executing native validators or transform callbacks. Regex compatibility checks and unsupported or recursive-default cases produce explicit limitations. Opaque input adaptations and lazy metadata effects widen validation rather than replaying native mutation. Non-JSON default/presentation annotations are omitted with limitations without losing the structural schema; an unrepresentable default leaves omission acceptance unknown unless the field is required. These dependencies load only when collection runs. Imports, Config getters, and lazy builders still execute trusted code; collection is not a sandbox. Do not overlap profile-resolution interceptions. The collector releases its interception before returning, while Node retains imported modules; runtime-created plugins and Agent preset instances remain outside discovery.
 
+Archive detection uses Electron’s unpatched filesystem metadata. Complete packages unpacked beside an Electron ASAR resolve to their physical directories when an unpacked package manifest exists. Worker entrypoints and subprocess dependencies therefore use disk paths; their imports still resolve shared core packages from the installation. Partially unpacked packages retain archive resolution.
+
 ### Reading plugin display metadata
 
 `resolvePluginResource(specifier, parentURL)` resolves a plugin module or exported resource to its local filesystem path through the active Node ESM resolver without evaluating it. It throws when the resolver is unavailable or the resource cannot resolve to a local file.

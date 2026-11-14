@@ -1,8 +1,10 @@
 import { createHash } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { createRuntimeProjectMetadata } from '../src/project-manager.ts'
+import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import {
   DESKTOP_PACKAGES_DIR,
   DESKTOP_PACKAGE_SET_FILE,
@@ -57,6 +59,25 @@ afterEach(() => {
 })
 
 describe('desktop core package set', () => {
+  it('permits reviewed Studio native builds only when Studio is bundled', () => {
+    const { root, dsh, base, host } = packageSetProject()
+    const release = { schemaVersion: 1 as const, version: '1.2.3', hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION, nodeVersion: '24.15.0', pnpmVersion: '11.28.5' }
+    createRuntimeProjectMetadata(root, release)
+    const workspace = join(root, 'pnpm-workspace.yaml')
+    expect(readFileSync(workspace, 'utf8')).not.toContain('onnxruntime-node')
+    const body = Buffer.from('studio')
+    const studio = record('deepseek-idesign', 'design.tgz', body, '1.0.0-beta.20.ipollo.1')
+    writeFileSync(join(root, DESKTOP_PACKAGES_DIR, studio.file), body)
+    writeFileSync(join(root, DESKTOP_PACKAGE_SET_FILE), JSON.stringify({ schemaVersion: 1, packages: [dsh, base, host, studio] }))
+    createRuntimeProjectMetadata(root, release)
+    const policy = readFileSync(workspace, 'utf8')
+    expect(policy).toContain('"esbuild@0.25.12": true')
+    expect(policy).toContain('"sharp@0.34.5": true')
+    expect(policy).toContain('"onnxruntime-node@1.27.0": true')
+    expect(policy).toContain('"onnxruntime-node@1.21.0": true')
+    expect(policy).not.toContain('dangerouslyAllowAllBuilds')
+  })
+
   it('pins the direct dsh dependency and every internal package to local tarballs', () => {
     const { root } = packageSetProject()
     const packageSet = verifyDesktopCorePackageSet(root, '1.2.3')

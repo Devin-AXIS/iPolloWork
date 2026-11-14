@@ -197,7 +197,7 @@ function main(): void {
   })
   const inputs = (values.from ?? defaultInputs).map(path => resolve(REPOSITORY_ROOT, path))
   const output = values.out === undefined ? buildPaths.packageSet : resolve(REPOSITORY_ROOT, values.out)
-  prepareDesktopPackageSet(inputs, output, desktopTargetPlatform(resolveDesktopBuildTarget()), ['@ipollo/dsh-suite'])
+  prepareDesktopPackageSet(inputs, output, desktopTargetPlatform(resolveDesktopBuildTarget()), ['@ipollo/dsh-suite', 'deepseek-idesign', 'deepseek-ivideo'])
   console.log(`desktop package set: prepared ${output}`)
 }
 
