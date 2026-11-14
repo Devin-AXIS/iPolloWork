@@ -1,3 +1,4 @@
+import { Context } from '@deepseek-ai/cordis';
 import { installGroupHistoryTools } from '../../src/channels/shared/group-history-access.mjs';
 import { apply as applyDingtalk } from './channels/dingtalk/index.mjs';
 import { apply as applyDiscord } from './channels/discord/index.mjs';
@@ -261,7 +262,7 @@ export function createImHostPlugin(internals = {}) {
       try {
         startSessionSync(ctx, deliveryService, {
           logger,
-          inputScope: ctx.root ?? ctx,
+          inputScope: ctx[Context.root] ?? ctx,
           config,
         });
         installDsBotQuestionSync(ctx, deliveryService, { logger });

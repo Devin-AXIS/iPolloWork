@@ -1,3 +1,4 @@
+import { Context } from '@deepseek-ai/cordis';
 import { modernHarnessApi } from './modern-harness-api.mjs';
 
 /** Connect to this Host directly unless an external Harness URL was configured. */
@@ -11,6 +12,6 @@ export function harnessConnection(ctx, config = {}, { competitiveApprovals = fal
     competitiveApprovals,
     // Cordis child contexts share one root; different Hosts must not share
     // ownership of pending questions and approvals.
-    interactionScope: ctx.root ?? ctx,
+    interactionScope: ctx[Context.root] ?? ctx,
   };
 }

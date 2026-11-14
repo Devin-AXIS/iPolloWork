@@ -36,8 +36,8 @@
     "vendor/dsh-im/README.md",
     "catalog/index.json",
     "catalog/bundled-releases.json",
-    "catalog/packages/deepseek-idesign-1.0.0-beta.18-45af46958f0b.tgz",
-    "catalog/packages/deepseek-ivideo-1.0.0-beta.18-756e6fda4d6c.tgz"
+    "catalog/packages/deepseek-idesign-1.0.0-beta.19.ipollo.1-3beceb0346fb.tgz",
+    "catalog/packages/deepseek-ivideo-1.0.0-beta.19.ipollo.1-23e65e2906e7.tgz"
   ],
   "dsh": {
     "bundle": {

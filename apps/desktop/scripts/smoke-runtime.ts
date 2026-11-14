@@ -220,7 +220,17 @@ export function apply(ctx) {
         || rows.some(row => row.fiberPhase !== 'active' || row.readOnlyReason !== 'management-required')) {
         throw new Error('desktop runtime: required iPolloWork components are inactive or mutable')
       }
-      console.log('desktop runtime: iPolloWork components, account routes, and request admission passed')
+      const imMethod = 'dsh-im/weixin'
+      const imResponse = await fetch(new URL(`/api/${imMethod}`, ready.url), {
+        method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 'im-smoke', method: imMethod,
+          payload: { method: 'connection.status', payload: {} } }),
+      })
+      const im = await imResponse.json() as { result?: { ok?: boolean; error?: { code?: string } } }
+      if (!imResponse.ok || im.result?.ok !== true) {
+        throw new Error(`desktop runtime: IM initialization failed: ${im.result?.error?.code ?? imResponse.status}`)
+      }
+      console.log('desktop runtime: iPolloWork components, IM initialization, account routes, and request admission passed')
     }
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
     if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')

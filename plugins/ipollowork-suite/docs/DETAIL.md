@@ -13,3 +13,5 @@ An enterprise catalog, administrator authorization, and tenant isolation are not
 The dedicated desktop distribution preserves the native welcome, credit, purpose and process pages with the iPolloWork brand and account. The login page supports email/password sign-in and registration with a display name and a password of at least 10 characters. The suite is included in the installation and remains enabled.
 
 Account model channels display their backend names under iPolloWork. Login chooses an available account channel when no personal provider key is configured and retains an existing account selection. Native Models settings remain available for personal-key providers. Account inference uses a private local gateway token; insufficient points produce an account-quota failure.
+
+Embedded IM uses the public Cordis root-context symbol. The local Design and Video 1.0.0-beta.19.ipollo.1 packages retain reviewed beta.19 code and add the authentication dependency required by rc.3 assets and APIs.

@@ -13,8 +13,11 @@ The dedicated iPolloWork desktop includes suite 0.1.10 and requires DSH 0.2.2-rc
 
 Account channels display the backend channel name. Without a configured personal API key, the desktop selects an available account channel. Personal API-key providers remain selectable; insufficient account points are reported separately from key failures.
 
+The suite also updates IM context access and carries Design/Video `1.0.0-beta.19.ipollo.1` with the required editor authentication dependency. Existing Studio documents and channel credentials retain their formats.
+
 ## Migration
 
 1. Use the bundled iPolloWork desktop runtime when installing suite 0.1.10, or update an existing DSH runtime to a compatible version first.
 2. Open the desktop application and select **Sign in**, then sign in or create an account. Registration requires a display name, email and password of at least 10 characters.
-3. Confirm that the iPolloWork account and main-assistant entries appear. The dedicated desktop keeps the suite enabled; existing sessions and account records require no format conversion.
+3. Update an existing Design or Video installation to the bundled `1.0.0-beta.19.ipollo.1` release from the iPolloWork market.
+4. Confirm that the iPolloWork account and main-assistant entries appear. The dedicated desktop keeps the suite enabled; existing sessions and account records require no format conversion.

@@ -130,3 +130,5 @@ The `dedicatedDesktop` deployment option reuses the native welcome, credit, purp
 Suite 0.1.10 requires DSH 0.2.2-rc.3 or later in the 0.2.2 release line. Its HTTP routes use the native Connection admission service, including the Host/Origin checks and credential verification.
 
 Registered account model channels display their backend names under iPolloWork. Login selects an available account channel when no personal provider key is configured; an existing selected account channel is retained. Users can add and choose personal API-key providers through the native Models settings. Account inference uses a private local gateway token, and insufficient points produce an account-quota failure rather than a key error.
+
+The embedded IM runtime uses Cordis’s public root-context symbol. Bundled Design and Video 1.0.0-beta.19.ipollo.1 retain the reviewed beta.19 code and add the `connection.authentication` dependency required by rc.3 asset and API requests. `scripts/prepare-studio-releases.mjs` reproduces these local archives from reviewed beta.19 tarballs.
