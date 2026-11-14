@@ -62,3 +62,5 @@ npm run bench:database
 ~~~
 
 Tests allocate independent schemas and cover real Better Auth requests, organization authorization, payment replay and refunds, concurrent quotas, output versions, retention and usage settlement. The [capacity report](docs/capacity.md) records a reproducible SQL workload with 500,000 synthetic accounts; it is not a concurrent-user capacity guarantee.
+
+The service catalog classifies each connection and model as `language`, `image`, `video`, `audio`, `embedding` or `tool`, with a separate `vendor`. Existing rows are resolved from declared capabilities; no model-name guessing is used. Non-language model entries do not require token-limit fields. Organization connections require explicit routes for non-chat operations, and the same categorized connection controls department/member access.

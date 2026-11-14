@@ -22,6 +22,7 @@ import type {
   ProjectUpdate,
 } from "../shared/enterprise.ts";
 
+import { serviceCategories } from "../shared/service-categories.ts";
 const id = z
   .string()
   .min(1)
@@ -41,8 +42,9 @@ const modelEntry = z
   .object({
     id: z.string().min(1).max(200),
     name: z.string().min(1).max(200),
-    contextWindow: z.number().int().min(1024),
-    maxTokens: z.number().int().min(1),
+    category: z.enum(serviceCategories).optional(),
+    contextWindow: z.number().int().min(1024).optional(),
+    maxTokens: z.number().int().min(1).optional(),
   })
   .strict();
 const httpUrl = z
@@ -118,6 +120,17 @@ const modelsResponse = z.object({
         title: z.string(),
         baseUrl: z.string(),
         models: z.array(modelEntry),
+        category: z.enum(serviceCategories).default("language"),
+        vendor: z.string().default("custom"),
+        routes: z
+          .array(
+            z.object({
+              method: z.enum(["GET", "POST"]),
+              path: z.string(),
+              points: z.number(), jobField:z.string().optional(), jobResultField:z.string().optional(),
+            }),
+          )
+          .optional(),
         enabled: z.boolean(),
         configured: z.boolean(),
         headerName: z.string(),
@@ -620,6 +633,17 @@ export class EnterpriseService {
                 headerName: headerName.optional(),
                 headerPrefix: headerPrefix.optional(),
                 models: z.array(modelEntry).max(200),
+                category: z.enum(serviceCategories).optional(),
+                vendor: z.string().optional(),
+                routes: z
+                  .array(
+                    z.object({
+                      method: z.enum(["GET", "POST"]),
+                      path: z.string(),
+                      points: z.number(), jobField:z.string().optional(), jobResultField:z.string().optional(),
+                    }),
+                  )
+                  .optional(),
                 enabled: z.boolean().optional(),
                 audience: audience.optional(),
               })

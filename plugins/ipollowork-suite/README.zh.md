@@ -113,3 +113,7 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 套件输出上传配置为 `uploadTimeoutMs`（300,000）、`maxArtifactBytes`（536,870,912）和 `archiveHistoryLimit`（500）。内存队列不保留完整 Session 对象；队列满时 Host 提示从项目页上传本地文件。完成记录有数量上限，后端请求 ID 保证重放不会创建重复版本。
 
 输出归档的无 Key 测试使用隔离 PostgreSQL 服务和配置，编译 `tests/native-fixture.ts` 并加载 `tests/native.patch.yml`，然后运行 `IPOLLO_ARCHIVE_QA_URL=<private-owner-url> node --import tsx --test tests/project-archive-native.test.ts`。它验证原生呈现事件、超过 24 MiB 的授权下载、不归档输入，以及项目归档开关。预期结果保存在 `tests/expected`。
+
+从组织空间创建项目时，归属固定为当前组织；个人创建保留在全局目录入口。组织后台不展示共享会话页签或未归属的个人项目，原生会话分享仍在对应会话中操作。
+
+服务记录包含稳定的 `category`（`language`、`image`、`video`、`audio`、`embedding`、`tool`）和 `vendor`，各模型也保留自己的类别。只有具备 Token 上限的语言模型进入原生对话模型选择器。组织服务列表和部门授权按这些类别展示，包括工具服务。非对话组织服务须明确配置允许的接口路径，编辑已有连接会保留其路径与分类。

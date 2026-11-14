@@ -11,6 +11,7 @@ import type {
   ServiceBinding,
 } from "../shared/services.ts";
 import { SuiteError } from "./errors.ts";
+import { serviceCategories } from "../shared/service-categories.ts";
 const KEY = "ipollowork-suite/services";
 const choiceSchema = z.discriminatedUnion("source", [
   z.object({ source: z.literal("own") }).strict(),
@@ -26,14 +27,17 @@ const serviceSchema = z.object({
   title: z.string(),
   provider: z.string(),
   capabilities: z.array(z.string()),
+  category: z.enum(serviceCategories).default("language"),
+  vendor: z.string().optional(),
   origin: z.string().url(),
   basePath: z.string(),
   models: z.array(
     z.object({
       id: z.string(),
       name: z.string(),
-      contextWindow: z.number(),
-      maxTokens: z.number(),
+      category: z.enum(serviceCategories).optional(),
+      contextWindow: z.number().optional(),
+      maxTokens: z.number().optional(),
     }),
   ),
   routes: z.array(

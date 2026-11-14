@@ -52,95 +52,6 @@ export interface ViewProps {
   actions: CollaborationActions;
 }
 
-export function ActivityTab({
-  enterpriseId,
-  view,
-}: {
-  enterpriseId: string | null;
-  view: ViewProps;
-}) {
-  const { t, call, language } = view,
-    c = projectCopy(language),
-    task = useTask(t);
-  const data = useRecord<{
-    ready: boolean;
-    reason: string | null;
-    shares: {
-      shareId: string;
-      sessionTitle: string;
-      link: string;
-      online: boolean;
-      ownerId: string;
-      projectId: string | null;
-      enterpriseId?: string | null;
-    }[];
-  }>("/native-sharing", call, view.revision);
-  if (!data.data)
-    return data.error ? (
-      <Notice error={data.error} t={t} retry={data.reload} />
-    ) : (
-      <ListSkeleton />
-    );
-  const shares = data.data.shares.filter(
-    (share) =>
-      share.enterpriseId === enterpriseId ||
-      (share.enterpriseId === undefined &&
-        view.catalog.sharedProjects.some(
-          (project) =>
-            project.id === share.projectId &&
-            project.enterpriseId === enterpriseId,
-        )),
-  );
-  return (
-    <Section title={c.nativeReady}>
-      <p className={css.muted}>{c.nativeHint}</p>
-      {!data.data.ready ? (
-        <p className={css.quietLine}>
-          {data.data.reason === "NATIVE_SHARING_DISABLED"
-            ? c.nativeMissing
-            : c.nativeLogin}
-        </p>
-      ) : shares.length ? (
-        <div className={css.enterpriseList}>
-          {shares.map((s) => (
-            <Row
-              key={s.shareId}
-              title={s.sessionTitle}
-              meta={s.online ? "" : c.nativeOffline}
-              onOpen={() =>
-                window.open(s.link, "_blank", "noopener,noreferrer")
-              }
-              actions={
-                s.ownerId === view.catalog.userId ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={task.busy}
-                    onClick={() =>
-                      void task.run(async () => {
-                        await call(
-                          "/native-sharing/" + s.shareId,
-                          undefined,
-                          "DELETE",
-                        );
-                        data.reload();
-                      })
-                    }
-                  >
-                    {c.stopShare}
-                  </Button>
-                ) : undefined
-              }
-            />
-          ))}
-        </div>
-      ) : (
-        <p className={css.quietLine}>{c.nativeEmpty}</p>
-      )}
-      <FormError message={task.error} />
-    </Section>
-  );
-}
 export function ProjectsTab({
   enterpriseId,
   view,
@@ -148,12 +59,10 @@ export function ProjectsTab({
   enterpriseId: string;
   view: ViewProps;
 }) {
-  const { catalog, controller, t, call, actions } = view,
-    task = useTask(t);
+  const { catalog, controller, t, actions } = view;
   const projects = catalog.sharedProjects.filter(
     (p) => p.enterpriseId === enterpriseId,
   );
-  const personal = catalog.projects.filter((p) => p.enterpriseId === null);
   return (
     <div className={css.enterpriseStack}>
       <Section
@@ -161,7 +70,9 @@ export function ProjectsTab({
         actions={
           <Button
             variant="primary"
-            onClick={() => controller.open({ kind: "createProject" })}
+            onClick={() =>
+              controller.open({ kind: "createProject", enterpriseId })
+            }
           >
             {t.createProject}
           </Button>
@@ -198,39 +109,6 @@ export function ProjectsTab({
           <EmptyState title={t.noTeamProjects} hint={t.projectHint} />
         )}
       </Section>
-      {!!personal.length && (
-        <details>
-          <summary className={css.muted}>{t.unassignedProjects}</summary>
-          <div className={css.enterpriseList}>
-            {personal.map((p) => (
-              <Row
-                key={p.id}
-                title={p.title}
-                meta={p.path}
-                actions={
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={task.busy}
-                    onClick={() =>
-                      void task.run(async () => {
-                        await call("/assign", {
-                          projectId: p.id,
-                          enterpriseId,
-                        });
-                        await controller.load();
-                      })
-                    }
-                  >
-                    {t.assignHere}
-                  </Button>
-                }
-              />
-            ))}
-          </div>
-        </details>
-      )}
-      <FormError message={task.error} />
     </div>
   );
 }

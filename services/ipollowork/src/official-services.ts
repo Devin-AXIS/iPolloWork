@@ -137,7 +137,21 @@ export async function seedOfficialServices(store: Store): Promise<void> {
       JSON.stringify(entry.routes),
       JSON.stringify({
         ids: [],
-        models: entry.models,
+        models: entry.models.length
+          ? entry.models.map((model) => ({ ...model, category: "language" }))
+          : entry.billing.rates.map((rate) => ({
+              id: rate.model,
+              name: rate.model,
+              category:
+                entry.billing.kind === "speech" ? "audio" : entry.billing.kind,
+            })),
+        category:
+          entry.billing.kind === "chat"
+            ? "language"
+            : entry.billing.kind === "speech"
+              ? "audio"
+              : entry.billing.kind,
+        vendor: entry.provider,
         billing: entry.billing,
         timeoutMs: 600000,
       }),

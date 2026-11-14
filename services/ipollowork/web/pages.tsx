@@ -346,7 +346,7 @@ export function Projects() {
             submit={async (f) => {
               await api("/api/v1/projects", {
                 title: value(f, "title"),
-                enterpriseId: value(f, "enterprise") || null,
+                enterpriseId: filter || value(f, "enterprise"),
               });
               setCreate(false);
               result.reload();
@@ -356,14 +356,14 @@ export function Projects() {
               <input name="title" required />
             </Field>
             <Field label="所属组织">
-              <select name="enterprise">
-                <option value="">个人</option>
+              {filter ? <strong>{text(enterprises.data?.items.find(item=>item.id===filter)?.name)}</strong> : <select name="enterprise" required defaultValue="">
+                <option value="" disabled>选择组织</option>
                 {enterprises.data?.items.map((r) => (
                   <option key={text(r.id)} value={text(r.id)}>
                     {text(r.name)}
                   </option>
                 ))}
-              </select>
+              </select>}
             </Field>
           </ActionForm>
         </Modal>

@@ -12,13 +12,22 @@ import {
 import { api, text, count, type Row, type User } from "./api.js";
 import { Modal, Status, Table, useData } from "./components.js";
 
+import {
+  serviceCategories,
+  categoryLabels,
+  type ServiceCategory,
+} from "../src/service-categories.js";
+
 type Model = {
+  category?: ServiceCategory;
   id: string;
   name: string;
-  contextWindow: number;
-  maxTokens: number;
+  contextWindow?: number;
+  maxTokens?: number;
 };
 type Service = {
+  category?: ServiceCategory;
+  vendor?: string;
   billing?: {
     kind: string;
     source: string;
@@ -145,6 +154,7 @@ export function Services({ user }: { user: User }) {
     usage = useData<{ items: Row[] }>(
       admin ? "/api/v1/admin/service-calls" : "/api/v1/services/usage",
     );
+  const [category, setCategory] = useState<ServiceCategory | "all">("all");
   const [editing, setEditing] = useState<Service | null>();
   const [results, setResults] = useState<
     Record<string, { result: Probe; chat?: Probe } | "busy">
@@ -197,6 +207,8 @@ export function Services({ user }: { user: User }) {
           capabilities: s.capabilities,
           routes: s.routes,
           models: s.models ?? [],
+          category: s.category,
+          vendor: s.vendor,
           planIds: s.planIds ?? [],
           billing: s.billing,
           timeoutMs: s.timeoutMs,
@@ -209,6 +221,7 @@ export function Services({ user }: { user: User }) {
       setError(e instanceof Error ? e.message : "操作失败");
     }
   };
+  const visibleServices=(data.data?.items??[]).filter(s=>category==="all"||(s.category??"language")===category);
   return (
     <>
       <div className="toolbar">
@@ -221,7 +234,25 @@ export function Services({ user }: { user: User }) {
         )}
       </div>
       <Status error={error} />
+      <div className="presets" role="group" aria-label="服务类型">
+        <button
+          aria-pressed={category === "all"}
+          onClick={() => setCategory("all")}
+        >
+          全部
+        </button>
+        {serviceCategories.map((value) => (
+          <button
+            key={value}
+            aria-pressed={category === value}
+            onClick={() => setCategory(value)}
+          >
+            {categoryLabels[value]}
+          </button>
+        ))}
+      </div>
       <section className="panel glass-list">
+        {data.data && data.data.items.length>0 && !visibleServices.length && <div className="empty-state">暂无此类服务</div>}
         <Status error={data.error} loading={!data.data} />
         {data.data && !data.data.items.length && (
           <div className="empty-state">
@@ -242,90 +273,91 @@ export function Services({ user }: { user: User }) {
             )}
           </div>
         )}
-        {data.data?.items.map((s) => {
-          const entry = results[s.id];
-          const done = entry && entry !== "busy" ? entry : undefined;
-          const passed = done
-            ? done.result.ok && (done.chat?.ok ?? true)
-            : false;
-          const state = admin
-            ? !s.enabled
-              ? "off"
-              : s.configured
+        {visibleServices.map((s) => {
+            const entry = results[s.id];
+            const done = entry && entry !== "busy" ? entry : undefined;
+            const passed = done
+              ? done.result.ok && (done.chat?.ok ?? true)
+              : false;
+            const state = admin
+              ? !s.enabled
+                ? "off"
+                : s.configured
+                  ? "on"
+                  : "warn"
+              : s.available
                 ? "on"
-                : "warn"
-            : s.available
-              ? "on"
-              : "off";
-          return (
-            <div key={s.id} className="service-row">
-              <Glyph id={s.provider} label={s.title} />
-              <div className="service-main">
-                <strong>{s.title}</strong>
-                <small>
-                  <i className="dot" data-state={state} />
-                  {admin
-                    ? !s.enabled
-                      ? "已停用"
-                      : s.configured
-                        ? "已启用"
-                        : "待填写 Key"
-                    : s.available
-                      ? "可用"
-                      : "当前套餐不可用"}
-                  <span className="sep" />
-                  {host(s.baseUrl) || s.provider}
-                  {s.billing && (
-                    <>
-                      <span className="sep" />
-                      按实际用量计费
-                    </>
-                  )}
-                  {s.models?.length ? (
-                    <>
-                      <span className="sep" />
-                      {s.models.length} 个模型
-                    </>
-                  ) : null}
-                </small>
-              </div>
-              {done && (
-                <span className="probe" data-ok={passed}>
-                  {passed ? <Check size={12} /> : <X size={12} />}
-                  {probeText(done.result, done.chat)}
-                </span>
-              )}
-              {admin && (
-                <div className="row-actions">
-                  <button
-                    className="ghost"
-                    disabled={entry === "busy" || !s.configured}
-                    onClick={() => void test(s)}
-                  >
-                    <Zap size={14} />
-                    {entry === "busy" ? "测试中…" : "测试"}
-                  </button>
-                  <button
-                    className="switch"
-                    role="switch"
-                    aria-checked={Boolean(s.enabled)}
-                    aria-label={`启用 ${s.title}`}
-                    onClick={() => void toggle(s)}
-                  >
-                    <span />
-                  </button>
-                  <button
-                    className="icon ghost"
-                    aria-label={`编辑 ${s.title}`}
-                    onClick={() => setEditing(s)}
-                  >
-                    <Pencil size={14} />
-                  </button>
+                : "off";
+            return (
+              <div key={s.id} className="service-row">
+                <Glyph id={s.provider} label={s.title} />
+                <div className="service-main">
+                  <strong>{s.title}</strong>
+                  <small>
+                    <i className="dot" data-state={state} />
+                    {admin
+                      ? !s.enabled
+                        ? "已停用"
+                        : s.configured
+                          ? "已启用"
+                          : "待填写 Key"
+                      : s.available
+                        ? "可用"
+                        : "当前套餐不可用"}
+                    <span className="sep" />
+                    {categoryLabels[s.category ?? "language"]} ·{" "}
+                    {s.vendor ?? s.provider} · {host(s.baseUrl) || s.provider}
+                    {s.billing && (
+                      <>
+                        <span className="sep" />
+                        按实际用量计费
+                      </>
+                    )}
+                    {s.models?.length ? (
+                      <>
+                        <span className="sep" />
+                        {s.models.length} 个模型
+                      </>
+                    ) : null}
+                  </small>
                 </div>
-              )}
-            </div>
-          );
-        })}
+                {done && (
+                  <span className="probe" data-ok={passed}>
+                    {passed ? <Check size={12} /> : <X size={12} />}
+                    {probeText(done.result, done.chat)}
+                  </span>
+                )}
+                {admin && (
+                  <div className="row-actions">
+                    <button
+                      className="ghost"
+                      disabled={entry === "busy" || !s.configured}
+                      onClick={() => void test(s)}
+                    >
+                      <Zap size={14} />
+                      {entry === "busy" ? "测试中…" : "测试"}
+                    </button>
+                    <button
+                      className="switch"
+                      role="switch"
+                      aria-checked={Boolean(s.enabled)}
+                      aria-label={`启用 ${s.title}`}
+                      onClick={() => void toggle(s)}
+                    >
+                      <span />
+                    </button>
+                    <button
+                      className="icon ghost"
+                      aria-label={`编辑 ${s.title}`}
+                      onClick={() => setEditing(s)}
+                    >
+                      <Pencil size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
       </section>
       <section className="panel usage">
         <div className="section-title">服务用量</div>
@@ -440,6 +472,7 @@ function ServiceEditor({
     id: service?.id ?? "official-" + (initial?.provider ?? "custom"),
     title: service?.title ?? initial?.title ?? "",
     provider: service?.provider ?? initial?.provider ?? "",
+    category: service?.category ?? ("language" as ServiceCategory),
     baseUrl: service?.baseUrl ?? initial?.baseUrl ?? "",
     keyId: service?.keyId ?? initial?.provider ?? "",
     key: "",
@@ -515,7 +548,7 @@ function ServiceEditor({
         }
       }
       const chat =
-        result.ok && selected[0]
+        result.ok && form.category === "language" && selected[0]
           ? await api<Probe>("/api/v1/admin/services/probe", {
               ...draft(),
               model: selected[0].id,
@@ -556,7 +589,12 @@ function ServiceEditor({
             .map((s) => s.trim())
             .filter(Boolean),
           routes,
-          models: modelList,
+          models: modelList.map((model: Model) => ({
+            ...model,
+            category: model.category ?? form.category,
+          })),
+          category: form.category,
+          vendor: form.provider,
           planIds: form.planIds
             .split(",")
             .map((s) => s.trim())
@@ -613,6 +651,23 @@ function ServiceEditor({
             <span>自定义</span>
           </button>
         </div>
+        <label className="field">
+          <span>服务类型</span>
+          <select
+            value={form.category}
+            onChange={(e) => {
+              const category = e.target.value as ServiceCategory;
+              set({ category });
+              updateModels(models.map((model) => ({ ...model, category })));
+            }}
+          >
+            {serviceCategories.map((value) => (
+              <option key={value} value={value}>
+                {categoryLabels[value]}
+              </option>
+            ))}
+          </select>
+        </label>
         <div className="field-stack">
           <label className="pill-field">
             <span>名称</span>

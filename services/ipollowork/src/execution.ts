@@ -33,6 +33,8 @@ import {
   type BillingReservation,
 } from "./pricing.js";
 
+import { serviceCategories, serviceCategory } from "./service-categories.js";
+
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,79}$/);
 const routeSchema = z
   .object({
@@ -74,8 +76,9 @@ export const executionServiceSchema = z
         z.object({
           id: z.string().min(1).max(200),
           name: z.string().min(1).max(200),
-          contextWindow: z.number().int().min(1024),
-          maxTokens: z.number().int().min(1),
+          category: z.enum(serviceCategories).optional(),
+          contextWindow: z.number().int().min(1024).optional(),
+          maxTokens: z.number().int().min(1).optional(),
         }),
       )
       .max(200)
@@ -95,6 +98,8 @@ export const executionServiceSchema = z
       .max(50)
       .refine((v) => !/[\r\n]/.test(v))
       .default("Bearer "),
+    category: z.enum(serviceCategories).optional(),
+    vendor: identifier.optional(),
     capabilities: z.array(identifier).min(1).max(30),
     routes: z.array(routeSchema).min(1).max(50),
     planIds: z.array(z.string().min(1).max(100)).max(100).default([]),
@@ -124,6 +129,9 @@ const enterpriseServiceSchema = z
     headerName: executionServiceSchema.shape.headerName,
     headerPrefix: executionServiceSchema.shape.headerPrefix,
     models: executionServiceSchema.shape.models,
+    category: executionServiceSchema.shape.category,
+    vendor: executionServiceSchema.shape.vendor,
+    routes: z.array(routeSchema).min(1).max(50).optional(),
     enabled: z.boolean().default(true),
     audience: audienceSchema.optional(),
   })
@@ -188,7 +196,23 @@ const requestSchema = z
   })
   .strict();
 function definition(row: ServiceRow): Definition {
+  const details = JSON.parse(row.plan_ids);
+  const category = serviceCategory(
+    details.category,
+    JSON.parse(row.capabilities),
+  );
+  const entries = details.models?.length
+    ? details.models
+    : category !== "language" && details.billing?.rates
+      ? details.billing.rates.map((rate: { model: string }) => ({
+          id: rate.model,
+          name: rate.model,
+        }))
+      : [];
   return {
+    category,
+    vendor:
+      details.vendor ?? (row.id.startsWith("ent-") ? "custom" : row.provider),
     id: row.id,
     title: row.title,
     provider: row.provider,
@@ -199,7 +223,10 @@ function definition(row: ServiceRow): Definition {
     capabilities: JSON.parse(row.capabilities),
     routes: JSON.parse(row.routes),
     planIds: JSON.parse(row.plan_ids).ids ?? JSON.parse(row.plan_ids),
-    models: JSON.parse(row.plan_ids).models ?? [],
+    models: entries.map((model: Definition["models"][number]) => ({
+      ...model,
+      category: model.category ?? category,
+    })),
     enabled: Boolean(row.enabled),
     billing: JSON.parse(row.plan_ids).billing,
     timeoutMs: JSON.parse(row.plan_ids).timeoutMs ?? 120000,
@@ -316,6 +343,8 @@ export class ExecutionService {
                 title: s.title,
                 provider: s.provider,
                 capabilities: s.capabilities,
+                category: s.category,
+                vendor: s.vendor,
                 origin: new URL(s.baseUrl).origin,
                 basePath: new URL(s.baseUrl).pathname.replace(/\/$/, ""),
                 routes: s.routes,
@@ -339,6 +368,8 @@ export class ExecutionService {
               title: s.title,
               provider: s.provider,
               capabilities: s.capabilities,
+              category: s.category,
+              vendor: s.vendor,
               origin: new URL(s.baseUrl).origin,
               basePath: new URL(s.baseUrl).pathname.replace(/\/$/, ""),
               routes: s.routes,
@@ -374,6 +405,20 @@ export class ExecutionService {
   async save(actor: Actor, raw: unknown) {
     requireAdmin(actor);
     const s = executionServiceSchema.parse(raw);
+    s.category = serviceCategory(s.category, s.capabilities);
+    s.vendor ??= s.provider;
+    s.models = s.models.map((model) => ({
+      ...model,
+      category: model.category ?? s.category,
+    }));
+    if (
+      s.models.some(
+        (model) =>
+          model.category === "language" &&
+          (!model.contextWindow || !model.maxTokens),
+      )
+    )
+      throw new ServiceError("MODEL_LIMITS_REQUIRED", 400);
     const saved = await this.store.one<ServiceRow>(
       "SELECT * FROM execution_services WHERE id=?",
       s.id,
@@ -420,6 +465,8 @@ export class ExecutionService {
         JSON.stringify({
           ids: s.planIds,
           models: s.models,
+          category: s.category,
+          vendor: s.vendor,
           billing: s.billing,
           timeoutMs: s.timeoutMs,
         }),
@@ -594,6 +641,9 @@ export class ExecutionService {
           provider: s.provider,
           baseUrl: s.baseUrl,
           models: s.models,
+          routes: s.routes,
+          category: s.category,
+          vendor: s.vendor,
           enabled: s.enabled,
           headerName: s.headerName,
           headerPrefix: s.headerPrefix,
@@ -613,6 +663,28 @@ export class ExecutionService {
     const existing = input.id
       ? await this.enterpriseService(enterpriseId, input.id)
       : undefined;
+    const previous = existing ? definition(existing) : undefined;
+    const category = input.category ?? previous?.category ?? "language";
+    const routes =
+      input.routes ??
+      previous?.routes ??
+      (category === "language"
+        ? [{ method: "POST", path: "/chat/completions", points: 0 }]
+        : undefined);
+    if (!routes)
+      throw new ServiceError(
+        "SERVICE_ROUTES_REQUIRED",
+        400,
+        "请配置此类型服务的接口路径",
+      );
+    if (
+      input.models.some(
+        (model) =>
+          (model.category ?? category) === "language" &&
+          (!model.contextWindow || !model.maxTokens),
+      )
+    )
+      throw new ServiceError("MODEL_LIMITS_REQUIRED", 400);
     const id =
       existing?.id ?? "ent-" + randomUUID().replace(/-/g, "").slice(0, 20);
     if (!existing && !input.key)
@@ -621,7 +693,7 @@ export class ExecutionService {
       if (input.key)
         await this.settings.set("service-key/" + id, { key: input.key });
       await this.store.run(
-        "INSERT INTO execution_services(id,title,provider,base_url,key_id,header_name,header_prefix,capabilities,routes,plan_ids,enabled,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,base_url=excluded.base_url,header_name=excluded.header_name,header_prefix=excluded.header_prefix,plan_ids=excluded.plan_ids,enabled=excluded.enabled",
+        "INSERT INTO execution_services(id,title,provider,base_url,key_id,header_name,header_prefix,capabilities,routes,plan_ids,enabled,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET title=excluded.title,base_url=excluded.base_url,header_name=excluded.header_name,header_prefix=excluded.header_prefix,capabilities=excluded.capabilities,routes=excluded.routes,plan_ids=excluded.plan_ids,enabled=excluded.enabled",
         id,
         input.title,
         id,
@@ -629,11 +701,14 @@ export class ExecutionService {
         id,
         input.headerName,
         input.headerPrefix,
-        JSON.stringify(["chat"]),
-        JSON.stringify([
-          { method: "POST", path: "/chat/completions", points: 0 },
-        ]),
-        JSON.stringify({ ids: [], models: input.models }),
+        JSON.stringify([category === "language" ? "chat" : category]),
+        JSON.stringify(routes.map((route) => ({ ...route, points: 0 }))),
+        JSON.stringify({
+          ids: [],
+          models: input.models,
+          category,
+          vendor: input.vendor ?? previous?.vendor ?? "custom",
+        }),
         Number(input.enabled),
         now(),
       );
@@ -851,15 +926,17 @@ export class ExecutionService {
       const model = s.models.find((model) => model.id === payload.model);
       if (!model) throw new ServiceError("SERVICE_MODEL_UNAVAILABLE", 403);
       const limit = payload.max_completion_tokens ?? payload.max_tokens;
-      if (
-        limit !== undefined &&
-        (typeof limit !== "number" ||
-          !Number.isInteger(limit) ||
-          limit < 1 ||
-          limit > model.maxTokens)
-      )
-        throw new ServiceError("SERVICE_TOKEN_LIMIT", 400);
-      if (limit === undefined) payload.max_tokens = model.maxTokens;
+      if ((model.category ?? s.category) === "language") {
+        if (
+          limit !== undefined &&
+          (typeof limit !== "number" ||
+            !Number.isInteger(limit) ||
+            limit < 1 ||
+            limit > model.maxTokens!)
+        )
+          throw new ServiceError("SERVICE_TOKEN_LIMIT", 400);
+        if (limit === undefined) payload.max_tokens = model.maxTokens;
+      }
       upstreamBody = Buffer.from(JSON.stringify(payload));
     }
     const routeParts = route.path.split("/"),
@@ -1066,7 +1143,8 @@ export class ExecutionService {
                 /* A non-JSON result supplies no job reference. */
               }
             }
-            if (reservation?.spec.kind === "video" && !returnedJob) throw new ServiceError("SERVICE_JOB_MISSING", 503);
+            if (reservation?.spec.kind === "video" && !returnedJob)
+              throw new ServiceError("SERVICE_JOB_MISSING", 503);
             await store.run(
               "UPDATE service_calls SET state='succeeded',response_type=?,response_body=?,job_id=?,updated_at=? WHERE id=? AND state='running'",
               type,

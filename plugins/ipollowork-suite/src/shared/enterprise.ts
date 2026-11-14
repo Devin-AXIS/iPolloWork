@@ -203,14 +203,21 @@ export interface EnterpriseAssets {
   packages: EnterprisePackage[];
   skills: EnterpriseSkill[];
 }
+import type { ServiceCategory } from "./service-categories.ts";
 export interface EnterpriseModelEntry {
+  category?: ServiceCategory | undefined;
   id: string;
   name: string;
-  contextWindow: number;
-  maxTokens: number;
+  contextWindow?: number | undefined;
+  maxTokens?: number | undefined;
 }
 /** An enterprise-owned model connection; the key never leaves the account service. */
 export interface EnterpriseModel {
+  category?: ServiceCategory | undefined;
+  vendor?: string | undefined;
+  routes?:
+    | { method: "GET" | "POST"; path: string; points: number; jobField?:string|undefined; jobResultField?:string|undefined }[]
+    | undefined;
   id: string;
   title: string;
   baseUrl: string;
