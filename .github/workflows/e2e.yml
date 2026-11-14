@@ -81,7 +81,7 @@ jobs:
 
       - name: Restore verified bubblewrap archive
         id: bubblewrap-cache
-        uses: actions/cache/restore@v6.1.0
+        uses: actions/cache/restore@v6
         with:
           path: ~/.cache/dsh-ci/bubblewrap
           key: bubblewrap-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-ci-bubblewrap.sh') }}
@@ -97,7 +97,7 @@ jobs:
       # eviction; that needs deliberate cache poisoning.
       - name: Save verified bubblewrap archive
         if: steps.bubblewrap-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6.1.0
+        uses: actions/cache/save@v6
         with:
           path: ~/.cache/dsh-ci/bubblewrap
           key: bubblewrap-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/prepare-ci-bubblewrap.sh') }}
