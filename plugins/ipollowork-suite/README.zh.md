@@ -131,3 +131,5 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 应用重新获得焦点或恢复可见时会刷新账户余额。兼容的 DeepSeek 和百炼聊天模型沿用已安装提供方目录中的推理等级及请求格式；未知模型仍可选择，但不会虚构推理等级。
 
 账户与支付布局在原生设置面板内管理盒模型尺寸。套件通过 peer dependencies 使用宿主提供的 DSH 服务；安装套件不会替换宿主运行时包。
+
+嵌入的 IM 使用 Cordis 的公开根上下文标识。内置 Design 和 Video 1.0.0-beta.20.ipollo.1 包含 rc.3 资源及 API 请求需要的 `connection.authentication` 依赖。Design 不把空白骨架计入版本，手动保存保留当前版本，AI 修改在每轮结束时记录一次。`scripts/prepare-studio-releases.mjs` 从已核对的 beta.20 安装包生成这些本地安装包。

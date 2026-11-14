@@ -387,7 +387,7 @@ An unpackaged Electron process uses `.desktop-build/development/project` under i
 - Account sign-in is not connected; the Sign in button is disabled. Windows material rendering still requires platform QA.
 
 - Release signing, notarization, update hosting, and previous-version installed-artifact qualification require the production release environment.
-- Dependency lifecycle scripts follow pnpm’s build permissions; Desktop provides no separate approval dialog.
+- Dependency lifecycle scripts follow pnpm’s build permissions; Desktop provides no separate approval dialog. Local iPolloWork packages include the reviewed Design and Video bundles without enabling them in a fresh profile; an existing enabled bundle resolves from the new installation. A package set containing Design or Video permits only their pinned esbuild, sharp and ONNX Runtime build hooks.
 - The desktop shell shares sessions, settings, credentials, workspaces, and storage under `$DSH_HOME` with CLI dsh, while executable packages, plugin activation, and lockfiles remain separate.
 - Unpackaged startup on an Electron win32-arm64 host now succeeds, but the payload remains x64: the architecture check in `packages/skill/tool-workspace-dependencies/src/index.ts` compares the recorded payload architecture against the host `process.arch`, so the `load_workspace_dependencies` tool can still reject the primary runtime.
 
