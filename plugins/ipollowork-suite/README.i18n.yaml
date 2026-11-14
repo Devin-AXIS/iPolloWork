@@ -1,0 +1,34 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write plugins/ipollowork-suite/README.md
+/ipollowork-dsh-suite:
+  en: 3498ca026a89e18d
+  zh: 45a6a218686219a2
+/ipollowork-dsh-suite/develop:
+  en: 0a5dbe18ba3dc752
+  zh: 635cd97a25488c48
+/ipollowork-dsh-suite/modules:
+  en: 9c6ddef090a98da1
+  zh: 5b2c8bf770a0f108
+/ipollowork-dsh-suite/configuration:
+  en: 3d8ce47d83e7b133
+  zh: a76c9cd38ae47d1d
+/ipollowork-dsh-suite/account-behavior:
+  en: 04d13c8867a08ff7
+  zh: bae0259600e801b1
+/ipollowork-dsh-suite/limits:
+  en: f76a3913345032b4
+  zh: 18ae5b87b6b86629
+/ipollowork-dsh-suite/reusable-project-agents:
+  en: 6aa5da71ec439bab
+  zh: a88a40a28447d851
+/ipollowork-dsh-suite/integrated-messaging:
+  en: 37ade804f410a78d
+  zh: 57a8d8be72d917dc
+/ipollowork-dsh-suite/integrated-messaging/menus-after-connecting-a-bot:
+  en: 8c716f907571d0fb
+  zh: ce0b75cbe9452b1e
+/ipollowork-dsh-suite/enterprise-projects:
+  en: 4d52f416c431f057
+  zh: c4d14f4f4148f4c5

@@ -1,5 +1,7 @@
 # iPolloWork DSH suite
 
+English | [中文](README.zh.md)
+
 One installable DSH Bundle supplies the iPolloWork skin, a curated native-plugin market, optional iPollo Account sign-in, reusable project agents, and integrated IM channels. DSH owns execution, installed bundles, configuration layers, credentials, and the application launcher. No alternate agent runtime or installer is included.
 
 ## Develop

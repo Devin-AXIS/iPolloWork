@@ -5,7 +5,7 @@
     "suite": {
       "repository": "ipollowork-dsh-suite",
       "branch": "codex/initial-suite",
-      "commit": "ece4c7af1c0c91e8150bc806e2e88a81f233b38a"
+      "gitTree": "376d6f3493b7c92e7b8c345877237b077bb915aa"
     },
     "backend": {
       "repository": "ipollowork-services",
@@ -14,13 +14,13 @@
     "design-video": {
       "repository": "https://github.com/Devin-AXIS/deepseek-design",
       "branch": "main",
-      "commit": "f854abb35f60f9705ddfe76474e960b4ceae9b74",
-      "version": "1.0.0-beta.17"
+      "version": "1.0.0-beta.17",
+      "gitTree": "30f28ade9d8c46a41f13746b8660bbb5833bdb94"
     },
     "dsh": {
       "repository": "https://github.com/Devin-AXIS/iPolloWork",
       "branch": "dsh",
-      "commit": "e108fda087b1e474adabcae1af023de57642f2ac"
+      "gitTree": "b90d8691a16762fe9b63507c573e6f4c5bbc577e"
     }
   },
   "features": [
@@ -43,7 +43,7 @@
   "files": {
     "plugins/ipollowork-suite/.gitignore": "a35acbae4cc64fb775bf5fa46757a1118d9766e5720aba5a995b0f5b4dccf2be",
     "plugins/ipollowork-suite/AGENTS.md": "778314d9ced6f051d2f2e6ee4240e944188d94495f4be6db346420f7c69d7141",
-    "plugins/ipollowork-suite/README.md": "406095b1fd230bff392afa2f9fcfe032eff4ef87921cfdbd6c27b9c54bbbc28e",
+    "plugins/ipollowork-suite/README.md": "9d877e5fa9169b050248d04b3e6a9780e8c34b91e52736098653b9a3af3b6177",
     "plugins/ipollowork-suite/assets/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
     "plugins/ipollowork-suite/catalog/bundled-releases.json": "5d1b47a17a18d80b2577c6e329f2663830ed7b4539b3616d8c40cefb3fcc3df4",
     "plugins/ipollowork-suite/catalog/index.json": "b7cf8d21fc8dc6b175f55d5f238e62ad7b5c80cea27f47420d473d213d043bbc",
@@ -650,7 +650,7 @@
     "plugins/ipollowork-suite/vendor/dsh-im/test/image-input.test.mjs": "54ad1e79a6b217ccaeabe18cb25376aaa604ea2c7048c7657fb431b1edf9c479",
     "plugins/ipollowork-suite/vendor/dsh-im/test/support/filesystem.mjs": "00da83f222779dd51f98d0a3956718e57fbb6f664187447d0bb64b8c195460dc",
     "services/ipollowork/Dockerfile": "6e036db391dc9bc677d8cff66bc21549a2ef0ee85b101931a8d9e499f7da6bdc",
-    "services/ipollowork/README.md": "897bbfe6d266a81feede8c2c068829c4b3eade709c914abb9de41c8c8405b957",
+    "services/ipollowork/README.md": "6a39d27ec16a5f85bd8a526fc3a463fe659de647e45afcba07114d8196798a53",
     "services/ipollowork/.dockerignore": "1145c9824935d3d02a60c10e9e451382769d03d6e8651f35336f96f5a8f5e49f",
     "services/ipollowork/.gitignore": "335ae60275a2292d9744e1e9cd347e1cda26834d84ec20f4ef906d3304092ccb",
     "services/ipollowork/package-lock.json": "4cc233058237e0bf09d0a446ac5d4747224fd845d6298e6327def30507eed586",
@@ -728,6 +728,14 @@
     {
       "path": "services/ipollowork/README.md",
       "reason": "Document the native sharing entry and preserved historical reads."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.md",
+      "reason": "Add the language switcher for the reviewed Chinese counterpart."
+    },
+    {
+      "path": "services/ipollowork/README.md",
+      "reason": "Add the language switcher for the reviewed Chinese counterpart."
     }
   ]
 }

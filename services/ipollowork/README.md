@@ -1,5 +1,7 @@
 # iPolloWork services
 
+English | [中文](README.zh.md)
+
 Independent replacement for the old Cloud backend. One Node process serves an API and static admin interface; one SQLite database stores accounts, points, plans, orders and enterprise metadata. No Next.js, PostgreSQL, Worker provisioning, or old Cloud runtime is required.
 
 ## Run

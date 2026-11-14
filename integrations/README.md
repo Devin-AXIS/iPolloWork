@@ -1,5 +1,7 @@
 # iPolloWork DSH integration
 
+English | [中文](README.zh.md)
+
 The `dsh` branch contains the upstream DSH runtime, the iPolloOS enterprise connector, the iPolloWork suite and its independent account service. Each application keeps its own dependencies, tests and deployment lifecycle.
 
 | Location | Included capability |
@@ -14,3 +16,5 @@ Install and build the suite from its directory using its README, then install it
 `ipollowork.json` records the included source revisions and source-file hashes. It omits generated build directories, credentials, local sessions and superseded plugin archives. The Design/Video source remains in its independent repository, recorded in that file; the catalog includes its complete current installable packages.
 
 The iPolloWork integrations workflow checks the enterprise connector, suite and account service independently. Runtime compatibility and native integration checks remain described by the owning READMEs. Package license declarations and third-party notices remain authoritative for their respective directories.
+
+The suite's embedded IM sources retain their upstream wording and notices under `plugins/ipollowork-suite/vendor/dsh-im`. The repository's concrete-terms check excludes that exact vendor directory; suite-owned code remains checked.

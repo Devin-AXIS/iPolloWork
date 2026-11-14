@@ -1,0 +1,100 @@
+# iPolloWork 服务
+
+[English](README.md) | 中文
+
+独立替代旧 Cloud 后台。一个 Node 进程提供 API 和静态管理界面，一个 SQLite 数据库存储账号、积分、套餐、订单和企业元数据。不依赖 Next.js、PostgreSQL、Worker 开通服务或旧 Cloud 运行时。
+
+## 运行
+
+使用 Node 24.15 或更新版本。
+
+~~~sh
+npm ci
+cp .env.example .env
+npm run build
+ADMIN_PASSWORD='set-a-strong-password' npm run admin -- admin@example.com 管理员
+npm start
+~~~
+
+打开 http://localhost:4785。登录页提供注册。首个管理员只能通过本地运维命令创建，不提供公开的“首个用户成为管理员”接口。普通用户查看自己的账号、企业、资源、套餐和订单；平台管理员还可管理用户、支付配置和公开资源目录。
+
+## 存储与部署
+
+DATA_DIR 管理 work.sqlite、其 WAL 文件、私有上传文件和自动生成的认证密钥，应作为整体备份。SQLite 面向带持久本地磁盘的单服务实例，不适合横向复制的实例或网络文件系统。
+
+~~~sh
+npm run backup -- /absolute/path/to/new-backup-folder
+docker build -t ipollowork-services .
+docker run --rm -p 4785:4785 -v ipw-data:/data \
+  -e SERVICE_ORIGIN=https://accounts.example.com ipollowork-services
+~~~
+
+公网部署在前端终止 HTTPS，并准确设置 SERVICE_ORIGIN。限流身份使用 TCP 对端地址。使用反向代理时，仅将其确切 IP 加入 TRUSTED_PROXY_IPS，并配置代理覆盖 X-Real-IP 为客户端地址。其他来源的转发头会被忽略。
+
+企业私有 Skills 和插件包可存入阿里云 OSS。在设置中配置私有 Bucket 和密钥；对象保持私有 ACL，下载在成员检查后使用短期签名 URL。没有 OSS 时，上传内容保存为本地私有文件，通过认证下载接口访问。OSS 需要单独备份。
+
+## 范围
+
+- 邮箱密码登录，支持会话 Cookie 或 Bearer 令牌；账号恢复和接受邀请使用已验证邮箱。
+- 配置 MAIL_WEBHOOK_URL 和 MAIL_WEBHOOK_TOKEN 用于邮箱验证及密码重置。经过认证的 POST 请求体为 {to, template, url}。未配置邮件服务时仍可登录，但邮箱验证和恢复会报告错误。
+- 不可变积分账本、幂等订单结算、会员权益，以及独立的现金价与积分价。
+- Stripe Checkout 和 `/hooks/stripe` 上的签名 Webhook 结算。`/api/v1/payments/storekit/verify` 的 App Store 服务端校验需要官方密钥和 Apple 根证书。没有商户凭据，尚未验证实际扣费。本版本未启用 App Store 订阅自动续费。
+- 企业 owner/admin/member 角色、部门、绑定邮箱且会过期的邀请，以及逐请求成员检查。
+- 项目具有企业/成员/部门授权、不可变文件和知识提交，以及原生 DSH 会话分享。历史快照保留只读。
+- 私有 Skills、插件和文件，每次上传最多 24 MB。服务保存和分发软件包，不执行软件包。
+
+新服务不会自动导入旧客户数据库。正式切换前，停止旧写入进程并备份，导入空的目标库，核对总额，再切换官方 API 来源。原有登录会话需要重新登录。
+
+## Work 连接
+
+现有 Work 套件账号适配器无需修改原生 DSH agent（智能体）运行时即可兼容。将已有的 accountOrigin 设置为本服务来源。官方切换时保持相同 API 主机名，私有部署则配置一次。
+
+~~~yaml
+# In the existing suite plugin's config:
+accountOrigin: http://localhost:4785
+~~~
+
+API 实现 `/api/auth/sign-in/email`、`/api/auth/get-session` 和 `/api/v1/me/summary`，提供 Work 使用的 Bearer 令牌和数值积分字段。企业与资源 API 位于 `/api/v1/enterprises`、`/api/v1/projects`、`/api/v1/shares` 和 `/api/v1/resources`。客户端令牌保存在原生 DSH 凭据提供方中。停用套件不会改变原生 agent loop（智能体循环）。
+
+## 检查
+
+~~~sh
+npm run check
+npm run build
+~~~
+
+测试使用真实 Better Auth HTTP 请求和 SQLite 文件，涵盖邀请验证、跨企业访问拒绝、撤销分享访问、二进制下载、重复签名支付回调、支付不匹配回滚、退款、积分兑换、会话撤销和重启后的持久化。
+
+## 项目协作
+
+Schema 版本 4 增加项目授权与不可变变更，保留旧记录。项目角色为 View、Participate 和 Maintain。每次请求检查直接成员授权或成员当前部门授权，并采用最高权限。企业 owner/admin 与项目所有者保留维护权限。现有全企业项目在范围改变前保留查看权限。
+
+`GET /api/v1/projects/:id/space` 返回文件、已接受记忆和提交摘要。详情从 `/changes/:changeId` 读取；`/memory` 为 DSH 模型上下文提供有大小限制且独立授权的读取。`PUT /access` 修改项目范围和直接/部门授权。参与者通过 `/changes` 提交不可变附件引用或知识；维护者通过版本检查后接受。接受文件还会比较每个文件的基础资源；接受记忆要求显式提供完整的下一版文字。并发变更返回冲突，不改变已接受状态。
+
+附件使用现有上传/下载服务。项目授权允许读者下载引用的附件，包括提交版本。文件不会自动同步到本地 DSH 目录。服务不运行模型或 Git 操作。DSH Bundle 使用原生 Liveshare 创建新的会话分享；兼容中继在本服务中运行，并根据当前项目授权决定原生接入权限。
+
+旧快照与结果版本保留为可读历史记录。创建快照、发布评论或写入旧工作版本返回 HTTP 410。管理后台项目页引导用户使用原生 DSH 界面分享，不再提供快照创建表单。迁移期间不会删除任何历史客户记录。
+
+## 原生会话中继
+
+Schema 版本 5 增加绑定项目的分享意图和一次性 PKCE 授权码。同一个 Node 进程接收 DSH 向外建立的 WebSocket 连接，服务器不运行 DSH 运行时。匹配的原生查看器载体在开发/构建时从固定版本的官方协议包生成，作为静态脚本与其 MIT 许可证一同发布。有意升级协议包时运行 `npm run build:carrier`。
+
+套件安装原生 Liveshare 所有者插件。Share 操作选择项目及 View 或 Participate，通过原生 PKCE 授权当前 iPollo 账号，然后启动原生分享。View 包含当前项目读者，并阻止模型输入、取消、fork、改名和上传；Participate 仅包含当前参与者和维护者，并启用原生 fork。每个链接只有一种原生权限级别，URL 本身不授予公开访问权限。接收者使用自己的 iPollo 账号登录。
+
+所有者凭据绑定现有登录会话和 DSH 实例。服务器认证每次注册与查看者请求，自行确定身份，并向 DSH 推送单调递增的访问快照。改变部门、移除项目访问、封禁账号或撤销登录会移除访问；正在进行的请求会取消，原生所有者在执行前重新检查接入权限。已停止的分享保留失效记录，使旧网关凭据无法重新创建它。普通断线保留记录，支持认证重连。执行或提供共享会话期间，DSH 及发起分享的计算机必须在线。Fork 是该计算机上的原生会话，不是下载到接收者的副本。
+
+原生查看器文档运行在不具备同源访问权的沙箱中。它只获得当前分享的短期能力凭据，使用临时显示偏好，无法读取服务的账号 Cookie 或浏览器存储。响应与资源不缓存。中继不持久化 transcript（文本记录），也不保存模型/提供方凭据。它在内存中处理原生请求/响应流量，属于可信部署的一部分。
+
+`compose.yml` 使用持久数据卷，在回环地址运行构建后的服务。设置 `SERVICE_ORIGIN=https://your-work-domain`，再于 HTTPS 终止层后运行 `docker compose up -d --build`。`deploy/nginx.conf` 提供添加到现有 TLS 虚拟主机的 HTTP/WebSocket 配置。保留 `/data` 卷，其中包含 SQLite 和签名密钥。不要记录认证头或分享能力路径。每个副本需要相同的实时套接字注册表，因此本版本只运行一个服务实例，不应将独立副本放在轮询负载均衡后。
+
+所有者计算机仅向外连接，不在员工计算机上开放入站端口。本版本使用 0.2.2-rc.2 的原生 DSH v1 中继帧；升级协议前必须重新运行原生集成测试。原生写入限制由 DSH 提供。项目权限与显式文件提交不会将共享工作区变成每个人隔离的文件系统副本。
+
+## 官方执行服务
+
+Schema 版本 6 增加服务目录与调用回执。管理员在服务中心配置共享凭据 ID、HTTPS 上游、允许的 GET/POST 路径、可选模型目录、每请求积分价格和适用套餐。套餐限制为空时，任何已登录账号都可使用。服务调用消耗套餐现有积分；本地 BYOK 调用不使用该账本。密钥使用现有加密设置存储，不出现在目录响应中。
+
+`GET /api/v1/services` 返回当前账号的目录。`POST /api/v1/services/:id/invoke` 接受 UUID requestId、相对路径、方法、可选的 Base64 请求体和 contentType。仅可调用已配置的路径模板（`:id` 匹配单个标识符）。服务器选择凭据与价格，原子预留积分，并流式转发上游响应。已完成请求可重放一次，不再收费；冲突 ID 会被拒绝。用于重放的响应字节保留 24 小时，审计回执长期保留。每个账号同时运行一个请求。明确的 4xx 拒绝会退回预留积分；传输失败、响应中断和服务器错误保持结果未知，等待管理员核对，不会盲目重复。这些价格按 HTTP 操作计费，不推测媒体时长或 token 用量；轮询路由应配置为零积分。提供按 token 或视频计价前，必须验证提供方特定的成功与用量判断。
+
+服务中心显示配置与调用回执。管理员核对提供方后处理未知调用；确认失败只退款一次。模型、图片和视频提供方仍是外部服务。真实提供方凭据与支付通道属于部署配置，不随仓库发布。
+
+轮询路由必须声明任务所有权：`jobResultField` 指定提交响应中的 job id 字段（例如 `data.task_id`），`jobField` 指定请求体/查询中的轮询 ID，路径中的 `:id` 同样要求存在属于当前账号的任务回执。用户不能利用共享提供方密钥轮询其他账号的任务。聊天服务声明允许的模型目录与最大输出 token 数；网关在预留积分前拒绝其他模型名称或超限输出。

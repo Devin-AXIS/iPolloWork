@@ -64,6 +64,15 @@ describe('concrete terminology policy', () => {
     )).toEqual([{ file: '.agents/notes/implemented/process/current.md', line: 1 }])
   })
 
+  it('excludes the embedded IM vendor tree while checking suite-owned code', () => {
+    expect(findConcreteTermViolations(
+      `plugins/ipollowork-suite/vendor/dsh-im/src/${blockedTerm}.mjs`,
+      blockedTerm,
+    )).toEqual([])
+    const file = 'plugins/ipollowork-suite/src/host/im.ts'
+    expect(findConcreteTermViolations(file, blockedTerm)).toEqual([{ file, line: 1 }])
+  })
+
   it('preserves historical identifiers only in alpha and RC release schema snapshots', () => {
     for (const channel of ['alpha', 'rc']) {
       expect(findConcreteTermViolations(
