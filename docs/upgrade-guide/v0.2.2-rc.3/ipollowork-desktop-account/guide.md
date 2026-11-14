@@ -11,6 +11,8 @@ English | [中文](guide.zh.md)
 
 The dedicated iPolloWork desktop includes suite 0.1.10 and requires DSH 0.2.2-rc.3 or later in the 0.2.2 release line. The suite uses the current Connection admission and YAML parsing APIs. Earlier DSH runtimes cannot load this suite version. The native welcome page retains its existing flow and provides iPolloWork email/password sign-in and registration.
 
+Account channels display the backend channel name. Without a configured personal API key, the desktop selects an available account channel. Personal API-key providers remain selectable; insufficient account points are reported separately from key failures.
+
 ## Migration
 
 1. Use the bundled iPolloWork desktop runtime when installing suite 0.1.10, or update an existing DSH runtime to a compatible version first.

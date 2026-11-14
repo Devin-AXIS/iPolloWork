@@ -321,11 +321,12 @@ export class SessionController extends TypertRemoteService {
 
   /**
    * Select the first available account model after login when no provider API key is configured.
+   * @param requestedProvider - Registered account provider; defaults to the native account route.
    * @returns after saving the first available model or retaining the existing default.
    */
   @Remote
-  async initializeDefaultModel(): Promise<void> {
-    const provider = 'deepseek-account'
+  async initializeDefaultModel(requestedProvider?: string): Promise<void> {
+    const provider = requestedProvider ?? 'deepseek-account'
     if (await hasProviderApiKey(this.ctx)) return
     const catalog = await buildModelCatalog(this.ctx)
     const model = catalog.groups.find(group => group.id === provider)?.models[0]

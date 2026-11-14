@@ -11,6 +11,8 @@ import packageInfo from "../../package.json" with { type: "json" };
 import type { CredentialStore } from "../shared/types.ts";
 import { mountServiceModels } from "./service-models.ts";
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-agent-default-model";
+import type {} from "@deepseek-ai/dsh-api-session-controller";
 import { Services } from "./services.ts";
 import type { ServiceCenter, ServiceChoice } from "../shared/services.ts";
 import { AccountService } from "./account.ts";
@@ -246,7 +248,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     config.account,
   );
   ctx.provide?.("ipolloServices", services);
-  ctx.inject?.(["llm"], (scope) => {
+  ctx.inject?.(["llm", "agentDefaultModel", "sessionController"], (scope) => {
     if (!ctx.webServer.getOrigin) {
       services.modelStatus = "unsupported";
       return;
@@ -259,6 +261,12 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       },
       services,
       account,
+      async (providers) => {
+        const current = scope.agentDefaultModel.currentSelection();
+        if (providers.includes(current.provider)) return;
+        const provider = providers[0];
+        if (provider !== undefined) await scope.sessionController.initializeDefaultModel(provider);
+      },
     );
     void refreshModels().catch((error) => {
       services.modelStatus = "error";

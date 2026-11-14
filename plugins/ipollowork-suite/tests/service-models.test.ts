@@ -117,3 +117,45 @@ test("official models register lazily, retain native providers and withdraw on o
   assert.equal(ctx.llm.listProviders().length, 0);
   await llm.dispose();
 });
+
+test("account model calls use their private token and report insufficient points as account quota", async () => {
+  const { default: WebServer } = await import("@deepseek-ai/dsh-host-webserver");
+  const ctx = new Context();
+  await ctx.plugin(WebServer, { host: "127.0.0.1", port: 0 });
+  await ctx.plugin(LlmRuntime);
+  let calls = 0;
+  const credentials: CredentialStore = {
+    readRecord: async key => key === "ipollowork-suite/account" ? { kind: "grant", payload: { version: 1, origin: "https://accounts.test", token: "account-secret" } } : undefined,
+    modifyRecord: async () => undefined,
+    deleteRecord: async () => {},
+  };
+  const account = new AccountService(credentials, resolveConfig({ accountOrigin: "https://accounts.test" }), new AbortController().signal,
+    async url => {
+      if (String(url).endsWith("/services")) return Response.json({ items: [{
+        id: "chat", title: "Configured channel", provider: "test", capabilities: ["chat"],
+        origin: "https://upstream.test", basePath: "/v1", available: true, routes: [],
+        models: [{ id: "test-model", name: "Test model", contextWindow: 32768, maxTokens: 2048 }],
+      }], points: 0 });
+      calls++;
+      return Response.json({ code: "INSUFFICIENT_POINTS" }, { status: 409 });
+    });
+  const center = new Services(account, credentials, new AbortController().signal);
+  let refresh = async () => {};
+  await ctx.plugin({ inject: ["llm", "webServer"], apply(scope: Context) {
+    refresh = mountServiceModels(scope, {
+      getOrigin: () => scope.webServer.getOrigin(), register: route => scope.webServer.register(route),
+    }, center, account);
+  } });
+  try {
+    await refresh();
+    const denied = await fetch(ctx.webServer.getOrigin() + "/ipollo-service-models/chat/v1/chat/completions", { method: "POST", body: "{}" });
+    assert.equal(denied.status, 401);
+    assert.equal(calls, 0);
+    const chunks = [];
+    for await (const chunk of ctx.llm.stream({ provider: "ipollo-chat", model: "test-model", messages: [] })) chunks.push(chunk);
+    const finish = chunks.find(chunk => chunk.type === "finish");
+    assert.equal(finish?.reason.kind, "error");
+    if (finish?.reason.kind === "error") assert.equal(finish.reason.failure.code, "ACCOUNT_QUOTA");
+    assert.equal(calls, 1);
+  } finally { await ctx.fiber.dispose(); }
+});

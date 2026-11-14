@@ -918,6 +918,12 @@ it('initializes the account model without reasoning metadata and rejects an empt
   })
   await controller.initializeDefaultModel()
   expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'deepseek-account', model: 'basic' })
+  const stopChannel = ctx.llm.registerAdapter(['ipollo-channel'], new CatalogAdapter('Configured channel', [
+    { provider: 'ipollo-channel', id: 'channel-model', name: 'Channel model' },
+  ]))
+  await controller.initializeDefaultModel('ipollo-channel')
+  expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'ipollo-channel', model: 'channel-model' })
+  stopChannel()
   dispose()
   await expect(controller.initializeDefaultModel()).rejects.toMatchObject({
     code: 'session/provider-models-unavailable', details: { provider: 'deepseek-account' },
