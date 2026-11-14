@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import packageInfo from '../package.json' with { type: 'json' }
 import { apply, type HostContext } from '../src/host/index.ts'
 import type { Decision, ToolCall } from '../src/host/management.ts'
 
@@ -36,6 +37,8 @@ test('the route requires native owner authorization and disappears when its plug
   try {
     assert.equal((await fetch(base + '/info')).status, 401)
     assert.equal((await fetch(base + '/account/sign-up', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401)
+    const info = await fetch(base + '/info', { headers: { Cookie: 'owner=test' } })
+    assert.equal((await info.json()).version, packageInfo.version)
     const account = await fetch(base + '/account', { headers: { Cookie: 'owner=test' } })
     assert.deepEqual(await account.json(), { status: 'anonymous', origin: 'http://localhost:4785' })
     assert(guard)

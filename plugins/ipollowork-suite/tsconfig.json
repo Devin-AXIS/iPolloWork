@@ -3,7 +3,7 @@
     "target": "ES2024", "module": "NodeNext", "moduleResolution": "NodeNext",
     "strict": true, "noUncheckedIndexedAccess": true, "exactOptionalPropertyTypes": true,
     "jsx": "react-jsx", "allowImportingTsExtensions": true, "noEmit": true,
-    "esModuleInterop": true, "skipLibCheck": true, "types": ["node"]
+    "esModuleInterop": true, "resolveJsonModule": true, "skipLibCheck": true, "types": ["node"]
   },
   "include": ["src", "tests"]
 }

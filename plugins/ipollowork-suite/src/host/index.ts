@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import semver from 'semver'
 import { ZodError } from 'zod'
+import packageInfo from '../../package.json' with { type: 'json' }
 import type { CredentialStore } from '../shared/types.ts'
 import { mountServiceModels } from './service-models.ts'
 import type {Context} from '@deepseek-ai/cordis'
@@ -80,7 +81,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
         const mark = await readFile(new URL('../../assets/mark.svg', import.meta.url))
         response.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'no-cache', 'X-Content-Type-Options': 'nosniff' }); response.end(mark); return
       }
-      if (request.method === 'GET' && path === '/info') { json(response, 200, { name: 'iPolloWork', version: '0.1.0', accountOrigin: config.accountOrigin, theme: config.theme, market: config.market, account: config.account }); return }
+      if (request.method === 'GET' && path === '/info') { json(response, 200, { name: 'iPolloWork', version: packageInfo.version, accountOrigin: config.accountOrigin, theme: config.theme, market: config.market, account: config.account }); return }
       if (request.method === 'GET' && path === '/catalog' && config.market) { json(response, 200, await readMarket(config.catalogPath, ctx.pluginManager, runtimeVersion, url.searchParams.get('language') === 'zh' ? 'zh' : 'en', config.maxResponseBytes, join(ctx.profileContext.home, 'cache', 'ipollowork-market'))); return }
       if(request.method==='GET'&&path==='/services'){await refreshModels().catch(error=>{services.modelStatus='error';services.modelError=error instanceof Error?error.message:'Model registration failed'});json(response,200,await services.state());return}
       if(request.method==='POST'&&path==='/services/choice'){const value=await body(request) as {provider:string;choice:ServiceChoice};await services.choose(value.provider,value.choice);await refreshModels();json(response,200,{ok:true});return}
