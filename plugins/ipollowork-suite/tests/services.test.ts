@@ -130,6 +130,24 @@ test("own keys and legacy credentials do not depend on an available account back
   assert.equal(await binding.official("existing-key", true), false);
 });
 
+test("one Bailian key routes shared HTTP paths by model and keeps workspace domains server-owned", async () => {
+  const credentials: CredentialStore = { readRecord: async key => key === "ipollowork-suite/account" ? ({ kind: "grant", payload: { version: 1, origin: "https://accounts.test", token: "account-token" } }) : undefined, modifyRecord: async () => undefined, deleteRecord: async () => {} };
+  const calls: string[] = [];
+  const account = new AccountService(credentials, resolveConfig({ accountOrigin: "https://accounts.test" }), new AbortController().signal, async (url, init) => {
+    if (String(url).endsWith("/services")) return Response.json({ items: ["image", "speech"].map(kind => ({ id: kind, provider: "aliyun-bailian", title: kind, origin: "https://workspace.cn-beijing.maas.aliyuncs.com", basePath: "", capabilities: [kind], models: [{ id: kind, name: kind }], routes: [{ method: "POST", path: "/api/v1/generate", points: 0 }], available: true })), points: 100 });
+    calls.push(String(url));
+    assert(!String(init?.body).includes("vendor-secret"));
+    return Response.json({ ok: true });
+  });
+  const services = new Services(account, credentials, new AbortController().signal);
+  const binding = await services.bind();
+  await binding.fetch("https://dashscope.aliyuncs.com/api/v1/generate", { method: "POST", headers: { Authorization: "Bearer ipollo-managed" }, body: JSON.stringify({ model: "speech" }) });
+  assert(calls[0]?.includes("/speech/"));
+  await binding.request("aliyun-bailian", "/api/v1/generate", { method: "POST", body: JSON.stringify({ model: "image" }) });
+  assert(calls[1]?.includes("/image/"));
+  await assert.rejects(binding.request("aliyun-bailian", "/api/v1/generate", { method: "POST", body: JSON.stringify({ model: "not-enabled" }) }));
+});
+
 test("publishing streams only selected outputs with the account grant and withdraws for own storage or disabled services", async () => {
   const records = new Map<string, { kind: string; payload?: unknown }>([
     [

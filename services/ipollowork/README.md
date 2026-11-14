@@ -49,6 +49,8 @@ The sandboxed viewer receives only a short-lived share capability and cannot rea
 
 [Official billing](docs/billing.md) defines model presets, price sources, credit conversion and activation requirements. Administrators manage keys centrally in Service center. Plugins can choose official services or their own native keys. Missing credentials never trigger a paid fallback.
 
+Each provider has one key configuration shared by its capabilities. Alibaba model discovery imports the regional directory with its published prices where recognized, preserving operator prices and keeping newly discovered models disabled. The editor supports input/output token prices, cache prices, image counts, audio/video duration, character counts and pricing tiers. Unconfigured, disabled, unpriced and expired models stay out of the user catalog. See the [upgrade steps](../../docs/upgrade-guide/v0.2.2-rc.2/ipollowork-model-pricing/guide.md).
+
 The gateway authenticates each request, restricts paths and models, reserves credits atomically, and settles from provider usage. Video polling verifies job ownership. Duplicate request IDs cannot charge twice. Unknown outcomes retain their reservation until an administrator checks the provider; they are never blindly resubmitted. Response replay is available for 24 hours. One active gateway request per account is allowed.
 
 Stripe Checkout settles through signed callbacks at `/hooks/stripe`; App Store verification requires official keys and root certificates. Two disabled 30-day membership drafts are supplied. No live charge or automatic subscription renewal is implied by these presets. Cash and credit redemption prices remain separate, and enabled plans must satisfy the configured cost floor.
