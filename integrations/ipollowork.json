@@ -43,7 +43,7 @@
   "files": {
     "plugins/ipollowork-suite/.gitignore": "a35acbae4cc64fb775bf5fa46757a1118d9766e5720aba5a995b0f5b4dccf2be",
     "plugins/ipollowork-suite/AGENTS.md": "778314d9ced6f051d2f2e6ee4240e944188d94495f4be6db346420f7c69d7141",
-    "plugins/ipollowork-suite/README.md": "41a99cb0b7661d44c4ca1219495f50924e60de02e36f763286bf339aaca3e864",
+    "plugins/ipollowork-suite/README.md": "1c15f426900a8b0b7d4cf172dd1b7c0324643b36fb1250b01f380d6c472125d4",
     "plugins/ipollowork-suite/assets/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
     "plugins/ipollowork-suite/catalog/bundled-releases.json": "5d1b47a17a18d80b2577c6e329f2663830ed7b4539b3616d8c40cefb3fcc3df4",
     "plugins/ipollowork-suite/catalog/index.json": "b7cf8d21fc8dc6b175f55d5f238e62ad7b5c80cea27f47420d473d213d043bbc",
@@ -53,7 +53,7 @@
     "plugins/ipollowork-suite/docs/DETAIL.md": "d6205c890dba55b8b4c2b25a31716e50a0b01d611625e96ae33ece308355c348",
     "plugins/ipollowork-suite/docs/DETAIL.zh.md": "275b4a511da57ecc09aa693942e79014be9def0ff6f18958d99c5490dc7f93f0",
     "plugins/ipollowork-suite/docs/architecture.md": "e1e274d029dc6b005cc4b8c679448eb262d6885fefe88018c7d0f939a68cbdb2",
-    "plugins/ipollowork-suite/docs/connections.md": "f381390d388a09960859664a8921630bd14dcc62ad316ee0bea0bd66eadba0a3",
+    "plugins/ipollowork-suite/docs/connections.md": "fa44d79cbf05d6045467d26b6f4b5fa2c3f1adb25d2a52a89b28e88180331efe",
     "plugins/ipollowork-suite/docs/upgrades/2026-11-14-project-collaboration.md": "a2e908940bc3c8579b06ecf08a8513bbe5039b7c9859ea0a7b07a78eac6e0be9",
     "plugins/ipollowork-suite/docs/upgrades/2026-11-14-project-spaces.md": "0ca9a3483c8f23058e5a8bcca4e0e54082be67ba51b777b3a1334fda16f532d4",
     "plugins/ipollowork-suite/docs/upgrades/2026-11-14-service-center.md": "c7ad721e8e5b915fb2c641409494ecd5c269b596d9ac3a6b99109b3c8aa8ad5f",
@@ -65,7 +65,7 @@
     "plugins/ipollowork-suite/scripts/build.mjs": "09d39f34dc3640311a399bcaa9bd15ee861d8a120d4b92cd5aa5a24e90d8bc90",
     "plugins/ipollowork-suite/scripts/catalog-artwork.mjs": "3fdec6f6948dc25297eeb38527095bc82fc58fe91245225ac9fe8c3b1cf9474c",
     "plugins/ipollowork-suite/scripts/smoke.mjs": "e1f80a75e528869125af13bb3908709fdd5b3bf241137a56c7d23672f5fa500f",
-    "plugins/ipollowork-suite/src/client/account.tsx": "adefd6c0d8bb35b3311865df3382927b58dc47033757b2f17782c99eeb1e8a05",
+    "plugins/ipollowork-suite/src/client/account.tsx": "d304220dffe37c68e8316314c2bb08029e44458a866c1bb2e50ad7740efc0396",
     "plugins/ipollowork-suite/src/client/agent-avatar.tsx": "1e8eca932cf2753086613d34a42fd620174748064a18c314ace78c258c23aa97",
     "plugins/ipollowork-suite/src/client/agent-editor.tsx": "ac89c440d8c7bb1daa2a760c63af2379b67ad3e029e71b8d4b2538b552059e78",
     "plugins/ipollowork-suite/src/client/agent-locale.ts": "2283859eab3dbcb810b5915cafdd216a3e81a0f094ab16d6c129555708b0fed7",
@@ -73,24 +73,24 @@
     "plugins/ipollowork-suite/src/client/api.ts": "7c0cf05e171d6b1ad5b8b3136e42829c18b7565ebf2a029836f63df318261788",
     "plugins/ipollowork-suite/src/client/collaboration.tsx": "80f398e4daf5ad3e770a389ad7643ba7fb300ce5a6694c31cb7194542ff899d3",
     "plugins/ipollowork-suite/src/client/connections-model.ts": "00d57a112f69c978d0d792247d65aeb1e2f7b4c3b59188a79c98efa6541ee2bd",
-    "plugins/ipollowork-suite/src/client/connections.tsx": "910762fbc22b999e85e0badb66a5d3b5814b7e072e76aef5af3b6a78b14161d4",
+    "plugins/ipollowork-suite/src/client/connections.tsx": "8ceeea80f5824ba642a93c4c2b6e62f802ffbf224da00ba0114893c0a38cc633",
     "plugins/ipollowork-suite/src/client/coordinator.tsx": "d98c03ac4992e5897c6557fa1105e18bb28434219ed3d5621ace21503d02ea75",
     "plugins/ipollowork-suite/src/client/css.d.ts": "dbe8004fa39fd2b7ba84d1d0c7dd626fc63d1756d054f3019e212e324f626047",
     "plugins/ipollowork-suite/src/client/enterprise-controller.ts": "fad913ff0c653aff7bd0f01e4afc795b8d73aa94275d32613a87a231cbf32338",
-    "plugins/ipollowork-suite/src/client/enterprise-locale.ts": "927759f5ef8f2714f4616da79aabb827a2d1ab5c878027508225a454aae91cea",
-    "plugins/ipollowork-suite/src/client/enterprise-members.tsx": "2ab02249c9f5ed40224d0e1e1b06e4f1162b1e45bbd493470206d071966e87dd",
+    "plugins/ipollowork-suite/src/client/enterprise-locale.ts": "d5537b81c5da062d248374ee5200ddf1fd95b4c22f4c6a01421c7047389aaeeb",
+    "plugins/ipollowork-suite/src/client/enterprise-members.tsx": "bef1eabb4a77d556882f40cc1bc7e89208a50aac21e8e83fce167068a022f609",
     "plugins/ipollowork-suite/src/client/enterprise-share.tsx": "feb3d053820fbe9e8c7e4f62a094b218b3b64e751c68ab10348acd1299cbe57a",
     "plugins/ipollowork-suite/src/client/enterprise-ui.tsx": "c2d6327eb46fab0ee8773259927d7d33134951677424b3bda7238c82e5f5c33c",
     "plugins/ipollowork-suite/src/client/enterprise.tsx": "8b10b882dc79df0d18cbafd4bdde7970aefeb2f7190f756f04a1bd21b6b378ad",
     "plugins/ipollowork-suite/src/client/index.tsx": "32b37824a765d2d6c0afd81a71be6fc85c2372f6a6cc984e3bd556d613d2b5f6",
-    "plugins/ipollowork-suite/src/client/locale.ts": "f6bfe9f7222fc9970c484382bbb863413404c9b8d77bdcab3731360c2e9e2800",
+    "plugins/ipollowork-suite/src/client/locale.ts": "31f675e01d911417ae30800846122880a411cbdfb72b8b067303048bbda966ac",
     "plugins/ipollowork-suite/src/client/market.tsx": "ef75cef4cf2bdd13b01799b1613216892ab1792ae96f958cbb8411d90b875856",
     "plugins/ipollowork-suite/src/client/native.ts": "5326e95823c3e1eebbbb7554c5ed5c913f5df0fc0b82d5922fc81f3a1ba2543d",
     "plugins/ipollowork-suite/src/client/project-copy.ts": "c2a4e4aa214363c4fe126a820d581dd45b0c28968306ae91dff221a1cb34047e",
     "plugins/ipollowork-suite/src/client/project-creation-actions.ts": "80f5739ff87e7f2549c2e734fb8353768c285ce105f706308109b92da94e1209",
     "plugins/ipollowork-suite/src/client/project-creation.tsx": "20362b4a57e35c908723d74de897b9e4ccd180270bbd786838a85efbac5ce501",
-    "plugins/ipollowork-suite/src/client/service-source.tsx": "ba8076a50436e262375de6fd7996a20b8b056fddf15f863c2d6b0cff8b346e76",
-    "plugins/ipollowork-suite/src/client/suite.module.css": "f5dabca3fc5a17f5dd5dd66c4f7785a4dce5780039b1bfd181ef72403e22453e",
+    "plugins/ipollowork-suite/src/client/service-source.tsx": "08370faf2d33367a04c0023b7a3339c875a9b5abd4d64ea02dcb4c92f58ca8f5",
+    "plugins/ipollowork-suite/src/client/suite.module.css": "40116c36fbbebaa0e5a45354e38ba2bf74d4aa59f833f3e73166fb4fa275da24",
     "plugins/ipollowork-suite/src/client/theme.tsx": "5b631ce850f053b140bb02e5e8c4e204419dc93cbebba87012c49008ef10877a",
     "plugins/ipollowork-suite/src/host/account.ts": "f323f6b1c330b79f92136c81f6b86e30b5cae94729c053687e2872cc5f88c7a6",
     "plugins/ipollowork-suite/src/host/agent-avatar.ts": "cd4f4f11014ba1e5372b2088fa04dbc685809ba11517dfdc422fd9ee77497ea4",
@@ -661,19 +661,19 @@
     "services/ipollowork/AGENTS.md": "291b93c9903205786546201d14eeefda5f9d583f399815795c7f9064c384334e",
     "services/ipollowork/vite.config.ts": "ece95966e2c6530680c3cb209fb665c7dd42873307293ee91d0d41b403422268",
     "services/ipollowork/compose.yml": "af414e7b25855794c57e0c7930f8e89871f351ddad6e1babc74beb31c010112e",
-    "services/ipollowork/web/main.tsx": "d241fed50ac69debb9f744a37df41d959f2d922f564919f03373b9b073b88424",
+    "services/ipollowork/web/main.tsx": "a19ccf184f9237a7db96f651588ae33e5bc6438edc4b344526d1e3124fca92cb",
     "services/ipollowork/web/index.html": "b4d08f46ab975cce277470e32191fdafbed88a7714c5b705597f6fe402580377",
     "services/ipollowork/web/liveshare-carrier.js": "286dfaa877e06bd9f7ebed26fc8652338dfc29d8e709bffb2d81f8c4c06adc74",
-    "services/ipollowork/web/services.tsx": "d657215ed6a067a2abfbe7cf11863e0a0dc2a9c2b43e7df48805b7ad5bdad919",
+    "services/ipollowork/web/services.tsx": "b9e4c4a67a867e63615edbc046e0aea7fb226418fc02b41ed3a78ff4eb8e3901",
     "services/ipollowork/web/api.ts": "123227601db2cd88aded8d65970712908ce82b419d37d944fa4067e9d331e6cd",
-    "services/ipollowork/web/style.css": "ba08b4ce443bf2dd85693aded7cc9969713a9124b386698a49fe9925b18539c5",
+    "services/ipollowork/web/style.css": "5aba4bc678cbd50c54544761ed42bbf83ea8e8ada3ad1f00716ecc1c0421fda4",
     "services/ipollowork/web/components.tsx": "72270aa06c21f7735fbafd13a58a178acc28387eca36de7912869bbcb2e6fefc",
     "services/ipollowork/web/liveshare-carrier.LICENSE": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
     "services/ipollowork/web/pages.tsx": "cd89ef447a87cef3daf821bbd2b3741cfc4bdea9c4433e2f9d6b9ec7787ba37d",
     "services/ipollowork/web/public/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
     "services/ipollowork/deploy/nginx.conf": "d5751c70b34a3bc37f91a04ae87b19ed976cc5f4e4880e1efe5e688244bf3290",
     "services/ipollowork/tests/service.test.ts": "fbffa4cdce1bcdd1400ba6c7c4f2b1f8fdbab53183a1a88f4a055dfdb8ba4c05",
-    "services/ipollowork/tests/execution.test.ts": "7233c91a6add3edf37c456b095d1182262b164b3108fa7c2b5e532f6fc23ca6c",
+    "services/ipollowork/tests/execution.test.ts": "468da1feea0e2465fa5c39bfe757a5d086dcf9630a893a3c80d27a16f179c53c",
     "services/ipollowork/tests/liveshare.test.ts": "e1cd24b9802360d9ecf67614377daadf6016c03cb2eec0aeb2cb60968ec84d90",
     "services/ipollowork/tests/project-space.test.ts": "42db12a1c829d7c262238bac531dd6a40c8f46ac51f50b40e08043dab1bc5994",
     "services/ipollowork/scripts/liveshare-carrier.mjs": "6003bfc29b467ad78bdec1ad34b702d63192a1a0bbdbad03cf221553683256b2",
@@ -699,18 +699,19 @@
     "services/ipollowork/src/domain.ts": "bb62e55b14f9b27cdfb5b48459cb321d4c7c37e27fcca70e68cb69c27bfe6b37",
     "services/ipollowork/src/liveshare-http.ts": "8e96829ef0c5c8c950754251f3c76d952ebe5229dcf717752c15afed6e7e1a28",
     "services/ipollowork/src/config.ts": "9438b48ef89e9f0ed88f5c1e66c77fb1d78584252d5fbf7882e3972ec097eb1b",
-    "services/ipollowork/src/execution.ts": "4ee9de08ff7877ed40ef9e10705d11c70b961049b5795483c787ed20611781c0",
+    "services/ipollowork/src/execution.ts": "7b910cc2ee2c5965fcaab1104e524639a29f0c35980a37765b9ab0887e64e89b",
     "services/ipollowork/src/payments.ts": "ec041c9ea98fab30a3d6aa248dba824ddada1f626682ab65fde9e5ced5be2ef4",
     "services/ipollowork/src/server.ts": "c950ce0711cd063debc44f9a373a3a4947d7f5fb25f40f4fc51754205ea4fe74",
     "services/ipollowork/src/auth.ts": "c97a646780b1b5252482f2691d783ff141f6567ce1b5a0a52cddfc7fe800bb10",
-    "plugins/ipollowork-suite/README.i18n.yaml": "b9ab895b74b94a0d139c59417c59b89a1efb2514e636a64ab582da92dc79f57a",
-    "plugins/ipollowork-suite/README.zh.md": "e1f890336a58e8ceec79e6269286f348e16f055aa5cd003e1b79ef3cd134bf3f",
+    "plugins/ipollowork-suite/README.i18n.yaml": "ef8078644c54bdfc1fa6f2086527ef90cb134e8d5fb98a4ac5fdfeadc0cad921",
+    "plugins/ipollowork-suite/README.zh.md": "1a059abcf00d83a71c0c15e32d7fe367c8313bb62886718eb4ee2dac903e93a2",
     "services/ipollowork/README.i18n.yaml": "77f5bdb448c41228045cf98ed949df0fd488dc00dbb073ca686cf2996415775f",
     "services/ipollowork/README.zh.md": "b6b3250c3835640bbcebae79a81bac872afe67c9d1e6eec03e62cb22e8f826c4",
     "plugins/ipollowork-suite/src/client/share-audience-copy.ts": "8463c9f2c7bf09eff420c6b023222917370c39dd985956600d7ba14b029135f3",
     "services/ipollowork/src/migration-007.sql": "8d1ce23acf2c22fb9fedae6af03a21485494e71373991c42d16024581654ae5c",
     "services/ipollowork/src/share-audience.ts": "3cb865dfe217a841f772eea74b236a4a0d9fe626bd6414a29e04cfddae4e585c",
-    "services/ipollowork/tests/share-audience.test.ts": "cac91d0e986cc7a807a7ce6330902fa9c4504a3297473203a82f8bcf7e605aea"
+    "services/ipollowork/tests/share-audience.test.ts": "cac91d0e986cc7a807a7ce6330902fa9c4504a3297473203a82f8bcf7e605aea",
+    "plugins/ipollowork-suite/src/client/glyphs.tsx": "a3ed90cf213cf6446f472aeef74607f01971de88177b99f96a54a195b8cb77d3"
   },
   "adjustments": [
     {
@@ -932,6 +933,74 @@
     {
       "path": "services/ipollowork/tests/share-audience.test.ts",
       "reason": "Keep audience selection visible and save organization or department changes on existing native links."
+    },
+    {
+      "path": "plugins/ipollowork-suite/docs/connections.md",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/account.tsx",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/connections.tsx",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/enterprise-locale.ts",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/enterprise-members.tsx",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/glyphs.tsx",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/locale.ts",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/service-source.tsx",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/src/client/suite.module.css",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "services/ipollowork/src/execution.ts",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "services/ipollowork/tests/execution.test.ts",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "services/ipollowork/web/main.tsx",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "services/ipollowork/web/services.tsx",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "services/ipollowork/web/style.css",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.i18n.yaml",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.md",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
+    },
+    {
+      "path": "plugins/ipollowork-suite/README.zh.md",
+      "reason": "Integrate the account, service connection, organization member and service-console UI with native sharing."
     }
   ]
 }

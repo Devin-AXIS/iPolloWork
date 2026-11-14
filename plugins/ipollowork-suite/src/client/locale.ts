@@ -19,7 +19,7 @@ const en = {
   loginError: 'Sign-in failed. Check your email and password.', canceled: 'The sign-in was cancelled.',
   incompatibleHint: 'Choose a compatible release before installing.',
   welcomeTitle: 'Welcome back', createTitle: 'Create your account', showPassword: 'Show password', hidePassword: 'Hide password',
-  officialServices: 'Official services', connected: 'Connected',
+  accountStatus: 'Account status', connected: 'Connected',
 }
 const zh: typeof en = {
   connections: '服务连接',
@@ -38,7 +38,7 @@ const zh: typeof en = {
   points: '可用积分', unavailable: '暂时无法读取', guest: '未登录', error: '操作未完成，请重试',
   loginError: '登录失败，请检查邮箱和密码', canceled: '本次登录已取消', incompatibleHint: '请先选择与当前 DSH 兼容的版本',
   welcomeTitle: '欢迎回来', createTitle: '创建你的账号', showPassword: '显示密码', hidePassword: '隐藏密码',
-  officialServices: '官方服务', connected: '已连接',
+  accountStatus: '账户状态', connected: '已连接',
 }
 export function language(ctx: ClientContext): 'zh' | 'en' {
   const snapshot = ctx.locale.getSnapshot()

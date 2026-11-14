@@ -72,7 +72,7 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
         </div>
         <div className={css.statRow}>
           <div><small><CoinGlyph size={12}/>{t.points}</small><strong>{account.points === null ? '—' : account.points.toLocaleString()}</strong></div>
-          <div><small><IconSparkleRegular size={12}/>{t.officialServices}</small><strong>{t.connected}</strong></div>
+          <div><small><IconSparkleRegular size={12}/>{t.accountStatus}</small><strong>{t.connected}</strong></div>
         </div>
         <div className={css.authFooter}>{service}<span className={css.spacer}/>
           <button type="button" className={css.quietButton} onClick={() => void refresh()} disabled={busy}>{t.refresh}</button>

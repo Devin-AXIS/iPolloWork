@@ -42,7 +42,7 @@
 
 ## 账号行为
 
-本地工作和浏览公开目录不需要 iPollo 登录。账号页支持填写姓名、邮箱和至少 10 位密码直接注册。注册调用 `/api/auth/sign-up/email`，并使用返回的会话登录；邮箱密码登录使用现有 Better Auth 的 `/api/auth/sign-in/email` 与 `/api/auth/get-session`。令牌仅保存在 DSH 凭据提供方中，每次请求后丢弃密码。`/api/v1/me/summary` 提供可选的积分信息；余额不可用时显示不可用，不显示为零。断开连接仅移除套件的本地令牌，不删除账号，也不改变 DSH 其他模型提供方的凭据。
+本地工作和浏览公开目录不需要 iPollo 登录。账号页通过邮箱和至少 10 位密码直接注册，初始显示名称取自邮箱的本地部分。账号已连接不表示官方服务已配置，服务可用状态在服务连接页展示；空服务目录不表示登录失败。注册调用 `/api/auth/sign-up/email`，并使用返回的会话登录；邮箱密码登录使用现有 Better Auth 的 `/api/auth/sign-in/email` 与 `/api/auth/get-session`。令牌仅保存在 DSH 凭据提供方中，每次请求后丢弃密码。`/api/v1/me/summary` 提供可选的积分信息；余额不可用时显示不可用，不显示为零。断开连接仅移除套件的本地令牌，不删除账号，也不改变 DSH 其他模型提供方的凭据。
 
 Bundle 通过两项普通 profile 覆盖替换内置 DeepSeek 账号及其通知界面；DeepSeek 账号服务与其他模型提供方凭据保持不变。停用 Bundle 会撤销这些覆盖。设置 `account: false` 时，套件不显示账号界面。
 

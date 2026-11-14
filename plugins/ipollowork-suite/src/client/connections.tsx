@@ -11,8 +11,8 @@ import { KeyGlyph, Monogram } from './glyphs.tsx'
 
 const text = (value: ConnectionText, locale: string) => locale.startsWith('zh') ? value.zh : value.en
 const copy = {
-  zh: { title: '服务连接', intro: '默认使用官方服务，按账户积分结算；也可以换成自己的 Key', official: '官方', own: '自己的 Key', ready: '官方服务 · 已就绪', ownReady: '自己的 Key · 已填写', needsKey: '未配置', officialGone: '所选官方服务暂不可用', unavailable: '读取失败', fill: '填写 Key', edit: '修改', close: '关闭', back: '全部服务', save: '保存', saving: '保存中…', failed: '操作未完成，请重试', empty: '安装插件后，需要的服务会出现在这里', saved: '已保存，留空保持不变', required: '请填写必填项', retry: '重试', points: '积分', signIn: '登录后可直接使用官方服务', offline: '官方服务暂时不可用', models: '官方模型', modelsDown: '官方模型暂时不可用，请稍后重试', switchFailed: '未能切换服务来源' },
-  en: { title: 'Service connections', intro: 'Official services are the default and use your account points. You can switch to your own key.', official: 'Official', own: 'Own key', ready: 'Official · Ready', ownReady: 'Own key · Saved', needsKey: 'Not set up', officialGone: 'The selected official service is unavailable', unavailable: 'Could not load', fill: 'Add key', edit: 'Edit', close: 'Close', back: 'All services', save: 'Save', saving: 'Saving…', failed: 'Could not complete this action. Try again.', empty: 'Services needed by installed plugins appear here.', saved: 'Saved; leave blank to keep', required: 'Fill in the required fields.', retry: 'Retry', points: 'points', signIn: 'Sign in to use official services', offline: 'Official services are unavailable', models: 'Official models', modelsDown: 'Official models are temporarily unavailable.', switchFailed: 'Could not change the source' },
+  zh: { title: '服务连接', intro: '默认使用官方服务，按账户积分结算；也可以换成自己的 Key', official: '官方', own: '自己的 Key', ready: '官方服务 · 已就绪', ownReady: '自己的 Key · 已填写', needsKey: '未配置', officialGone: '所选官方服务暂不可用', unavailable: '读取失败', fill: '填写 Key', edit: '修改', close: '关闭', back: '全部服务', save: '保存', saving: '保存中…', failed: '操作未完成，请重试', empty: '安装插件后，需要的服务会出现在这里', saved: '已保存，留空保持不变', required: '请填写必填项', retry: '重试', points: '积分', emptyServices: '暂无可用官方服务', offline: '官方服务暂时不可用', models: '官方模型', modelsDown: '官方模型暂时不可用，请稍后重试', switchFailed: '未能切换服务来源' },
+  en: { title: 'Service connections', intro: 'Official services are the default and use your account points. You can switch to your own key.', official: 'Official', own: 'Own key', ready: 'Official · Ready', ownReady: 'Own key · Saved', needsKey: 'Not set up', officialGone: 'The selected official service is unavailable', unavailable: 'Could not load', fill: 'Add key', edit: 'Edit', close: 'Close', back: 'All services', save: 'Save', saving: 'Saving…', failed: 'Could not complete this action. Try again.', empty: 'Services needed by installed plugins appear here.', saved: 'Saved; leave blank to keep', required: 'Fill in the required fields.', retry: 'Retry', points: 'points', emptyServices: 'No official services available', offline: 'Official services are unavailable', models: 'Official models', modelsDown: 'Official models are temporarily unavailable.', switchFailed: 'Could not change the source' },
 }
 type Labels = typeof copy.en
 const providerKey = (provider: ConnectionProvider) => provider.id.replace(/^studio:/, '')
@@ -95,7 +95,7 @@ function ProviderItem({ provider, revision, locale, t, services, choose, changed
 function Summary({ state, failed, t }: { state: ServiceState | undefined; failed: boolean; t: Labels }) {
   if (failed) return <span className={css.summaryPill} data-tone="muted">{t.offline}</span>
   if (!state) return null
-  if (!state.catalog.items.length) return <span className={css.summaryPill} data-tone="muted">{t.signIn}</span>
+  if (!state.catalog.items.length) return <span className={css.summaryPill} data-tone="muted">{t.emptyServices}</span>
   return <span className={css.summaryPill}><IconSparkleRegular size={13}/>{t.official} · {state.catalog.points.toLocaleString()} {t.points}</span>
 }
 
