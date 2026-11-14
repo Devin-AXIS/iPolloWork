@@ -12,6 +12,8 @@ export const serviceModelSchema = z.object({
   contextWindow: z.number().int().min(1024).optional(),
   maxTokens: z.number().int().min(1).optional(),
   enabled: z.boolean().optional(),
+  recommended: z.boolean().optional(),
+  vendor: z.string().max(100).optional(),
   capabilities: z.array(z.string()).max(50).optional(),
 });
 /** Public model metadata without credentials or billing records. */
@@ -50,7 +52,7 @@ const priceItem = z.object({ type: z.string(), price: z.coerce.number().nonnegat
 const listingSchema = z.object({
   success: z.boolean(),
   output: z.object({ total: z.number().int().nonnegative().max(5000), models: z.array(z.object({
-    model: z.string().min(1).max(200), name: z.string().optional(),
+    model: z.string().min(1).max(200), name: z.string().optional(), provider: z.string().max(100).optional(),
     capabilities: z.array(z.string()).default([]),
     model_info: z.object({ context_window: z.number().nullable().optional(), max_output_tokens: z.number().nullable().optional() }).nullable().optional(),
     prices: z.array(z.object({ range_name: z.string(), prices: z.array(priceItem) })).default([]),
@@ -71,7 +73,7 @@ export function parseBailianPage(raw: unknown): { total: number; items: { model:
       : caps.includes("TTS") || caps.includes("Realtime-Text-to-Speech") ? "speech"
       : caps.includes("ASR") || caps.includes("Realtime-ASR") ? "transcription"
       : caps.includes("TR") || caps.includes("ME") ? "embedding" : "tool";
-    const model: ServiceModel = { id: entry.model, name: entry.name || entry.model, category: bailianOperations[operation].category, enabled: false, capabilities: caps };
+    const model: ServiceModel = { id: entry.model, name: entry.name || entry.model, category: bailianOperations[operation].category, enabled: false, vendor: entry.provider, capabilities: caps };
     if (entry.model_info?.context_window) model.contextWindow = entry.model_info.context_window;
     if (entry.model_info?.max_output_tokens) model.maxTokens = entry.model_info.max_output_tokens;
     const rates = entry.prices.map(group => {

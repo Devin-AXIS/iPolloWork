@@ -1,5 +1,6 @@
 /** Operator-owned starting catalog. Secrets are configured separately and no service starts enabled. */
 import { arkModelGroups, arkBilling, arkServiceId, arkProvider } from "./ark-models.js";
+import { bailianChatPresets } from "./bailian-models.js";
 import type { Store } from "./database.js";
 import { billingSchema, rateSchema, type BillingSpec } from "./pricing.js";
 import { bailianOperations, serviceModelSchema, type ModelOperation } from "./model-catalog.js";
@@ -55,27 +56,17 @@ const billing = (
     validUntil,
     ...extra,
   });
-const chatRates = [
-  tokenRate("qwen3.8-flash", 0.8, 2.7),
-  tokenRate("qwen3.8-max", 12, 36),
-  tokenRate("vanchin/deepseek-v4.1-flash", 2, 8, 131072),
-];
 const catalog = [
   {
     id: "official-bailian",
-    title: "百炼 · 千问与 DeepSeek",
+    title: "百炼 · 语言模型",
     provider: "aliyun-bailian",
     keyId: "bailian",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     capabilities: ["chat"],
     routes: [{ method: "POST", path: "/chat/completions", points: 0 }],
-    billing: billing("chat", bailianSource, chatRates),
-    models: chatRates.map((rate) => ({
-      id: rate.model,
-      name: rate.model,
-      contextWindow: rate.maxInputTokens,
-      maxTokens: rate.maxOutputTokens,
-    })),
+    billing: billing("chat", bailianSource, bailianChatPresets.map(entry => entry.rate)),
+    models: bailianChatPresets.map(entry => entry.model),
   },
   {
     id: "official-minimax-image",
@@ -160,7 +151,7 @@ const catalog = [
   },
 ];
 
-/** Seed only missing records; operator edits, credentials and enabled states are never overwritten. */
+/** Add missing presets and recommendation metadata; preserve operator values and credentials. */
 export async function seedOfficialServices(store: Store): Promise<void> {
   for (const entry of catalog)
     await store.run(
@@ -197,6 +188,18 @@ export async function seedOfficialServices(store: Store): Promise<void> {
       0,
       Date.now(),
     );
+  const chatRow = await store.one("SELECT plan_ids FROM execution_services WHERE id=?", "official-bailian");
+  const chatDetails = JSON.parse(String(chatRow!.plan_ids));
+  const chatModels = new Map(serviceModelSchema.array().parse(chatDetails.models).map(model => [model.id, model]));
+  const chatRates = new Map(rateSchema.array().parse(chatDetails.billing?.rates ?? []).map(rate => [rate.model, rate]));
+  for (const entry of bailianChatPresets) {
+    const previous = chatModels.get(entry.model.id);
+    chatModels.set(entry.model.id, { ...entry.model, ...previous, recommended: previous?.recommended ?? true });
+    if (!chatRates.has(entry.rate.model)) chatRates.set(entry.rate.model, entry.rate);
+  }
+  const chatBilling = chatDetails.billing ?? billing("chat", bailianSource, [...chatRates.values()]);
+  await store.run("UPDATE execution_services SET plan_ids=? WHERE id=?", JSON.stringify({ ...chatDetails, models: [...chatModels.values()], billing: { ...chatBilling, rates: [...chatRates.values()] } }), "official-bailian");
+  await store.run("UPDATE execution_services SET title=? WHERE id=? AND title=?", "百炼 · 语言模型", "official-bailian", "百炼 · 千问与 DeepSeek");
   for (const [operation, group] of Object.entries(arkModelGroups)) {
     const kind = operation as keyof typeof arkModelGroups;
     const id = arkServiceId(kind);

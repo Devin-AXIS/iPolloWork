@@ -4,13 +4,22 @@ This reference covers server-supplied credentials and credit accounting. Private
 
 ## Presets and prices
 
-The initial catalog contains disabled connections. Alibaba chat, images, video, speech, recognition and embeddings share the `bailian` key; MiniMax image and video share the `minimax` key. Multiple capabilities route by the requested model as well as the allowed method and path. The administration page groups each provider's connections under one key editor. The Alibaba directory is imported from its regional `/api/v1/models` endpoint; unknown prices require operator review, and imported models remain disabled.
+The initial catalog contains disabled connections. Alibaba chat, images, video, speech, recognition and embeddings share the `bailian` key; MiniMax image and video share the `minimax` key. Multiple capabilities route by the requested model as well as the allowed method and path. The administration page groups each provider's connections under one key editor. Alibaba includes ten recommended language models from Qwen, DeepSeek, MiniMax, Kimi, GLM and MiMo. The editor can show the complete saved catalog, and search covers every saved model and author. Seeding adds missing presets without changing operator names, prices, connection state or model switches; existing aliases remain saved.
+
+The [Alibaba directory](https://help.aliyun.com/zh/model-studio/list-models) imports all authors from the configured business space's regional `/api/v1/models` endpoint. Set the shared origin to the console-provided `https://WorkspaceId.cn-beijing.maas.aliyuncs.com` address for Beijing workspaces, with a Key from that same space and region. Other regions use their own official origins. Model availability also depends on provider permissions. Unknown prices require operator review, and newly discovered models remain disabled. Presets use an editable 8,192-token output limit rather than the model's maximum generation length.
 
 | Service | Model | Catalog price in CNY |
 | --- | --- | --- |
 | Alibaba chat | `qwen3.8-flash` | Input 0.8, output 2.7 per million tokens |
 | Alibaba chat | `qwen3.8-max` | Input 12, output 36 per million tokens |
-| Alibaba chat | `vanchin/deepseek-v4.1-flash` | Input 2, output 8 per million tokens |
+| Alibaba chat | `qwen3.7-plus` | Up to 256,000 input tokens: input 2, output 8; above: input 6, output 24 per million tokens |
+| Alibaba chat | `deepseek-v4.1-flash` | Input 2, output 8 per million tokens, using peak rates |
+| Alibaba chat | `deepseek-v4-pro` | Input 12, output 24 per million tokens |
+| Alibaba chat | `MiniMax/MiniMax-M3.1-Flash` | Input 1, output 4 per million tokens |
+| Alibaba chat | `MiniMax/MiniMax-M3` | Input 4.2, output 16.8 per million tokens |
+| Alibaba chat | `kimi-k3.1-pro` | Input 13, output 68 per million tokens |
+| Alibaba chat | `glm-5.3` | Input 8, output 28 per million tokens |
+| Alibaba chat | `xiaomi/mimo-v2.6-pro-ultraspeed` | Input 30, output 60 per million tokens; audio input uses the same input rate |
 | Alibaba speech | `qwen3-tts-flash` | 0.8 per 10,000 characters |
 | MiniMax image | `MiniMax-H3-Image` | Text input 15, image input 10, output 25 per million tokens |
 | MiniMax video | `MiniMax-H3` | 768P 0.50/second; 2K 0.80/second; input video seconds also billable; extra reference images after five cost 0.20 each |
@@ -19,7 +28,7 @@ Price sources are [Alibaba model pricing](https://help.aliyun.com/zh/model-studi
 
 The model editor accepts currency per million tokens, per image, per audio/video second or per ten thousand characters and displays the equivalent credits. Values persist in integer millionths of CNY. Optional context tiers, resolution tiers and cache prices apply to that model. Unpriced models and expired prices are omitted from the user catalog; zero-cost models need an explicit free marker. Provider built-in web search is rejected until its additional charges are priced. New input/output unit fields are optional, so existing price records remain readable.
 
-Discovery retains models with unsupported protocols under Other models. Those entries stay disabled until an operator supplies supported routes and reviewed prices. Directory reads reject incomplete or duplicate pages without changing saved models. Time-of-day price bands use the highest listed charge; temporary discounts do not lower the reserved cost.
+Discovery retains models with unsupported protocols under Other models. Those entries stay disabled until an operator supplies supported routes and reviewed prices. Language models with missing context or output limits are also retained as disabled entries; enabling one requires explicit limits. Directory reads reject incomplete or duplicate pages without changing saved models. Time-of-day price bands use the highest listed charge; temporary discounts do not lower the reserved cost.
 
 Ark image and video services share the `volcengine-video` key and the native `volcengine-video` provider. The catalog includes Seedance 2.0, Seedance 2.5 and Seedream 5.5. [Ark pricing](https://console.volcengine.com/ark/region:cn-beijing/docs/model-pricing) is reviewed on 2026-11-14. Video rates vary by output resolution and whether reference video is present; the terminal `usage.completion_tokens` determines cost. Reservations use configured frame-pixel, frame-rate, output-duration and reference-duration limits. Draft continuation is rejected until its inherited input has a verified price. Images charge each input image and each successful output's pixel tier, including layers. Missing sizes or inconsistent counts retain the reservation for review. Keys and these services remain disabled until configured.
 

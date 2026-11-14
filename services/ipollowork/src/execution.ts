@@ -417,6 +417,7 @@ export class ExecutionService {
       s.models.some(
         (model) =>
           model.category === "language" &&
+          model.enabled !== false &&
           (!model.contextWindow || !model.maxTokens),
       )
     )

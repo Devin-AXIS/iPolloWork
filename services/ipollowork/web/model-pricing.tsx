@@ -36,6 +36,8 @@ export function ModelPricing({ models, setModels, billing, setBilling, category,
   category: ServiceCategory; source: string;
 }) {
   const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [limit, setLimit] = useState(50);
   const [selected, setSelected] = useState<string>();
   const [newId, setNewId] = useState("");
   const change = (model: ServiceModel, rate: ModelRate) => {
@@ -44,11 +46,15 @@ export function ModelPricing({ models, setModels, billing, setBilling, category,
       charactersPerTenThousand: 0, second768: 0, second2k: 0, imageInput: 0, maxInputVideoSeconds: 60,
       ...billing, rates: [...(billing?.rates ?? []).filter(entry => entry.model !== model.id), rate] });
   };
-  const visible = models.filter(model => (model.id + " " + model.name).toLowerCase().includes(query.toLowerCase()));
+  const hasRecommendations = models.some(model => model.recommended);
+  const visible = models.filter(model => query.trim()
+    ? (model.id + " " + model.name + " " + (model.vendor ?? "")).toLowerCase().includes(query.trim().toLowerCase())
+    : showAll || !hasRecommendations || model.recommended);
   return <section className="model-costs">
     <div className="model-costs-head"><strong>模型与积分</strong><small>1 积分对应 0.001 元模型成本</small></div>
-    <input aria-label="搜索模型" placeholder={`搜索 ${models.length} 个模型`} value={query} onChange={e => setQuery(e.target.value)} />
-    <div className="model-cost-list">{visible.slice(0, 50).map(model => {
+    <input aria-label="搜索模型" placeholder={`搜索 ${models.length} 个模型`} value={query} onChange={e => { setQuery(e.target.value); setLimit(50); }} />
+    {hasRecommendations && <label><input type="checkbox" checked={showAll} onChange={e => { setShowAll(e.target.checked); setLimit(50); }} /> 显示全部模型（{models.length}）</label>}
+    <div className="model-cost-list">{visible.slice(0, limit).map(model => {
       const rate = modelRate(model, billing, category);
       const priced = billing?.rates.some(entry => entry.model === model.id);
       const unit = rate.unit ?? "token";
@@ -95,8 +101,9 @@ export function ModelPricing({ models, setModels, billing, setBilling, category,
         </div>}
       </div>;
     })}</div>
-    {visible.length > 50 && <small>显示前 50 项，请搜索具体模型</small>}
-    <div className="model-add"><input aria-label="新模型 ID" placeholder="模型 ID" value={newId} onChange={e => setNewId(e.target.value)} /><button type="button" disabled={!newId.trim() || models.some(row => row.id === newId.trim())} onClick={() => { const id = newId.trim(); setModels([...models, { id, name: id, category, enabled: false, ...(category === "language" ? { contextWindow: 131072, maxTokens: 8192 } : {}) }]); setSelected(id); setNewId(""); }}>添加模型</button></div>
+    {visible.length > limit && <button type="button" onClick={() => setLimit(limit + 50)}>显示更多（已显示 {limit} / {visible.length}）</button>}
+    {!visible.length && <small>没有匹配的模型</small>}
+    <div className="model-add"><input aria-label="新模型 ID" placeholder="模型 ID" value={newId} onChange={e => setNewId(e.target.value)} /><button type="button" disabled={!newId.trim() || models.some(row => row.id === newId.trim())} onClick={() => { const id = newId.trim(); setModels([...models, { id, name: id, category, enabled: false, ...(category === "language" ? { contextWindow: 131072, maxTokens: 8192 } : {}) }]); setShowAll(true); setQuery(""); setSelected(id); setNewId(""); }}>添加模型</button></div>
     {billing && <div className="form-grid"><label className="field"><span>价格来源</span><input type="url" value={billing.source} onChange={e => setBilling({ ...billing, source: e.target.value })} /></label><label className="field"><span>价格复核日期</span><input type="date" value={new Date(billing.validUntil).toISOString().slice(0, 10)} onChange={e => { if (e.target.value) setBilling({ ...billing, verifiedAt: Date.now(), validUntil: new Date(e.target.value + "T23:59:59Z").getTime() }); }} /></label></div>}
   </section>;
 }
