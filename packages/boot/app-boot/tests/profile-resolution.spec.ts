@@ -176,6 +176,28 @@ async function resolutionOf(f: ReturnType<typeof fixture>): Promise<RuntimeResol
   })
 }
 
+it.each(['exports', 'legacy'] as const)('loads unpacked package files through %s without an ASAR importer', async (format) => {
+  const f = fixture()
+  const name = 'unpacked-tool'
+  const directory = join(f.root, 'app.asar.unpacked', 'dsh', 'node_modules', name)
+  pkg(directory, name, 4)
+  if (format === 'legacy') {
+    file(join(directory, 'package.json'), JSON.stringify({ name, main: './index.cjs' }))
+  }
+  const base = await resolutionOf(f)
+  const registration = installRuntimeInterception({ ...base, entries: [...base.entries, {
+    name, packageDir: directory, version: '4.0.0', scope: 'installation',
+    declarer: join(f.root, 'app.asar', 'dsh', 'package.json'),
+  }] })
+  registrations.push(registration)
+  const parent = pathToFileURL(join(f.profile.dir, 'entry.mjs')).href
+  const expected = join(directory, format === 'exports' ? 'index.js' : 'index.cjs')
+  expect(resolveFrom(name, parent)).toBe(pathToFileURL(expected).href)
+  const loaded = await importFrom(name, parent)
+  expect(format === 'exports' ? loaded.marker : (loaded.default as { marker: number }).marker).toBe(4)
+  expect(createRequire(join(f.profile.dir, 'entry.cjs'))(name)).toEqual({ marker: 4 })
+})
+
 /**
  * Ancestor node_modules layers of a profile importer, innermost first:
  * private (plugin-private), profile (profile node_modules), shared

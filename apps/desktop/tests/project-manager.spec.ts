@@ -75,6 +75,23 @@ describe('desktop external plugin profile', () => {
     expect(lstatSync(path).isDirectory()).toBe(true)
     expect(lstatSync(join(profile, 'node_modules/plugin')).isDirectory()).toBe(true)
   })
+  it('retires an old application plugin when its replacement is bundled', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    seedPlugin(manager)
+    const name = 'deepseek-idesign'
+    for (const base of [manager.paths.profile, manager.runtime.dsh]) {
+      const directory = join(base, 'node_modules', name)
+      mkdirSync(directory, { recursive: true })
+      writeFileSync(join(directory, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
+    }
+    await manager.applyRelease()
+    expect(existsSync(join(manager.paths.profile, 'node_modules', name))).toBe(false)
+    expect(existsSync(join(manager.runtime.dsh, 'node_modules', name))).toBe(true)
+    expect(readdirSync(join(manager.paths.profile, '.dsh-bundled-package-backups'))).toHaveLength(1)
+    expect(plugins(manager)).toEqual([{ name: 'plugin', version: '1.0.0', enabled: true }])
+  })
+
   it('reuses plugin files without scanning manifests and can disable them', async () => {
     const { manager } = setup()
     await manager.applyRelease()

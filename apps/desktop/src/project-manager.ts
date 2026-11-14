@@ -24,6 +24,7 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
+import { retireBundledProfilePackages } from './bundled-profile-packages.ts'
 
 const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
@@ -85,12 +86,13 @@ export class DesktopProjectManager {
    * Load application metadata and prepare the external plugin profile without installing packages.
    */
   async applyRelease(): Promise<void> {
-    await this.withLock(() => {
+    await this.withLock(async () => {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
       createPluginProfile(this.paths.profile, existsSync(join(this.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite', 'package.json')) ? ['@ipollo/dsh-suite'] : [])
       removeLinkProjections(this.paths.profile)
+      await retireBundledProfilePackages(this.paths.profile, this.runtime.dsh)
     })
   }
 

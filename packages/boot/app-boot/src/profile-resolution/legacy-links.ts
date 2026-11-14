@@ -17,6 +17,16 @@ function isPackagedExecutable(): boolean {
  * @returns the canonical directory path.
  */
 export function realModuleDirectory(path: string): string {
+  const physical = physicalModuleDirectory(path)
+  return isPackagedExecutable() ? realpathSync(physical) : realpathSync.native(physical)
+}
+
+/**
+ * Select a complete unpacked Electron package without canonicalizing ordinary package links.
+ * @param path - Package directory as resolved from its importing package.
+ * @returns Physical unpacked directory when available, otherwise the original path.
+ */
+export function physicalModuleDirectory(path: string): string {
   const archive = /^(.*\.asar)([/\\].+)$/u.exec(path)
   if (archive?.[1] && archive[2]) {
     const unpacked = `${archive[1]}.unpacked${archive[2]}`
@@ -25,7 +35,7 @@ export function realModuleDirectory(path: string): string {
       return realpathSync.native(unpacked)
     }
   }
-  return isPackagedExecutable() ? realpathSync(path) : realpathSync.native(path)
+  return path
 }
 
 /** Canonicalize a module resource, preserving physical file aliases.

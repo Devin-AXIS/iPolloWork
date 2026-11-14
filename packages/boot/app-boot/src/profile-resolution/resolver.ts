@@ -363,6 +363,11 @@ function packageSearchPaths(
     : cjs._nodeModulePaths(dirname(entry.declarer))
 }
 
+/** Unpacked packages resolve their own exports from disk rather than their declaring ASAR manifest. */
+function packageResolutionAnchor(entry: RuntimeResolutionEntry): string {
+  return entry.packageDir.includes('.asar.unpacked' + sep) ? join(entry.packageDir, 'package.json') : entry.declarer
+}
+
 function localCandidateOwnsResolution(candidate: string, resolved: string, request: string, name: string): boolean {
   if (startsWithin(resolved, prefixes(candidate))) return true
   if (sameResolution(candidate, resolved)) return true
@@ -866,7 +871,7 @@ export function installRuntimeInterception(
         if (cacheable && !(result instanceof Promise)) state.esm = result
         return result
       }
-      const routedParent = pathToFileURL(route.kind === 'interception' ? route.entry.declarer : route.parent).href
+      const routedParent = pathToFileURL(route.kind === 'interception' ? packageResolutionAnchor(route.entry) : route.parent).href
       const previous = delegatedEsm
       delegatedEsm = { parent: routedParent, request }
       const restoreImporter = (error: unknown): never => throwWithImporter(error, routedParent, parent)
@@ -985,7 +990,7 @@ export function installRuntimeInterception(
     if (state.route.kind === 'native') return resolveFrom(target.parentURL)
     const route = state.route
     if (route.kind === 'native-after-interception') return resolveFrom(pathToFileURL(route.parent).href)
-    return resolveFrom(pathToFileURL(route.entry.declarer).href)
+    return resolveFrom(pathToFileURL(packageResolutionAnchor(route.entry)).href)
   }
   const wrappedFilename: CommonJsModule['_resolveFilename'] = (request, parent, main, options) => {
     if (delegatedCjs || !parent?.filename || options?.paths !== undefined) {
