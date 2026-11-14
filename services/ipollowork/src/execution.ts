@@ -940,7 +940,6 @@ export class ExecutionService {
     return { ok: true };
   }
   private async settleUsage(id: string, micros: number): Promise<void> {
-    let blocked: string | undefined;
     await this.store.transaction(async () => {
       const call = await this.store.one(
         "SELECT * FROM service_calls WHERE id=? FOR UPDATE",
@@ -949,22 +948,15 @@ export class ExecutionService {
       if (!call || call.billing_settled || call.state === "failed") return;
       const points = costCredits(micros),
         held = Number(call.points);
-      if (points > held) {
-        blocked = String(call.service_id);
-        await this.store.run(
-          "UPDATE service_calls SET state='unknown',cost_micros=? WHERE id=?",
-          micros,
-          id,
-        );
-        return;
-      }
-      if (held > points)
+      if (held !== points)
         await ledgerEntry(
           this.store,
           String(call.user_id),
           held - points,
           "service-settle/" + id,
           "服务用量结算",
+          null,
+          true,
         );
       await this.store.run(
         "UPDATE service_calls SET points=?,cost_micros=?,billing_settled=true WHERE id=?",
@@ -973,13 +965,6 @@ export class ExecutionService {
         id,
       );
     });
-    if (blocked) {
-      await this.store.run(
-        "UPDATE execution_services SET enabled=0 WHERE id=?",
-        blocked,
-      );
-      throw new ServiceError("SERVICE_USAGE_OUT_OF_BOUNDS", 503);
-    }
   }
   async invoke(actor: Actor, id: string, raw: unknown): Promise<Response> {
     const input = requestSchema.parse(raw),
@@ -1074,7 +1059,7 @@ export class ExecutionService {
         .record(z.string(), z.unknown())
         .parse(JSON.parse(upstreamBody?.toString("utf8") ?? "{}"));
       reservation = reserveUsage(s.billing, payload);
-      points = costCredits(reservation.micros);
+      points = 0;
       upstreamBody = Buffer.from(JSON.stringify(payload));
     }
     const hash = createHash("sha256")
@@ -1090,7 +1075,8 @@ export class ExecutionService {
       .digest("hex");
     const existing = await this.store.transaction(async () => {
       await this.store.run("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", input.requestId);
-      if (points) await lockWallet(this.store, actor.id);
+      const metered = reservation !== undefined && reservation.micros > 0;
+      if (points || metered) await lockWallet(this.store, actor.id);
       const previous = await this.store.one<CallRow>(
         "SELECT * FROM service_calls WHERE id=?",
         input.requestId,
@@ -1099,6 +1085,11 @@ export class ExecutionService {
         if (previous.user_id !== actor.id || previous.request_hash !== hash)
           throw new ServiceError("IDEMPOTENCY_CONFLICT", 409);
         return previous;
+      }
+      if (metered) {
+        if (Number((await wallet(this.store, actor.id)).balance) <= 0)
+          throw new ServiceError("INSUFFICIENT_POINTS", 409, "账户积分已用完，请补充积分后重试");
+        await requireUsageBudget(this.store, actor.id, 1, this.usageUtcOffsetMinutes);
       }
       if (points) {
         await requireUsageBudget(this.store, actor.id, points, this.usageUtcOffsetMinutes);

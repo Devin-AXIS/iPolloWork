@@ -123,7 +123,44 @@ test("chat credits settle from final SSE usage and a duplicate call does not cha
   }
 });
 
-test("video submission holds credits and polling settles the owned job once", async () => {
+test("positive credits admit concurrent metered calls and actual usage may leave debt", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ipw-postpaid-"));
+  const app = await createService(await testConfig({ DATA_DIR: dir }));
+  let release!: () => void;
+  const ready = new Promise<void>(resolve => { release = resolve; });
+  try {
+    const { user } = await app.auth.api.signUpEmail({ body: { name: "Postpaid", email: "postpaid@example.test", password: "Postpaid-test-password-2026" } });
+    const actor = { ...user, role: "admin" };
+    await app.store.transaction(() => ledgerEntry(app.store, user.id, 1, "postpaid-grant", "Grant"));
+    let entered = 0;
+    let bothEntered!: () => void;
+    const both = new Promise<void>(resolve => { bothEntered = resolve; });
+    const executor = new ExecutionService(app.store, app.settings, async () => {
+      if (++entered === 2) bothEntered();
+      await ready;
+      return Response.json({ usage: { prompt_tokens: 20, completion_tokens: 10 } });
+    });
+    await executor.save(actor, { id: "postpaid", title: "Postpaid", provider: "fixture", baseUrl: "https://provider.example", keyId: "postpaid", key: "secret", capabilities: ["chat"], routes: [{ method: "POST", path: "/chat/completions", points: 0 }], billing: spec("chat"), enabled: true });
+    const request = () => ({ requestId: randomUUID(), method: "POST", path: "/chat/completions", body: Buffer.from(JSON.stringify({ model: "fixture", messages: [{ role: "user", content: "Hello" }], max_tokens: 10 })).toString("base64") });
+    const first = request();
+    const running = [executor.invoke(actor, "postpaid", first), executor.invoke(actor, "postpaid", request())];
+    try {
+      await Promise.race([both, ...running.map(result => result.then(() => { throw new Error("Provider finished before admission checks"); }))]);
+      assert.equal((await wallet(app.store, user.id)).balance, 1);
+      assert.equal((await app.store.one("SELECT SUM(points) AS held FROM service_calls WHERE user_id=?", user.id))?.held, 0);
+    } finally { release(); }
+    await Promise.all(running.map(async response => (await response).text()));
+    assert.equal((await wallet(app.store, user.id)).balance, -59);
+    await (await executor.invoke(actor, "postpaid", first)).text();
+    assert.equal((await wallet(app.store, user.id)).balance, -59);
+    await assert.rejects(executor.invoke(actor, "postpaid", request()), { code: "INSUFFICIENT_POINTS" });
+    assert.equal(entered, 2);
+    await app.store.transaction(() => ledgerEntry(app.store, user.id, 59, "postpaid-zero", "Grant", null, true));
+    await assert.rejects(executor.invoke(actor, "postpaid", request()), { code: "INSUFFICIENT_POINTS" });
+  } finally { release(); await app.close(); await rm(dir, { recursive: true, force: true }); }
+});
+
+test("video submission defers billing and polling settles the owned job once", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-video-pricing-")),
     app = await createService(await testConfig({ DATA_DIR: dir }));
   try {
@@ -191,7 +228,7 @@ test("video submission holds credits and polling settles the owned job once", as
         ).toString("base64"),
       })
     ).text();
-    assert.equal((await wallet(app.store, user.id)).balance, 7500);
+    assert.equal((await wallet(app.store, user.id)).balance, 10000);
     for (let i = 0; i < 2; i++)
       await (
         await executor.invoke(actor, "meter-video", {
