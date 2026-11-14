@@ -15,6 +15,9 @@ const api: WelcomeApi = {
   },
   analyticsEnabled: () => ipcRenderer.invoke(WELCOME_IPC.analyticsEnabled) as Promise<boolean>,
   takeNotice: () => ipcRenderer.invoke(WELCOME_IPC.takeNotice) as Promise<WelcomeNotice | undefined>,
+  signInAccount: (email, password) => ipcRenderer.invoke(WELCOME_IPC.signInAccount, email, password) as Promise<WelcomeSaveResult>,
+  signUpAccount: (name, email, password) =>
+    ipcRenderer.invoke(WELCOME_IPC.signUpAccount, name, email, password) as Promise<WelcomeSaveResult>,
   startSignIn: () => ipcRenderer.invoke(WELCOME_IPC.start) as Promise<AccountView>,
   cancelSignIn: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.cancel, id) as Promise<AccountView>,
   copySignInLink: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.copyLink, id) as Promise<void>,

@@ -11,6 +11,8 @@ import packageInfo from "../../package.json" with { type: "json" };
 import type { CredentialStore } from "../shared/types.ts";
 import { mountServiceModels } from "./service-models.ts";
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-agent-default-model";
+import type {} from "@deepseek-ai/dsh-api-session-controller";
 import { Services } from "./services.ts";
 import type { ServiceCenter, ServiceChoice } from "../shared/services.ts";
 import { AccountService } from "./account.ts";
@@ -49,6 +51,7 @@ export const name = "ipollowork-suite";
 export const inject = [
   "webServer",
   "connection",
+  "connection.authentication",
   "credentials",
   "pluginManager",
   "profileContext",
@@ -111,9 +114,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
     }): () => void;
   };
   connection: {
-    requestRejection(request: {
-      headers: IncomingMessage["headers"];
-    }): number | undefined;
+    admit(request: IncomingMessage): { rejection: number } | { peer: object };
   };
   credentials: CredentialStore;
   pluginManager: NativePluginManager;
@@ -247,7 +248,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     config.account,
   );
   ctx.provide?.("ipolloServices", services);
-  ctx.inject?.(["llm"], (scope) => {
+  ctx.inject?.(["llm", "agentDefaultModel", "sessionController"], (scope) => {
     if (!ctx.webServer.getOrigin) {
       services.modelStatus = "unsupported";
       return;
@@ -260,6 +261,12 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       },
       services,
       account,
+      async (providers) => {
+        const current = scope.agentDefaultModel.currentSelection();
+        if (providers.includes(current.provider)) return;
+        const provider = providers[0];
+        if (provider !== undefined) await scope.sessionController.initializeDefaultModel(provider);
+      },
     );
     void refreshModels().catch((error) => {
       services.modelStatus = "error";
@@ -298,11 +305,9 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
         path: API,
         handler: async (request, response) => {
           try {
-            const rejection = ctx.connection.requestRejection({
-              headers: request.headers,
-            });
-            if (rejection !== undefined) {
-              json(response, rejection, { error: "IPW_UNAUTHORIZED" });
+            const admission = ctx.connection.admit(request);
+            if ("rejection" in admission) {
+              json(response, admission.rejection, { error: "IPW_UNAUTHORIZED" });
               return;
             }
             const url = new URL(request.url ?? "/", "http://localhost");
@@ -339,6 +344,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 theme: config.theme,
                 market: config.market,
                 account: config.account,
+                dedicatedDesktop: config.dedicatedDesktop,
               });
               return;
             }

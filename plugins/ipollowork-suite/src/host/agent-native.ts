@@ -21,7 +21,7 @@ export interface AgentContext {
   plugin(plugin: typeof SubagentTool, config: { provider: string; toolName: string; agentPreset?: string; allowedAgentPresets?: string[] }): NativeFiber;
   logger: { warn(message: string, error: unknown): void };
   webServer: { register(route: { kind: 'prefix'; path: string; handler(request: IncomingMessage, response: ServerResponse): Promise<void> }): () => void };
-  connection: { requestRejection(request: { headers: IncomingMessage['headers'] }): number | undefined };
+  connection: { admit(request: IncomingMessage): { rejection: number } | { peer: object } };
   storageDomain: { open(spec: { name: string; version: number; global: { schema: z.ZodType; initial: unknown }; tables: Record<string, never> }): Promise<{ global: AgentGlobal; close(): Promise<void> }> };
   credentials: { describe(ref: string): Promise<{ configured: boolean }>; set(ref: string, value: string): Promise<void> };
   workspaceRegistry: { list(): Project[]; get(id: string): Project | undefined; create(path: string, title?: string): Promise<Project>; archivedSessionIds: readonly string[] };

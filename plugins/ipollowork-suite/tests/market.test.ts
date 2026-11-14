@@ -1,3 +1,5 @@
+import { execFileSync } from 'node:child_process'
+import yaml from 'js-yaml'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
@@ -44,10 +46,10 @@ test('bundles shipped by DSH open native details instead of offering a duplicate
 
 
 test('the default market shows Design and Video first without installing or enabling them', async () => {
-  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.2', 'zh', 1048576)
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'zh', 1048576)
   assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
   for (const item of state.items.slice(0, 2)) {
-    assert.equal(item.version, '1.0.0-beta.19')
+    assert.equal(item.version, '1.0.0-beta.19.ipollo.1')
     assert.equal(item.categoryTitle, '创作')
     assert.equal(item.compatible, true)
     assert.equal(item.installed, false)
@@ -62,24 +64,34 @@ test('a custom operator catalog keeps its declared source for the same package v
   try {
     const path = join(dir, 'index.json')
     await writeFile(path, await readFile('catalog/index.json'))
-    const state = await readMarket(path, { listBundles: async () => [] }, '0.2.2-rc.2', 'en', 1048576)
-    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.19', 'deepseek-ivideo@1.0.0-beta.19'])
+    const state = await readMarket(path, { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576)
+    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.19.ipollo.1', 'deepseek-ivideo@1.0.0-beta.19.ipollo.1'])
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
 test('bundled installation specs use a retained content-addressed cache when the host supplies one', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ipw-release-cache-'))
   try {
-    const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.2', 'en', 1048576, directory)
-    const source = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.2', 'en', 1048576)
+    const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, directory)
+    const source = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576)
     for (const item of state.items.slice(0, 2)) {
       assert.match(item.spec, /[a-f0-9]{64}\.tgz$/)
       assert(item.spec.startsWith(`file:${directory}`))
       assert.deepEqual(await readFile(item.spec.slice(5)), await readFile(source.items.find(entry => entry.name === item.name)!.spec.slice(5)))
     }
-    const again = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.2', 'en', 1048576, directory)
+    const again = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, directory)
     assert.equal(again.items[0]?.spec, state.items[0]?.spec)
     await writeFile(state.items[0]!.spec.slice(5), 'damaged cache')
-    await assert.rejects(readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.2', 'en', 1048576, directory), { code: 'IPW_INVALID_CATALOG' })
+    await assert.rejects(readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, directory), { code: 'IPW_INVALID_CATALOG' })
   } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('shipped Studio bundles declare the authentication dependency used by editor assets', async () => {
+  const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as { plugins: { name: string; file: string }[] }
+  for (const release of releases.plugins) {
+    const document = execFileSync('tar', ['-xOzf', join('catalog/packages', release.file), 'package/cordis.patch.yml'], { encoding: 'utf8' })
+    const patch = yaml.load(document) as { insert: { name: string; inject?: string[] }[] }[]
+    const row = patch.flatMap(item => item.insert).find(item => item.name === release.name)
+    assert(row?.inject?.includes('connection.authentication'))
+  }
 })

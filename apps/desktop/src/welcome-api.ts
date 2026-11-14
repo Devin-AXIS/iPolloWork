@@ -14,6 +14,8 @@ export const WELCOME_IPC = {
   cancel: 'dsh-welcome:cancel',
   copyLink: 'dsh-welcome:copy-link',
   state: 'dsh-welcome:state',
+  signInAccount: 'dsh-welcome:sign-in-account',
+  signUpAccount: 'dsh-welcome:sign-up-account',
   takeNotice: 'dsh-welcome:take-notice',
 } as const
 
@@ -27,6 +29,19 @@ type WelcomeEventName = 'auth_page_view' | 'auth_page_click' | 'api_key_save_cli
 
 /** Host-owned operations used by the welcome window. */
 export interface WelcomeOperations {
+  /** Sign in without exposing the session grant.
+   * @param email - Account email entered in the native window.
+   * @param password - Password passed only to the owned account service.
+   * @returns Whether the account service accepted sign-in.
+   */
+  signInAccount?(email: string, password: string): Promise<WelcomeSaveResult>
+  /** Register an account and store its session only in the Host.
+   * @param name - Account display name.
+   * @param email - Account email.
+   * @param password - Password sent to the account service.
+   * @returns Whether registration completed and signed in.
+   */
+  signUpAccount?(name: string, email: string, password: string): Promise<WelcomeSaveResult>
   /** @param eventName - allowed welcome event. @param attributes - approved fields without credentials. */
   analytics?<K extends WelcomeEventName>(eventName: K, attributes: ProductEventMap[K]): Promise<void>
   /** @returns the Host's current effective collection policy. */

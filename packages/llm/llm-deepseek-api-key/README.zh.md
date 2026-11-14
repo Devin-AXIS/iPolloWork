@@ -11,7 +11,7 @@ kind: "package-reference"
 
 为 `deepseek-official` 注册鉴权、模型发现和官方模型列表。通过 [llm-deepseek](../llm-deepseek/README.zh.md) 共用 Messages 请求实现；本包拥有凭据解析、目录可用性判断和模型准入。
 
-鉴权解析将验证后的 API key 放入 `x-api-key`，供 Messages 和 Files 请求共同使用。
+提供方显示为 `DeepSeek · API key`，用以区分个人密钥与账号管理的渠道。鉴权解析将验证后的 API key 放入 `x-api-key`，供 Messages 和 Files 请求共同使用。
 
 ## 目录
 

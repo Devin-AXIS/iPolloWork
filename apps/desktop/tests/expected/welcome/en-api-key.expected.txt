@@ -1,5 +1,5 @@
-DeepSeek Harness
-DeepSeek Harness
+iPolloWork
+iPolloWork
 Add an API key to get started
 Configure official DeepSeek models to start using Harness
 Enter API key [password]

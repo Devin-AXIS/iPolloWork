@@ -14,6 +14,8 @@ import css from './AccountSection.module.css'
 
 /** Safe account snapshot shared by the settings page and launcher. */
 export interface AccountSnapshot {
+  /** Credit availability supplied by an external account provider without inventing a currency balance. */
+  onboardingCredit?: boolean
   /** Latest Host state, absent until the stream responds. */
   view: AccountView | undefined
   /** Sanitized profile and balance query outcomes, absent while loading. */

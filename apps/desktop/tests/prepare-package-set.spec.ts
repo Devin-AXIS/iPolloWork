@@ -99,7 +99,7 @@ describe('desktop package-set selection', () => {
   })
 })
 
-const macProvider = '@deepseek-ai/dsh-experimental-cua-macos'
+const macProvider = '@deepseek-ai/dsh-cua-macos'
 const cuaBundle = '@deepseek-ai/dsh-cua-bundle'
 const targetManifests = () => new Map<string, PackedDesktopPackage>([
   ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh', { dependencies: { [cuaBundle]: '1.0.0' } })],
@@ -157,8 +157,20 @@ it('copies no macOS tarball into the Windows package set', () => {
   }
   const output = join(root, 'output')
   prepareDesktopPackageSet([inputs], output, { platform: 'win32', arch: 'x64' })
-  expect(readdirSync(join(output, DESKTOP_PACKAGES_DIR))).not.toContain('dsh-experimental-cua-macos.tgz')
+  expect(readdirSync(join(output, DESKTOP_PACKAGES_DIR))).not.toContain('dsh-cua-macos.tgz')
   prepareDesktopPackageSet([inputs], output, { platform: 'darwin', arch: 'arm64' })
-  expect(readFileSync(join(output, DESKTOP_PACKAGES_DIR, 'dsh-experimental-cua-macos.tgz')))
-    .toEqual(readFileSync(join(inputs, 'dsh-experimental-cua-macos.tgz')))
+  expect(readFileSync(join(output, DESKTOP_PACKAGES_DIR, 'dsh-cua-macos.tgz')))
+    .toEqual(readFileSync(join(inputs, 'dsh-cua-macos.tgz')))
+})
+
+
+it('includes application packages from local tarballs and rejects a missing application package', () => {
+  const available = new Map([
+    ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh')],
+    ['@deepseek-ai/dsh-desktop-host', packed('@deepseek-ai/dsh-desktop-host')],
+    ['@ipollo/dsh-suite', packed('@ipollo/dsh-suite')],
+  ])
+  expect(selectDesktopPackageClosure(available, { platform: 'darwin', arch: 'arm64' }, ['@ipollo/dsh-suite']).map(item => item.manifest.name)).toContain('@ipollo/dsh-suite')
+  available.delete('@ipollo/dsh-suite')
+  expect(() => selectDesktopPackageClosure(available, { platform: 'darwin', arch: 'arm64' }, ['@ipollo/dsh-suite'])).toThrow('omit @ipollo/dsh-suite')
 })

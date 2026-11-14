@@ -204,7 +204,7 @@ export class DesktopOnboardingController {
     const progress = this.draft ?? this.readProgress() ?? freshProgress()
     if (!signedIn) this.creditFunded = undefined
     else if (this.creditFunded === undefined && host.status === 'ready' && progress.step === 'credit') {
-      this.creditFunded = hasOnboardingCredit(snapshot.details?.balance)
+      this.creditFunded = snapshot.onboardingCredit ?? hasOnboardingCredit(snapshot.details?.balance)
     }
     if (signedIn && this.failedWrite?.next.completion === 'api-key') {
       this.failedWrite = undefined

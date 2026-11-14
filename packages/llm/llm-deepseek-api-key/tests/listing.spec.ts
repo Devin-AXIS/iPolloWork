@@ -52,6 +52,8 @@ it('follows the official listing while the catalog is the built-in one', async (
   const requests = officialListing(listing(FLASH, { ...PRO, id: 'deepseek-v5', ...requires('0.0.1') }, PRO))
   const { ctx, diagnostics } = await host()
   await ctx.plugin(ApiKey, {})
+  expect(ctx.llm.listProviders()).toEqual([{ id: 'deepseek-official', name: 'DeepSeek · API key' }])
+  expect(ctx.llm.listConfigurableProviders()[0]?.displayName).toBe('DeepSeek · API key')
   expect(await ids(ctx)).toEqual(['deepseek-flash', 'deepseek-v5', 'deepseek-v4-pro'])
   await expect(ctx.llm.resolveModelInfo('deepseek-official', 'deepseek-flash')).resolves.toMatchObject({
     context: { contextWindow: 1_048_576 }, systemPromptUpdate: 'in-history', toolUpdate: 'addition-only', inputModalities: ['text', 'image'],

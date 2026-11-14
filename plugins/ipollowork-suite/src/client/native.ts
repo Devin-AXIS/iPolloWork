@@ -4,10 +4,11 @@ export interface NativeSessionBinding { readonly sessionId:string; readonly ctx:
 /** Credential-free result supplied to the optional native sharing hook. */
 interface SharingPreparation { readonly connected?:boolean; readonly error?:string }
 export interface SlotOptions<P> {
-  name: string; id?: string; key?: string; order?: number; priority?: number; label?: () => string;
+  name: string; locale?: string; id?: string; key?: string; order?: number; priority?: number; label?: () => string;
   inject?: () => Record<string, unknown>;
 }
 export interface ClientContext {
+  configForms: import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForms;
   provide(name: 'ipolloConnections', value: import('../shared/connections.ts').ConnectionManager): void;
   effect(effect: () => void | (() => void), label?: string): unknown;
   slots: {

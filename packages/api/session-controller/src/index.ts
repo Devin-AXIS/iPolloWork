@@ -6,7 +6,8 @@ import type { Agent } from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-fs'
 import { Context, Service } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { errorChain, ReasoningEffortId, type MessageSource } from '@deepseek-ai/dsh-llm'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import { errorChain, type ReasoningEffortId, type MessageSource } from '@deepseek-ai/dsh-llm'
 import type {} from '@deepseek-ai/dsh-client-file-upload'
 import { canOpenNativePath, nativeFileManager, nativeFileApplications, openNativeFileApplication, openNativeAssociatedPath, revealNativePath } from '@deepseek-ai/dsh-native-command'
 import type { SessionId } from '@deepseek-ai/dsh-session'
@@ -320,18 +321,20 @@ export class SessionController extends TypertRemoteService {
 
   /**
    * Select the first available account model after login when no provider API key is configured.
+   * @param requestedProvider - Registered account provider; defaults to the native account route.
    * @returns after saving the first available model or retaining the existing default.
    */
   @Remote
-  async initializeDefaultModel(): Promise<void> {
-    const provider = 'deepseek-account'
+  async initializeDefaultModel(requestedProvider?: string): Promise<void> {
+    const provider = requestedProvider ?? 'deepseek-account'
     if (await hasProviderApiKey(this.ctx)) return
     const catalog = await buildModelCatalog(this.ctx)
     const model = catalog.groups.find(group => group.id === provider)?.models[0]
     if (model === undefined) throw new RemoteError('session/provider-models-unavailable',
       `provider "${provider}" has no available models`, { provider })
     const selection = { provider, model: model.id,
-      ...model.reasoning?.defaultEffort === undefined ? {} : { reasoningEffort: ReasoningEffortId(model.reasoning.defaultEffort) },
+      ...model.reasoning?.defaultEffort === undefined ? {}
+        : { reasoningEffort: brandString<ReasoningEffortId>(model.reasoning.defaultEffort) },
     }
     await this.ctx.agentDefaultModel.saveSelection(selection)
   }

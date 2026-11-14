@@ -16,7 +16,7 @@ import type {
   ProjectGrant,
 } from "../shared/enterprise.ts";
 import type { ClientContext } from "./native.ts";
-import type { AccountController } from "./account.tsx";
+import type { AccountController } from "./account-controller.ts";
 import {
   EnterpriseController,
   type EnterpriseState,

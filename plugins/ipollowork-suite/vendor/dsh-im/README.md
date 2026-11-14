@@ -6,6 +6,8 @@ The runtime is compiled into `@ipollo/dsh-suite/im`; it is not published or inst
 
 ## Local changes
 
+- Host context sharing uses the public `Context.root` symbol so current Cordis does not interpret `root` as an undeclared service.
+
 - `plugin-src/host/index.mjs` and `plugin-src/client/index.js`: remove standalone update handlers and controls. The client uses the suite's package metadata and navigation IDs.
 - `plugin-src/host/harness-session-coordinator.mjs`: retain received media with native DSH file uploads and reuse the optional native speech service through `src/host/im-media.ts` in the suite. Provider or converter errors retain recordings and publish only a safe status.
 - `src/channels/shared/inbound-file.mjs`: carry platform transcripts, emit native file receipt parts, and omit receipt IDs from model text. Images use normal native image input, or a retained file when the selected model refuses images.

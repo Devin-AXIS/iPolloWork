@@ -1,12 +1,14 @@
 /** Official chat services mount through DSH's existing pi-ai adapter. */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { resolveRetryPolicy } from "@deepseek-ai/dsh-llm";
+import { resolveRetryPolicy, ACCOUNT_QUOTA_EXCEEDED_CODE, type GenerateOptions, type StreamChunk, type PreparedAdapterCall } from "@deepseek-ai/dsh-llm";
+import { SuiteError } from "./errors.ts";
 import {
   createProvider,
   envApiKeyAuth,
   InMemoryCredentialStore,
   defaultProviderAuthContext,
 } from "@earendil-works/pi-ai";
+import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import type { Context } from "@deepseek-ai/cordis";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -20,14 +22,44 @@ export interface ModelWebServer {
   register(route: {
     kind: "prefix";
     path: string;
+    auth?: "anonymous";
     handler(req: IncomingMessage, res: ServerResponse): Promise<void>;
   }): () => void;
 }
+async function* officialModelStream(stream: AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk> {
+  for await (const chunk of stream) {
+    if (chunk.type === "finish" && chunk.reason.kind === "error"
+      && chunk.reason.failure.message.includes("INSUFFICIENT_POINTS")) {
+      yield { ...chunk, reason: { kind: "error", failure: {
+        code: ACCOUNT_QUOTA_EXCEEDED_CODE,
+        message: "Insufficient iPolloWork points. Add points or switch to your own API key.",
+      } } };
+    } else yield chunk;
+  }
+}
+class OfficialModelAdapter extends pi.PiAiAdapter {
+  override stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
+    return officialModelStream(super.stream(options));
+  }
+  override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
+    const prepared = await super.prepareCall(provider, model, signal);
+    return { ...prepared, stream: options => officialModelStream(prepared.stream(options)) };
+  }
+}
+/** Mount account channels without exposing the upstream key.
+ * @param ctx - Runtime owning the adapter.
+ * @param webServer - Local HTTP listener for authenticated model calls.
+ * @param services - Account channels and source choices.
+ * @param account - Account session used by the gateway.
+ * @param initializeDefault - Select an account channel after registration, while retaining personal keys.
+ * @returns Serialized channel refresh.
+ */
 export function mountServiceModels(
   ctx: Context,
   webServer: ModelWebServer,
   services: Services,
   account: AccountService,
+  initializeDefault?: (providers: readonly string[]) => Promise<void>,
 ): () => Promise<void> {
   const token = randomBytes(32).toString("hex"),
     lifetime = new AbortController();
@@ -35,7 +67,7 @@ export function mountServiceModels(
   let profiles = new Map<string, pi.ResolvedPiAiProviderProfile>(),
     facts = "",
     serial = Promise.resolve();
-  const adapter = new pi.PiAiAdapter({
+  const adapter = new OfficialModelAdapter({
     profiles: () => profiles,
     resolveApiKey: async () => token,
     auth: {
@@ -48,6 +80,7 @@ export function mountServiceModels(
     webServer.register({
       kind: "prefix",
       path: "/ipollo-service-models",
+      auth: "anonymous",
       handler: async (req, res) => {
         if (req.headers.authorization !== "Bearer " + token) {
           res.writeHead(401);
@@ -109,15 +142,14 @@ export function mountServiceModels(
               res,
             );
           else res.end();
-        } catch {
+        } catch (error) {
           if (res.headersSent) res.destroy();
           else {
-            res.writeHead(503);
-            res.end(
-              JSON.stringify({
-                error: { message: "Official model service unavailable" },
-              }),
-            );
+            res.writeHead(error instanceof SuiteError ? error.status : 503, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: {
+              code: error instanceof SuiteError ? error.code : "IPW_SERVICE_UNAVAILABLE",
+              message: error instanceof SuiteError ? error.code : "Official model service unavailable",
+            } }));
           }
         }
       },
@@ -158,6 +190,17 @@ export function mountServiceModels(
               model.maxTokens === undefined
             )
               return [];
+            const catalogProvider = service.provider === "deepseek" ? "deepseek"
+              : service.provider === "aliyun-bailian" ? "qwen-token-plan-cn" : undefined;
+            const known = catalogProvider && getBuiltinModels(catalogProvider).find(entry =>
+              entry.id === model.id && entry.api === "openai-completions");
+            const capabilities = known && known.api === "openai-completions" ? {
+              reasoning: known.reasoning,
+              ...(known.thinkingLevelMap ? { thinkingLevelMap: known.thinkingLevelMap }
+                : known.reasoning && known.compat?.supportsReasoningEffort === false
+                  ? { thinkingLevelMap: { minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null } } : {}),
+              ...(known.compat ? { compat: known.compat } : {}),
+            } : { reasoning: false };
             return [
               {
                 ...model,
@@ -167,7 +210,7 @@ export function mountServiceModels(
                 baseUrl: baseURL,
                 api: "openai-completions" as const,
                 input: ["text" as const],
-                reasoning: false,
+                ...capabilities,
                 cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               },
             ];
@@ -212,6 +255,7 @@ export function mountServiceModels(
         facts = next;
         services.modelStatus = "ready";
         services.modelError = "";
+        await initializeDefault?.([...profiles.keys()]);
       });
     return serial;
   };

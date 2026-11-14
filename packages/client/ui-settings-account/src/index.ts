@@ -25,6 +25,7 @@ export interface Config extends ContactConfig {
 
 /** Configuration projected through the account plugin's shared form. */
 export const Config = z.object({
+  externalAccount: ContactConfigFields.externalAccount,
   contactFormUrl: ContactConfigFields.contactFormUrl,
   contactSource: ContactConfigFields.contactSource,
   version: OnboardingSettingsFields.version.volatile(),
@@ -48,6 +49,7 @@ export function apply(ctx: Context, config: Config): void {
   ctx.on('webserver/index-inject', (table) => {
     table.push({ kind: 'global', name: CONTACT_CONFIG_GLOBAL, value: {
       contactFormUrl: config.contactFormUrl, contactSource: config.contactSource,
+      ...(config.externalAccount ? { externalAccount: true } : {}),
     } satisfies ContactConfig })
   })
 }

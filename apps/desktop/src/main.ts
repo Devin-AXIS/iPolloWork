@@ -8,6 +8,7 @@ import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
+import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -43,7 +44,7 @@ import { desktopUpdateChannel } from './update-channel.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
-import { serveWebDocument, authenticateWebHost, forwardWebRequest, removeLegacyHostCookies } from './web-document.ts'
+import { serveWebDocument, forwardWebRequest, removeLegacyHostCookies } from './web-document.ts'
 import { DesktopFatalRecovery } from './fatal-recovery.ts'
 import { pruneCrashReports, RendererConsoleTail, writeCrashReport, type CrashReportSource } from './crash-report.ts'
 import { OperationJournal } from './operation-journal.ts'
@@ -71,6 +72,12 @@ import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
+
+app.setName('iPolloWork')
+const productData = join(app.getPath('appData'), 'iPolloWork Desktop')
+mkdirSync(productData, { recursive: true })
+app.setPath('userData', productData)
+process.env.DSH_HOME ??= join(app.getPath('userData'), 'harness')
 
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
@@ -545,14 +552,14 @@ async function main(): Promise<void> {
     return {
       start: async () => {
         const ready = await host.start()
-        const cookie = await authenticateWebHost(ready.url)
+        const cookie = ready.authenticationCookie
         hostCookie = cookie
         hostUrl = ready.url
         void removeLegacyHostCookies(session.defaultSession.cookies, ready.url)
           .catch((error: unknown) => { console.error('desktop: legacy Host cookie cleanup failed', error) })
         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
         injections = ready.injections
-        welcomeBackend = connectDesktopWelcome(ready.url, cookie)
+        welcomeBackend = connectDesktopWelcome(ready.url, cookie, fetch, 'ipollo')
         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
         stopAccount?.()
@@ -1158,7 +1165,7 @@ async function main(): Promise<void> {
   const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
     : join(process.resourcesPath, 'icon.png')
   app.setAboutPanelOptions({
-    applicationName: 'DeepSeek Harness',
+    applicationName: 'iPolloWork',
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
@@ -1234,7 +1241,7 @@ async function main(): Promise<void> {
   const refreshApplicationMenu = (): void => {
     Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
       ? windowsDevToolsShortcuts : [{
-        label: darwin ? app.name : currentDesktopLocale().messages.application,
+        label: darwin ? currentDesktopLocale().messages.welcomeBrand : currentDesktopLocale().messages.application,
         submenu: [...applicationItems(), devToolsF12Shortcut],
       }, ...platformMenus()]))
     tray?.relabel()
@@ -1408,6 +1415,16 @@ async function main(): Promise<void> {
           pendingWelcomeNotice = undefined
           return Promise.resolve(notice)
         },
+        signInAccount: async (email, password) => {
+          const result = await welcomeBackend?.signInAccount?.(email, password) ?? { ok: false }
+          if (result.ok) await enterWorkspace()
+          return result
+        },
+        signUpAccount: async (name, email, password) => {
+          const result = await welcomeBackend?.signUpAccount?.(name, email, password) ?? { ok: false }
+          if (result.ok) await enterWorkspace()
+          return result
+        },
         startSignIn: async () => {
           if (welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
           return welcomeBackend.account.start(desktopClientMetadata(locale.id))
@@ -1462,7 +1479,6 @@ async function main(): Promise<void> {
     windowsLanguage = locale.id
     refreshApplicationMenu()
     if (!enteredWorkspace && needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })) {
-      // A later login must retain its own activation policy instead of replaying startup focus.
       raiseAfterUpdate = false
       await showWelcome()
     } else {

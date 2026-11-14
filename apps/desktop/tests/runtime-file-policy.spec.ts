@@ -13,6 +13,7 @@ it('omits development artifacts while preserving executable modules, assets and 
   const source = join(root, 'source')
   const output = join(root, 'output')
   const removed = [
+    'example/.gitkeep', 'outer/node_modules/undici/lib/llhttp/.gitkeep',
     'example/index.d.ts', 'example/index.d.mts', 'example/index.d.cts',
     'example/index.js.map', 'example/index.mjs.map', 'example/index.cjs.map',
     'example/style.css.map', 'example/index.d.ts.map', 'example/index.d.mts.map',

@@ -13,7 +13,8 @@ import { Context } from '@deepseek-ai/cordis'
 import AgentRegistry from '@deepseek-ai/dsh-agent'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import AttachmentStore from '@deepseek-ai/dsh-attachment'
-import LlmRuntime, { LlmAdapter, ReasoningEffortId } from '@deepseek-ai/dsh-llm'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import LlmRuntime, { LlmAdapter, type ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import type {
   GenerateOptions, LlmCallConfigAdapterDefaults, LlmModelInfo,
   LlmModelReasoningInfo, LlmProviderInfo, LlmResolvedModelInfo, StreamChunk,
@@ -78,11 +79,11 @@ class CatalogAdapter extends LlmAdapter {
 
 const REASONING: LlmModelReasoningInfo = {
   efforts: [
-    { id: ReasoningEffortId('off'), name: 'Off' },
-    { id: ReasoningEffortId('high'), name: 'High' },
-    { id: ReasoningEffortId('max'), name: 'Max' },
+    { id: brandString<ReasoningEffortId>('off'), name: 'Off' },
+    { id: brandString<ReasoningEffortId>('high'), name: 'High' },
+    { id: brandString<ReasoningEffortId>('max'), name: 'Max' },
   ],
-  defaultEffort: ReasoningEffortId('high'),
+  defaultEffort: brandString<ReasoningEffortId>('high'),
 }
 
 async function harness(logged?: {
@@ -393,7 +394,7 @@ describe('Web session model selection', () => {
     const { ctx, sessionId } = await harness({
       provider: 'deepseek-official',
       model: 'private-preview',
-      reasoningEffort: ReasoningEffortId('max'),
+      reasoningEffort: brandString<ReasoningEffortId>('max'),
     })
     const remote = await createSessionTestRemote(ctx, { defaultModelSelection: () => ({ provider: 'deepseek-official', model: 'deepseek-chat' }), cwd: '/tmp' })
 
@@ -437,7 +438,7 @@ describe('Web session model selection', () => {
     ctx.llm.registerAdapter(['described-reasoning'], new CatalogAdapter('Described Reasoning', [
       { provider: 'described-reasoning', id: 'reasoning-model', name: 'Reasoning Model' },
     ], {
-      efforts: [{ id: ReasoningEffortId('high'), name: 'High', description: 'More thinking' }],
+      efforts: [{ id: brandString<ReasoningEffortId>('high'), name: 'High', description: 'More thinking' }],
     }))
     ctx.llm.registerAdapter(['string-failure'], new class extends CatalogAdapter {
       override listModels(): Promise<readonly LlmModelInfo[]> {
@@ -569,7 +570,7 @@ describe('Web session model selection', () => {
     expect(agent.model.current()).toEqual(stored)
     stored = { provider: 'deepseek-official', model: 'deepseek-reasoner' }
     expect(agent.model.current()).toEqual(stored)
-    const selection = { ...stored, reasoningEffort: ReasoningEffortId('high') }
+    const selection = { ...stored, reasoningEffort: brandString<ReasoningEffortId>('high') }
     // The explicit selection is identical to the live fallback, including effort.
     stored = selection
     expectValue(await remote.selectModel({ sessionId: first.sessionId, ...selection }))
@@ -601,7 +602,7 @@ describe('Web session model selection', () => {
     const { ctx, agent } = await harness({
       provider: 'deepseek-official',
       model: 'deepseek-chat',
-      reasoningEffort: ReasoningEffortId('high'),
+      reasoningEffort: brandString<ReasoningEffortId>('high'),
       adapterDefaults: { reasoningEffort: true },
     })
     await createSessionTestRemote(ctx, {
@@ -917,6 +918,12 @@ it('initializes the account model without reasoning metadata and rejects an empt
   })
   await controller.initializeDefaultModel()
   expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'deepseek-account', model: 'basic' })
+  const stopChannel = ctx.llm.registerAdapter(['ipollo-channel'], new CatalogAdapter('Configured channel', [
+    { provider: 'ipollo-channel', id: 'channel-model', name: 'Channel model' },
+  ]))
+  await controller.initializeDefaultModel('ipollo-channel')
+  expect(ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'ipollo-channel', model: 'channel-model' })
+  stopChannel()
   dispose()
   await expect(controller.initializeDefaultModel()).rejects.toMatchObject({
     code: 'session/provider-models-unavailable', details: { provider: 'deepseek-account' },

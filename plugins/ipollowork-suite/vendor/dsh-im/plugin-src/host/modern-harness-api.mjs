@@ -1,3 +1,4 @@
+import { Context } from '@deepseek-ai/cordis';
 import { randomUUID } from 'node:crypto';
 
 import { activeHarnessInteractionOwner, clearModelCatalogCache, hasActiveHarnessInteractionOwner, harnessToolCallFromEvent, HarnessInteractionError } from '../../src/channels/shared/harness-client.mjs';
@@ -961,7 +962,7 @@ class ModernHarnessApi {
 
 /** Create one modern compatibility API per Cordis Host root. */
 export function modernHarnessApi(ctx, { deliveryService } = {}) {
-  const scope = ctx?.root ?? ctx;
+  const scope = ctx?.[Context.root] ?? ctx;
   if (!scope || !['object', 'function'].includes(typeof scope)) {
     throw new TypeError('dsh-im requires a Cordis Host context');
   }

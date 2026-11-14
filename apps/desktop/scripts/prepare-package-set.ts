@@ -66,11 +66,13 @@ function dependencyNames(manifest: Readonly<Record<string, unknown>>, section: s
  * Reads the repository workspace manifest and package manifests to distinguish required local packages from npm-resolved externals.
  * @param available - Packed packages indexed by package name.
  * @param target - Platform and architecture of the installer payload.
+ * @param requiredPackages - Additional installation-owned application packages.
  * @returns Selected packages sorted by name.
  */
 export function selectDesktopPackageClosure(
   available: ReadonlyMap<string, PackedDesktopPackage>,
   target: ReturnType<typeof desktopTargetPlatform>,
+  requiredPackages: readonly string[] = [],
 ): PackedDesktopPackage[] {
   const workspace = yaml.load(readFileSync(join(REPOSITORY_ROOT, 'pnpm-workspace.yaml'), 'utf8')) as { packages: string[] }
   const workspaceNames = new Set(globSync(workspace.packages.map(pattern => `${pattern}/package.json`), { cwd: REPOSITORY_ROOT })
@@ -95,7 +97,7 @@ export function selectDesktopPackageClosure(
         && supportsTarget(optional.manifest, 'cpu', target.arch)) visit(dependency)
     }
   }
-  for (const name of ROOT_PACKAGES) {
+  for (const name of [...ROOT_PACKAGES, ...requiredPackages]) {
     if (!available.has(name)) throw new Error(`desktop package set: packed inputs omit ${name}`)
     visit(name)
   }
@@ -147,11 +149,13 @@ export function assertDesktopHostPackageFiles(files: readonly string[]): void {
  * @param inputs - Release tarball directories.
  * @param output - Destination package-set directory.
  * @param target - Platform and architecture of the installer payload.
+ * @param requiredPackages - Additional installation-owned application packages.
  */
 export function prepareDesktopPackageSet(
   inputs: readonly string[], output: string, target: ReturnType<typeof desktopTargetPlatform>,
+  requiredPackages: readonly string[] = [],
 ): void {
-  const selected = selectDesktopPackageClosure(packedPackages(inputs), target)
+  const selected = selectDesktopPackageClosure(packedPackages(inputs), target, requiredPackages)
   const host = selected.find(packed => packed.manifest.name === DESKTOP_HOST_PACKAGE)
   if (host === undefined) throw new Error(`desktop package set: selected closure omits ${DESKTOP_HOST_PACKAGE}`)
   assertDesktopHostPackageFiles(tarballFiles(host.tarball))
@@ -193,7 +197,7 @@ function main(): void {
   })
   const inputs = (values.from ?? defaultInputs).map(path => resolve(REPOSITORY_ROOT, path))
   const output = values.out === undefined ? buildPaths.packageSet : resolve(REPOSITORY_ROOT, values.out)
-  prepareDesktopPackageSet(inputs, output, desktopTargetPlatform(resolveDesktopBuildTarget()))
+  prepareDesktopPackageSet(inputs, output, desktopTargetPlatform(resolveDesktopBuildTarget()), ['@ipollo/dsh-suite'])
   console.log(`desktop package set: prepared ${output}`)
 }
 
