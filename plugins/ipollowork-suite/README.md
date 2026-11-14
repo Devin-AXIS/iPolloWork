@@ -139,4 +139,4 @@ The embedded IM runtime uses Cordis’s public root-context symbol. Bundled Desi
 
 Account balances refresh when the application regains focus or becomes visible. Compatible DeepSeek and Bailian chat models inherit the installed provider catalog’s reasoning levels and request dialect; unknown models remain selectable without invented reasoning levels.
 
-The suite resolves DSH services from the host through peer dependencies; installing it does not replace the host runtime packages.
+Account and payment layouts contain their box sizing within the native settings panel. The suite resolves DSH services from the host through peer dependencies; installing it does not replace the host runtime packages.

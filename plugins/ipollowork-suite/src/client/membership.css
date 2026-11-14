@@ -1,4 +1,5 @@
 /* Account and allowance layout from the standalone Stage consumer account. */
+.consumer-account,.consumer-account *,.consumer-subscribe-dialog,.consumer-subscribe-dialog *{box-sizing:border-box}
 .consumer-account{width:100%;max-width:540px;min-width:0;margin:0 auto;padding:14px;min-height:0;display:flex;flex-direction:column;justify-content:flex-start;gap:12px}
 .consumer-card,.consumer-loading{min-width:0;padding:24px;background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,255,255,.68));border:1px solid rgba(255,255,255,.94);border-radius:22px;box-shadow:0 10px 30px -22px rgba(37,48,60,.25),inset 0 1px 0 #fff;-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}
 .consumer-identity{display:flex;align-items:center;gap:11px;min-width:0}
