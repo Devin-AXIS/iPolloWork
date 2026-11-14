@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopPaths } from '../src/paths.ts'
-import { DesktopProjectManager } from '../src/project-manager.ts'
+import { DesktopProjectManager, createPluginProfile } from '../src/project-manager.ts'
 import { readProfilePlugins } from '@deepseek-ai/dsh-app-boot'
 import { runtimeFixture } from './runtime-fixture.ts'
 
@@ -329,4 +329,15 @@ describe('desktop link-backend projections', () => {
     expect(lstatSync(join(profile, 'node_modules', 'bridge'), { throwIfNoEntry: false })).toBeUndefined()
     expect(existsSync(join(target, 'package.json'))).toBe(true)
   })
+})
+
+
+it('initializes the dedicated desktop with a required suite and integrated login', () => {
+  const root = mkdtempSync(join(tmpdir(), 'ipollo-desktop-'))
+  roots.push(root)
+  createPluginProfile(root, ['@ipollo/dsh-suite'])
+  expect(readFileSync(join(root, 'package.json'), 'utf8')).toContain('@ipollo/dsh-suite')
+  const patch = readFileSync(join(root, 'cordis.patch.yml'), 'utf8')
+  expect(patch).toContain('dedicatedDesktop: true')
+  expect(patch).toContain('requiredBundles: ["@ipollo/dsh-suite"]')
 })

@@ -110,6 +110,7 @@ export function createElectronBuilderConfig(
     appId,
     protocols: [{ name: 'DeepSeek Harness', schemes: ['dsh'] }],
     extraMetadata: {
+      productName: 'iPolloWork',
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
@@ -168,8 +169,10 @@ export function createElectronBuilderConfig(
       category: 'public.app-category.developer-tools',
       // macOS matches the application locale against this bundle, not Electron Framework resources.
       extendInfo: {
+        CFBundleDisplayName: 'iPolloWork',
+        CFBundleName: 'iPolloWork',
         CFBundleLocalizations: ['en', 'zh_CN', 'ja', 'es', 'fr', 'de', 'ru', 'pt'],
-        NSMicrophoneUsageDescription: 'DeepSeek Harness uses your microphone to transcribe speech into message drafts.',
+        NSMicrophoneUsageDescription: 'iPolloWork uses your microphone to transcribe speech into message drafts.',
       },
       // Ad-hoc signing keeps the modified Electron executable runnable without a Developer ID.
       identity: unsigned ? '-' : macOSSigning?.signingIdentity,

@@ -29,6 +29,7 @@ const PROJECT_NAME = '@deepseek-ai/dsh-desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
+const DESKTOP_PATCH = '- id: ipollowork-suite\n  config:\n    dedicatedDesktop: true\n- id: plugin-manager\n  config:\n    requiredBundles: ["@ipollo/dsh-suite"]\n'
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
@@ -84,7 +85,7 @@ export class DesktopProjectManager {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
       readDesktopRuntime(this.runtime.dsh)
       migrateProfileSettings(this.paths.profile)
-      createPluginProfile(this.paths.profile)
+      createPluginProfile(this.paths.profile, existsSync(join(this.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite', 'package.json')) ? ['@ipollo/dsh-suite'] : [])
       removeLinkProjections(this.paths.profile)
     })
   }
@@ -169,7 +170,15 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
   writeFileSync(join(projectDir, 'pnpm-workspace.yaml'), workspaceFile(), { mode: 0o600 })
 }
 
-/** Create the first external plugin profile without running a package manager. */
-export function createPluginProfile(projectDir: string): void {
-  initProfile(projectDir, WEB_PROFILE.bundles)
+/** Create the first external plugin profile without running a package manager.
+ * @param projectDir - Desktop profile directory.
+ * @param requiredBundles - Installation-owned bundles enabled by the desktop distribution.
+ */
+export function createPluginProfile(projectDir: string, requiredBundles: readonly string[] = []): void {
+  const fresh = !existsSync(join(projectDir, 'package.json'))
+  initProfile(projectDir, [...WEB_PROFILE.bundles, ...requiredBundles])
+  const patch = join(projectDir, 'cordis.patch.yml')
+  if (fresh && requiredBundles.includes('@ipollo/dsh-suite')) {
+    writeFileSync(patch, DESKTOP_PATCH, { mode: 0o600 })
+  }
 }

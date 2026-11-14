@@ -12,6 +12,7 @@ export interface Config {
   theme?: boolean;
   market?: boolean;
   account?: boolean;
+  dedicatedDesktop?: boolean;
   uploadTimeoutMs?: number;
   maxArtifactBytes?: number;
   archiveHistoryLimit?: number;
@@ -34,6 +35,7 @@ export const Config = z.object({
   theme: z.boolean().default(true),
   market: z.boolean().default(true),
   account: z.boolean().default(true),
+  dedicatedDesktop: z.boolean().default(false),
 });
 export type ResolvedConfig = Required<Config>;
 /** Resolve defaults and reject remote unencrypted login destinations before registering routes. */

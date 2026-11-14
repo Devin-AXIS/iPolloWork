@@ -72,6 +72,9 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 
+app.setName('iPolloWork')
+process.env.DSH_HOME ??= join(app.getPath('userData'), 'harness')
+
 let focusPrimaryWindow = (): void => {}
 let stopForRecovery = async (): Promise<void> => { await stopOperationReports() }
 let shuttingDown = false
@@ -1158,7 +1161,7 @@ async function main(): Promise<void> {
   const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
     : join(process.resourcesPath, 'icon.png')
   app.setAboutPanelOptions({
-    applicationName: 'DeepSeek Harness',
+    applicationName: 'iPolloWork',
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
@@ -1461,13 +1464,7 @@ async function main(): Promise<void> {
     writeDesktopLocaleCache(app.getPath('userData'), locale.id)
     windowsLanguage = locale.id
     refreshApplicationMenu()
-    if (!enteredWorkspace && needsWelcome({ loggedIn: state.loggedIn, hasApiKey: state.hasApiKey })) {
-      // A later login must retain its own activation policy instead of replaying startup focus.
-      raiseAfterUpdate = false
-      await showWelcome()
-    } else {
-      await enterWorkspace()
-    }
+    await enterWorkspace()
   }
   focusPrimaryWindow = () => {
     if (quitting) return

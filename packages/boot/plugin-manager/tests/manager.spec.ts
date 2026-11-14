@@ -2546,3 +2546,15 @@ it('reports profile read, lock, and disposal failures with error codes', async (
   })
   expect(readFileSync(manifest, 'utf8')).toBe(saved)
 })
+
+
+it('keeps application-required bundles and their components enabled', async () => {
+  const { manager } = await fixture('live', false, undefined, { requiredBundles: ['extra'] })
+  const bundle = (await manager.listBundles()).find(row => row.name === 'extra')!
+  expect(bundle).toMatchObject({ enabled: true, removable: false, readOnlyReason: 'management-required' })
+  expect(await manager.setBundleEnabled('extra', false)).toMatchObject({ changed: false, application: 'failed', error: { code: 'management-required' } })
+  const row = (await manager.listPlugins()).find(item => item.entryId === 'include:managed')!
+  expect(row).toMatchObject({ readOnlyReason: 'management-required' })
+  expect(await manager.setPluginEnabled(row.entryId, false)).toMatchObject({ changed: false, application: 'failed', error: { code: 'management-required' } })
+  expect(await manager.removeBundle('extra')).toMatchObject({ changed: false, application: 'failed' })
+})

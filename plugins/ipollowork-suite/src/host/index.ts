@@ -339,6 +339,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 theme: config.theme,
                 market: config.market,
                 account: config.account,
+                dedicatedDesktop: config.dedicatedDesktop,
               });
               return;
             }

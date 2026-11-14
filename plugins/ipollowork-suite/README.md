@@ -124,3 +124,5 @@ Organization-space project creation is fixed to the selected organization; perso
 Service records carry a stable `category` (`language`, `image`, `video`, `audio`, `embedding`, `tool`) and `vendor`; model entries retain their own category. Only language models with token limits register in the native chat selector. Organization service lists and department grants use these categories, including tool services. Non-chat organization connections require explicit allowed API routes; existing connections keep their routes and classification when edited.
 
 Official media calls select a service by its allowed route and the requested model. This lets image generation and speech share a provider endpoint and key without selecting the wrong category. Regional provider origins remain owned by the account service. Disabling the suite or choosing native personal credentials removes official routing.
+
+The `dedicatedDesktop` deployment option requires iPolloWork sign-in before exposing the workspace. The desktop distribution embeds this bundle and its QR-code dependency; it does not require an npm installation at first launch.

@@ -410,3 +410,5 @@ The account provider’s `embeddedPageDist` configuration adds a `dist` query pa
 ## Dev Note
 
 Pre-launch CDN and capacity decisions are tracked in the [Desktop update proposal](../../.agents/notes/proposed/feature/2026-09-08-desktop-update-policy-and-installation.md#cdn-and-capacity-qualification).
+
+This iPolloWork distribution embeds the suite and its local DSH dependency closure. The dedicated profile enables the suite on first launch, uses iPolloWork sign-in inside the client, and keeps the suite required by the application. Desktop data lives below the iPolloWork application-data directory; existing DSH profiles remain separate.

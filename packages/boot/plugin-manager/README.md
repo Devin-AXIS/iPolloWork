@@ -206,3 +206,5 @@ Restoration rewrites only the two snapshotted files; user-authored patch configu
 None.
 
 </details>
+
+Application profiles can configure `requiredBundles` to keep selected bundles and their components enabled and non-removable through plugin management. This controls application operations; it does not prevent operating-system file edits.

@@ -572,3 +572,6 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .departmentLayout input:focus-visible { outline:none; }
 @media (max-width:720px) { .departmentLayout { grid-template-columns:1fr; }.departmentNav { position:static;flex-direction:row;overflow-x:auto; }.departmentItem { flex-shrink:0; }.departmentAdd { flex-shrink:0;min-width:140px;margin-top:0; }.accessPill { max-width:140px; }.tabActions { flex-direction:column;align-items:stretch; } }
 @media (prefers-reduced-motion:reduce) { .toggle,.toggle span,.dropZone,.statStrip button { transition:none; } }
+
+.desktopLogin { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow-y: auto; }
+.desktopLogin .authPage { min-height: 0; padding: 0; }

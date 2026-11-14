@@ -162,3 +162,15 @@ it('copies no macOS tarball into the Windows package set', () => {
   expect(readFileSync(join(output, DESKTOP_PACKAGES_DIR, 'dsh-cua-macos.tgz')))
     .toEqual(readFileSync(join(inputs, 'dsh-cua-macos.tgz')))
 })
+
+
+it('includes application packages from local tarballs and rejects a missing application package', () => {
+  const available = new Map([
+    ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh')],
+    ['@deepseek-ai/dsh-desktop-host', packed('@deepseek-ai/dsh-desktop-host')],
+    ['@ipollo/dsh-suite', packed('@ipollo/dsh-suite')],
+  ])
+  expect(selectDesktopPackageClosure(available, { platform: 'darwin', arch: 'arm64' }, ['@ipollo/dsh-suite']).map(item => item.manifest.name)).toContain('@ipollo/dsh-suite')
+  available.delete('@ipollo/dsh-suite')
+  expect(() => selectDesktopPackageClosure(available, { platform: 'darwin', arch: 'arm64' }, ['@ipollo/dsh-suite'])).toThrow('omit @ipollo/dsh-suite')
+})

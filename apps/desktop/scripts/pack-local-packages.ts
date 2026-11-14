@@ -1,6 +1,7 @@
 /** Stage local-branded DSH packages for unsigned Desktop builds without a publication record. */
 
 import { resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { parseArgs } from 'node:util'
 import {
   readClientBuildRecord,
@@ -22,6 +23,8 @@ async function main(): Promise<void> {
   readClientBuildRecord(root, environment)
   const destination = resolve(root, values.out)
   const packed = await packFamilyMembers(root, releaseFamily('dsh'), destination, concurrency)
+  execFileSync(process.execPath, [resolve(root, 'node_modules/pnpm/bin/pnpm.mjs'), '--dir', 'plugins/ipollowork-suite', 'run', 'build'], { cwd: root, stdio: 'inherit' })
+  execFileSync(process.execPath, [resolve(root, 'node_modules/pnpm/bin/pnpm.mjs'), '--dir', 'plugins/ipollowork-suite', 'pack', '--pack-destination', destination], { cwd: root, stdio: 'inherit' })
   console.log(`desktop local pack: ${String(packed.length)} tarball(s) in ${destination}`)
 }
 

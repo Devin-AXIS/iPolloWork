@@ -3,7 +3,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { AccountState } from '../shared/types.ts'
 import type { Labels } from './locale.ts'
 import type { LauncherProps } from './native.ts'
-import { IconEyeOffOutlineRegular, IconEyeOutlineRegular, IconSparkleRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal, IconEyeOffOutlineRegular, IconEyeOutlineRegular, IconSparkleRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { request } from './api.ts'
 import { AccountArt, ArrowGlyph, CoinGlyph, LockGlyph, MailGlyph, Monogram } from './glyphs.tsx'
 import css from './suite.module.css'
@@ -114,4 +114,23 @@ export function AccountLauncher({ wide, openSettings, useAccount, useLabels, bin
     {account?.status === 'signed-in' ? <Monogram id={account.user.email} label={account.user.name || account.user.email} size={26} round/> : <span className={css.avatar} aria-hidden="true">iP</span>}
     {wide && <span>{account?.status === 'signed-in' ? account.user.name || account.user.email : t.account}</span>}
   </button>
+}
+
+/** The dedicated desktop keeps its workspace inaccessible until iPolloWork sign-in completes. */
+export function DesktopAccountGate(props: AccountProps) {
+  const { account } = props.useAccount(value => value)
+  const t = props.useLabels(value => value)
+  const locked = account?.status !== 'signed-in'
+  useEffect(() => {
+    if (!locked) return
+    const root = document.getElementById('root')
+    if (!root) return
+    const previous = root.inert
+    root.inert = true
+    return () => { root.inert = previous }
+  }, [locked])
+  if (!locked) return null
+  return <Modal open title={t.welcomeTitle} headless onClose={() => {}} className={css.desktopLogin as string}>
+    <AccountPanel {...props}/>
+  </Modal>
 }
