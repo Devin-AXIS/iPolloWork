@@ -11,20 +11,24 @@ const unitPrices = z.object({
   cacheWritePerMillion: price.optional(),
   inputUnitPrice: price.default(0),
   outputUnitPrice: price.default(0),
+  maxVideoPixels: z.number().int().positive().optional(),
 });
 /** Stored model rates use integer micro-CNY and explicit units. */
 export const rateSchema = unitPrices.extend({
   model: z.string().min(1),
   free: z.boolean().default(false),
-  unit: z.enum(["token", "image", "video_second", "audio_second", "character", "request"]).optional(),
+  unit: z.enum(["token", "video_token", "image", "video_second", "audio_second", "character", "request"]).optional(),
   imageInputPerMillion: price.default(0),
   maxInputTokens: z.number().int().positive(),
   maxOutputTokens: z.number().int().positive(),
   maxUnits: z.number().positive().max(86400).default(60),
+  maxFramesPerSecond: z.number().int().positive().max(120).default(24),
   tiers: z.array(unitPrices.extend({
     upToInputTokens: z.number().int().positive().optional(),
     resolution: z.string().max(60).optional(),
     audio: z.boolean().optional(),
+    videoInput: z.boolean().optional(),
+    upToPixels: z.number().int().positive().optional(),
   })).max(30).default([]),
 });
 /** A model's base rate and optional context or media variants. */
@@ -32,7 +36,7 @@ export type ModelRate = z.infer<typeof rateSchema>;
 export const billingSchema = z
   .object({
     kind: z.enum(["chat", "image", "speech", "video", "embedding", "audio", "request"]),
-    protocol: z.enum(["openai", "dashscope"]).default("openai"),
+    protocol: z.enum(["openai", "dashscope", "ark"]).default("openai"),
     source: z.url(),
     verifiedAt: z.number().int().positive(),
     validUntil: z.number().int().positive(),
@@ -87,14 +91,29 @@ function selectRate(rate: ModelRate, body: Record<string, unknown>, tokens: numb
   const parameters = object.parse(body.parameters ?? {});
   const resolution = String(parameters.resolution ?? body.resolution ?? parameters.size ?? body.size ?? "").toLowerCase();
   const audio = parameters.audio ?? body.audio;
+  const videoInput = Array.isArray(body.content) && body.content.some(item => item && typeof item === "object" && "type" in item && item.type === "video_url");
   const matches = rate.tiers.filter(tier =>
     (tier.resolution === undefined || tier.resolution.toLowerCase() === resolution)
     && (tier.audio === undefined || tier.audio === audio)
+    && (tier.videoInput === undefined || tier.videoInput === videoInput)
     && (tier.upToInputTokens === undefined || tokens <= tier.upToInputTokens),
   ).sort((a, b) => (a.upToInputTokens ?? Infinity) - (b.upToInputTokens ?? Infinity));
   const selected = matches[0];
   if (!selected) throw new ServiceError("SERVICE_PRICE_VARIANT_REQUIRED", 400, "请选择已定价的分辨率或模型参数");
   return { ...rate, ...selected };
+}
+
+function imagePixels(size: unknown): number {
+  const match = typeof size === "string" ? /^(\d+)x(\d+)$/.exec(size) : null;
+  if (!match) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
+  return Number(match[1]) * Number(match[2]);
+}
+
+function imageRate(rate: ModelRate, pixels: number): ModelRate {
+  if (!rate.tiers.some(tier => tier.upToPixels !== undefined)) return rate;
+  const tier = rate.tiers.filter(tier => tier.upToPixels !== undefined && pixels <= tier.upToPixels).sort((a, b) => a.upToPixels! - b.upToPixels!)[0];
+  if (!tier) throw new ServiceError("SERVICE_PRICE_VARIANT_REQUIRED", 400);
+  return { ...rate, ...tier };
 }
 
 function inputImages(value: unknown): number {
@@ -113,19 +132,34 @@ export function terminalUsage(response: unknown): { body: Record<string, unknown
   const body = object.parse(response);
   const task = object.parse(body.output ?? body.task ?? body);
   const status = String(task.task_status ?? task.status ?? "").toLowerCase();
-  return { body, pending: ["pending", "running", "processing", "queued"].includes(status), failed: ["failed", "cancelled", "canceled"].includes(status) };
+  return { body, pending: ["pending", "running", "processing", "queued"].includes(status), failed: ["failed", "cancelled", "canceled", "expired"].includes(status) };
 }
 
 function meteredReservation(spec: BillingSpec, rate: ModelRate, body: Record<string, unknown>): BillingReservation {
   const parameters = object.parse(body.parameters ?? {});
-  const selected = selectRate(rate, body, rate.maxInputTokens);
+  const selected = spec.protocol === "ark" && rate.unit === "image" ? imageRate(rate,
+    typeof body.size === "string" && /^\d+x\d+$/.test(body.size) ? imagePixels(body.size)
+      : body.size === "1K" || body.size === "1.5K" ? 2_610_000 : 4_630_000,
+  ) : selectRate(rate, rate.unit === "video_token" ? { ...body, resolution: body.resolution ?? "720p" } : body, rate.maxInputTokens);
   let input = 0, output = 0;
   switch (selected.unit) {
     case "image":
-      input = inputImages(body.input ?? body.images ?? body.messages ?? {});
+      input = spec.protocol === "ark" ? (Array.isArray(body.image) ? z.array(z.string()).parse(body.image).length : typeof body.image === "string" ? 1 : 0) : inputImages(body.input ?? body.images ?? body.messages ?? {});
       if (input > selected.maxUnits) throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
-      output = z.number().int().positive().max(selected.maxUnits).parse(parameters.n ?? body.n ?? 1);
+      output = z.number().int().positive().max(selected.maxUnits).parse(body.layer_decomposition === true ? object.parse(body.layer_decomposition_options ?? {}).max_images ?? 30 : object.parse(body.sequential_image_generation_options ?? {}).max_images ?? parameters.n ?? body.n ?? (body.sequential_image_generation === "auto" ? 15 : 1));
       break;
+    case "video_token": {
+      const content = z.array(object).parse(body.content);
+      if (content.some(item => item.type === "draft_task")) throw new ServiceError("SERVICE_OPERATION_UNPRICED", 400, "样片续生成需要单独核定计费");
+      const duration = z.number().int().min(-1).max(selected.maxUnits).parse(body.duration ?? -1);
+      if (duration !== -1 && duration < 4) throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
+      const videos = content.filter(item => item.type === "video_url").length;
+      const outputFrames = body.frames === undefined ? (duration === -1 ? selected.maxUnits : duration) * selected.maxFramesPerSecond : z.number().int().positive().max(selected.maxUnits * selected.maxFramesPerSecond + 1).parse(body.frames);
+      const frames = outputFrames + videos * spec.maxInputVideoSeconds * selected.maxFramesPerSecond;
+      if (!selected.maxVideoPixels) throw new ServiceError("SERVICE_PRICE_INVALID", 400);
+      const tokens = Math.ceil(frames * selected.maxVideoPixels / 1024);
+      return { spec, rate: selected, model: rate.model, micros: scaled(tokens, selected.outputPerMillion, 1000000) };
+    }
     case "video_second":
       output = z.number().positive().max(selected.maxUnits).parse(parameters.duration ?? body.duration);
       input = selected.inputUnitPrice > 0 ? selected.maxUnits : 0;
@@ -152,7 +186,18 @@ function meteredCost(reservation: BillingReservation, response: unknown): number
   const usage = object.parse(state.body.usage ?? object.parse(state.body.output ?? {}).usage ?? {});
   let input = reservation.inputUnits ?? 0, output = 0;
   switch (rate.unit) {
-    case "image": output = units.parse(usage.image_count ?? usage.output_image_count); break;
+    case "image": {
+      output = units.parse(usage.image_count ?? usage.output_image_count ?? usage.generated_images);
+      if (reservation.spec.protocol === "ark") {
+        input = units.parse(usage.input_images ?? input);
+        const images = z.array(object).parse(state.body.data);
+        const succeeded = images.filter(image => !image.error);
+        if (succeeded.length !== output) throw new ServiceError("SERVICE_INVALID_USAGE", 503);
+        return input * rate.inputUnitPrice + succeeded.reduce((sum, image) => sum + imageRate(rate, imagePixels(image.size)).outputUnitPrice, 0);
+      }
+      break;
+    }
+    case "video_token": return scaled(units.parse(usage.completion_tokens), rate.outputPerMillion, 1000000);
     case "video_second":
       input = z.number().nonnegative().parse(usage.input_video_duration ?? usage.input_seconds ?? 0);
       output = z.number().nonnegative().parse(usage.output_video_duration ?? usage.duration ?? usage.output_seconds);

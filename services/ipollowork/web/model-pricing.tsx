@@ -6,7 +6,7 @@ import type { ServiceModel } from "../src/model-catalog.js";
 import type { ServiceCategory } from "../src/service-categories.js";
 
 const units: Record<NonNullable<ModelRate["unit"]>, { label: string; scale: number }> = {
-  token: { label: "每百万 Token", scale: 1 }, image: { label: "每张", scale: 1 },
+  token: { label: "每百万 Token", scale: 1 }, video_token: { label: "每百万视频 Token", scale: 1 }, image: { label: "每张", scale: 1 },
   video_second: { label: "每秒视频", scale: 1 }, audio_second: { label: "每秒音频", scale: 1 },
   character: { label: "每万字符", scale: 10000 }, request: { label: "每次", scale: 1 },
 };
@@ -52,6 +52,8 @@ export function ModelPricing({ models, setModels, billing, setBilling, category,
       const priced = billing?.rates.some(entry => entry.model === model.id);
       const unit = rate.unit ?? "token";
       const config = units[unit];
+      const tokenCost = unit === "token" || unit === "video_token";
+      const pixelTiers = unit === "image" && billing?.protocol === "ark";
       const edit = (patch: Partial<ModelRate>) => {
         if (category === "language" && (patch.maxInputTokens || patch.maxOutputTokens)) setModels(models.map(row => row.id === model.id ? { ...row, ...(patch.maxInputTokens ? { contextWindow: patch.maxInputTokens } : {}), ...(patch.maxOutputTokens ? { maxTokens: patch.maxOutputTokens } : {}) } : row));
         change(model, { ...rate, ...patch });
@@ -67,20 +69,22 @@ export function ModelPricing({ models, setModels, billing, setBilling, category,
         {selected === model.id && !legacyVideo && <div className="model-cost-editor">
           <label className="field"><span>计费单位</span><select value={unit} onChange={e => edit({ unit: e.target.value as ModelRate["unit"] })}>{Object.entries(units).map(([id, value]) => <option key={id} value={id}>{value.label}</option>)}</select></label>
           <div className="form-grid">
-            <CostField label={`输入 · ${config.label}`} micros={unit === "token" ? rate.inputPerMillion : rate.inputUnitPrice} scale={config.scale} set={value => edit(unit === "token" ? { inputPerMillion: value } : { inputUnitPrice: value })} />
-            <CostField label={`输出 · ${config.label}`} micros={unit === "token" ? rate.outputPerMillion : rate.outputUnitPrice} scale={config.scale} set={value => edit(unit === "token" ? { outputPerMillion: value } : { outputUnitPrice: value })} />
+            <CostField label={`输入 · ${config.label}`} micros={tokenCost ? rate.inputPerMillion : rate.inputUnitPrice} scale={config.scale} set={value => edit(tokenCost ? { inputPerMillion: value } : { inputUnitPrice: value })} />
+            <CostField label={`输出 · ${config.label}`} micros={tokenCost ? rate.outputPerMillion : rate.outputUnitPrice} scale={config.scale} set={value => edit(tokenCost ? { outputPerMillion: value } : { outputUnitPrice: value })} />
             {unit === "token" && <><CostField label="缓存命中 · 每百万 Token" micros={rate.cachedInputPerMillion ?? rate.inputPerMillion} set={value => edit({ cachedInputPerMillion: value })} /><label className="field"><span>最大输出 Token</span><input type="number" min="1" value={rate.maxOutputTokens} onChange={e => edit({ maxOutputTokens: Number(e.target.value) })} /></label></>}
             {unit === "token" && <label className="field"><span>最大输入 Token</span><input type="number" min="1024" value={rate.maxInputTokens} onChange={e => edit({ maxInputTokens: Number(e.target.value) })} /></label>}
             {unit === "token" && category === "image" && <CostField label="输入图像 · 每百万 Token" micros={rate.imageInputPerMillion} set={value => edit({ imageInputPerMillion: value })} />}
             {unit !== "token" && <label className="field"><span>单次最大数量／时长</span><input type="number" min="1" value={rate.maxUnits} onChange={e => edit({ maxUnits: Number(e.target.value) })} /></label>}
+            {unit === "video_token" && <label className="field"><span>最大帧率</span><input type="number" min="1" max="120" value={rate.maxFramesPerSecond} onChange={e => edit({ maxFramesPerSecond: Number(e.target.value) })} /></label>}
           </div>
           {rate.tiers.map((tier, index) => <div className="price-tier" key={index}>
-            <div className="form-grid"><label className="field"><span>{unit === "token" ? "输入 Token 上限" : "分辨率"}</span><input value={unit === "token" ? tier.upToInputTokens ?? "" : tier.resolution ?? ""} onChange={e => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, ...(unit === "token" ? { upToInputTokens: Number(e.target.value) } : { resolution: e.target.value }) } : row) })} /></label>
-            <CostField label="档位输入" micros={unit === "token" ? tier.inputPerMillion : tier.inputUnitPrice} scale={config.scale} set={value => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, ...(unit === "token" ? { inputPerMillion: value } : { inputUnitPrice: value }) } : row) })} />
-            <CostField label="档位输出" micros={unit === "token" ? tier.outputPerMillion : tier.outputUnitPrice} scale={config.scale} set={value => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, ...(unit === "token" ? { outputPerMillion: value } : { outputUnitPrice: value }) } : row) })} /></div>
+            <div className="form-grid"><label className="field"><span>{unit === "token" ? "输入 Token 上限" : pixelTiers ? "输出像素上限" : "分辨率"}</span><input value={unit === "token" ? tier.upToInputTokens ?? "" : pixelTiers ? tier.upToPixels ?? "" : tier.resolution ?? ""} onChange={e => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, ...(unit === "token" ? { upToInputTokens: Number(e.target.value) } : pixelTiers ? { upToPixels: Number(e.target.value) } : { resolution: e.target.value }) } : row) })} /></label>
+            <CostField label="档位输入" micros={tokenCost ? tier.inputPerMillion : tier.inputUnitPrice} scale={config.scale} set={value => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, ...(tokenCost ? { inputPerMillion: value } : { inputUnitPrice: value }) } : row) })} />
+            <CostField label="档位输出" micros={tokenCost ? tier.outputPerMillion : tier.outputUnitPrice} scale={config.scale} set={value => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, ...(tokenCost ? { outputPerMillion: value } : { outputUnitPrice: value }) } : row) })} /></div>
+            {unit === "video_token" && <div className="form-grid"><label className="field"><span>参考视频</span><select value={tier.videoInput === undefined ? "any" : String(tier.videoInput)} onChange={e => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, videoInput: e.target.value === "any" ? undefined : e.target.value === "true" } : row) })}><option value="any">不限</option><option value="false">不含视频</option><option value="true">含参考视频</option></select></label><label className="field"><span>预扣使用的最大帧像素</span><input type="number" min="1" value={tier.maxVideoPixels ?? ""} onChange={e => edit({ tiers: rate.tiers.map((row, at) => at === index ? { ...row, maxVideoPixels: Number(e.target.value) } : row) })} /></label></div>}
             <button type="button" onClick={() => edit({ tiers: rate.tiers.filter((_, at) => at !== index) })}>移除档位</button>
           </div>)}
-          <button type="button" onClick={() => edit({ tiers: [...rate.tiers, { inputPerMillion: rate.inputPerMillion, outputPerMillion: rate.outputPerMillion, inputUnitPrice: rate.inputUnitPrice, outputUnitPrice: rate.outputUnitPrice, ...(unit === "token" ? { upToInputTokens: rate.maxInputTokens } : { resolution: "1080P" }) }] })}>添加价格档位</button>
+          <button type="button" onClick={() => edit({ tiers: [...rate.tiers, { inputPerMillion: rate.inputPerMillion, outputPerMillion: rate.outputPerMillion, inputUnitPrice: rate.inputUnitPrice, outputUnitPrice: rate.outputUnitPrice, ...(unit === "token" ? { upToInputTokens: rate.maxInputTokens } : pixelTiers ? { upToPixels: 4630000 } : { resolution: "1080P" }) }] })}>添加价格档位</button>
           <label><input type="checkbox" checked={rate.free} onChange={e => edit(e.target.checked ? { free: true, inputPerMillion: 0, outputPerMillion: 0, inputUnitPrice: 0, outputUnitPrice: 0, tiers: [] } : { free: false })} /> 确认为免费模型</label>
         </div>}
       </div>;

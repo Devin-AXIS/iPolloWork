@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-suite",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
   "icon": "./assets/mark.svg",
   "type": "module",
@@ -36,8 +36,8 @@
     "vendor/dsh-im/README.md",
     "catalog/index.json",
     "catalog/bundled-releases.json",
-    "catalog/packages/deepseek-idesign-1.0.0-beta.18-45af46958f0b.tgz",
-    "catalog/packages/deepseek-ivideo-1.0.0-beta.18-756e6fda4d6c.tgz"
+    "catalog/packages/deepseek-idesign-1.0.0-beta.19-9b6f4036941c.tgz",
+    "catalog/packages/deepseek-ivideo-1.0.0-beta.19-f73f64544541.tgz"
   ],
   "dsh": {
     "bundle": {
@@ -76,10 +76,10 @@
   "dependencies": {
     "@deepseek-ai/cordis-plugin-include": "^1.1.0",
     "@deepseek-ai/dsh-error": "0.2.2-rc.2",
-    "@deepseek-ai/dsh-experimental-liveshare": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-experimental-liveshare": "0.2.2-rc.2",
     "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.2",
-    "@deepseek-ai/dsh-tool-subagent": "^0.2.2-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-tool-subagent": "0.2.2-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.2",
     "@deepseek-ai/schemastery": "3.19.0",
     "@earendil-works/pi-ai": "1.3.0",
     "@matrix-org/olm": "3.2.15",
@@ -95,8 +95,8 @@
     "@deepseek-ai/dsh-llm-pi-ai": ">=0.2.2-rc.2 <0.2.3-0"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.2-rc.2",
-    "@deepseek-ai/dsh-llm-pi-ai": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.2",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.2",
     "@larksuiteoapi/node-sdk": "1.73.0",
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.2.0",

@@ -15,6 +15,19 @@ const verifiedAt = Date.UTC(2026, 10, 14),
   validUntil = Date.UTC(2026, 11, 14);
 const bailianSource = "https://help.aliyun.com/zh/model-studio/model-pricing";
 const minimaxSource = "https://platform.minimax.cn/docs/pricing/overview";
+const arkSource = "https://console.volcengine.com/ark/region:cn-beijing/docs/model-pricing";
+const arkVideoRates = [
+  { id: "doubao-seedance-2-0-260128", seconds: 15, prices: [["480p", 46, 28, 691200], ["720p", 46, 28, 1555200], ["1080p", 51, 31, 3499200], ["4k", 26, 16, 13996800]] as const },
+  { id: "doubao-seedance-2-5-260628", seconds: 30, prices: [["480p", 70, 42, 691200], ["720p", 70, 42, 1555200], ["1080p", 77, 46, 3499200]] as const },
+].map(model => ({
+  model: model.id, unit: "video_token", maxInputTokens: 1, maxOutputTokens: 1,
+  outputPerMillion: Math.max(...model.prices.map(([, plain]) => plain)) * 1000000,
+  maxUnits: model.seconds, maxFramesPerSecond: 24,
+  tiers: model.prices.flatMap(([resolution, plain, reference, maxVideoPixels]) => [
+    { resolution, videoInput: false, outputPerMillion: plain * 1000000, maxVideoPixels },
+    { resolution, videoInput: true, outputPerMillion: reference * 1000000, maxVideoPixels },
+  ]),
+}));
 const tokenRate = (
   model: string,
   input: number,
@@ -127,6 +140,22 @@ const catalog = [
       { charactersPerTenThousand: 800000 },
     ),
     models: [],
+  },
+  {
+    id: "official-volcengine-video", title: "火山 · Seedance 2.0 / 2.5", provider: "volcengine-video", keyId: "volcengine-video",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3", capabilities: ["video"],
+    routes: [{ method: "POST", path: "/contents/generations/tasks", points: 0, jobResultField: "id" }, { method: "GET", path: "/contents/generations/tasks/:id", points: 0 }],
+    billing: billing("video", arkSource, arkVideoRates, { protocol: "ark", maxInputVideoSeconds: 30 }), models: [],
+  },
+  {
+    id: "official-volcengine-image", title: "火山 · Seedream 5.5", provider: "volcengine-video", keyId: "volcengine-video",
+    baseUrl: "https://ark.cn-beijing.volces.com/api/v3", capabilities: ["image"],
+    routes: [{ method: "POST", path: "/images/generations", points: 0 }],
+    billing: billing("image", arkSource, [
+      { model: "doubao-seedream-5-5-261028", unit: "image", maxInputTokens: 1, maxOutputTokens: 1, maxUnits: 100, inputUnitPrice: 50000, outputUnitPrice: 230000,
+        tiers: [{ upToPixels: 2610000, inputUnitPrice: 50000, outputUnitPrice: 130000 }, { upToPixels: 4630000, inputUnitPrice: 50000, outputUnitPrice: 230000 }] },
+      { model: "doubao-seedream-5-0-260128", unit: "image", maxInputTokens: 1, maxOutputTokens: 1, maxUnits: 15, outputUnitPrice: 220000 },
+    ], { protocol: "ark" }), models: [],
   },
 ];
 

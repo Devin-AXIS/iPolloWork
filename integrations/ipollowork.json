@@ -14,8 +14,8 @@
     "design-video": {
       "repository": "https://github.com/Devin-AXIS/deepseek-design",
       "branch": "main",
-      "version": "1.0.0-beta.18",
-      "gitTree": "6564980c387601a1b4b35a5645ede3b09a4bceae"
+      "version": "1.0.0-beta.19",
+      "gitTree": "3135ef6bd9306d7746ad71052de2a15ca106f253"
     },
     "dsh": {
       "repository": "https://github.com/Devin-AXIS/iPolloWork",
@@ -52,19 +52,22 @@
     "native-sharing-account-preparation",
     "shared-provider-model-discovery",
     "editable-model-unit-prices",
-    "membership-cost-preview"
+    "membership-cost-preview",
+    "native-ark-image-and-video",
+    "seedance-2-and-2-5",
+    "seedream-5-5"
   ],
   "files": {
     "plugins/ipollowork-suite/.gitignore": "a35acbae4cc64fb775bf5fa46757a1118d9766e5720aba5a995b0f5b4dccf2be",
     "plugins/ipollowork-suite/AGENTS.md": "3ca361d9c91b531f9f8d11188ba929c1a6e63bab3db861c5995bb017d573bfea",
-    "plugins/ipollowork-suite/README.i18n.yaml": "2a8b64c06810800ed0858c10543f2881cd4a1ce056e538d98e1354b2098a425c",
-    "plugins/ipollowork-suite/README.md": "323210a3daecc6f3b1651bdd2786ac930e56e26c1052f6ecf9cd51e31bed0024",
-    "plugins/ipollowork-suite/README.zh.md": "54cb90e97e42ab240a201389e76a4048c9c36c3924c211d32876dbd8f50a7eba",
+    "plugins/ipollowork-suite/README.i18n.yaml": "fb14aea6b2151a645428e8fd49b067a2a0d1d61af3e7c4c673432668052367c9",
+    "plugins/ipollowork-suite/README.md": "87f8e4ba3a0c065846e165d68aaaa6ce01d86835b231d8fe4ee91b18b91d52db",
+    "plugins/ipollowork-suite/README.zh.md": "aa4faeed2f19680b619d70ed90cf68d424a22943da7648c354f859b8e014e27c",
     "plugins/ipollowork-suite/assets/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
-    "plugins/ipollowork-suite/catalog/bundled-releases.json": "0e603772d7723bd4094e2e0381529cf6ab67933030c866d2f943899c55091ab8",
-    "plugins/ipollowork-suite/catalog/index.json": "3941fe9a0a46674c1abc8a0c71b9d06e89fa0ed6fdb321f77d5cad198b1be20e",
-    "plugins/ipollowork-suite/catalog/packages/deepseek-idesign-1.0.0-beta.18-45af46958f0b.tgz": "45af46958f0bb506dc699ad2f45bd52b761adb52a9e3990846bad538bf4f4ff1",
-    "plugins/ipollowork-suite/catalog/packages/deepseek-ivideo-1.0.0-beta.18-756e6fda4d6c.tgz": "756e6fda4d6c6a1ffa42d83c16a442a6e0ffa4ea99ece426495b915b3bc151ee",
+    "plugins/ipollowork-suite/catalog/bundled-releases.json": "5d7e73be3e68d4d9f2174c15bf4ee7a50bfdd103096d7a84bc27ab67ffde1c92",
+    "plugins/ipollowork-suite/catalog/index.json": "5df55c0382411c53223effd80ca76071c810bf7dbfdefb83b39acd5de33bbb13",
+    "plugins/ipollowork-suite/catalog/packages/deepseek-idesign-1.0.0-beta.19-9b6f4036941c.tgz": "9b6f4036941c54cbee4c59bb528c15490bbd5aa1be137005d65fff0e6b19e686",
+    "plugins/ipollowork-suite/catalog/packages/deepseek-ivideo-1.0.0-beta.19-f73f64544541.tgz": "f73f6454454151131e85cc117b1bf659697f9272c3ef34b752d5fafe46d80c5f",
     "plugins/ipollowork-suite/cordis.patch.yml": "e53c8bc3c85db1f49b583a05f872c15651fc01560153d5434ea81a9c9136676c",
     "plugins/ipollowork-suite/docs/DETAIL.md": "d6205c890dba55b8b4c2b25a31716e50a0b01d611625e96ae33ece308355c348",
     "plugins/ipollowork-suite/docs/DETAIL.zh.md": "275b4a511da57ecc09aa693942e79014be9def0ff6f18958d99c5490dc7f93f0",
@@ -77,8 +80,8 @@
     "plugins/ipollowork-suite/docs/upgrades/main-assistant.md": "0309ff78256180954c9f166bafb9e5c477cb40c46639f468e500b756ddb8258a",
     "plugins/ipollowork-suite/locale/en.json": "5cf3a877034cce92e945518189e54822b24b3fd2e9558878a28aff9f1dc73443",
     "plugins/ipollowork-suite/locale/zh.json": "dec7f57d48ef83b40cc3c884184b4be2c92fc8f523fba08558ad3c8191f326ae",
-    "plugins/ipollowork-suite/package-lock.json": "95d37e8816d16e0ddd34b60e7ae47ce852b5d382d8ded185affbdbb941756e97",
-    "plugins/ipollowork-suite/package.json": "8101d82a235183eeca96d691ac5debb2a93d1ff67c9c9dccba6f97f622156ccf",
+    "plugins/ipollowork-suite/package-lock.json": "9d35ad64d0a3f7a8e73510c0982fd40014a8ef6f6dffdad9e4cad40f55871243",
+    "plugins/ipollowork-suite/package.json": "89c329264a2b2afe377dc0c6d42960983685390229f7dac36dc5349105fed1c9",
     "plugins/ipollowork-suite/scripts/build.mjs": "09d39f34dc3640311a399bcaa9bd15ee861d8a120d4b92cd5aa5a24e90d8bc90",
     "plugins/ipollowork-suite/scripts/catalog-artwork.mjs": "3fdec6f6948dc25297eeb38527095bc82fc58fe91245225ac9fe8c3b1cf9474c",
     "plugins/ipollowork-suite/scripts/smoke.mjs": "e1f80a75e528869125af13bb3908709fdd5b3bf241137a56c7d23672f5fa500f",
@@ -167,7 +170,7 @@
     "plugins/ipollowork-suite/tests/im-native.test.mjs": "58defa402de8a644d0bb820abb42c2ee461a3353fb840dbda7e9ca7ecacd5253",
     "plugins/ipollowork-suite/tests/liveshare-native.test.ts": "29556b57f46fbd8df0412392938f58efa7742c9b874917d2ae691f46470e05d7",
     "plugins/ipollowork-suite/tests/management.test.ts": "7953a85ef9f99d64ff5bb7dd17236725f63c89b382e5959718d34f332436ff54",
-    "plugins/ipollowork-suite/tests/market.test.ts": "2f50e056de9ab098e4bd18992b07b7466ee42cf8b51f306e17f229e1a9e05015",
+    "plugins/ipollowork-suite/tests/market.test.ts": "f5d06858efcd0182b3182fb7ba8029495874ab2951c10559706a5c3ddd093967",
     "plugins/ipollowork-suite/tests/mcp-fixture.ts": "b7cccf88157959894be8d78646da8591927df5cc3079a4c5ae7807137c1c8061",
     "plugins/ipollowork-suite/tests/native-fixture.ts": "8ec29858238da619215a39862b749c5523d37085425e11935aaf227f380208df",
     "plugins/ipollowork-suite/tests/native-sharing.test.ts": "73fb482efafb602db9ff1714842dd0a3cd14b9d90fc404d4c98decd5167cf79c",
@@ -696,11 +699,11 @@
     "services/ipollowork/deploy/nginx.conf": "d5751c70b34a3bc37f91a04ae87b19ed976cc5f4e4880e1efe5e688244bf3290",
     "services/ipollowork/deploy/oss-role-policy.json": "45477059c772a29ec19a5233c2bd6adb014fa62ac8a0bd9d680958c2a4da44b6",
     "services/ipollowork/deploy/oss-role-trust.json": "1f89ea937d77a90eddf2e49bdfee3c033dc2c714689cbeb9b6d68cc1454e5051",
-    "services/ipollowork/docs/billing.md": "68d6aa6592b61b971337a09353521cc6bbfa064ffd42a7bf6f714e9b633b1f71",
+    "services/ipollowork/docs/billing.md": "6f4bcebdb00e6be638dd753b3ba1040a7a52c11ee448bda80fdfd87b1aa164f3",
     "services/ipollowork/docs/capacity.md": "4030b8105051f00f3af4d90013ad493020684286cb64e44241652a819c9823ea",
     "services/ipollowork/docs/storage.md": "efc176b31cda51dc557aa4b7e9d66f2ca5a84ef5af42a80d96c4c1989c6e9788",
-    "services/ipollowork/package-lock.json": "a92a08bedf854f08a9d415a2757577f58f6beacef9b4024a4038c666fd8a7637",
-    "services/ipollowork/package.json": "617b8ed0b2bbd0b59966ff825f5cc557ad8d0da9ad7e97fa3014285e2d9b9931",
+    "services/ipollowork/package-lock.json": "0bc36c0aa16890f9a56929254df77bbf7c0e0c0d8fdc3aab9258cec787e5a269",
+    "services/ipollowork/package.json": "db5fd8161c06a1bd59efd05a7a9ce6a460cf65f6595fdb1ab4069ce6142420dd",
     "services/ipollowork/scripts/admin.ts": "5a963892e9c190d90d0c8ed18b68a88f74d59788141bcdc583a4ccf7286c26b4",
     "services/ipollowork/scripts/backup.ts": "01c15ed9912bb7429bb1f682de6747f541703af72222f88f286dda4405fbfc27",
     "services/ipollowork/scripts/benchmark-database.ts": "eb0a9ffa66a91f6d86107b5c053d4df5ab38a0e7489de60e9b25d95f9bee3852",
@@ -734,10 +737,10 @@
     "services/ipollowork/src/migration-pg-004.sql": "8917e0048e041514e58ab193cc7cd357e844c1093a186891f0e68bcafe6e0885",
     "services/ipollowork/src/migration-pg-005.sql": "af4a857c7c61467b53685af9b620f767439b003e3c6d937176fe1f8fdcae10b2",
     "services/ipollowork/src/model-catalog.ts": "3d748c0fc1cd866d8a69245482fe7760cf7acdf61f7c65d5ffb56fa90eb67656",
-    "services/ipollowork/src/official-services.ts": "1436d76c25a5ce87173786c6fb79cecb93d1971a7a2069f71a68eaf5002bd54d",
+    "services/ipollowork/src/official-services.ts": "930b08ad99effdc617cf99090ca54772d52aec4a5e0a4b072651a42b8ca72581",
     "services/ipollowork/src/oss-client.ts": "b5aa9490cbb04b09c717047e3623eab7fd580162cb330a16dd5b5359c7594a9b",
     "services/ipollowork/src/payments.ts": "698d915567c61b774cf0af16aa7cd9aee1d9f8af36ea8f9d46fffe0bce8f2556",
-    "services/ipollowork/src/pricing.ts": "1a4eb7502681eadf4c9edd476c87b7242032ace42774c2c9861680d09889de93",
+    "services/ipollowork/src/pricing.ts": "fe2eea763bc48b185cb5d27dbc5cb1a4dac703bde0f3a8606c64bc027be3112a",
     "services/ipollowork/src/project-archive.ts": "44105167690223b41561bf9681940e7e6fac5ae6f9044a83d5398a7702fd24ee",
     "services/ipollowork/src/project-space.ts": "c78fbe7ab9c3973c0c36cc2ef2a5206429632b927ab5e19dd65c98f5d3a1ff96",
     "services/ipollowork/src/publications.ts": "714ecb2fb3ec70a8a6c3b76c0e1323de3930c682141b4eee2966d2b717de6b73",
@@ -751,6 +754,7 @@
     "services/ipollowork/src/storage-http.ts": "3691f736de76e142850d0b715a05ac71b9aaa388a1efba48ff557892c14ae3f1",
     "services/ipollowork/src/storage-import.ts": "151d231b8919f07d5e18a09129df6cb1127afc3f754b43a1bd57e88664799847",
     "services/ipollowork/src/storage.ts": "aaf5daf933656a75fe082fe9bf38ba3857fd7113a2901671881b0fe37399f0b5",
+    "services/ipollowork/tests/ark-billing.test.ts": "d43e39a2c2d8f7bc3ff4a40a274dd27fecc31907b21d34aef3b5475318fd8842",
     "services/ipollowork/tests/database.ts": "6bce932cc6e40e6667fa07569cc7d5695bbf334d0b438ca3ae16857a89815122",
     "services/ipollowork/tests/enterprise-assets.test.ts": "6e52e292ed9c45bffc593c32066ed8a97326d575cafd852a8740355608fb866e",
     "services/ipollowork/tests/execution.test.ts": "f616c7a949f239903b6ca76bc42c1cd062d89ef71efb2284b2219fcf160c3f69",
@@ -775,10 +779,10 @@
     "services/ipollowork/web/liveshare-carrier.LICENSE": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
     "services/ipollowork/web/liveshare-carrier.js": "286dfaa877e06bd9f7ebed26fc8652338dfc29d8e709bffb2d81f8c4c06adc74",
     "services/ipollowork/web/main.tsx": "83e97773802b7d6eb4f109196486ca1aff34c20ddfe392920a0cb08c61e1d8b2",
-    "services/ipollowork/web/model-pricing.tsx": "ad1fb3b93b40c320a43392d45d0ff9877473020ba0393f9ce1c1745c4c0a7598",
+    "services/ipollowork/web/model-pricing.tsx": "f1cc3e6756627a4d47a0f6c7c558fc016c4c08d45ecd8f3bda301ae68e2ba58a",
     "services/ipollowork/web/pages.tsx": "2823b4e278fd72f3b566ddc402b7816c14677d3637f180d8efdb1ec43d6ea89d",
     "services/ipollowork/web/public/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
-    "services/ipollowork/web/services.tsx": "c841e14684dadeab82a7caf19bf3cbf55d34cb09e16260d330510b29f6827bc8",
+    "services/ipollowork/web/services.tsx": "5c915e4e171f992eda029840c5dbffef77e8ecdfb1fa2c3ac97cdc1dd0f1292b",
     "services/ipollowork/web/storage.tsx": "6e23f7f308f607e6ead6f8d82bc83bdc020687e9b5e710c633b4325d48ffabcf",
     "services/ipollowork/web/style.css": "69c1f9aa4e7f694691ff84ca8e395bd4a60e66e10e889b4204bebc64794a0b5e"
   },
@@ -813,7 +817,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/README.md",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "plugins/ipollowork-suite/tests/host.test.ts",
@@ -821,11 +825,11 @@
     },
     {
       "path": "plugins/ipollowork-suite/README.i18n.yaml",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "plugins/ipollowork-suite/README.zh.md",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "plugins/ipollowork-suite/src/client/collaboration.tsx",
@@ -953,7 +957,7 @@
     },
     {
       "path": "services/ipollowork/web/services.tsx",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "services/ipollowork/web/style.css",
@@ -961,11 +965,11 @@
     },
     {
       "path": "plugins/ipollowork-suite/package-lock.json",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "plugins/ipollowork-suite/package.json",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "plugins/ipollowork-suite/tsconfig.json",
@@ -1089,7 +1093,7 @@
     },
     {
       "path": "services/ipollowork/docs/billing.md",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "services/ipollowork/docs/capacity.md",
@@ -1101,11 +1105,11 @@
     },
     {
       "path": "services/ipollowork/package-lock.json",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "services/ipollowork/package.json",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "services/ipollowork/scripts/admin.ts",
@@ -1149,7 +1153,7 @@
     },
     {
       "path": "services/ipollowork/src/official-services.ts",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "services/ipollowork/src/payments.ts",
@@ -1157,7 +1161,7 @@
     },
     {
       "path": "services/ipollowork/src/pricing.ts",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "services/ipollowork/src/project-archive.ts",
@@ -1289,19 +1293,11 @@
     },
     {
       "path": "plugins/ipollowork-suite/catalog/bundled-releases.json",
-      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "plugins/ipollowork-suite/catalog/index.json",
-      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
-    },
-    {
-      "path": "plugins/ipollowork-suite/catalog/packages/deepseek-idesign-1.0.0-beta.18-45af46958f0b.tgz",
-      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
-    },
-    {
-      "path": "plugins/ipollowork-suite/catalog/packages/deepseek-ivideo-1.0.0-beta.18-756e6fda4d6c.tgz",
-      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "services/ipollowork/src/migration-pg-005.sql",
@@ -1329,7 +1325,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/tests/market.test.ts",
-      "reason": "Prepare native sharing with the signed-in account and serve the native viewer in an isolated frame."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     },
     {
       "path": "plugins/ipollowork-suite/tests/sharing-connection.test.ts",
@@ -1345,7 +1341,19 @@
     },
     {
       "path": "services/ipollowork/web/model-pricing.tsx",
-      "reason": "Share one provider key across model categories, import the official catalog, and expose editable model prices with metered credit settlement and plan cost limits."
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
+    },
+    {
+      "path": "plugins/ipollowork-suite/catalog/packages/deepseek-idesign-1.0.0-beta.19-9b6f4036941c.tgz",
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
+    },
+    {
+      "path": "plugins/ipollowork-suite/catalog/packages/deepseek-ivideo-1.0.0-beta.19-f73f64544541.tgz",
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
+    },
+    {
+      "path": "services/ipollowork/tests/ark-billing.test.ts",
+      "reason": "Add shared Ark video and image models, meter provider usage, and package the native editors with tested DSH dependencies."
     }
   ]
 }

@@ -73,7 +73,7 @@ const presets = [
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
   },
   {
-    provider: "volcengine",
+    provider: "volcengine-video",
     title: "火山方舟",
     baseUrl: "https://ark.cn-beijing.volces.com/api/v3",
   },
@@ -277,7 +277,7 @@ export function Services({ user }: { user: User }) {
           </div>
         )}
         {groups.map(group => <div className="provider-group" key={group[0].keyId ?? group[0].id}>
-          <div className="provider-heading"><div><strong>{group[0].provider === "aliyun-bailian" ? "阿里云百炼" : group[0].provider === "minimax" ? "MiniMax" : group[0].title}</strong><small>{group.some(row => row.configured) ? "Key 已配置" : "待配置 Key"} · 同一个 Key 供全部能力使用</small></div>{admin && <div className="row-actions">
+          <div className="provider-heading"><div><strong>{group[0].provider === "aliyun-bailian" ? "阿里云百炼" : group[0].provider === "minimax" ? "MiniMax" : group[0].provider === "volcengine-video" ? "火山方舟" : group[0].title}</strong><small>{group.some(row => row.configured) ? "Key 已配置" : "待配置 Key"} · 同一个 Key 供全部能力使用</small></div>{admin && <div className="row-actions">
             {group[0].provider === "aliyun-bailian" && <button disabled={!group.some(row => row.configured) || syncing === group[0].keyId} onClick={() => void sync(group[0])}>{syncing === group[0].keyId ? "同步中…" : "同步全部模型"}</button>}
             <button onClick={() => setConnection(group)}>配置 Key</button>
           </div>}</div>

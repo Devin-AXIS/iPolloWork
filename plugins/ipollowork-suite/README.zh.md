@@ -10,7 +10,7 @@
 
 `dependencies` 声明 DSH 软件包、共享的原生 pi-ai 提供方库和 `@matrix-org/olm`；后者的 WASM 文件从磁盘加载。其余第三方库在构建时打包进 `lib`。DSH 在每个进程内将已启用 Bundle 的依赖闭包中的每个包名映射到一个目录。如果与其他 Bundle 共享库名，例如 `qrcode` 引入的 `yargs`，停用套件时该库会切换到另一个 Bundle 的副本，DSH 因而会要求重启，而不能立即停用套件。
 
-使用 `dsh plugin --profile <profile> add link:/absolute/path/to/ipollowork-dsh-suite` 安装构建后的本地目录，再通过同一个 `dsh --profile <profile>` 启动器启动。先在独立 profile 中测试，再在工作 profile 中启用。运行时兼容范围限定为已测试的 DSH 版本系列。重新构建或移动链接目录，或将其替换为发布包后，重启对应 DSH profile，使 Host 实现与内置目录使用已安装文件；仅刷新浏览器不会清除 Host 模块路径。不依赖账号登录的 `/info` 路由报告已安装的软件包版本。正常的组件和 Bundle 开关会即时生效，无需重启。
+使用 `dsh plugin --profile <profile> add link:/absolute/path/to/ipollowork-dsh-suite` 安装构建后的本地目录，再通过同一个 `dsh --profile <profile>` 启动器启动。先在独立 profile 中测试，再在工作 profile 中启用。运行时兼容范围限定为已测试的 DSH 版本系列。运行时依赖固定为已验证的 DSH 预发布版本，避免新安装拉取不兼容的新版本并覆盖 Host 插件。重新构建或移动链接目录，或将其替换为发布包后，重启对应 DSH profile，使 Host 实现与内置目录使用已安装文件；仅刷新浏览器不会清除 Host 模块路径。不依赖账号登录的 `/info` 路由报告已安装的软件包版本。正常的组件和 Bundle 开关会即时生效，无需重启。
 
 ## 模块
 
