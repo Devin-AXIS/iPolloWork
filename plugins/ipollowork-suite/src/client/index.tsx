@@ -66,6 +66,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
     const props = () => ({ origin: info.accountOrigin, refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })
     if (info.dedicatedDesktop) {
       document.title = 'iPolloWork'
+      ctx.effect(() => ctx.remote.$on('credentials/record-updated', () => { void account.refresh() }),
+        'ipollowork-suite: native account changes')
       mountDesktopOnboarding(ctx, account, info.accountOrigin)
     }
     ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'ipollowork-account', order: -20, label: () => copy(ctx).account, inject: props }, AccountPanel))
