@@ -48,7 +48,7 @@ jobs:
     outputs:
       ci: ${{ steps.matrix.outputs.ci }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - id: matrix
         run: echo "ci=$(node ./scripts/github-matrix.mjs ci)" >> "$GITHUB_OUTPUT"
@@ -61,7 +61,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.ci) }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       # pnpm v11 ships no darwin-x64 standalone binary, and the pnpm/action-setup
       # v6 self-update path needs one; this job stays on the v5 npm-install line.

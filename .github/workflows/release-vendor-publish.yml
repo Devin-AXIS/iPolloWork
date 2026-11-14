@@ -27,7 +27,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       # Complete history: the release scripts read tags.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -93,7 +93,7 @@ jobs:
       contents: read
     steps:
       # Checkout and install carry the release scripts only; no build step.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 

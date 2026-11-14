@@ -46,7 +46,7 @@ jobs:
     steps:
       # The pull_request checkout is the merge commit; depth 2 brings its first
       # parent, the base branch tip, for the snapshot diff page.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 2

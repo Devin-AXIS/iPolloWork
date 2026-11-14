@@ -67,7 +67,7 @@ jobs:
     # and retry 2; 45m still bounds retry storms against a slow API.
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v5.0.0
 

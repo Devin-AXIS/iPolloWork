@@ -22,7 +22,7 @@ jobs:
           --health-cmd "pg_isready -U postgres -d ipollowork_test"
           --health-interval 5s --health-timeout 3s --health-retries 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '24.15.0'

@@ -35,7 +35,7 @@ jobs:
         shell: pwsh
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           path: publisher-isolated
@@ -77,7 +77,7 @@ jobs:
       # A failing build or site aborts the sibling gate on the same runner.
       DSH_GATE_FAIL_FAST: '1'
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Enable Developer Mode (symlink support)
@@ -172,7 +172,7 @@ jobs:
       # multi-minute instrumented run.
       DSH_GATE_FAIL_FAST: '1'
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       # Checkout removes the gitignored duration history, so restore it from
@@ -241,7 +241,7 @@ jobs:
     name: windows node 24 / native tests
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Enable Developer Mode (symlink support)

@@ -30,7 +30,7 @@ jobs:
     name: Azure OpenAI Responses + Anthropic Messages
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v5.0.0
 

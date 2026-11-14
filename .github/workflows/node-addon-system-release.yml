@@ -32,7 +32,7 @@ jobs:
     outputs:
       prebuilds: ${{ steps.matrix.outputs.prebuilds }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - id: matrix
         run: echo "prebuilds=$(node ./scripts/github-matrix.mjs release-prebuild)" >> "$GITHUB_OUTPUT"
@@ -45,7 +45,7 @@ jobs:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.prebuilds) }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v5.0.0
         with:
@@ -92,7 +92,7 @@ jobs:
     needs: build-prebuilds
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v5.0.0
         with:
@@ -157,7 +157,7 @@ jobs:
     steps:
       # The publish script is the only repository file this job needs, and it
       # imports nothing outside Node's builtins, so there is no install step.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 

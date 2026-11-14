@@ -52,7 +52,7 @@ jobs:
       DSH_PACKAGING_PRESET: ${{ inputs.preset }}
       DSH_TELEMETRY_DISABLED: '1'
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           clean: true
