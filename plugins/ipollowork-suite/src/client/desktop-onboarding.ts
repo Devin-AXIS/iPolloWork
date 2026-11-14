@@ -5,7 +5,7 @@ import {
 } from '@deepseek-ai/dsh-client-ui-settings-account/client'
 import type { TranscriptViewMode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ClientContext } from './native.ts'
-import type { AccountController } from './account.tsx'
+import type { AccountController } from './account-controller.ts'
 
 /** Keep the original introduction without sharing account credentials.
  * @param ctx - Native client services and slot registration.

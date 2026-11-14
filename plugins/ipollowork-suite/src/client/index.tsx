@@ -5,7 +5,8 @@ import { request } from './api.ts'
 import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
 import { MarketPanel } from './market.tsx'
-import { AccountController, AccountPanel, AccountLauncher } from './account.tsx'
+import { AccountPanel, AccountLauncher } from './account.tsx'
+import { AccountController } from './account-controller.ts'
 import { mountAgents } from './agents.tsx'
 import { mountCoordinator } from './coordinator.tsx'
 import { mountEnterprise } from './enterprise.tsx'
@@ -39,6 +40,16 @@ export async function apply(ctx: ClientContext): Promise<void> {
   }
   if (info.account) {
     const account = new AccountController()
+    ctx.effect(() => {
+      const refresh = () => { void account.refresh() }
+      const visible = () => { if (document.visibilityState === 'visible') refresh() }
+      window.addEventListener('focus', refresh)
+      document.addEventListener('visibilitychange', visible)
+      return () => {
+        window.removeEventListener('focus', refresh)
+        document.removeEventListener('visibilitychange', visible)
+      }
+    }, 'ipollowork-suite: refresh account on return')
     ctx.on('liveshare/prepare-owner', async (signal, next) => {
       const previous = await next()
       if (previous.error) return previous

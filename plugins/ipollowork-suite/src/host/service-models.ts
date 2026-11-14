@@ -8,6 +8,7 @@ import {
   InMemoryCredentialStore,
   defaultProviderAuthContext,
 } from "@earendil-works/pi-ai";
+import { getBuiltinModels } from "@earendil-works/pi-ai/providers/all";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 import type { Context } from "@deepseek-ai/cordis";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -189,6 +190,15 @@ export function mountServiceModels(
               model.maxTokens === undefined
             )
               return [];
+            const catalogProvider = service.provider === "deepseek" ? "deepseek"
+              : service.provider === "aliyun-bailian" ? "qwen-token-plan-cn" : undefined;
+            const known = catalogProvider && getBuiltinModels(catalogProvider).find(entry =>
+              entry.id === model.id && entry.api === "openai-completions");
+            const capabilities = known && known.api === "openai-completions" ? {
+              reasoning: known.reasoning,
+              ...(known.thinkingLevelMap ? { thinkingLevelMap: known.thinkingLevelMap } : {}),
+              ...(known.compat ? { compat: known.compat } : {}),
+            } : { reasoning: false };
             return [
               {
                 ...model,
@@ -198,7 +208,7 @@ export function mountServiceModels(
                 baseUrl: baseURL,
                 api: "openai-completions" as const,
                 input: ["text" as const],
-                reasoning: false,
+                ...capabilities,
                 cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
               },
             ];
