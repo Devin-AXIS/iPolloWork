@@ -46,7 +46,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node apps/desktop-publisher/src/preflight-desktop-publish.mjs
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '24'
@@ -83,7 +83,7 @@ jobs:
           persist-credentials: false
           clean: false
           path: desktop-rollout
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: desktop-rollout/package.json
           dest: ${{ runner.temp }}/publish-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -130,7 +130,7 @@ jobs:
           persist-credentials: false
           clean: false
           path: desktop-rollout
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: desktop-rollout/package.json
           dest: ${{ runner.temp }}/publish-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -182,7 +182,7 @@ jobs:
           persist-credentials: false
           clean: false
           path: website-rollout
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: website-rollout/package.json
           dest: ${{ runner.temp }}/website-pnpm-${{ github.run_id }}-${{ github.run_attempt }}
@@ -235,7 +235,7 @@ jobs:
           persist-credentials: false
           clean: false
           path: website-rollout
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: website-rollout/package.json
           dest: ${{ runner.temp }}/website-pnpm-${{ github.run_id }}-${{ github.run_attempt }}

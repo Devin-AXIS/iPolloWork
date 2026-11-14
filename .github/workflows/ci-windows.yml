@@ -45,7 +45,7 @@ jobs:
       - name: Check preflights before dependency installation
         working-directory: publisher-isolated
         run: node apps/desktop-publisher/tests/preinstall.mjs
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: publisher-isolated/package.json
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
@@ -85,7 +85,7 @@ jobs:
         run: >-
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
       - uses: actions/setup-node@v7.0.0
@@ -193,7 +193,7 @@ jobs:
         run: >-
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
       - uses: actions/setup-node@v7.0.0
@@ -249,7 +249,7 @@ jobs:
         run: >-
           reg add "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock"
           /t REG_DWORD /f /v "AllowDevelopmentWithoutDevLicense" /d "1"
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           dest: ${{ runner.temp }}/setup-pnpm-js-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.job }}
       - uses: actions/setup-node@v7.0.0
