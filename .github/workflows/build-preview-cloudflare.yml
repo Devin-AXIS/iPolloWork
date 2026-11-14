@@ -51,7 +51,7 @@ jobs:
           persist-credentials: false
           fetch-depth: 2
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           dest: ${{ runner.temp }}/setup-pnpm
 

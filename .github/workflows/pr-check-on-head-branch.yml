@@ -91,7 +91,7 @@ jobs:
             stop "the pull request cannot merge $BASE_SHA; merge master into it and push, then this check runs again"
           echo "merged=true" >> "$GITHUB_OUTPUT"
 
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         if: steps.merge.outputs.merged == 'true'
 
       - uses: actions/setup-node@v7.0.0

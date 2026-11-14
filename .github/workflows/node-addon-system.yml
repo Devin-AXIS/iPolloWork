@@ -65,7 +65,7 @@ jobs:
 
       # pnpm v11 ships no darwin-x64 standalone binary, and the pnpm/action-setup
       # v6 self-update path needs one; this job stays on the v5 npm-install line.
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         with:
           package_json_file: package.json
 

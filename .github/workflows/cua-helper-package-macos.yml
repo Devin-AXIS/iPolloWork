@@ -78,7 +78,7 @@ jobs:
           CUA_MACOS_RUN_ID: ${{ inputs.cua_macos_run_id }}
           CUA_BUILD_KEY: ${{ steps.build-inputs.outputs.build-key }}
         run: node scripts/cua-helper/select-artifact.ts
-      - uses: pnpm/action-setup@v5.0.0
+      - uses: pnpm/action-setup@v5
         if: steps.retained.outputs.artifact-id == ''
         with:
           dest: ${{ runner.temp }}/setup-pnpm-cua-${{ github.run_id }}-${{ github.run_attempt }}
