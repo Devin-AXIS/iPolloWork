@@ -67,15 +67,21 @@ test('the app_data tool opens the app for the session workspace and runs the sta
   const tool = appDataTool(service, cwd => (cwd === '/work/site' ? 'Studio site' : undefined))
   assert.equal(tool.name, 'app_data')
   const value = await tool.execute(
-    { app: 'Studio site', kind: 'site', statement: { find: 'books', limit: 1 } },
+    { app: 'Studio site', kind: 'site', statement: { insert: 'books', values: { title: 'Dune' } } },
     { agent: { session: { header: { cwd: '/work/site' } } } } as never,
   )
-  assert.deepEqual(value, { items: [book], next: null })
+  assert.deepEqual(value, { item: book })
   assert.deepEqual(calls.find(call => call.path === '/api/data/v1/apps')?.body, { name: 'Studio site', kind: 'site', workspace: 'Studio site' })
   const kind = (statement: object) => (tool.presentCall?.({ app: 'Studio site', kind: 'site', statement }) as { kind?: string } | undefined)?.kind
   assert.equal(kind({ find: 'books' }), 'read')
   assert.equal(kind({ insert: 'books', values: {} }), 'edit')
   await assert.rejects(tool.execute({ app: 'Studio site', statement: {} }, {} as never), 'kind is required')
+  const before = calls.length
+  await assert.rejects(tool.execute({ app: 'Unknown app', kind: 'plugin', statement: { info: true } }, {} as never), (error: unknown) =>
+    error instanceof AppDataRejection && error.code === 'DATA_APP_NOT_FOUND' && error.reason.includes('Reading list (plugin)'))
+  assert.equal(calls.slice(before).some(call => call.method === 'POST'), false, 'reading an unknown app creates nothing')
+  await tool.execute({ app: 'reading list', kind: 'plugin', statement: { batch: [{ count: 'books' }] } }, {} as never)
+  assert.deepEqual([calls.at(-1)?.path, calls.at(-1)?.body], [`/api/data/v1/apps/${APP}/run`, { batch: [{ count: 'books' }] }], 'a read batch reaches the existing app by name, ignoring letter case')
   const signedOut = appDataTool(fixture(false).service, () => undefined)
   await assert.rejects(signedOut.execute({ app: 'x', kind: 'plugin', statement: { info: true } }, {} as never), (error: unknown) =>
     error instanceof Error && error.message.includes('not signed in to iPolloWork'))

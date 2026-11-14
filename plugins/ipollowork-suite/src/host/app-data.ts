@@ -71,6 +71,18 @@ export class AppDataService implements IpolloData {
   async run(id: string, statement: unknown): Promise<Result> {
     return result.parse(await this.account.request(`${BASE}/${encodeURIComponent(id)}/run`, statement))
   }
+  /**
+   * Find an existing app by name without creating it.
+   * @param name - the app name; letter case and surrounding spaces are ignored.
+   * @param organization - organization name or id, or undefined for personal apps.
+   * @returns the app and the owner's other apps, so a miss can name what exists.
+   */
+  async find(name: string, organization?: string): Promise<{ app: DataAppList['items'][number] | undefined; others: DataAppList['items'] }> {
+    const enterpriseId = organization ? await this.organization(organization) : undefined
+    const owned = (await this.apps()).items.filter(app => (enterpriseId ? app.owner.id === enterpriseId : app.owner.kind === 'user'))
+    const wanted = name.trim().toLowerCase()
+    return { app: owned.find(app => app.name.trim().toLowerCase() === wanted), others: owned }
+  }
   async open(name: string, options: { organization?: string } = {}): Promise<DataApp> {
     const app = await this.ensure({ name, kind: 'plugin', organization: options.organization })
     return createDataApp(app.id, statement => this.run(app.id, statement))
@@ -124,6 +136,11 @@ async function signedIn<T>(work: () => Promise<T>): Promise<T> {
 }
 
 const READS = new Set(['get', 'find', 'count', 'info'])
+/** Whether a statement or batch only reads; reads never create an app. */
+function reads(statement: Record<string, unknown>): boolean {
+  const list = Array.isArray(statement.batch) ? (statement.batch as Record<string, unknown>[]) : [statement]
+  return list.every(item => item !== null && typeof item === 'object' && Object.keys(item).some(key => READS.has(key)))
+}
 /**
  * The model's app data tool. A new app records its kind and the title of the workspace it was created from.
  * @param service - the app data service.
@@ -135,7 +152,7 @@ export function appDataTool(service: AppDataService, workspaceOf: (cwd: string |
     name: 'app_data',
     description: [
       'Keep records for a website, app, mini program or DSH plugin without running a database. Read the app-data skill before writing code that uses it.',
-      'An app is created on first use and holds collections of JSON records; each field\'s type (text, number, boolean or json) is fixed by its first value. Record ids are short keys such as "profile" or generated UUIDs.',
+      'An app is created by its first write and holds collections of JSON records; reads of an unknown app list the existing apps instead; each field\'s type (text, number, boolean or json) is fixed by its first value. Record ids are short keys such as "profile" or generated UUIDs.',
       'Statements:',
       '{"insert":"bookings","values":{"name":"Ann","slot":10}} (values may be an array of up to 100 records);',
       '{"find":"bookings","where":{"slot":{">=":9},"status":"open"},"sort":"-createdAt","limit":20,"after":"<next from the previous page>"};',
@@ -161,6 +178,13 @@ export function appDataTool(service: AppDataService, workspaceOf: (cwd: string |
     },
     async execute(args, exec) {
       return signedIn(async () => {
+        if (reads(args.statement)) {
+          const { app, others } = await service.find(args.app, args.organization)
+          if (!app)
+            throw new AppDataRejection('DATA_APP_NOT_FOUND', 404,
+              `No app is named "${args.app}" yet; reads do not create apps, and the first write does. Existing apps: ${others.map(item => `${item.name} (${item.kind})`).join(', ') || 'none'}.`)
+          return service.run(app.id, args.statement)
+        }
         const app = await service.ensure({ name: args.app, kind: args.kind, organization: args.organization, workspace: workspaceOf(exec.agent?.session.header.cwd) })
         return service.run(app.id, args.statement)
       })
@@ -168,7 +192,7 @@ export function appDataTool(service: AppDataService, workspaceOf: (cwd: string |
     presentCall: args => ({
       card: 'generic',
       title: `App data · ${args.app}`,
-      kind: Object.keys(args.statement).some(key => READS.has(key)) ? 'read' : 'edit',
+      kind: reads(args.statement) ? 'read' : 'edit',
     }),
   })
 }
