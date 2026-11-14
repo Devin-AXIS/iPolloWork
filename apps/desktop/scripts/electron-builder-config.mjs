@@ -76,7 +76,11 @@ export function createElectronBuilderConfig(
   let dshDestination
   let windowsCode = []
   const unpack = ['**/*.{node,dylib,dll,so,exe}', '**/*.so.*', '**/spawn-helper', '**/@vscode/ripgrep-*/bin/rg',
-    '**/node_modules/@esbuild/*/bin/*',
+    '**/node_modules/@esbuild/**/*',
+    '**/node_modules/esbuild/**/*',
+    '**/node_modules/deepseek-idesign/**/*',
+    '**/node_modules/deepseek-ivideo/**/*',
+    '**/node_modules/@ipollo/dsh-suite/**/*',
     `**/node_modules/@deepseek-ai/libreoffice-kit-${resolvedPlatform}-${resolvedArch}/**/*`,
     // LaunchServices opens the Computer Use helper as an application, so every file of its bundles stays on disk.
     // Both architectures ship: they form one notarized payload whose manifest staging verifies as a whole.

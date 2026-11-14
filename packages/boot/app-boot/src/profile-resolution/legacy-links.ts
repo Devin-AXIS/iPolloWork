@@ -1,6 +1,6 @@
 /** Package directory and resource canonicalization through the active runtime carrier's filesystem. */
 
-import { lstatSync, realpathSync } from 'node:fs'
+import { existsSync, lstatSync, realpathSync, statSync } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
 
 /**
@@ -17,6 +17,14 @@ function isPackagedExecutable(): boolean {
  * @returns the canonical directory path.
  */
 export function realModuleDirectory(path: string): string {
+  const archive = /^(.*\.asar)([/\\].+)$/u.exec(path)
+  if (archive?.[1] && archive[2]) {
+    const unpacked = `${archive[1]}.unpacked${archive[2]}`
+    // Complete unpacked packages keep worker entrypoints and executable dependencies on disk.
+    if (existsSync(join(unpacked, 'package.json')) && statSync(archive[1]).isFile()) {
+      return realpathSync.native(unpacked)
+    }
+  }
   return isPackagedExecutable() ? realpathSync(path) : realpathSync.native(path)
 }
 
