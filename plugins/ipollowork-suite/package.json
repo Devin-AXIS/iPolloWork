@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-suite",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
   "icon": "./assets/mark.svg",
   "type": "module",
@@ -75,13 +75,6 @@
     "test:im-upstream": "node --import tsx --test vendor/dsh-im/test/artifact-delivery.test.mjs vendor/dsh-im/test/image-input.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-registry.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-panel.test.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-client-ui-settings-account": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-error": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-experimental-liveshare": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-tool-subagent": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
-    "@deepseek-ai/schemastery": "3.19.0",
     "@earendil-works/pi-ai": "1.3.0",
     "@matrix-org/olm": "3.2.15",
     "js-yaml": "^4.3.2",
@@ -93,7 +86,14 @@
     "@deepseek-ai/cordis": "^4.1.0",
     "@deepseek-ai/dsh-fs": "0.2.2-rc.3",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-settings-account": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-error": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-experimental-liveshare": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-tool-subagent": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
+    "@deepseek-ai/schemastery": "3.19.0"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "0.2.2-rc.3",

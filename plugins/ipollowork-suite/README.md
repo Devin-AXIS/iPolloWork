@@ -138,3 +138,5 @@ Registered account model channels display their backend names under iPolloWork. 
 The embedded IM runtime uses Cordis’s public root-context symbol. Bundled Design and Video 1.0.0-beta.19.ipollo.1 retain the reviewed beta.19 code and add the `connection.authentication` dependency required by rc.3 asset and API requests. `scripts/prepare-studio-releases.mjs` reproduces these local archives from reviewed beta.19 tarballs.
 
 Account balances refresh when the application regains focus or becomes visible. Compatible DeepSeek and Bailian chat models inherit the installed provider catalog’s reasoning levels and request dialect; unknown models remain selectable without invented reasoning levels.
+
+The suite resolves DSH services from the host through peer dependencies; installing it does not replace the host runtime packages.
