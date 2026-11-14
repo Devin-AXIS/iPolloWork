@@ -1,0 +1,23 @@
+// English translations (office area). Keys are exact Chinese literals passed to t().
+export default {
+  'AI Office 拒绝了 Device Token。': 'AI Office rejected the Device Token.',
+  'AI Office Connector Hook 尚未就绪。': 'The AI Office Connector Hook is not ready yet.',
+  'AI Office Connector 协议版本不兼容。': 'The AI Office Connector protocol version is incompatible.',
+  '本机暂时无法访问 AI Office。': 'This machine cannot reach AI Office right now.',
+  'AI Office 连接已中断。': 'The AI Office connection was interrupted.',
+  '本机 Harness 已停止这次执行。': 'The local Harness stopped this run.',
+  'Office Job 已被领取、取消或结束。': 'The Office Job has already been claimed, cancelled, or finished.',
+  '本机 Harness 未能完成任务；请检查 Harness 会话后重试。': 'The local Harness could not complete the task; check the Harness Session and try again.',
+  'Office Job 引用了本机未配置的 Workspace/Preset alias。': 'The Office Job references a Workspace/Preset alias that is not configured locally.',
+  '你正在本机 DeepSeek Harness 中继续一个来自 AI Office 的任务。': 'You are continuing an AI Office task inside the local DeepSeek Harness.',
+  '只在当前 Workspace 内行动。完成后必须返回：结果摘要、改动文件、验证证据、未解决风险。': 'Act only within the current Workspace. When finished you must return: a result summary, changed files, verification evidence, and unresolved risks.',
+  '## 本机 Instruction Preset': '## Local Instruction Preset',
+  '## 本轮补充指令': '## Additional Instructions for This Round',
+  '## Office 时间线': '## Office Timeline',
+  '批准 {tool}': 'Approve {tool}',
+  'Harness 工具': 'Harness tool',
+  'Harness 需要 {count} 项补充信息': 'Harness needs {count} pieces of additional information',
+  '已领取 Job，准备 Workspace alias：{alias}': 'Job claimed; preparing Workspace alias: {alias}',
+  'Harness Session 已创建。': 'Harness Session created.',
+  '正在使用 {tool}…': 'Using {tool}…',
+};

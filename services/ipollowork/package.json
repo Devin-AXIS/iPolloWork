@@ -1,0 +1,45 @@
+{
+  "name": "@ipollo/work-services",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "node scripts/build.mjs",
+    "start": "node dist/server/server.js",
+    "check": "tsc --noEmit && npm test",
+    "test": "tsx --test tests/*.test.ts",
+    "admin": "tsx scripts/admin.ts",
+    "backup": "tsx scripts/backup.ts",
+    "build:carrier": "node scripts/liveshare-carrier.mjs"
+  },
+  "dependencies": {
+    "@apple/app-store-server-library": "3.1.0",
+    "@hono/node-server": "2.1.8",
+    "ali-oss": "6.23.0",
+    "better-auth": "1.7.23",
+    "hono": "4.13.18",
+    "stripe": "23.1.0",
+    "ws": "^8.23.0",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-experimental-liveshare-protocol": "^0.2.2-rc.2",
+    "@types/ali-oss": "6.23.3",
+    "@types/node": "24.10.1",
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "6.3.0",
+    "lucide-react": "0.454.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vite": "8.3.8"
+  }
+}

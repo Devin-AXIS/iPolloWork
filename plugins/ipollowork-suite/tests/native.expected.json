@@ -1,0 +1,20 @@
+{
+  "avatarSaved": true,
+  "avatarAbsentFromModelInput": true,
+  "fixedModelForDirectChat": true,
+  "fixedModelForDelegation": true,
+  "inheritedModelForDelegation": true,
+  "globalDefaultUnchanged": true,
+  "instructionsApplied": true,
+  "projectAOnly": true,
+  "projectBOnly": true,
+  "mcpToolsVisible": true,
+  "existingServiceSelected": true,
+  "unselectedServiceHidden": true,
+  "credentialMatched": true,
+  "secretAbsentFromRequests": true,
+  "childCount": 2,
+  "alphaChild": true,
+  "betaChild": true,
+  "parentKeepsStandard": true
+}

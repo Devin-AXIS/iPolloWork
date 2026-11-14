@@ -1,0 +1,10 @@
+{
+  "mainPreset": "ipollo-coordinator",
+  "finalAnswer": "COORDINATOR_COMBINED_RESULT",
+  "temporaryWorksWithoutSavedExperts": true,
+  "separateGroupSessions": true,
+  "savedSpecialistModel": true,
+  "temporaryInheritsModel": true,
+  "savedAndTemporaryCollected": true,
+  "savedCatalogSize": 1
+}

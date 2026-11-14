@@ -1,0 +1,36 @@
+name: iPolloWork integrations
+on:
+  push:
+    branches: [dsh]
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml']
+  pull_request:
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.15.0'
+      - name: Check enterprise connector
+        run: npm run check --prefix plugins/ipollo-enterprise
+      - name: Install suite dependencies
+        working-directory: plugins/ipollowork-suite
+        run: npm ci --ignore-scripts --workspaces=false
+      - name: Check and package suite
+        working-directory: plugins/ipollowork-suite
+        run: |
+          npm run check --workspaces=false
+          npm run pack:check --workspaces=false
+      - name: Install account service dependencies
+        working-directory: services/ipollowork
+        run: npm ci --ignore-scripts --workspaces=false
+      - name: Check and build account services
+        working-directory: services/ipollowork
+        run: |
+          npm run check --workspaces=false
+          npm run build --workspaces=false

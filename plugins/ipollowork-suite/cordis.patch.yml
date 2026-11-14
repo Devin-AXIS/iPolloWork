@@ -1,0 +1,14 @@
+- id: ui-settings-account
+  disabled: true
+- id: ui-account-notifications
+  disabled: true
+- insert:
+    - id: liveshare-share-host
+      name: '@deepseek-ai/dsh-experimental-liveshare'
+      config: {}
+    - id: ipollowork-suite
+      name: '@ipollo/dsh-suite'
+    - id: ipollowork-agents
+      name: '@ipollo/dsh-suite/agents'
+    - id: ipollowork-im
+      name: '@ipollo/dsh-suite/im'

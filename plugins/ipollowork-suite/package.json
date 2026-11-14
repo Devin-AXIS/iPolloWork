@@ -1,0 +1,128 @@
+{
+  "name": "@ipollo/dsh-suite",
+  "version": "0.1.0",
+  "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
+  "icon": "./assets/mark.svg",
+  "type": "module",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.2 <0.2.3-0"
+  },
+  "exports": {
+    "./connections": {
+      "types": "./lib/connections.d.ts"
+    },
+    ".": "./lib/host/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./agents": "./lib/host/agents.js",
+    "./agent-runtime": "./lib/host/agent-runtime.js",
+    "./im": "./lib/host/im.js",
+    "./services": {
+      "types": "./lib/services.d.ts"
+    }
+  },
+  "files": [
+    "lib",
+    "assets",
+    "locale",
+    "cordis.patch.yml",
+    "README.md",
+    "docs",
+    "vendor/dsh-im/LICENSE",
+    "vendor/dsh-im/THIRD_PARTY_NOTICES.md",
+    "vendor/dsh-im/README.md",
+    "catalog/index.json",
+    "catalog/bundled-releases.json",
+    "catalog/packages/deepseek-idesign-1.0.0-beta.17-11356f53044c.tgz",
+    "catalog/packages/deepseek-ivideo-1.0.0-beta.17-791ac637cba8.tgz"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-api-workspace-controller",
+        "@deepseek-ai/dsh-client-ui-context-menu",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:artifacts": "node scripts/build.mjs",
+    "build:check": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts tests/*.test.mjs",
+    "check": "npm run build && npm run build:check && npm test && node scripts/catalog-artwork.mjs",
+    "pack:check": "npm pack --dry-run",
+    "smoke": "node scripts/smoke.mjs",
+    "test:im-upstream": "node --import tsx --test vendor/dsh-im/test/artifact-delivery.test.mjs vendor/dsh-im/test/image-input.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-registry.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-panel.test.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis-plugin-include": "^1.1.0",
+    "@deepseek-ai/dsh-error": "0.2.2-rc.2",
+    "@deepseek-ai/dsh-experimental-liveshare": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.2",
+    "@deepseek-ai/dsh-tool-subagent": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.2.2-rc.2",
+    "@deepseek-ai/schemastery": "3.19.0",
+    "@matrix-org/olm": "3.2.15",
+    "js-yaml": "^4.3.2",
+    "semver": "^7.8.5",
+    "undici": "7.30.1",
+    "zod": "^4.6.7",
+    "@earendil-works/pi-ai": "1.3.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-llm-pi-ai": ">=0.2.2-rc.2 <0.2.3-0",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.2 <0.2.3-0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-llm-pi-ai": "^0.2.2-rc.2",
+    "@larksuiteoapi/node-sdk": "1.73.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.2.0",
+    "@tencent-connect/qqbot-connector": "1.2.0",
+    "@tencent-connect/qqbot-nodejs": "1.0.4",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^24.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.7",
+    "@types/semver": "^7.7.0",
+    "@wecom/aibot-node-sdk": "1.0.7",
+    "@whiskeysockets/baileys": "7.0.0-rc14",
+    "dingtalk-stream": "2.1.4",
+    "esbuild": "^0.25.0",
+    "https-proxy-agent": "5.0.1",
+    "image-size": "^2.1.0",
+    "imapflow": "^2.0.5",
+    "jsdom": "^26.0.0",
+    "mailparser": "^3.9.43",
+    "nodemailer": "^10.1.4",
+    "qrcode": "1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  },
+  "optionalDependencies": {
+    "sharp": "0.35.5"
+  }
+}

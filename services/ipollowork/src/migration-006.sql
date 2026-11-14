@@ -1,0 +1,4 @@
+CREATE TABLE execution_services(id TEXT PRIMARY KEY,title TEXT NOT NULL,provider TEXT NOT NULL,base_url TEXT NOT NULL,key_id TEXT NOT NULL,header_name TEXT NOT NULL,header_prefix TEXT NOT NULL,capabilities TEXT NOT NULL,routes TEXT NOT NULL,plan_ids TEXT NOT NULL,enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),created_at INTEGER NOT NULL);
+CREATE TABLE service_calls(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES user(id),service_id TEXT NOT NULL REFERENCES execution_services(id),request_hash TEXT NOT NULL,state TEXT NOT NULL CHECK(state IN('running','succeeded','failed','unknown')),points INTEGER NOT NULL CHECK(points>=0),response_type TEXT,response_body TEXT,job_id TEXT,created_at INTEGER NOT NULL,updated_at INTEGER NOT NULL);
+CREATE INDEX service_calls_user_time ON service_calls(user_id,created_at DESC);
+CREATE INDEX service_calls_job ON service_calls(service_id,job_id,user_id);

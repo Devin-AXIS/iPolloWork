@@ -1,0 +1,10 @@
+{
+  "imageVision": { "answered": true, "images": 1, "files": 0, "nativeTranscript": false, "platformTranscript": false, "unavailable": false, "speechCalls": 0 },
+  "imageTextFallback": { "answered": true, "images": 0, "files": 1, "nativeTranscript": false, "platformTranscript": false, "unavailable": false, "speechCalls": 0 },
+  "dingTalkSpeech": { "answered": true, "images": 0, "files": 1, "nativeTranscript": true, "platformTranscript": false, "unavailable": false, "speechCalls": 1 },
+  "dingTalkRecognition": { "answered": true, "images": 0, "files": 1, "nativeTranscript": false, "platformTranscript": true, "unavailable": false, "speechCalls": 0 },
+  "feishuSpeech": { "answered": true, "images": 0, "files": 1, "nativeTranscript": true, "platformTranscript": false, "unavailable": false, "speechCalls": 1 },
+  "feishuUnconfigured": { "answered": true, "images": 0, "files": 1, "nativeTranscript": false, "platformTranscript": false, "unavailable": true, "speechCalls": 0 },
+  "wecomApplicationSpeech": { "answered": true, "images": 0, "files": 1, "nativeTranscript": true, "platformTranscript": false, "unavailable": false, "speechCalls": 1 },
+  "wecomPlatformSpeech": { "answered": true, "images": 0, "files": 0, "nativeTranscript": false, "platformTranscript": true, "unavailable": false, "speechCalls": 0 }
+}

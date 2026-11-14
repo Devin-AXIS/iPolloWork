@@ -1,0 +1,132 @@
+{
+  "format": 1,
+  "title": {
+    "en": "iPolloWork market",
+    "zh": "iPolloWork 插件市场"
+  },
+  "description": {
+    "en": "A curated directory of native DSH bundles.",
+    "zh": "由我们维护的 DSH 原生插件目录。"
+  },
+  "metadata": {
+    "categories": {
+      "productivity": {
+        "title": {
+          "en": "Productivity",
+          "zh": "效率"
+        }
+      },
+      "communication": {
+        "title": {
+          "en": "Communication",
+          "zh": "通信"
+        }
+      },
+      "creative": {
+        "title": {
+          "en": "Creative",
+          "zh": "创作"
+        }
+      }
+    }
+  },
+  "plugins": [
+    {
+      "name": "deepseek-idesign",
+      "title": "Design",
+      "author": "iPolloWork",
+      "description": {
+        "en": "Original iPolloWork Design editor with native right-panel and left-navigation settings.",
+        "zh": "原版 Design 编辑器，可独立配置右侧白板与左侧导航。"
+      },
+      "homepage": "https://github.com/Devin-AXIS/deepseek-design",
+      "repository": {
+        "url": "https://github.com/Devin-AXIS/deepseek-design",
+        "directory": "packages/deepseek-design"
+      },
+      "metadata": {
+        "category": "creative",
+        "keywords": [
+          "design",
+          "ppt",
+          "website"
+        ]
+      },
+      "versions": [
+        {
+          "version": "1.0.0-beta.17",
+          "publishTimestamp": 1794633573,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.2 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTIiIGZpbGw9IiNmMWYwZmYiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgxMiAxMikiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzY2NjBkYSIgc3Ryb2tlLXdpZHRoPSIxLjYiPjxyZWN0IHg9IjMiIHk9IjMiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxOCIgcng9IjMiLz48cGF0aCBkPSJNMyA5aDE4TTkgOXYxMiIvPjwvZz48L3N2Zz4K"
+    },
+    {
+      "name": "deepseek-ivideo",
+      "title": "Video",
+      "author": "iPolloWork",
+      "description": {
+        "en": "Original iPolloWork Video editor with native right-panel and left-navigation settings.",
+        "zh": "原版 Video 编辑器，可独立配置右侧白板与左侧导航。"
+      },
+      "homepage": "https://github.com/Devin-AXIS/deepseek-design",
+      "repository": {
+        "url": "https://github.com/Devin-AXIS/deepseek-design",
+        "directory": "packages/deepseek-video"
+      },
+      "metadata": {
+        "category": "creative",
+        "keywords": [
+          "video",
+          "timeline",
+          "audio"
+        ]
+      },
+      "versions": [
+        {
+          "version": "1.0.0-beta.17",
+          "publishTimestamp": 1794633573,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.2 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTIiIGZpbGw9IiNmMWYwZmYiLz48ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgxMiAxMikiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzY2NjBkYSIgc3Ryb2tlLXdpZHRoPSIxLjYiPjxyZWN0IHg9IjMiIHk9IjUiIHdpZHRoPSIxOCIgaGVpZ2h0PSIxNCIgcng9IjMiLz48cGF0aCBkPSJtMTAgOSA1IDMtNSAzWiIvPjwvZz48L3N2Zz4K"
+    },
+    {
+      "name": "@deepseek-ai/dsh-experimental-session-titles-bundle",
+      "title": {
+        "en": "Session titles",
+        "zh": "会话标题"
+      },
+      "author": "DeepSeek",
+      "description": {
+        "en": "Refresh session titles as new prompts arrive.",
+        "zh": "根据新输入更新会话标题。"
+      },
+      "metadata": {
+        "category": "productivity"
+      },
+      "versions": [
+        {
+          "version": "0.2.2-rc.2",
+          "publishTimestamp": 1794449291,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.2 <0.2.3-0"
+          }
+        }
+      ]
+    }
+  ]
+}

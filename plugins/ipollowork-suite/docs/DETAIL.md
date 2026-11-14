@@ -1,0 +1,11 @@
+# iPolloWork suite
+
+Adds iPolloWork branding, a gradient composer, a curated plugin market, and an optional account connection. DSH continues to manage sessions, models, and installed plugins.
+
+Open Agents in the sidebar to create an assistant with a name, instructions, and an optional uploaded avatar. Keep the current model by default or choose an existing model for that assistant. Optional choices reuse existing Skills and connected DSH services. Use the same agent in different projects while keeping each project's conversations and memory separate. A main assistant can delegate to several agents through DSH's native subagent mechanism.
+
+Open iPolloWork market on the Plugins page to search the curated directory, inspect entries, and use DSH's installation interface. Bundles already supplied by DSH open their native details.
+
+The iPolloWork account entry connects your account and reads available points. Local features and the public catalog work without signing in. Disconnect removes only this device's suite credential.
+
+An enterprise catalog, administrator authorization, and tenant isolation are not connected in this version. The suite is not an isolation mechanism for untrusted plugins.

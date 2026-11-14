@@ -1,0 +1,20 @@
+services:
+  work:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:4785:4785"
+    environment:
+      SERVICE_ORIGIN: ${SERVICE_ORIGIN:?Set the public HTTPS origin}
+      HOST: 0.0.0.0
+      PORT: 4785
+      DATA_DIR: /data
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+      MAIL_WEBHOOK_URL: ${MAIL_WEBHOOK_URL:-}
+      MAIL_WEBHOOK_TOKEN: ${MAIL_WEBHOOK_TOKEN:-}
+    volumes:
+      - work-data:/data
+    stop_grace_period: 30s
+volumes:
+  work-data:
