@@ -11,6 +11,7 @@ import { mountAgents } from './agents.tsx'
 import { mountCoordinator } from './coordinator.tsx'
 import { mountEnterprise } from './enterprise.tsx'
 import { mountData } from './data.tsx'
+import { createBrowserAppData } from './data-service.ts'
 import { mountConnections } from './connections.tsx'
 import { mountOutputContinuationPresentation } from './output-continuation.tsx'
 import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
@@ -76,6 +77,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     })
     mountEnterprise(ctx, account)
     mountData(ctx, account)
+    ctx.provide('ipolloData', createBrowserAppData())
     ctx.effect(() => () => account.dispose(), 'ipollowork-suite: account state')
     const props = () => ({ origin: info.accountOrigin, refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })
     if (info.dedicatedDesktop) {

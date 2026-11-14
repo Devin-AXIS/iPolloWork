@@ -7,9 +7,12 @@ export type DataValue = string | number | boolean | null | DataValue[] | { [key:
 /** A stored record: its fields plus `id`, `version`, `createdAt` and `updatedAt` in epoch milliseconds. */
 export type DataRecord = { [key: string]: DataValue } & { id: string; version: number; createdAt: number; updatedAt: number }
 
+/** What an app serves, declared when it is created: a DSH plugin, or a site, app or mini program that visitors open. */
+export type DataAppKind = 'plugin' | 'site'
 /** One app in the signed-in account's listing. */
 export interface DataAppSummary {
   id: string
+  kind: DataAppKind
   name: string
   slug: string
   /** The workspace that created the app; empty when created elsewhere. */
@@ -64,6 +67,7 @@ export type DataStatement =
   | ({ find: string } & DataQuery)
   | { count: string; where?: Record<string, DataCondition> }
   | { update: string; id: string; set: Record<string, DataValue>; version?: number }
+  | { upsert: string; id: string; values: Record<string, DataValue>; version?: number }
   | { delete: string; id: string; version?: number }
   | { define: string; fields?: Record<string, DataFieldType>; public?: ('read' | 'create')[]; unique?: string[] | null }
   | { drop: string }
@@ -76,6 +80,8 @@ export interface DataCollection {
   find(query?: DataQuery): Promise<{ items: DataRecord[]; next: string | null }>
   count(where?: Record<string, DataCondition>): Promise<number>
   update(id: string, set: Record<string, DataValue>, version?: number): Promise<DataRecord>
+  /** Create the record with this id, or replace all of its fields. */
+  upsert(id: string, values: Record<string, DataValue>, version?: number): Promise<DataRecord>
   delete(id: string, version?: number): Promise<void>
 }
 /** An opened app. `run` accepts any statement or `{batch}`; `collection` wraps the common operations. */
@@ -84,13 +90,43 @@ export interface DataApp {
   run(statement: DataStatement | { batch: DataStatement[] }): Promise<unknown>
   collection(name: string): DataCollection
 }
-/** The `ipolloData` native service that DSH plugins inject. */
+/**
+ * The `ipolloData` service that DSH plugins inject. The suite provides the same contract on the Host and in the browser,
+ * so a plugin's Host half and its Client module use identical calls.
+ */
 export interface IpolloData {
   /**
-   * Open the signed-in account's app named `name`, creating it on first use.
+   * Open the signed-in account's plugin app named `name`, creating it on first use.
    * @param name - the app name; the same name reopens the same app.
    * @param options - `organization` (name or id) stores the app under an organization instead of the person.
    * @returns the opened app.
    */
   open(name: string, options?: { organization?: string }): Promise<DataApp>
+}
+
+/**
+ * Wrap a statement runner as an opened app. Host and browser services share it, so both return the same handle.
+ * @param id - the app id.
+ * @param run - sends one statement or batch and resolves with the service's JSON result.
+ * @returns the opened app.
+ */
+export function createDataApp(id: string, run: (statement: DataStatement | { batch: DataStatement[] }) => Promise<Record<string, unknown>>): DataApp {
+  const item = (value: Record<string, unknown>) => value.item as DataRecord
+  const versioned = (version: number | undefined) => (version === undefined ? {} : { version })
+  return {
+    id,
+    run,
+    collection: name => ({
+      insert: async values => item(await run({ insert: name, values })),
+      get: async recordId => item(await run({ get: name, id: recordId })),
+      find: async (query = {}) => {
+        const value = await run({ find: name, ...query })
+        return { items: value.items as DataRecord[], next: value.next as string | null }
+      },
+      count: async where => (await run({ count: name, ...(where ? { where } : {}) })).count as number,
+      update: async (recordId, set, version) => item(await run({ update: name, id: recordId, set, ...versioned(version) })),
+      upsert: async (recordId, values, version) => item(await run({ upsert: name, id: recordId, values, ...versioned(version) })),
+      delete: async (recordId, version) => { await run({ delete: name, id: recordId, ...versioned(version) }) },
+    }),
+  }
 }

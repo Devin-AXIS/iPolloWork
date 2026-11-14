@@ -75,7 +75,10 @@ const condition = z.union([
 const where = z
   .record(z.string(), condition)
   .refine((value) => Object.keys(value).length <= 10, "最多 10 个筛选字段");
-const recordId = z.uuid();
+const recordId = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/, "id 使用字母、数字、下划线或短横线，最长 64 个字符");
+const appId = z.uuid();
 const version = z.number().int().positive();
 const fieldTypes = z.enum(["text", "number", "boolean", "json"]);
 const statements = {
@@ -101,6 +104,9 @@ const statements = {
   count: z.object({ count: collection, where: where.optional() }).strict(),
   update: z
     .object({ update: collection, id: recordId, set: values, version: version.optional() })
+    .strict(),
+  upsert: z
+    .object({ upsert: collection, id: recordId, values, version: version.optional() })
     .strict(),
   delete: z
     .object({ delete: collection, id: recordId, version: version.optional() })
@@ -151,7 +157,7 @@ const invalid = () =>
   new ServiceError(
     "DATA_STATEMENT_INVALID",
     400,
-    "每条语句需要且只能有一个操作：insert、get、find、count、update、delete、define、drop、info；多条语句放在 batch 中",
+    "每条语句需要且只能有一个操作：insert、get、find、count、update、upsert、delete、define、drop、info；多条语句放在 batch 中",
   );
 
 /** Who is calling: a signed-in account, or an anonymous visitor presenting an app's public key. */
@@ -159,8 +165,11 @@ export type DataCaller =
   | { kind: "member"; actor: Actor }
   | { kind: "anonymous"; key: string; ip: string };
 type Level = "manage" | "write" | "anonymous";
+/** What an app serves: a DSH plugin, or a site, app or mini program that visitors open. */
+export type AppKind = "plugin" | "site";
 type AppRow = Row & {
   id: string;
+  kind: AppKind;
   owner_kind: "user" | "enterprise";
   owner_id: string;
   slug: string;
@@ -212,6 +221,7 @@ export type DataRecord = { [key: string]: Value } & {
 /** App listing entry; `public` reports whether any collection admits anonymous access. */
 export interface AppSummary {
   id: string;
+  kind: AppKind;
   name: string;
   slug: string;
   workspace: string;
@@ -314,13 +324,19 @@ export async function migrateAppData(store: Store): Promise<void> {
       (await store.one("SELECT COALESCE(MAX(version),0) AS version FROM app_data_schema"))
         ?.version,
     );
-    if (current > 1)
+    if (current > 2)
       throw new Error("This app data database requires a newer iPolloWork service");
     if (current < 1) {
       await store.run(
         await readFile(new URL("./app-data-schema.sql", import.meta.url), "utf8"),
       );
       await store.run("INSERT INTO app_data_schema(version) VALUES(1)");
+    }
+    if (current < 2) {
+      await store.run(
+        await readFile(new URL("./app-data-migration-002.sql", import.meta.url), "utf8"),
+      );
+      await store.run("INSERT INTO app_data_schema(version) VALUES(2)");
     }
   });
 }
@@ -384,12 +400,12 @@ export class AppData {
   /**
    * Return the app with `slug` in the owner's scope, creating it when absent.
    * @param actor - the signed-in creator; organization apps require membership.
-   * @param input - display name, optional slug, organization and workspace label.
+   * @param input - display name, kind used only when creating, optional slug, organization and workspace label.
    * @returns the app detail and whether it was created.
    */
   async ensure(
     actor: Actor,
-    input: { name: string; slug?: string | undefined; enterpriseId?: string | undefined; workspace?: string | undefined },
+    input: { name: string; kind: AppKind; slug?: string | undefined; enterpriseId?: string | undefined; workspace?: string | undefined },
   ): Promise<{ app: AppDetail; created: boolean }> {
     const owner = input.enterpriseId
       ? { kind: "enterprise" as const, id: input.enterpriseId }
@@ -431,8 +447,9 @@ export class AppData {
       const id = randomUUID(),
         at = Date.now();
       await this.data.run(
-        "INSERT INTO data_apps(id,owner_kind,owner_id,slug,name,workspace,public_key,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO data_apps(id,kind,owner_kind,owner_id,slug,name,workspace,public_key,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
         id,
+        input.kind,
         owner.kind,
         owner.id,
         slug,
@@ -588,13 +605,13 @@ export class AppData {
     }
     if ("get" in statement) {
       const c = await this.readable(access, statement.get);
-      if (!c) throw notFound();
+      if (!c) throw await this.missing(access.app.id, statement.get);
       const row = await this.data.one<RecordRow>(
         "SELECT id,data::text AS data,version,created_at,updated_at FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
         c.id,
         statement.id,
       );
-      if (!row) throw notFound();
+      if (!row) throw notFound(c.name, statement.id);
       return { item: recordOf(row) };
     }
     if ("find" in statement) {
@@ -626,6 +643,7 @@ export class AppData {
       if (!app) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
       if ("insert" in statement) return this.insert(access, statement, app.seq);
       if ("update" in statement) return this.change(access, statement, app.seq);
+      if ("upsert" in statement) return this.upsert(access, statement, app.seq);
       if ("delete" in statement) return this.erase(access, statement, app.seq);
       if ("define" in statement) return this.define(access, statement);
       return this.drop(access, statement.drop);
@@ -633,11 +651,10 @@ export class AppData {
   }
 
   private async find(c: Collection, s: Extract<Statement, { find: string }>) {
-    const types = new Map(c.fields);
     const raw = s.sort ?? "-createdAt";
     const desc = raw.startsWith("-");
     const field = desc ? raw.slice(1) : raw;
-    const key = sortKey(field, types);
+    const key = sortKey(field, c);
     const params: Parameter[] = [c.id];
     const filters = conditions(c, s.where, params);
     if (s.after) {
@@ -690,7 +707,7 @@ export class AppData {
     for (const input of list) {
       const { id: given, ...rest } = input;
       if (given !== undefined && !recordId.safeParse(given).success)
-        throw new ServiceError("DATA_RECORD_ID_INVALID", 400, "id 必须是 UUID，或者不填由服务生成");
+        throw new ServiceError("DATA_RECORD_ID_INVALID", 400, "id 使用字母、数字、下划线或短横线，最长 64 个字符；不填由服务生成");
       const fields = this.accept(access, c, rest);
       const size = this.size(fields);
       const id = (given as string | undefined) ?? randomUUID();
@@ -720,13 +737,13 @@ export class AppData {
 
   private async change(access: Access, s: Extract<Statement, { update: string }>, seq: number) {
     const c = await this.collection(access.app.id, s.update);
-    if (!c) throw notFound();
+    if (!c) throw await this.missing(access.app.id, s.update);
     const row = await this.data.one<RecordRow & { bytes: number }>(
       "SELECT id,data::text AS data,version,bytes,created_at,updated_at FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
       c.id,
       s.id,
     );
-    if (!row) throw notFound();
+    if (!row) throw notFound(c.name, s.id);
     if (s.version !== undefined && s.version !== row.version) throw conflict();
     const merged = { ...(JSON.parse(row.data) as Record<string, Value>), ...s.set };
     for (const [k, v] of Object.entries(s.set)) if (v === null) delete merged[k];
@@ -753,15 +770,49 @@ export class AppData {
     };
   }
 
+  /** Create the record with this id, or replace all of its fields; a deleted record is created again. */
+  private async upsert(access: Access, s: Extract<Statement, { upsert: string }>, seq: number) {
+    const c = await this.writable(access, s.upsert);
+    const fields = this.accept(access, c, s.values);
+    const size = this.size(fields);
+    const row = await this.data.one<{ version: number; bytes: number; deleted_at: number | null; created_at: number }>(
+      "SELECT version,bytes,deleted_at,created_at FROM data_records WHERE collection_id=? AND id=?",
+      c.id,
+      s.id,
+    );
+    const live = row !== undefined && row.deleted_at === null;
+    if (s.version !== undefined && (!live || s.version !== row.version)) throw conflict();
+    const at = Date.now();
+    const version = row ? row.version + 1 : 1;
+    const createdAt = live ? row.created_at : at;
+    try {
+      if (row)
+        await this.data.run(
+          "UPDATE data_records SET data=?::jsonb,version=?,seq=?,bytes=?,unique_key=?,deleted_at=NULL,created_at=?,updated_at=? WHERE collection_id=? AND id=?",
+          JSON.stringify(fields), version, seq, size, uniqueKey(c.unique, fields), createdAt, at, c.id, s.id,
+        );
+      else
+        await this.data.run(
+          "INSERT INTO data_records(collection_id,app_id,id,data,version,seq,bytes,unique_key,created_by,created_at,updated_at) VALUES(?,?,?,?::jsonb,1,?,?,?,?,?,?)",
+          c.id, access.app.id, s.id, JSON.stringify(fields), seq, size, uniqueKey(c.unique, fields),
+          access.caller.kind === "member" ? access.caller.actor.id : null, at, at,
+        );
+    } catch (error) {
+      throw duplicate(error, c);
+    }
+    await this.account(access, c, live ? 0 : 1, size - (live ? row.bytes : 0));
+    return { item: { id: s.id, ...fields, version, createdAt, updatedAt: at }, created: !live };
+  }
+
   private async erase(access: Access, s: Extract<Statement, { delete: string }>, seq: number) {
     const c = await this.collection(access.app.id, s.delete);
-    if (!c) throw notFound();
+    if (!c) throw await this.missing(access.app.id, s.delete);
     const row = await this.data.one<{ version: number; bytes: number }>(
       "SELECT version,bytes FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
       c.id,
       s.id,
     );
-    if (!row) throw notFound();
+    if (!row) throw notFound(c.name, s.id);
     if (s.version !== undefined && s.version !== row.version) throw conflict();
     const at = Date.now();
     await this.data.run(
@@ -815,7 +866,7 @@ export class AppData {
 
   private async drop(access: Access, name: string) {
     const c = await this.collection(access.app.id, name);
-    if (!c) throw notFound();
+    if (!c) throw await this.missing(access.app.id, name);
     await this.data.run("UPDATE data_collections SET dropped_at=? WHERE id=?", Date.now(), c.id);
     await this.data.run(
       "UPDATE data_apps SET records=records-?,bytes=bytes-? WHERE id=?",
@@ -841,7 +892,7 @@ export class AppData {
         throw new ServiceError("DATA_FIELD_TYPE", 400, `字段 ${name} 是${label[current[1]]}，不能写入${label[type]}`);
       if (!current) {
         if (access.level === "anonymous")
-          throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${name}`);
+          throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${name}；${fieldList(c)}`);
         c.fields.push([name, type]);
         added = true;
       }
@@ -895,6 +946,18 @@ export class AppData {
     );
     return row ? collectionOf(row) : undefined;
   }
+  /** A missing collection error that names the app's collections, so the caller can correct the statement. */
+  private async missing(appId: string, name: string): Promise<ServiceError> {
+    const rows = await this.data.all<{ name: string }>(
+      "SELECT name FROM data_collections WHERE app_id=? AND dropped_at IS NULL ORDER BY name LIMIT 50",
+      appId,
+    );
+    return new ServiceError(
+      "DATA_COLLECTION_NOT_FOUND",
+      404,
+      `集合 ${name} 不存在；${rows.length ? "已有集合：" + rows.map((r) => r.name).join("、") : "这个应用还没有集合，insert 或 upsert 会自动创建"}`,
+    );
+  }
   private async create(appId: string, name: string): Promise<Collection> {
     const count = Number(
       (await this.data.one("SELECT COUNT(*) AS n FROM data_collections WHERE app_id=? AND dropped_at IS NULL", appId))?.n,
@@ -925,7 +988,7 @@ export class AppData {
   }
 
   private async access(caller: DataCaller, id: string): Promise<Access> {
-    const app = recordId.safeParse(id).success
+    const app = appId.safeParse(id).success
       ? await this.data.one<AppRow>("SELECT * FROM data_apps WHERE id=? AND deleted_at IS NULL", id)
       : undefined;
     if (!app) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
@@ -1003,6 +1066,7 @@ export class AppData {
   private summary(row: AppRow, ownerName: string, canManage: boolean, collections: number, isPublic: boolean): AppSummary {
     return {
       id: row.id,
+      kind: row.kind,
       name: row.name,
       slug: row.slug,
       workspace: row.workspace,
@@ -1088,11 +1152,11 @@ function fieldSql(field: string, type: FieldType): { sql: string; cast: string }
   if (type === "boolean") return { sql: `(data->>'${field}')::boolean`, cast: "boolean" };
   return { sql: `(data->>'${field}') COLLATE "C"`, cast: "text" };
 }
-function sortKey(field: string, types: Map<string, FieldType>): Key {
+function sortKey(field: string, c: Collection): Key {
   const system = systemKeys[field];
   if (system) return system;
-  const type = types.get(field);
-  if (!type) throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `不能按未知字段 ${field} 排序`);
+  const type = new Map(c.fields).get(field);
+  if (!type) throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `不能按未知字段 ${field} 排序；${fieldList(c)}`);
   if (type === "json") throw new ServiceError("DATA_SORT_UNSUPPORTED", 400, `JSON 字段 ${field} 不能排序`);
   const { sql, cast } = fieldSql(field, type);
   return {
@@ -1111,7 +1175,7 @@ function conditions(c: Collection, filter: Record<string, z.infer<typeof conditi
   for (const [field, raw] of Object.entries(filter ?? {})) {
     const system = field === "createdAt" || field === "updatedAt" || field === "id" ? systemKeys[field]! : undefined;
     const type: FieldType | undefined = system ? (field === "id" ? "text" : "number") : types.get(field);
-    if (!type) throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${field}`);
+    if (!type) throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${field}；${fieldList(c)}`);
     if (type === "json") throw new ServiceError("DATA_FILTER_UNSUPPORTED", 400, `JSON 字段 ${field} 不能筛选`);
     if (raw === null) {
       if (system) throw new ServiceError("DATA_FILTER_UNSUPPORTED", 400, `${field} 总是有值`);
@@ -1173,7 +1237,12 @@ function duplicate(error: unknown, c: Collection): unknown {
   }
   return error;
 }
-const notFound = () => new ServiceError("DATA_NOT_FOUND", 404, "记录不存在");
+const notFound = (collection: string, id: string) =>
+  new ServiceError("DATA_NOT_FOUND", 404, `集合 ${collection} 中没有 id 为 ${id} 的记录`);
+const fieldList = (c: Collection) =>
+  (c.fields.length
+    ? "已有字段：" + c.fields.map(([name, type]) => `${name}（${label[type]}）`).join("、")
+    : "还没有字段") + "；系统字段 id、createdAt、updatedAt 也可使用";
 const conflict = () => new ServiceError("DATA_VERSION_CONFLICT", 409, "记录已被修改，请重新读取后再改");
 const forbidden = () => new ServiceError("DATA_FORBIDDEN", 403, "公开 key 不能执行这个操作");
 const reserved = (name: string) =>

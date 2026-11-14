@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createService } from "../src/app.js";
 import { testConfig } from "./database.js";
+import { Store } from "../src/database.js";
+import { migrateAppData } from "../src/app-data.js";
+import { readFile } from "node:fs/promises";
 
 type Result<T> = { status: number; data: T; headers: Headers };
 type Json = Record<string, any>;
@@ -61,19 +64,19 @@ test("a personal app stores records through JSON statements and syncs changes", 
     const other = await account("other@data.test");
     const created = await call<{ app: Json; created: boolean }>("/api/data/v1/apps", {
       token: owner.token,
-      body: { name: "Reading list", workspace: "notes" },
+      body: { name: "Reading list", kind: "plugin", workspace: "notes" },
     });
     assert.equal(created.status, 201);
     assert.equal(created.data.app.slug, "reading-list");
     assert.match(created.data.app.publicKey, /^pk_/);
     const again = await call<{ app: Json; created: boolean }>("/api/data/v1/apps", {
       token: owner.token,
-      body: { name: "Reading list" },
+      body: { name: "Reading list", kind: "plugin" },
     });
     assert.equal(again.status, 200, "the same slug returns the existing app");
     assert.equal(again.data.app.id, created.data.app.id);
-    const chinese = await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "预约" } });
-    const chineseAgain = await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "预约" } });
+    const chinese = await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "预约", kind: "site" } });
+    const chineseAgain = await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "预约", kind: "site" } });
     assert.equal(chineseAgain.data.app.id, chinese.data.app.id, "a name without ASCII letters reopens the same app");
     await call(`/api/data/v1/apps/${chinese.data.app.id}`, { method: "DELETE", token: owner.token });
     const app = created.data.app.id as string;
@@ -105,7 +108,23 @@ test("a personal app stores records through JSON statements and syncs changes", 
     assert.deepEqual(page2.data.items.map((b) => b.title), ["Emma"]);
     assert.equal(page2.data.next, null);
     assert.equal((await run({ count: "books", where: { title: { contains: "BIK" } } })).data.count, 1);
-    assert.equal((await run({ find: "books", where: { colour: "red" } })).data.code, "DATA_FIELD_UNKNOWN");
+    const unknown = await run({ find: "books", where: { colour: "red" } });
+    assert.equal(unknown.data.code, "DATA_FIELD_UNKNOWN");
+    assert.match(unknown.data.error, /已有字段：title（文本）、pages（数字）、read（是\/否）、tags（JSON）/, "errors name the fields that exist");
+    const noCollection = await run({ update: "bookz", id: "x", set: {} });
+    assert.equal(noCollection.data.code, "DATA_COLLECTION_NOT_FOUND");
+    assert.match(noCollection.data.error, /已有集合：books/);
+    assert.match((await run({ get: "books", id: "missing" })).data.error, /集合 books 中没有 id 为 missing 的记录/);
+    const profile = await run({ upsert: "settings", id: "profile", values: { goal: "run 5k", weekly: 3 } });
+    assert.deepEqual([profile.data.created, profile.data.item.version, profile.data.item.goal], [true, 1, "run 5k"]);
+    const replaced = await run({ upsert: "settings", id: "profile", values: { goal: "run 10k" }, version: 1 });
+    assert.deepEqual([replaced.data.created, replaced.data.item.version, "weekly" in replaced.data.item], [false, 2, false], "upsert replaces every field");
+    assert.equal((await run({ upsert: "settings", id: "profile", values: { goal: "x" }, version: 1 })).data.code, "DATA_VERSION_CONFLICT");
+    assert.equal((await run({ get: "settings", id: "profile" })).data.item.goal, "run 10k", "readable ids address records");
+    await run({ delete: "settings", id: "profile" });
+    assert.equal((await run({ upsert: "settings", id: "profile", values: { goal: "again" } })).data.created, true, "upsert recreates a deleted record");
+    assert.equal((await run({ insert: "settings", values: { id: "bad id!", goal: "x" } })).data.code, "DATA_RECORD_ID_INVALID", "ids reject spaces");
+    await run({ drop: "settings" });
     assert.deepEqual((await run({ find: "missing" })).data, { items: [], next: null });
 
     const id = first.data.item.id as string;
@@ -136,7 +155,7 @@ test("a personal app stores records through JSON statements and syncs changes", 
     assert.equal((await run({ find: "books" }, other.token)).status, 404, "other accounts cannot see a personal app");
     assert.equal((await call(`/api/data/v1/apps`, { token: other.token })).data.items.length, 0);
     const listed = await call<{ items: Json[] }>(`/api/data/v1/apps`, { token: owner.token });
-    assert.deepEqual(listed.data.items.map((a) => [a.name, a.owner.kind, a.workspace, a.public]), [["Reading list", "user", "notes", false]]);
+    assert.deepEqual(listed.data.items.map((a) => [a.name, a.kind, a.owner.kind, a.workspace, a.public]), [["Reading list", "plugin", "user", "notes", false]]);
   } finally {
     await close();
   }
@@ -146,7 +165,7 @@ test("a public key reads and creates only where a collection opts in, within the
   const { call, account, close } = await fixture({ APP_DATA_ANONYMOUS_PER_MINUTE: "5" });
   try {
     const owner = await account("site@data.test");
-    const app = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Studio site" } })).data.app;
+    const app = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Studio site", kind: "site" } })).data.app;
     const run = (body: unknown, init: { token?: string; key?: string; ip?: string } = { token: owner.token }) =>
       call(`/api/data/v1/apps/${app.id}/run`, { ...init, body });
     assert.equal(
@@ -197,8 +216,8 @@ test("organization apps follow membership, quotas roll back and deletions purge 
     const outsider = await account("outsider@data.test");
     const enterprise = (await call<{ id: string }>("/api/v1/enterprises", { token: owner.token, origin: "http://localhost:4785", body: { name: "Acme" } })).data.id;
     await service.store.run("INSERT INTO members VALUES(?,?,?,?,?)", enterprise, member.id, "member", null, Date.now());
-    const app = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Team tasks", enterpriseId: enterprise } })).data.app;
-    assert.equal((await call("/api/data/v1/apps", { token: outsider.token, body: { name: "x", enterpriseId: enterprise } })).status, 403);
+    const app = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Team tasks", kind: "plugin", enterpriseId: enterprise } })).data.app;
+    assert.equal((await call("/api/data/v1/apps", { token: outsider.token, body: { name: "x", kind: "plugin", enterpriseId: enterprise } })).status, 403);
     const run = (body: unknown, token: string) => call<Json>(`/api/data/v1/apps/${app.id}/run`, { token, body });
 
     assert.equal((await run({ insert: "tasks", values: { title: "Plan" } }, member.token)).status, 200);
@@ -242,5 +261,29 @@ test("app data reports a missing database instead of falling back to the account
     assert.equal(response.data.code, "APP_DATA_NOT_CONFIGURED");
   } finally {
     await close();
+  }
+});
+
+test("upgrading app data to schema 2 classifies apps with public collections as sites", async () => {
+  const databaseUrl = process.env.TEST_DATABASE_URL ?? "postgresql://127.0.0.1:5432/ipollowork_test";
+  const schema = "test_" + randomUUID().replace(/-/g, "");
+  const admin = new Store({ databaseUrl, databasePoolSize: 1, databaseSchema: "public" });
+  await admin.run(`CREATE SCHEMA ${schema}`);
+  const store = new Store({ databaseUrl, databasePoolSize: 2, databaseSchema: schema });
+  try {
+    await store.run(await readFile(new URL("../src/app-data-schema.sql", import.meta.url), "utf8"));
+    await store.run("CREATE TABLE app_data_schema(version BIGINT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+    await store.run("INSERT INTO app_data_schema(version) VALUES(1)");
+    for (const [id, open] of [[randomUUID(), true], [randomUUID(), false]] as const) {
+      await store.run("INSERT INTO data_apps(id,owner_kind,owner_id,slug,name,public_key,created_by,created_at,updated_at) VALUES(?,'user','u',?,?,?,'u',1,1)", id, id, id, "pk_" + id);
+      await store.run("INSERT INTO data_collections(id,app_id,name,public_create,created_at) VALUES(?,?,'c',?,1)", randomUUID(), id, open);
+    }
+    await migrateAppData(store);
+    assert.deepEqual((await store.all("SELECT kind FROM data_apps ORDER BY kind")).map((r) => r.kind), ["plugin", "site"]);
+    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 2);
+  } finally {
+    await store.close();
+    await admin.run(`DROP SCHEMA ${schema} CASCADE`);
+    await admin.close();
   }
 });

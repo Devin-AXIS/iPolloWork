@@ -15,6 +15,7 @@ import { ServiceError } from "./errors.js";
 const createInput = z
   .object({
     name: z.string().trim().min(1).max(80),
+    kind: z.enum(["plugin", "site"]),
     slug: z
       .string()
       .regex(/^[a-z0-9][a-z0-9-]{0,47}$/)

@@ -74,7 +74,7 @@ function DataPanel(props: Props) {
   const owned = (list?.items ?? []).filter(app => ownerKey(app) === owner)
   const needle = query.trim().toLowerCase()
   const visible = owned.filter(app =>
-    (filter === 'all' || (filter === 'public') === app.public) &&
+    (filter === 'all' || app.kind === (filter === 'public' ? 'site' : 'plugin')) &&
     (!needle || app.name.toLowerCase().includes(needle) || origin(app, t).toLowerCase().includes(needle)))
 
   if (open)
@@ -123,7 +123,7 @@ function DataPanel(props: Props) {
             {([['all', t.all], ['plugin', t.plugins], ['public', t.publicApps]] as const).map(([id, label]) => (
               <button key={id} type="button" className={css.filterChip} aria-pressed={filter === id} onClick={() => setFilter(id)}>
                 {label}
-                <small>{id === 'all' ? owned.length : owned.filter(app => (id === 'public') === app.public).length}</small>
+                <small>{id === 'all' ? owned.length : owned.filter(app => app.kind === (id === 'public' ? 'site' : 'plugin')).length}</small>
               </button>
             ))}
           </div>
@@ -140,7 +140,7 @@ function DataPanel(props: Props) {
               <button key={app.id} type="button" className={css.dataCard} onClick={() => setOpen(app)}>
                 <span className={css.dataCardTop}>
                   <Monogram id={app.id} label={app.name} size={34} />
-                  <span className={css.chip} data-static data-tone={app.public ? 'strong' : undefined}>{app.public ? t.publicApp : t.plugin}</span>
+                  <span className={css.chip} data-static data-tone={app.kind === 'site' ? 'strong' : undefined}>{app.kind === 'site' ? t.publicApp : t.plugin}</span>
                 </span>
                 <strong>{app.name}</strong>
                 <span className={css.dataOrigin}>
@@ -228,7 +228,7 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
               <strong>{app.name}</strong>
               <span className={css.dataChips}>
                 <span className={css.chip} data-static>{ownerName}</span>
-                <span className={css.chip} data-static data-tone={app.public ? 'strong' : undefined}>{app.public ? t.publicApp : t.plugin}</span>
+                <span className={css.chip} data-static data-tone={app.kind === 'site' ? 'strong' : undefined}>{app.kind === 'site' ? t.publicApp : t.plugin}</span>
               </span>
               <span className={css.dataOrigin}>
                 <IconFolderOpenOutlineRegular size={12} />
@@ -254,7 +254,7 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
             )}
           </aside>
           <div className={css.dataMain}>
-            {app.public && (
+            {(app.kind === 'site' || app.public) && (
               <div className={css.dataKeys}>
                 <CopyRow label={t.endpoint} value={app.endpoint} t={t} />
                 <CopyRow label={t.publicKey} value={app.publicKey} t={t} />
