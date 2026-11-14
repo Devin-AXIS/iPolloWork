@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import sharp from "sharp";
 
-import type { AuthorizationAccess } from "../authorization-center.js";
-import { listAuthorizationServices, readAuthorizationServiceValues, saveAuthorizationService, testAuthorizationService } from "../authorization-center.js";
+import { createAuthorizationAccess, listAuthorizationServices, readAuthorizationServiceValues, saveAuthorizationService, testAuthorizationService, type AuthorizationAccess } from "../authorization-center.js";
 import { PROVIDER_FETCH_SYMBOL } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
 import { callOpenAiImageGenerationExtensionAction, openAiImageGenerationStatus, OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS } from "./openai-image-generation.js";
@@ -710,5 +709,106 @@ describe("OpenAI image editing", () => {
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({ code: "image_model_unavailable" });
     expect(called).toBe(false);
+  });
+});
+
+describe("MiniMax character reference images", () => {
+  test("stores the image credential privately in the authorization vault", async () => {
+    const root = await temporaryRoot();
+    const settings = config(root);
+    const saved = await saveAuthorizationService(settings, "minimax-images", { MINIMAX_API_KEY: "test-key" });
+    expect(saved).toMatchObject({ id: "minimax-images", configured: true, fields: [{ key: "MINIMAX_API_KEY", configured: true }] });
+    expect(JSON.stringify(saved)).not.toContain("test-key");
+    expect(await createAuthorizationAccess(settings).read("minimax-images")).toEqual({ MINIMAX_API_KEY: "test-key" });
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { throw new Error("No billable request during connection test"); });
+    expect(await testAuthorizationService(settings, "minimax-images")).toMatchObject({ ok: true, detail: "API key saved. MiniMax permissions and balance are checked when an image is requested." });
+  });
+
+  const miniMaxAuthorization: AuthorizationAccess = { read: async serviceId => {
+    expect(serviceId).toBe("minimax-images");
+    return { MINIMAX_API_KEY: "test-key" };
+  } };
+  const referenceArgs = { sourcePath: "portrait.png", prompt: "The same character in a garden", model: "image-01" };
+
+  test("registers character reference semantics separately from masks and selections", () => {
+    const action = OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS.find(item => item.action === "minimax_image_reference");
+    expect(action?.inputSchema).toMatchObject({ required: ["sourcePath", "prompt", "model"], additionalProperties: false });
+    expect(action?.description).toContain("Does not support masks");
+  });
+
+  test.each([
+    { region: "global_en", endpoint: "https://api.minimax.io/v1/image_generation", model: "image-01", format: "png" },
+    { region: "cn_zh", endpoint: "https://api.minimaxi.com/v1/image_generation", model: "image-01-live", format: "jpeg" },
+  ])("maps a $format portrait to $region and saves a separate session artifact", async ({ region, endpoint, model, format }) => {
+    const root = await temporaryRoot();
+    const original = format === "jpeg" ? await sharp(await solidPng(20)).jpeg().toBuffer() : await solidPng(20);
+    const generated = await solidPng(220);
+    await writeFile(join(root, referenceArgs.sourcePath), original);
+    let requests = 0;
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (input: string | URL | Request, init?: RequestInit) => {
+      requests++;
+      expect(String(input)).toBe(endpoint);
+      expect(new Headers(init?.headers).get("Authorization")).toBe("Bearer test-key");
+      expect(init?.redirect).toBe("error");
+      expect(JSON.parse(String(init?.body))).toEqual({ model, prompt: referenceArgs.prompt, subject_reference: [{ type: "character", image_file: `data:image/${format};base64,${original.toString("base64")}` }], response_format: "base64", n: 1 });
+      return Response.json({ base_resp: { status_code: 0 }, data: { image_base64: [generated.toString("base64")] } });
+    });
+    const settings = config(root);
+    const result = await callOpenAiImageGenerationExtensionAction(settings, miniMaxAuthorization, "minimax_image_reference", { ...referenceArgs, model, region }, { workspaceId: "workspace", sessionId: "reference-session" });
+    if (!result || !("path" in result) || !result.path) throw new Error("Expected an image artifact");
+    expect(requests).toBe(1);
+    expect((await readFile(join(root, referenceArgs.sourcePath))).equals(original)).toBe(true);
+    const saved = await readFile(join(root, result.path));
+    expect((await sharp(saved).raw().toBuffer())[0]).toBe(220);
+    expect(result).toMatchObject({ ok: true, result: { model, provider: "minimax", region, width: 4, height: 4 } });
+    expect((await listSessionArtifacts(settings, "workspace", "reference-session")).items.map(item => item.path)).toContain(result.path);
+    expect(JSON.stringify(result)).not.toContain("test-key");
+  });
+
+  test.each([
+    { maskDataUrl: "data:image/png;base64,AAAA" }, { selectionId: "selection" }, { selectionBounds: {} },
+    { region: "untrusted" }, { model: "unknown" }, { prompt: "x".repeat(1501) }, { model: "" }, { region: 7 },
+  ])("rejects unsupported reference inputs before credentials or network", async overrides => {
+    const root = await temporaryRoot();
+    const denied: AuthorizationAccess = { read: async () => { throw new Error("Credentials must not be read"); } };
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { throw new Error("Network must not be called"); });
+    await expect(callOpenAiImageGenerationExtensionAction(config(root), denied, "minimax_image_reference", { ...referenceArgs, ...overrides }, { workspaceId: "workspace" })).rejects.toMatchObject({ status: 400, code: "invalid_payload" });
+  });
+
+  test("rejects traversal, symlinks, oversized and unsupported images before authorization", async () => {
+    const root = await temporaryRoot();
+    const outside = await temporaryRoot();
+    const denied: AuthorizationAccess = { read: async () => { throw new Error("Credentials must not be read"); } };
+    await writeFile(join(outside, "portrait.png"), await solidPng(20));
+    await symlink(join(outside, "portrait.png"), join(root, "linked.png"));
+    await writeFile(join(root, "huge.png"), "");
+    await truncate(join(root, "huge.png"), 10 * 1024 * 1024);
+    await writeFile(join(root, "portrait.webp"), await sharp(await solidPng(20)).webp().toBuffer());
+    for (const sourcePath of ["../portrait.png", "linked.png", "huge.png", "portrait.webp"]) {
+      await expect(callOpenAiImageGenerationExtensionAction(config(root), denied, "minimax_image_reference", { ...referenceArgs, sourcePath }, { workspaceId: "workspace" })).rejects.toMatchObject({ status: 400 });
+    }
+  });
+
+  test("requires authorization and rejects writes to a read-only workspace", async () => {
+    const root = await temporaryRoot();
+    await writeFile(join(root, referenceArgs.sourcePath), await solidPng(20));
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { throw new Error("Network must not be called"); });
+    await expect(callOpenAiImageGenerationExtensionAction(config(root), { read: async () => ({}) }, "minimax_image_reference", referenceArgs, {})).rejects.toMatchObject({ code: "minimax_api_key_missing" });
+    await expect(callOpenAiImageGenerationExtensionAction({ ...config(root), readOnly: true }, miniMaxAuthorization, "minimax_image_reference", referenceArgs, {})).rejects.toMatchObject({ status: 403, code: "read_only" });
+  });
+
+  test.each([
+    { base_resp: { status_code: 1008, status_msg: "test-key" } },
+    { base_resp: { status_code: 0 }, data: { image_urls: ["https://example.com/image.png"] } },
+    { base_resp: { status_code: 0 }, data: { image_base64: ["not-base64"] } },
+    { base_resp: { status_code: 0 }, data: { image_base64: ["AAAA"] } },
+    { data: { image_base64: ["AAAA"] } },
+  ])("rejects errors and malformed output without revealing provider payloads", async payload => {
+    const root = await temporaryRoot();
+    await writeFile(join(root, referenceArgs.sourcePath), await solidPng(20));
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => Response.json(payload));
+    const request = callOpenAiImageGenerationExtensionAction(config(root), miniMaxAuthorization, "minimax_image_reference", referenceArgs, {});
+    await expect(request).rejects.toMatchObject({ status: 502 });
+    await expect(request).rejects.not.toThrow("test-key");
   });
 });
