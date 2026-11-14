@@ -40,6 +40,7 @@ const serviceSchema = z.object({
     z.object({ method: z.string(), path: z.string(), points: z.number() }),
   ),
   available: z.boolean(),
+  enterprise: z.object({ id: z.string(), name: z.string() }).nullable().default(null),
 })
 const catalogSchema = z.object({
   items: z.array(serviceSchema),

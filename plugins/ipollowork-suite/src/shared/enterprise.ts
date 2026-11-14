@@ -30,3 +30,15 @@ export interface ProjectSpace {
   project:{id:string;title:string;enterpriseId:string|null;role:ProjectRole;accessMode:'enterprise'|'selected'}
   memory:{text:string;version:number};files:ProjectFile[];fileVersion:number;changes:ProjectChange[]
 }
+/** Who may use an enterprise asset: every member, or the listed departments and members. Managers always may. */
+export interface Audience { all: boolean; departments: string[]; members: string[] }
+export interface EnterprisePackage { id: string; title: string; description: string; fileCount: number; bytes: number; updatedAt: number; audience: Audience }
+export interface PackageFile { id: string; name: string; bytes: number; mime: string; addedAt: number; addedBy: string }
+export interface PackageDetail { package: { id: string; title: string; description: string; audience: Audience }; files: PackageFile[] }
+/** `name` is the skill's name in each permitted member's DSH. */
+export interface EnterpriseSkill { id: string; title: string; description: string; name: string; bytes: number; updatedAt: number; audience: Audience }
+export interface EnterpriseAssets { canManage: boolean; packages: EnterprisePackage[]; skills: EnterpriseSkill[] }
+export interface EnterpriseModelEntry { id: string; name: string; contextWindow: number; maxTokens: number }
+/** An enterprise-owned model connection; the key never leaves the account service. */
+export interface EnterpriseModel { id: string; title: string; baseUrl: string; models: EnterpriseModelEntry[]; enabled: boolean; configured: boolean; headerName: string; headerPrefix: string; audience: Audience }
+export interface ModelProbe { ok: boolean; status: number; latency: number; reason?: 'auth' | 'unreachable' | 'timeout' | 'upstream' | undefined; models: string[] }

@@ -86,12 +86,13 @@ test('schema seven preserves existing project share records and fork permissions
   const schema=await readFile(new URL('../src/migration-005.sql',import.meta.url),'utf8');
   service.store.db.exec(schema.split('CREATE TABLE live_codes')[0]!);
   service.store.run('INSERT INTO live_shares(id,owner_id,project_id,source_session,mode,title,created_at) VALUES(?,?,?,?,?,?,?)','legacy',owner.user.id,'project','source','write','Existing',Date.now());
+  service.store.db.exec('DROP TABLE enterprise_grants; DROP TABLE package_files; DROP TABLE file_packages; DROP TABLE enterprise_services');
   service.store.db.exec('PRAGMA user_version=6');service.close();
   service=await createService(config);
   const row=service.store.one('SELECT * FROM live_shares WHERE id=?','legacy');
   assert.equal(row?.project_id,'project');assert.equal(row?.title,'Existing');
   assert.equal(row?.audience_json,'{"kind":"project"}');assert.equal(row?.allows_fork,1);
-  assert.equal(service.store.one('PRAGMA user_version')?.user_version,7);
+  assert.equal(service.store.one('PRAGMA user_version')?.user_version,8);
  } finally {service.close();await rm(dir,{recursive:true,force:true});}
 });
 

@@ -68,7 +68,25 @@ const en = {
   tooLarge: 'This conversation is too large to share as one snapshot.', projectMissing: 'This project is no longer available.',
   chooseColleague: 'Select at least one colleague.', sharingScope: 'Shared text is available only to the selected enterprise members.',
   changed: 'The conversation changed. Reopen the preview before sharing.',
-  inviteByEmail:'Invite by email', inviteSent:'Invitation link ready for {email}', newDepartment:'Department', departmentName:'Department name', changeRole:'Change role', changeDepartment:'Move to department', dismiss:'Dismiss'
+  inviteByEmail:'Invite by email', inviteSent:'Invitation link ready for {email}', newDepartment:'Department', departmentName:'Department name', changeRole:'Change role', changeDepartment:'Move to department', dismiss:'Dismiss',
+  departmentsTab:'Departments', filesTab:'Files', skillsTab:'Skills', modelsTab:'Models',
+  statMembers:'Members', statDepartments:'Departments', statPackages:'File packages', statSkills:'Skills', statModels:'Models',
+  everyoneAccess:'Everyone', managersOnly:'Managers only', accessTitle:'Who can use this', accessHint:'Owners and administrators can always use it.', peopleCount:'{count} people',
+  departmentsLabel:'Departments', peopleLabel:'People', searchPeople:'Search people', accessSaved:'Access updated', deleteAction:'Delete', rename:'Rename',
+  noDepartments:'No departments yet', noDepartmentsHint:'Create departments to grant files, skills and models by team.', departmentMembers:'Members', departmentAccess:'Can use',
+  deleteDepartmentTitle:'Delete “{name}”?', deleteDepartmentBody:'Its members become unassigned and grants to this department are removed.', addToDepartment:'Add member', removeFromDepartment:'Remove from department',
+  noDepartmentMembers:'No members in this department yet', departmentRenamed:'Department renamed', departmentRemoved:'Department deleted', noAssetsYet:'Nothing to grant yet', viaEveryone:'Everyone can use this',
+  newPackage:'New file package', packageName:'Package name', noPackages:'No file packages yet', noPackagesHint:'Put materials in a package, then choose which departments and colleagues can use it.',
+  fileCount:'{count} files', upload:'Upload', dropFiles:'Drop files here or click to upload', uploading:'Uploading…', noFiles:'This package is empty', download:'Download',
+  deletePackageTitle:'Delete package “{name}”?', deletePackageBody:'The package and its files will no longer be available to anyone.', packageCreated:'File package created', filesUploaded:'{count} files uploaded',
+  fileTooLarge:'Each file must be 24 MB or smaller', removeFileTitle:'Remove “{name}”?', removeFileBody:'Colleagues will no longer be able to download this file.',
+  newSkill:'New skill', skillTitle:'Name', skillDescription:'When to use it', skillDescriptionHint:'The model reads this to decide when to use the skill.', skillContent:'Instructions', importMarkdown:'Import Markdown',
+  noSkills:'No enterprise skills yet', noSkillsHint:'Shared ways of working live here. Colleagues with access can use them in their own DSH.', skillCreated:'Skill created',
+  deleteSkillTitle:'Delete skill “{name}”?', deleteSkillBody:'Colleagues will no longer be able to use this skill.', skillNameHint:'Name in DSH: {name}',
+  newModel:'Connect a model', noModels:'No enterprise models yet', noModelsHint:'Connect the enterprise’s own provider key and grant models by department. Usage is billed by the provider to the enterprise, not to personal points.',
+  endpoint:'Endpoint', apiKey:'Key', keySaved:'Saved; leave blank to keep', pasteKey:'Paste API key', test:'Test', testing:'Testing…', modelsToOffer:'Models offered to colleagues', custom:'Custom',
+  connected:'Connected · {ms} ms', modelCount:'{count} models', chatOk:'Chat works', chatFailed:'Chat failed', keyRejected:'Key rejected', unreachable:'Endpoint unreachable', timedOut:'Timed out', upstreamStatus:'Endpoint returned {status}',
+  enabledLabel:'Enabled', modelSaved:'Model saved', deleteModelTitle:'Remove model “{name}”?', deleteModelBody:'Colleagues will no longer be able to choose this model.', notConfigured:'Key missing', modelDisabled:'Disabled', modelEnabled:'Enabled'
 }
 const zh: typeof en = {
   localShareHint:'当前账户服务仅在本机运行；同事跨电脑使用分享链接前，需要连接团队共用的服务地址',
@@ -138,7 +156,25 @@ const zh: typeof en = {
   tooLarge: '会话内容过多，请拆分后分享', projectMissing: '此项目已不可用',
   chooseColleague: '请至少选择一位同事', sharingScope: '分享文字仅对所选企业成员开放',
   changed: '会话内容已更新，请重新打开预览后分享',
-  inviteByEmail:'输入邮箱，邀请同事', inviteSent:'已为 {email} 生成邀请链接', newDepartment:'部门', departmentName:'部门名称', changeRole:'修改身份', changeDepartment:'调整部门', dismiss:'关闭'
+  inviteByEmail:'输入邮箱，邀请同事', inviteSent:'已为 {email} 生成邀请链接', newDepartment:'部门', departmentName:'部门名称', changeRole:'修改身份', changeDepartment:'调整部门', dismiss:'关闭',
+  departmentsTab:'部门', filesTab:'文件', skillsTab:'Skill', modelsTab:'模型',
+  statMembers:'成员', statDepartments:'部门', statPackages:'文件包', statSkills:'Skill', statModels:'企业模型',
+  everyoneAccess:'全员可用', managersOnly:'仅管理员', accessTitle:'谁可以使用', accessHint:'所有者和管理员始终可以使用', peopleCount:'{count} 人',
+  departmentsLabel:'部门', peopleLabel:'成员', searchPeople:'搜索成员', accessSaved:'权限已更新', deleteAction:'删除', rename:'重命名',
+  noDepartments:'还没有部门', noDepartmentsHint:'建好部门后，可以按部门分配文件、Skill 和模型', departmentMembers:'成员', departmentAccess:'可以使用',
+  deleteDepartmentTitle:'删除「{name}」？', deleteDepartmentBody:'部门成员会变为未分配，给这个部门的授权会一起移除', addToDepartment:'添加成员', removeFromDepartment:'移出部门',
+  noDepartmentMembers:'这个部门还没有成员', departmentRenamed:'部门已重命名', departmentRemoved:'部门已删除', noAssetsYet:'还没有可以分配的内容', viaEveryone:'已设为全员可用',
+  newPackage:'新建文件包', packageName:'文件包名称', noPackages:'还没有文件包', noPackagesHint:'把资料放进文件包，再决定哪些部门和同事可以使用',
+  fileCount:'{count} 个文件', upload:'上传', dropFiles:'拖入文件，或点击上传', uploading:'正在上传…', noFiles:'文件包还是空的', download:'下载',
+  deletePackageTitle:'删除文件包「{name}」？', deletePackageBody:'文件包和其中的文件将对所有人不可用', packageCreated:'文件包已创建', filesUploaded:'已上传 {count} 个文件',
+  fileTooLarge:'单个文件不能超过 24MB', removeFileTitle:'移除「{name}」？', removeFileBody:'同事将不能再下载这个文件',
+  newSkill:'新建 Skill', skillTitle:'名称', skillDescription:'什么时候用', skillDescriptionHint:'模型根据这句话判断何时使用', skillContent:'内容', importMarkdown:'导入 Markdown',
+  noSkills:'还没有企业 Skill', noSkillsHint:'把团队的工作方法沉淀在这里，有权限的同事在自己的 DSH 里直接就能用', skillCreated:'Skill 已创建',
+  deleteSkillTitle:'删除 Skill「{name}」？', deleteSkillBody:'同事将不能再使用这个 Skill', skillNameHint:'在 DSH 里的名称：{name}',
+  newModel:'接入模型', noModels:'还没有企业模型', noModelsHint:'接入企业自己的模型 Key，按部门分给同事使用；费用由企业直接和厂商结算，不扣个人积分',
+  endpoint:'接口地址', apiKey:'Key', keySaved:'已保存，留空保持不变', pasteKey:'粘贴 API Key', test:'测试', testing:'测试中…', modelsToOffer:'开放给同事的模型', custom:'自定义',
+  connected:'已连通 · {ms}ms', modelCount:'{count} 个模型', chatOk:'对话正常', chatFailed:'对话失败', keyRejected:'Key 无效或无权限', unreachable:'无法连接到接口地址', timedOut:'连接超时', upstreamStatus:'接口返回 {status}',
+  enabledLabel:'启用', modelSaved:'模型已保存', deleteModelTitle:'移除模型「{name}」？', deleteModelBody:'同事将不能再选择这个模型', notConfigured:'未填写 Key', modelDisabled:'已停用', modelEnabled:'已启用'
 }
 export type EnterpriseLabels = typeof en
 export function enterpriseCopy(ctx: ClientContext): EnterpriseLabels { return language(ctx) === 'zh' ? zh : en }

@@ -73,7 +73,7 @@ test("standalone service: identity, enterprise isolation, files and payments", a
       assert.equal((await http("/api/v1/projects/"+created.data.id,outsider.token,{enterpriseId:null},"PATCH")).status,403);
       assert.equal((await http("/api/v1/projects/"+created.data.id,owner.token,{enterpriseId:null},"PATCH")).status,200);
       assert.equal((await http("/api/v1/shares/"+share.data.id,owner.token)).status,404);
-      assert.equal(service.store.one("PRAGMA user_version")?.user_version,7);
+      assert.equal(service.store.one("PRAGMA user_version")?.user_version,8);
     });
     await t.test("invitations are email-bound, verified, idempotent and department-scoped", async () => {
       const department = await http<{ id: string }>("/api/v1/enterprises/" + id + "/departments", owner.token, { name: "研发" });

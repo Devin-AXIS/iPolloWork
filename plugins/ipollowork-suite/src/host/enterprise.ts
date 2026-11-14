@@ -3,11 +3,30 @@ import { createHash } from 'node:crypto'
 import type { AccountService } from './account.ts'
 import { SuiteError } from './errors.ts'
 import { linkProject } from './project-context.ts'
+import type { EnterpriseAssets, PackageDetail, EnterpriseModel, ModelProbe } from '../shared/enterprise.ts'
 import type { Enterprise, EnterpriseCatalog, EnterpriseDetail, EnterpriseProject, SharePreview, SharedConversationDetail, ProjectWork, ProjectCollaboration, WorkDetail, ProjectUpdate } from '../shared/enterprise.ts'
 
 const id = z.string().min(1).max(200).regex(/^[A-Za-z0-9_-]+$/)
 const name = z.string().trim().min(1).max(120)
 const row = z.record(z.string(), z.unknown())
+const audience = z.object({ all: z.boolean(), departments: z.array(id).max(200), members: z.array(id).max(500) }).strict()
+const description = z.string().trim().max(2000)
+const modelEntry = z.object({ id: z.string().min(1).max(200), name: z.string().min(1).max(200), contextWindow: z.number().int().min(1024), maxTokens: z.number().int().min(1) }).strict()
+const httpUrl = z.url().max(2000).refine(value => /^https?:\/\//.test(value))
+const headerName = z.string().regex(/^[A-Za-z][A-Za-z0-9-]*$/).max(100)
+const headerPrefix = z.string().max(50).refine(value => !/[\r\n]/.test(value))
+const key = z.string().max(8192).refine(value => !/[\r\n]/.test(value))
+const assetsResponse = z.object({
+  canManage: z.boolean(),
+  packages: z.array(z.object({ id, title: z.string(), description: z.string(), fileCount: z.number(), bytes: z.number(), updatedAt: z.number(), audience })).max(200),
+  skills: z.array(z.object({ id, title: z.string(), description: z.string(), name: z.string(), bytes: z.number(), updatedAt: z.number(), audience })).max(200),
+})
+const packageResponse = z.object({
+  package: z.object({ id, title: z.string(), description: z.string(), audience }),
+  files: z.array(z.object({ id, name: z.string(), bytes: z.number(), mime: z.string(), addedAt: z.number(), addedBy: z.string() })).max(500),
+})
+const modelsResponse = z.object({ items: z.array(z.object({ id, title: z.string(), baseUrl: z.string(), models: z.array(modelEntry), enabled: z.boolean(), configured: z.boolean(), headerName: z.string(), headerPrefix: z.string(), audience })).max(200) })
+const probeResponse = z.object({ ok: z.boolean(), status: z.number(), latency: z.number(), reason: z.enum(['auth', 'unreachable', 'timeout', 'upstream']).optional(), models: z.array(z.string()).max(200) })
 const list = z.object({ items: z.array(row).max(500) })
 const nullableString = (value: unknown): string | null => value === null || value === undefined ? null : z.string().parse(value)
 const string = (value: unknown): string => z.string().parse(value)
@@ -139,6 +158,37 @@ export class EnterpriseService {
       if (method === 'POST' && parts[2] === 'departments' && parts.length === 3) return this.cloud(base + '/departments', z.object({ name }).parse(input))
       if (method === 'POST' && parts[2] === 'invitations' && parts.length === 3) return this.cloud(base + '/invitations', z.object({ email: z.email(), role: z.enum(['admin','member']), departmentId: id.nullable() }).parse(input))
       if (method === 'DELETE' && parts[2] === 'invitations' && parts.length === 4) return this.cloud(base + '/invitations/' + id.parse(parts[3]), undefined, 'DELETE')
+      if (parts[2] === 'departments' && parts.length === 4) {
+        if (method === 'PATCH') return this.cloud(base + '/departments/' + id.parse(parts[3]), z.object({ name }).parse(input), 'PATCH')
+        if (method === 'DELETE') return this.cloud(base + '/departments/' + id.parse(parts[3]), undefined, 'DELETE')
+      }
+      if (method === 'GET' && parts[2] === 'assets' && parts.length === 3) return assetsResponse.parse(await this.cloud(base + '/assets')) satisfies EnterpriseAssets
+      if (method === 'PUT' && parts[2] === 'grants' && parts.length === 3)
+        return this.cloud(base + '/grants', z.object({ kind: z.enum(['package', 'skill', 'service']), assetId: id, audience }).parse(input), 'PUT')
+      if (parts[2] === 'packages') {
+        if (method === 'POST' && parts.length === 3) return this.cloud(base + '/packages', z.object({ title: name, description: description.optional(), audience: audience.optional() }).parse(input))
+        const target = parts[3] ? base + '/packages/' + id.parse(parts[3]) : ''
+        if (method === 'GET' && parts.length === 4) return packageResponse.parse(await this.cloud(target)) satisfies PackageDetail
+        if (method === 'PATCH' && parts.length === 4) return this.cloud(target, z.object({ title: name.optional(), description: description.optional() }).parse(input), 'PATCH')
+        if (method === 'DELETE' && parts.length === 4) return this.cloud(target, undefined, 'DELETE')
+        if (method === 'DELETE' && parts.length === 6 && parts[4] === 'files') return this.cloud(target + '/files/' + id.parse(parts[5]), undefined, 'DELETE')
+      }
+      if (parts[2] === 'skills') {
+        if (method === 'POST' && parts.length === 3)
+          return this.cloud(base + '/skills', z.object({ title: name, description: z.string().trim().min(1).max(1000), content: z.string().trim().min(1).max(200_000), audience: audience.optional() }).parse(input))
+        if (method === 'DELETE' && parts.length === 4) return this.cloud(base + '/skills/' + id.parse(parts[3]), undefined, 'DELETE')
+      }
+      if (parts[2] === 'services') {
+        if (method === 'GET' && parts.length === 3) return modelsResponse.parse(await this.cloud(base + '/services')).items satisfies EnterpriseModel[]
+        if (method === 'PUT' && parts.length === 3) return this.cloud(base + '/services', z.object({
+          id: id.optional(), title: name, baseUrl: httpUrl, key: key.optional(), headerName: headerName.optional(), headerPrefix: headerPrefix.optional(),
+          models: z.array(modelEntry).max(200), enabled: z.boolean().optional(), audience: audience.optional(),
+        }).strict().parse(input), 'PUT')
+        if (method === 'POST' && parts.length === 4 && parts[3] === 'probe') return probeResponse.parse(await this.cloud(base + '/services/probe', z.object({
+          serviceId: id.optional(), baseUrl: httpUrl, key: key.optional(), headerName: headerName.optional(), headerPrefix: headerPrefix.optional(), model: z.string().min(1).max(200).optional(),
+        }).strict().parse(input))) satisfies ModelProbe
+        if (method === 'DELETE' && parts.length === 4) return this.cloud(base + '/services/' + id.parse(parts[3]), undefined, 'DELETE')
+      }
       if (parts[2] === 'members' && parts.length === 4) {
         if (method === 'PATCH') return this.cloud(base + '/members/' + id.parse(parts[3]), z.object({ role: z.enum(['admin','member']), departmentId: id.nullable() }).parse(input), 'PATCH')
         if (method === 'DELETE') return this.cloud(base + '/members/' + id.parse(parts[3]), undefined, 'DELETE')

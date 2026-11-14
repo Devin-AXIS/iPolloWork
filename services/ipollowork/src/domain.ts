@@ -22,6 +22,15 @@ export function enterpriseAccess(store: Store, actor: Actor, id: string, manage 
   }
   return enterprise;
 }
+/** Site administrators and the enterprise's owner or administrators manage its departments and assets. */
+export function isEnterpriseManager(store: Store, actor: Actor, enterpriseId: string): boolean {
+  if (actor.role === "admin") return true;
+  const role = store.one<{ role: string }>("SELECT role FROM members WHERE enterprise_id=? AND user_id=?", enterpriseId, actor.id)?.role;
+  return role === "owner" || role === "admin";
+}
+export function requireEnterpriseManager(store: Store, actor: Actor, enterpriseId: string) {
+  enterpriseAccess(store, actor, enterpriseId, true);
+}
 export function departmentAccess(store: Store, enterpriseId: string, departmentId?: string | null) {
   if (departmentId && !store.one("SELECT id FROM departments WHERE id=? AND enterprise_id=?", departmentId, enterpriseId)) {
     throw new ServiceError("DEPARTMENT_MISMATCH", 400, "部门不属于该企业");

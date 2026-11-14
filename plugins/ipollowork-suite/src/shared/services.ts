@@ -14,6 +14,8 @@ export interface OfficialService {
   basePath: string
   routes: { method: string; path: string; points: number }[]
   available: boolean
+  /** The owning enterprise for an enterprise model, which bills the enterprise's own provider account; null for official services. */
+  enterprise: { id: string; name: string } | null
 }
 export interface ServiceCatalog {
   items: OfficialService[]

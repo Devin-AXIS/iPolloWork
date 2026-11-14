@@ -6,6 +6,7 @@ import type { Store } from "./database.js";
 import type { Config } from "./config.js";
 import { audit, departmentAccess, enterpriseAccess, now, projectAccess, shareAccess, uid } from "./domain.js";
 import { ServiceError } from "./errors.js";
+import { dropAudience } from "./grants.js";
 
 const name = z.string().trim().min(1).max(120);
 const email = z.email().transform(v => v.toLowerCase());
@@ -68,7 +69,7 @@ export function mountEnterprise(app: App, store: Store, config: Config) {
     const id = c.req.param("id"), target = c.req.param("userId"), actor = c.get("actor");
     const enterprise = enterpriseAccess(store, actor, id, true);
     if (target === enterprise.owner_id) throw new ServiceError("OWNER_IMMUTABLE", 409);
-    store.transaction(() => { store.run("DELETE FROM members WHERE enterprise_id=? AND user_id=?", id, target); audit(store, actor, "member.remove", target); });
+    store.transaction(() => { store.run("DELETE FROM members WHERE enterprise_id=? AND user_id=?", id, target); dropAudience(store, id, "member", target); audit(store, actor, "member.remove", target); });
     return c.json({ ok: true });
   });
   app.post("/api/v1/enterprises/:id/invitations", async c => {

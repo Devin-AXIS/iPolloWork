@@ -14,7 +14,7 @@ export type EnterpriseView =
   | { kind: 'project'; id: string }
   | { kind: 'work'; id: string }
   | { kind: 'share'; id: string }
-export type EnterpriseTab = 'activity' | 'projects' | 'members'
+export type EnterpriseTab = 'activity' | 'projects' | 'members' | 'departments' | 'files' | 'skills' | 'models'
 export interface EnterpriseToast { id: number; text: string }
 export interface EnterpriseState {
   catalog: EnterpriseCatalog | null; loading: boolean; error: string; dialog: EnterpriseDialog | null; signedIn: boolean

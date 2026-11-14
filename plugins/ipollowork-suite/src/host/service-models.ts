@@ -160,7 +160,7 @@ export function mountServiceModels(
           }))
           nextProfiles.set(provider, {
             provider,
-            displayName: 'iPolloWork · ' + service.title,
+            displayName: (service.enterprise ? service.enterprise.name : 'iPolloWork') + ' · ' + service.title,
             api: 'openai-completions',
             baseURL,
             streamIdleTimeoutMs: 120000,
@@ -171,7 +171,7 @@ export function mountServiceModels(
             requestImageMaxBytes: 1000000,
             retryPolicy: resolveRetryPolicy(
               { mode: 'normal', maxRetries: 0 },
-              'iPolloWork official service',
+              service.enterprise ? 'iPolloWork enterprise model' : 'iPolloWork official service',
             ),
             modelErrors: new Map(),
             configuredMaxTokens: new Map(),

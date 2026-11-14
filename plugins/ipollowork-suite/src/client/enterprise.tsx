@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Button, IconChevronDownOutlineRegular, IconRefreshOutlineRegular, IconUsersOutlineRegular, IconWorkspaceTreeOutlineRegular, Menu, Modal, SegmentedTabs, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconChevronDownOutlineRegular, IconPlusOutlineRegular, IconRefreshOutlineRegular, IconUsersOutlineRegular, IconWorkspaceTreeOutlineRegular, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { EnterpriseCatalog, EnterpriseDetail, ProjectWork, ProjectGrant } from '../shared/enterprise.ts'
 import type { ClientContext } from './native.ts'
 import type { AccountController } from './account.tsx'
@@ -11,6 +11,7 @@ import { EnterpriseDirectoryFlow, ProjectCreationDialog, type ProjectCreationPro
 import { ActivityTab, ProjectView, ProjectsTab, type CollaborationActions, type ViewProps } from './collaboration.tsx'
 import { InviteDialog, MemberDialog, MembersTab, NoEnterprise } from './enterprise-members.tsx'
 import { ShareAudience } from './enterprise-share.tsx'
+import { DepartmentsTab, EnterpriseStats, FilesTab, ModelsTab, SkillsTab, useEnterpriseAssets } from './enterprise-assets.tsx'
 import { ConfirmDialog, EmptyState, Field, FormError, ListSkeleton, Notice, ToastHost, roleName, useRecord, useTask } from './enterprise-ui.tsx'
 import css from './suite.module.css'
 
@@ -65,12 +66,6 @@ function EnterprisePanel(props: Props) {
   const view: ViewProps = { t, language, call: controller.call, controller, catalog, revision: state.revision, actions: props.actions }
   const top = state.views.at(-1)
   const enterpriseId = state.enterpriseId
-  const tabs = [
-    { value: 'activity' as const, label: t.activity, id: 'ipw-enterprise-tab-activity', panelId: 'ipw-enterprise-panel-activity' },
-    { value: 'projects' as const, label: t.projectsTab, id: 'ipw-enterprise-tab-projects', panelId: 'ipw-enterprise-panel-projects' },
-    { value: 'members' as const, label: t.membersTab, id: 'ipw-enterprise-tab-members', panelId: 'ipw-enterprise-panel-members' },
-  ] as const
-  const active = tabs.find(tab => tab.value === state.tab) ?? tabs[0]
   return <section className={css.page + ' ' + css.enterprisePage} data-ipw-enterprise>
     {top ? <div key={JSON.stringify(top)} className={css.enterpriseView}>
       {<ProjectView id={top.id} view={view}/>}
@@ -78,21 +73,41 @@ function EnterprisePanel(props: Props) {
       <div className={css.heading}>
         <div><h1>{t.title}</h1><p>{t.intro}</p></div>
         <div className={css.enterpriseActions}>
+          {enterpriseId && catalog.enterprises.find(e => e.id === enterpriseId)?.role !== 'member' && <Button variant="primary" size="sm" icon={<IconPlusOutlineRegular size={14}/>} onClick={() => controller.open({ kind: 'invite', enterpriseId })}>{t.invite}</Button>}
           {enterpriseId && <EnterpriseSwitcher catalog={catalog} enterpriseId={enterpriseId} t={t} controller={controller}/>}
           <Button variant="ghost" size="sm" aria-label={t.refresh} title={t.refresh} disabled={state.loading} icon={<IconRefreshOutlineRegular size={16}/>} onClick={() => void controller.load()}/>
         </div>
       </div>
       <Notice error={state.error} t={t} retry={() => void controller.load()}/>
-      {!enterpriseId ? <NoEnterprise t={t} controller={controller}/> : <>
-        <SegmentedTabs className={css.enterpriseTabs} label={t.title} items={tabs} value={active.value} onChange={(tab: EnterpriseTab) => controller.selectTab(tab)}/>
-        <div id={active.panelId} role="tabpanel" aria-labelledby={active.id} className={css.enterpriseView}>
-          {active.value === 'activity' ? <ActivityTab enterpriseId={enterpriseId} view={view}/>
-            : active.value === 'projects' ? <ProjectsTab enterpriseId={enterpriseId} view={view}/>
-            : <MembersTab enterpriseId={enterpriseId} userId={catalog.userId} revision={state.revision} t={t} call={controller.call} controller={controller}/>}
-        </div>
-      </>}
+      {!enterpriseId ? <NoEnterprise t={t} controller={controller}/> : <EnterpriseBody enterpriseId={enterpriseId} userId={catalog.userId} tab={state.tab} view={view} t={t} language={language} controller={controller} revision={state.revision}/>}
     </>}
   </section>
+}
+
+/** Stats, tabs and the selected tab for one enterprise; the enterprise record is read once for every tab. */
+function EnterpriseBody({ enterpriseId, userId, tab, view, t, language, controller, revision }: { enterpriseId: string; userId: string; tab: EnterpriseTab; view: ViewProps; t: EnterpriseLabels; language: string; controller: EnterpriseController; revision: number }) {
+  const detail = useRecord<EnterpriseDetail>('/organizations/' + enterpriseId, controller.call, revision)
+  const { assets, models } = useEnterpriseAssets(enterpriseId, controller.call, revision)
+  const tabs = ([
+    ['projects', t.projectsTab], ['activity', t.activity], ['members', t.membersTab], ['departments', t.departmentsTab], ['files', t.filesTab], ['skills', t.skillsTab], ['models', t.modelsTab],
+  ] as const).map(([value, label]) => ({ value, label, id: 'ipw-enterprise-tab-' + value, panelId: 'ipw-enterprise-panel-' + value }))
+  const active = tabs.find(item => item.value === tab) ?? tabs[0]!
+  const assetProps = detail.data ? { enterpriseId, detail: detail.data, t, call: controller.call, controller, revision, language } : null
+  return <>
+    {detail.data && <EnterpriseStats detail={detail.data} assets={assets.data} models={models.data} t={t} open={controller.selectTab}/>}
+    <nav className={css.lineTabs} role="tablist" aria-label={t.title}>{tabs.map(item => <button key={item.value} type="button" role="tab" id={item.id} aria-controls={item.panelId}
+      aria-selected={item.value === active.value} onClick={() => controller.selectTab(item.value)}>{item.label}</button>)}</nav>
+    <div id={active.panelId} role="tabpanel" aria-labelledby={active.id} className={css.enterpriseView}>
+      {active.value === 'activity' ? <ActivityTab enterpriseId={enterpriseId} view={view}/>
+        : active.value === 'projects' ? <ProjectsTab enterpriseId={enterpriseId} view={view}/>
+        : active.value === 'members' ? <MembersTab enterpriseId={enterpriseId} userId={userId} revision={revision} t={t} call={controller.call} controller={controller}/>
+        : !assetProps ? detail.error ? <Notice error={detail.error} t={t} retry={detail.reload}/> : <ListSkeleton/>
+        : active.value === 'departments' ? <DepartmentsTab {...assetProps}/>
+        : active.value === 'files' ? <FilesTab {...assetProps}/>
+        : active.value === 'skills' ? <SkillsTab {...assetProps}/>
+        : <ModelsTab {...assetProps}/>}
+    </div>
+  </>
 }
 
 function SimpleDialog({ kind, t, controller }: { kind: 'create' | 'join'; t: EnterpriseLabels; controller: EnterpriseController }) {

@@ -123,7 +123,7 @@ export function ConnectionsPanel({ useConnectionState, open, close, changed, loc
   if (!overlay) return <section className={css.connectView}>
     <header className={css.connectHead}><div><h2>{t.title}</h2><p>{t.intro}</p></div><Summary state={services.state} failed={services.failed} t={t}/></header>
     {models.length > 0 && <div className={css.modelChips} aria-label={t.models}><span>{t.models}</span>{models.map(model => <span key={model.id} className={css.modelChip} data-off={!model.available || undefined}>
-      <Monogram id={model.provider} label={model.title} size={18} round/>{model.title}</span>)}</div>}
+      <Monogram id={model.provider} label={model.enterprise?.name ?? model.title} size={18} round/>{model.enterprise ? `${model.enterprise.name} · ${model.title}` : model.title}</span>)}</div>}
     {services.state?.models?.status === 'error' && <p role="alert" className={css.rowError}>{t.modelsDown}</p>}
     {list}
   </section>

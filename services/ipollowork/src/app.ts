@@ -17,6 +17,7 @@ import { mountProjectSpace } from "./project-space.js";
 import { mountCollaboration } from "./collaboration.js";
 import { mountEnterprise } from "./enterprise.js";
 import { mountPayments } from "./payments.js";
+import { mountEnterpriseAssets } from "./enterprise-assets.js";
 import { mountResources } from "./resources.js";
 import { LiveshareRelay } from './liveshare.js';
 import { mountLiveshare } from './liveshare-http.js';
@@ -136,7 +137,8 @@ export async function createService(config: Config) {
     store.transaction(() => { settings.set(group, values); audit(store, actor, "settings.update", group); });
     return c.json({ ok: true });
   });
-  mountExecution(app, new ExecutionService(store, settings));
+  mountExecution(app, new ExecutionService(store, settings, fetch, ["localhost", "127.0.0.1", "[::1]"].includes(new URL(config.origin).hostname)));
+  mountEnterpriseAssets(app, store, settings, config);
   mountEnterprise(app, store, config);
   mountProjectSpace(app, store);
   mountCollaboration(app, store);
