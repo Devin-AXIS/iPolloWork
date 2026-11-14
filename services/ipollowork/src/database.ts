@@ -26,7 +26,7 @@ export class Store {
 /** Business migrations are independent from Better Auth schema migrations. */
 export function migrate(store: Store) {
   const version = Number(store.one("PRAGMA user_version")?.user_version ?? 0);
-  if (version > 6) throw new Error("This database requires a newer iPolloWork service");
+  if (version > 7) throw new Error("This database requires a newer iPolloWork service");
   if (version < 1) store.transaction(() => {
     store.db.exec(readFileSync(new URL("./schema.sql", import.meta.url), "utf8"));
     store.db.exec("PRAGMA user_version=1");
@@ -50,5 +50,9 @@ export function migrate(store: Store) {
   if (version < 6) store.transaction(() => {
     store.db.exec(readFileSync(new URL("./migration-006.sql", import.meta.url), "utf8"));
     store.db.exec("PRAGMA user_version=6");
+  });
+  if (version < 7) store.transaction(() => {
+    store.db.exec(readFileSync(new URL("./migration-007.sql", import.meta.url), "utf8"));
+    store.db.exec("PRAGMA user_version=7");
   });
 }

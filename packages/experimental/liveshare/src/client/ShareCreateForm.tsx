@@ -8,7 +8,7 @@
 import { useId, useRef, useState, type ReactNode } from 'react'
 import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
-import type { CreatedShare } from '../share-api-types.ts'
+import type { CreateShareRequest, CreatedShare } from '../share-api-types.ts'
 import type { NS } from './locales.ts'
 import type { OwnerShares } from './owner-shares.ts'
 import { mayCreateShare, type OwnerIdentityStatus } from './owner-identity.ts'
@@ -18,6 +18,7 @@ import { SharePermissionFields } from './SharePermissionFields.tsx'
 import type { OfferedPlugin, ViewerPluginPolicy } from './share-types.ts'
 import { readSessionMode, type ViewerSessionMode } from './viewer-capabilities.ts'
 import css from './ShareDialog.module.css'
+import type { ShareAudienceSelection } from './share-audience.ts'
 
 /** What the Host reported about the values the create request carried. */
 export interface CreatedShareInfo {
@@ -31,6 +32,8 @@ export interface CreatedShareInfo {
 
 /** Inputs the dialog supplies to its create form. */
 export interface ShareCreateFormOptions {
+  /** Optional application-owned recipients, prepared before the native create call. */
+  readonly audience?: ShareAudienceSelection
   /** Owner share management the create action calls. */
   readonly shares: OwnerShares
   /** Session the share exposes. */
@@ -100,7 +103,7 @@ export interface ShareCreateFormState {
  */
 export function useShareCreateForm({
   shares, sessionId, sessionTitle, connectivity, permission, ownerIdentity, offered,
-  testConnectivity, testPermission, onError, onCreated, identityStateLine, t,
+  testConnectivity, testPermission, onError, onCreated, identityStateLine, audience, t,
 }: ShareCreateFormOptions): ShareCreateFormState {
   const [busy, setBusy] = useState(false)
   /** Global switch over installed plugin methods; closed until the owner opens it. */
@@ -120,6 +123,7 @@ export function useShareCreateForm({
 
   const create = async (): Promise<void> => {
     if (creating.current) return
+    if (audience?.blockedReason !== undefined) { onError(audience.blockedReason); return }
     /* v8 ignore next 4 -- the create control is disabled in every state this check refuses. */
     if (!mayCreateShare(ownerIdentity)) {
       onError(identityStateLine())
@@ -134,7 +138,7 @@ export function useShareCreateForm({
       // refuse cannot be created.
       if (connectivity !== 'ok' && !(await testConnectivity())) return
       if (permission !== 'ok' && permission !== 'warn' && !(await testPermission())) return
-      const created = await shares.create({
+      const request: CreateShareRequest = {
         sessionId,
         sessionTitle,
         // The tier and the fork switch travel with the share they belong to, and the tier travels even
@@ -142,7 +146,19 @@ export function useShareCreateForm({
         // dropping it, and the page never assumes more than the Host reported.
         sessionMode,
         allowsFork,
-      })
+      }
+      let prepared = request
+      if (audience !== undefined) {
+        try {
+          const access = await audience.prepare(request)
+          prepared = { ...request,
+            ...(access.accessMode === undefined ? {} : { accessMode: access.accessMode }),
+            ...(access.allowedSubjectIds === undefined ? {} : { allowedSubjectIds: access.allowedSubjectIds }),
+          }
+        }
+        catch { onError(audience.failureMessage); return }
+      }
+      const created = await shares.create(prepared)
       if (!created.ok) throw new Error('share rejected')
       const data = created.value
       // The Host's own record is the only statement of what it stored. Its answer carries the stored

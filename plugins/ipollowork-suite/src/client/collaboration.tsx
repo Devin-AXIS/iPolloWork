@@ -13,9 +13,9 @@ export interface ViewProps {t:EnterpriseLabels;language:string;call:Call;control
 
 export function ActivityTab({enterpriseId,view}:{enterpriseId:string|null;view:ViewProps}) {
   const {t,call,language}=view,c=projectCopy(language),task=useTask(t)
-  const data=useRecord<{ready:boolean;reason:string|null;shares:{shareId:string;sessionTitle:string;link:string;online:boolean;ownerId:string;projectId:string}[]}>('/native-sharing',call,view.revision)
+  const data=useRecord<{ready:boolean;reason:string|null;shares:{shareId:string;sessionTitle:string;link:string;online:boolean;ownerId:string;projectId:string|null;enterpriseId?:string|null}[]}>('/native-sharing',call,view.revision)
   if(!data.data)return data.error?<Notice error={data.error} t={t} retry={data.reload}/>:<ListSkeleton/>
-  const shares=data.data.shares.filter(share=>view.catalog.sharedProjects.some(project=>project.id===share.projectId&&project.enterpriseId===enterpriseId))
+  const shares=data.data.shares.filter(share=>share.enterpriseId===enterpriseId||(share.enterpriseId===undefined&&view.catalog.sharedProjects.some(project=>project.id===share.projectId&&project.enterpriseId===enterpriseId)))
   return <Section title={c.nativeReady}>
     <p className={css.muted}>{c.nativeHint}</p>
     {!data.data.ready?<p className={css.quietLine}>{data.data.reason==='NATIVE_SHARING_DISABLED'?c.nativeMissing:c.nativeLogin}</p>:

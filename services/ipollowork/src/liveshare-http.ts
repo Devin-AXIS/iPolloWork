@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import { z } from 'zod';
 import type { Auth } from './auth.js';
 import type { App } from './http.js';
-import { projectAccess, projectRole, uid } from './domain.js';
+import { uid } from './domain.js';
+import { readShareAudience, resolveShareAudience, shareAudienceSchema } from './share-audience.js';
+import { randomUUID } from 'node:crypto';
 import { ServiceError } from './errors.js';
 import { LiveshareRelay, sessionExpiry, type LiveShare } from './liveshare.js';
 
@@ -16,6 +18,12 @@ const page = (title: string, body: string) => `<!doctype html><html lang="zh"><m
 /** Mount account-owned authorization, management, and credential-scoped viewer routes. */
 export function mountLiveshare(app: App, relay: LiveshareRelay, auth: Auth): void {
   const { store, config } = relay;
+  app.get('/', (c, next) => {
+    const id = c.req.query('shareId');
+    if (id === undefined) return next();
+    if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) throw new ServiceError('LIVESHARE_NOT_FOUND', 404);
+    return c.redirect('/s/' + encodeURIComponent(id));
+  });
   const viewerPolicy=`sandbox allow-scripts allow-forms allow-downloads; default-src 'none'; script-src ${config.origin} 'unsafe-inline' 'wasm-unsafe-eval' blob:; style-src ${config.origin} 'unsafe-inline'; img-src ${config.origin} data: blob:; font-src ${config.origin} data:; connect-src ${config.origin}; worker-src blob:; base-uri ${config.origin}; form-action 'none'; frame-ancestors 'self'`;
   const carrier = readFileSync(new URL(import.meta.url.includes('/dist/') ? './liveshare-carrier.js' : '../web/liveshare-carrier.js', import.meta.url), 'utf8');
   app.post('/api/v1/liveshare/authorize', async c => {
@@ -46,18 +54,18 @@ export function mountLiveshare(app: App, relay: LiveshareRelay, auth: Auth): voi
     return c.json({ credential: relay.sign({ purpose: 'owner', sessionId: String(grant.id), subjectId: String(grant.userId), displayName: String(grant.name), instanceKey: input.instanceKey, expiresAt }), ownerCredentialExpiresAt: new Date(expiresAt).toISOString() });
   });
   app.post('/api/v1/liveshare/intents', async c => {
-    const input = z.object({ projectId: z.string().min(1).max(200), sessionId: z.string().min(1).max(200), title: z.string().trim().min(1).max(120), role: z.enum(['view', 'participate']) }).parse(await c.req.json());
-    const actor = c.get('actor'), project = projectAccess(store, actor, input.projectId);
-    if (projectRole(store, actor, project) === 'view') throw new ServiceError('LIVESHARE_FORBIDDEN', 403);
+    const input = z.object({ projectId: z.string().min(1).max(200).optional(), audience: shareAudienceSchema.optional(), sessionId: z.string().min(1).max(200), title: z.string().trim().min(1).max(4096), role: z.enum(['view', 'participate']), allowsFork: z.boolean().optional() }).parse(await c.req.json());
+    const actor = c.get('actor');
+    const audience = resolveShareAudience(store, actor, input.audience, input.projectId);
     const id = uid();
     store.run('DELETE FROM live_shares WHERE native_id IS NULL AND created_at<?', Date.now() - 300_000);
-    store.run('INSERT INTO live_shares(id,owner_id,project_id,source_session,mode,title,created_at) VALUES(?,?,?,?,?,?,?)', id, actor.id, input.projectId, input.sessionId, input.role === 'view' ? 'view' : 'write', input.title, Date.now());
+    store.run('INSERT INTO live_shares(id,owner_id,project_id,source_session,mode,title,created_at,allows_fork,audience_json) VALUES(?,?,?,?,?,?,?,?,?)', id, actor.id, input.projectId ?? null, input.sessionId, input.role === 'view' ? 'view' : 'write', input.title, Date.now(), (input.allowsFork ?? input.role === 'participate') ? 1 : 0, JSON.stringify(audience));
     return c.json({ intent: 'ipollo-intent:' + id }, 201);
   });
   app.get('/api/v1/liveshare/shares', c => {
     const actor = c.get('actor');
-    const items = store.all<LiveShare>('SELECT * FROM live_shares WHERE native_id IS NOT NULL AND revoked_at IS NULL ORDER BY created_at DESC LIMIT 1000').flatMap(share => {
-      try { relay.admit(share, actor); return [{ shareId: share.native_id, projectId: share.project_id, sessionTitle: share.title, sessionMode: share.mode, ownerId: share.owner_id, online: relay.online(share.native_id!), link: config.origin + '/s/' + share.native_id }]; }
+    const items = store.all<LiveShare>('SELECT l.*,p.enterprise_id FROM live_shares l LEFT JOIN projects p ON p.id=l.project_id WHERE l.native_id IS NOT NULL AND l.revoked_at IS NULL ORDER BY l.created_at DESC LIMIT 1000').flatMap(share => {
+      try { const audience=readShareAudience(share);if(audience.kind==='link'&&share.owner_id!==actor.id)return [];relay.admit(share, actor); return [{ enterpriseId:audience.kind==='team'||audience.kind==='departments'||audience.kind==='members'?audience.enterpriseId:share.enterprise_id??null,shareId: share.native_id, projectId: share.project_id, sessionTitle: share.title, sessionMode: share.mode, ownerId: share.owner_id, online: relay.online(share.native_id!), link: config.origin + '/s/' + share.native_id }]; }
       catch (error) { if (!(error instanceof ServiceError)) throw error; return []; }
     });
     return c.json({ shares: items });
@@ -92,7 +100,7 @@ export function mountLiveshare(app: App, relay: LiveshareRelay, auth: Auth): voi
     const token = c.req.param('ticket'), { share, actor, grant } = viewer(token);
     const prefix = '/__liveshare/assets/' + token + '/';
     const path = c.req.path.slice(prefix.length);
-    if (path === '__liveshare/context') return c.json({ ownerSubjectId:share.owner_id, viewer:{subjectId:actor.id,displayName:actor.name}, capabilities: { online:relay.online(share.native_id!), sessionMode: share.mode, fork:{enabled: share.mode === 'write'} } });
+    if (path === '__liveshare/context') return c.json({ ownerSubjectId:share.owner_id, viewer:{subjectId:actor.id,displayName:actor.name}, capabilities: { online:relay.online(share.native_id!), sessionMode: share.mode, fork:{enabled: share.allows_fork === 1} } });
     if (path === 'health') return c.json({service:'ipollowork-services',release_id:'native-relay-v1'});
     const answer = await relay.rpc(share, actor, { op: 'asset', path: path + new URL(c.req.url).search }, c.req.raw.signal, grant);
     const asset = z.object({ contentType: z.string(), base64: z.string() }).safeParse(answer.body);
@@ -111,10 +119,11 @@ export function mountLiveshare(app: App, relay: LiveshareRelay, auth: Auth): voi
     c.header('Cache-Control', 'no-store'); c.header('Referrer-Policy', 'no-referrer');
     const share = relay.share(c.req.param('id'));
     const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (!session || session.user.banned) return c.html(page('登录后查看会话', '<main><h1>共享会话</h1><p>使用你的企业账号登录，继续项目中的工作。</p><form id="login"><input type="email" name="email" autocomplete="username" placeholder="邮箱" required><input type="password" name="password" autocomplete="current-password" placeholder="密码" required><button>登录</button><p id="error" role="status"></p></form></main><script src="/__liveshare/login.js"></script>'));
-    const actor = { id: session.user.id, name: session.user.name, email: session.user.email, role: session.user.role ?? 'user' }; relay.admit(share, actor);
+    if ((!session || session.user.banned) && readShareAudience(share).kind !== 'link') return c.html(page('登录后查看会话', '<main><h1>共享会话</h1><p>使用你的企业账号登录，继续项目中的工作。</p><form id="login"><input type="email" name="email" autocomplete="username" placeholder="邮箱" required><input type="password" name="password" autocomplete="current-password" placeholder="密码" required><button>登录</button><p id="error" role="status"></p></form></main><script src="/__liveshare/login.js"></script>'));
+    const signedIn = session && !session.user.banned ? session : null;
+    const actor = signedIn ? { id: signedIn.user.id, name: signedIn.user.name, email: signedIn.user.email, role: signedIn.user.role ?? 'user' } : { id: 'guest:' + randomUUID(), name: 'Guest', email: '', role: 'guest' }; relay.admit(share, actor);
     if (!relay.online(share.native_id!)) return c.html(page(share.title, '<main><h1>' + escape(share.title) + '</h1><p>分享方当前离线，重新上线后可继续。</p><form method="get"><button>重试</button></form></main>'));
-    const grant = relay.sign({ purpose: 'viewer', shareId: share.native_id!, sessionId: session.session.id, subjectId: actor.id, displayName: actor.name, expiresAt: Math.min(new Date(session.session.expiresAt).getTime(), Date.now() + 3_600_000) });
+    const grant = relay.sign({ purpose: 'viewer', shareId: share.native_id!, sessionId: signedIn?.session.id ?? '', subjectId: actor.id, displayName: actor.name, ...(!signedIn ? { anonymous: true as const } : {}), expiresAt: Math.min(signedIn ? new Date(signedIn.session.expiresAt).getTime() : Infinity, Date.now() + 3_600_000) });
     c.header('Content-Security-Policy', "default-src 'self'; style-src 'self' 'unsafe-inline'; frame-src 'self'; frame-ancestors 'none'");
     return c.html(page(share.title, `<iframe title="${escape(share.title)}" sandbox="allow-scripts allow-forms allow-downloads" referrerpolicy="no-referrer" src="/__liveshare/assets/${grant}/"></iframe>`));
   });

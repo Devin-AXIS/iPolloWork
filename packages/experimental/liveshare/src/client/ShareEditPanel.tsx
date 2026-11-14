@@ -475,7 +475,7 @@ export function ShareEditPanel({ visible, edit, t }: ShareEditPanelProps): React
               {edit.access.mode !== 'selected' ? null : (
                 <>
                   <p className={css.description}>{t('dialog.selectedCount', { count: edit.access.selectedCount })}</p>
-                  <p className={css.testWarn}>{t('dialog.selectedRetired')}</p>
+                  <p className={css.testWarn}>{t('dialog.selectedScope')}</p>
                 </>
               )}
               {edit.access.deploymentCount > 0

@@ -5,7 +5,6 @@ import { request } from './api.ts'
 export type EnterpriseDialog =
   | { kind: 'create' | 'join' | 'createProject' }
   | { kind: 'assign'; projectId: string }
-  | { kind: 'share'; sessionId: string; title: string }
   | { kind: 'continue'; shareId?: string; workId?: string }
   | { kind: 'invite'; enterpriseId: string; email?: string; role?: string; departmentId?: string | null; replaces?: string }
   | { kind: 'member'; enterpriseId: string; userId: string }

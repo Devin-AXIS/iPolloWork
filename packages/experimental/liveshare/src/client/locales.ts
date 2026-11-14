@@ -44,7 +44,7 @@ export const zh = {
   'dialog.accessUnavailable': '此分享的访问范围详情暂不可用，已有权限不变。',
   'dialog.selectedCount': '分享服务已确认 {count} 位所选人员。',
   'dialog.deploymentAccess': '部署还配置了 {count} 个可访问身份；访问范围不只由此处选择决定。',
-  'dialog.selectedRetired': '这是旧版“指定同事可看”的分享：范围保持不变，新建分享只能选择上面两种方式。',
+  'dialog.selectedScope': '此分享仅限指定人员访问，范围由分享服务管理。',
   'dialog.description': '创建一个只读 Liveshare 链接：{title}',
   'dialog.relay': '分享服务地址',
 
@@ -279,7 +279,7 @@ export const en: Record<keyof typeof zh, string> = {
   'dialog.accessUnavailable': 'Access details for this share are unavailable. Existing permissions are unchanged.',
   'dialog.selectedCount': 'Selected people confirmed: {count}.',
   'dialog.deploymentAccess': 'Deployment-authorized identities: {count}. Selection is not the only access rule.',
-  'dialog.selectedRetired': 'This share keeps its older "specific colleagues" scope; new shares offer only the two modes above.',
+  'dialog.selectedScope': 'Only the selected people can access this share. The sharing service manages its audience.',
   'dialog.description': 'Create a read-only Liveshare link for {title}',
   'dialog.relay': 'Share service address',
 
@@ -514,7 +514,7 @@ export const ja: Record<keyof typeof zh, string> = {
   'dialog.accessUnavailable': 'この共有のアクセス範囲の詳細は現在利用できません。既存の権限は変わりません。',
   'dialog.selectedCount': '選択した {count} 人を共有サービスが確認しました。',
   'dialog.deploymentAccess': 'このデプロイには他に {count} 個のアクセス可能な ID が設定されています。アクセス範囲はここの選択だけでは決まりません。',
-  'dialog.selectedRetired': 'これは旧版の「特定の同僚が閲覧可能」な共有です。範囲はそのままで、新しい共有では上記の 2 つの方式だけを選べます。',
+  'dialog.selectedScope': 'これは旧版の「特定の同僚が閲覧可能」な共有です。範囲はそのままで、新しい共有では上記の 2 つの方式だけを選べます。',
   'dialog.description': '読み取り専用の Liveshare リンクを作成します：{title}',
   'dialog.relay': '共有サービスのアドレス',
 
@@ -749,7 +749,7 @@ export const es: Record<keyof typeof zh, string> = {
   'dialog.accessUnavailable': 'Los detalles de acceso de este recurso compartido no están disponibles ahora. Los permisos existentes no cambian.',
   'dialog.selectedCount': 'Personas seleccionadas confirmadas: {count}.',
   'dialog.deploymentAccess': 'Identidades autorizadas por la implementación: {count}. La selección no es la única regla de acceso.',
-  'dialog.selectedRetired': 'Este recurso compartido conserva el alcance anterior de «compañeros concretos»; los nuevos solo ofrecen los dos modos anteriores.',
+  'dialog.selectedScope': 'Este recurso compartido conserva el alcance anterior de «compañeros concretos»; los nuevos solo ofrecen los dos modos anteriores.',
   'dialog.description': 'Crea un enlace de Liveshare de solo lectura para {title}',
   'dialog.relay': 'Dirección del servicio para compartir',
 
@@ -984,7 +984,7 @@ export const fr: Record<keyof typeof zh, string> = {
   'dialog.accessUnavailable': 'Les détails d’accès de ce partage sont indisponibles. Les autorisations existantes restent inchangées.',
   'dialog.selectedCount': 'Personnes sélectionnées confirmées : {count}.',
   'dialog.deploymentAccess': 'Identités autorisées par le déploiement : {count}. La sélection n’est pas la seule règle d’accès.',
-  'dialog.selectedRetired': 'Ce partage conserve l’ancien périmètre « collègues précis » ; les nouveaux partages ne proposent que les deux modes ci-dessus.',
+  'dialog.selectedScope': 'Ce partage conserve l’ancien périmètre « collègues précis » ; les nouveaux partages ne proposent que les deux modes ci-dessus.',
   'dialog.description': 'Créer un lien Liveshare en lecture seule pour {title}',
   'dialog.relay': 'Adresse du service de partage',
 
@@ -1219,7 +1219,7 @@ export const de: Record<keyof typeof zh, string> = {
   'dialog.accessUnavailable': 'Die Zugriffsdetails dieser Freigabe sind derzeit nicht verfügbar. Bestehende Berechtigungen bleiben unverändert.',
   'dialog.selectedCount': 'Bestätigte ausgewählte Personen: {count}.',
   'dialog.deploymentAccess': 'Vom Deployment autorisierte Identitäten: {count}. Die Auswahl ist nicht die einzige Zugriffsregel.',
-  'dialog.selectedRetired': 'Diese Freigabe behält ihren älteren Bereich „bestimmte Kollegen“; neue Freigaben bieten nur die beiden Modi oben.',
+  'dialog.selectedScope': 'Diese Freigabe behält ihren älteren Bereich „bestimmte Kollegen“; neue Freigaben bieten nur die beiden Modi oben.',
   'dialog.description': 'Erstelle einen schreibgeschützten Liveshare-Link für {title}',
   'dialog.relay': 'Adresse des Freigabedienstes',
 
@@ -1454,7 +1454,7 @@ export const ru: Record<keyof typeof zh, string> = {
   'dialog.accessUnavailable': 'Сведения о доступе для этого общего доступа сейчас недоступны. Существующие разрешения не меняются.',
   'dialog.selectedCount': 'Выбранных людей подтверждено: {count}.',
   'dialog.deploymentAccess': 'Идентичностей, разрешённых развертыванием: {count}. Выбор — не единственное правило доступа.',
-  'dialog.selectedRetired': 'Этот общий доступ сохраняет старую область «определённые коллеги»; новые общие доступы предлагают только два режима выше.',
+  'dialog.selectedScope': 'Этот общий доступ сохраняет старую область «определённые коллеги»; новые общие доступы предлагают только два режима выше.',
   'dialog.description': 'Создать ссылку Liveshare только для чтения для {title}',
   'dialog.relay': 'Адрес сервиса общего доступа',
 
@@ -1689,7 +1689,7 @@ export const pt: Record<keyof typeof zh, string> = {
   'dialog.accessUnavailable': 'Os detalhes de acesso deste compartilhamento estão indisponíveis agora. As permissões existentes não mudam.',
   'dialog.selectedCount': 'Pessoas selecionadas confirmadas: {count}.',
   'dialog.deploymentAccess': 'Identidades autorizadas pela implantação: {count}. A seleção não é a única regra de acesso.',
-  'dialog.selectedRetired': 'Este compartilhamento mantém o escopo antigo de “colegas específicos”; os novos compartilhamentos oferecem apenas os dois modos acima.',
+  'dialog.selectedScope': 'Este compartilhamento mantém o escopo antigo de “colegas específicos”; os novos compartilhamentos oferecem apenas os dois modos acima.',
   'dialog.description': 'Crie um link do Liveshare somente leitura para {title}',
   'dialog.relay': 'Endereço do serviço de compartilhamento',
 

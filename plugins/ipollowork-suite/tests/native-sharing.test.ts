@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import {createNativeShare,sharingStatus,authorizeNativeShare,type NativeSharing} from '../src/host/native-sharing.ts'
+import {createNativeShare,prepareNativeShare,sharingStatus,authorizeNativeShare,type NativeSharing} from '../src/host/native-sharing.ts'
 import type {AccountService} from '../src/host/account.ts'
 test('native sharing binds authenticated project intent and never uploads transcripts',async()=>{
  const account:Pick<AccountService,'state'|'request'>={state:async()=>({status:'signed-in',origin:'https://native.test',user:{id:'owner',email:'owner@example.test',name:'Owner'},points:0,balanceStatus:'available'}),request:async path=>path.endsWith('/shares')?{shares:[]}:{intent:'ipollo-intent:one'}}
@@ -16,4 +16,18 @@ test('native sharing binds authenticated project intent and never uploads transc
  service.identity=async()=>({state:'verified',relay:'https://native.test',subjectId:'another-account'})
  await assert.rejects(createNativeShare(service,input,account),{code:'NATIVE_SHARING_LOGIN_REQUIRED'})
  await assert.rejects(authorizeNativeShare(account,{authorizeUrl:'https://attacker.test/__liveshare/owner-authorize'}),{code:'IPW_INVALID_INPUT'})
+})
+
+test('native recipient preparation preserves permissions and external public relays',async()=>{
+ const calls:unknown[]=[]
+ const account:Pick<AccountService,'state'|'request'>={state:async()=>({status:'signed-in',origin:'https://native.test',user:{id:'owner',email:'owner@example.test',name:'Owner'},points:0,balanceStatus:'available'}),request:async(_path,input)=>{calls.push(input);return {intent:'ipollo-intent:recipients'}}}
+ const service:NativeSharing={identity:async()=>({state:'verified',relay:'https://native.test',subjectId:'owner'}),setRelay:async()=>({}),list:async()=>({shares:[]}),stop:async()=>({}),create:async()=>({link:'',shareId:''})}
+ const request={sessionId:'session',sessionTitle:'Title',sessionMode:'write',allowsFork:false,ttlMinutes:30}
+ const result=await prepareNativeShare(service,{request,audience:{kind:'members',enterpriseId:'team',userIds:['member']}},account)
+ assert.deepEqual(result,{...request,accessMode:'selected',allowedSubjectIds:['ipollo-intent:recipients']})
+ assert.deepEqual(calls,[{projectId:undefined,audience:{kind:'members',enterpriseId:'team',userIds:['member']},sessionId:'session',title:'Title',role:'participate',allowsFork:false}])
+ service.identity=async()=>({state:'verified',relay:'https://external.test',subjectId:'owner'})
+ assert.deepEqual(await prepareNativeShare(service,{request,audience:{kind:'link'}},account),request)
+ await assert.rejects(prepareNativeShare(service,{request,audience:{kind:'team',enterpriseId:'team'}},account),{code:'NATIVE_SHARING_LOGIN_REQUIRED'})
+ assert.equal(calls.length,1)
 })

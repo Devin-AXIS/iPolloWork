@@ -1,36 +1,51 @@
-/** Publish through DSH Liveshare; project content is never copied into the account service. */
-import { useState } from 'react'
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { EnterpriseCatalog } from '../shared/enterprise.ts'
-import type { EnterpriseController } from './enterprise-controller.ts'
-import type { EnterpriseLabels } from './enterprise-locale.ts'
-import { projectCopy } from './project-copy.ts'
-import { CopyLink, Field, FormError, ListSkeleton, useRecord, useTask, type Call } from './enterprise-ui.tsx'
+/** Recipient selection inside the native DSH share dialog. */
+import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import type { EnterpriseDetail } from '../shared/enterprise.ts'
+import type { Props } from './enterprise.tsx'
+import { shareAudienceCopy } from './share-audience-copy.ts'
 import css from './suite.module.css'
-interface ShareProps {sessionId:string;title:string;t:EnterpriseLabels;call:Call;controller:EnterpriseController;catalog:EnterpriseCatalog;viewShare(id:string):void;language?:string}
-export function ShareDialog({sessionId,title:initial,t,call,controller,catalog,language='en'}:ShareProps){
-  const c=projectCopy(language),task=useTask(t)
-  const status=useRecord<{ready:boolean;reason:string|null}>('/native-sharing',call,0)
-  const [title,setTitle]=useState(initial),[role,setRole]=useState<'view'|'participate'>('view'),[link,setLink]=useState('')
-  const [projectId,setProjectId]=useState(catalog.projects.find(project=>project.sessionIds.includes(sessionId))?.cloudId??'')
-  return <Modal open title={c.nativeShare} closeLabel={c.close} className={css.enterpriseModal!} onClose={()=>{if(!task.busy)controller.open(null)}}>
-    <div className={css.enterpriseForm}>
-      <p className={css.muted}>{c.nativeHint}</p>
-      {link?<CopyLink url={link} t={t}/>:!status.data?<><ListSkeleton rows={2}/><FormError message={status.error}/></>:!status.data.ready?<p role="status">{status.data.reason==='NATIVE_SHARING_DISABLED'?c.nativeMissing:c.nativeLogin}</p>:<>
-        <Field label={c.title}><input maxLength={120} value={title} onChange={e=>setTitle(e.target.value)} disabled={task.busy}/></Field>
-        <Field label={t.teamProjects}><select value={projectId} onChange={e=>setProjectId(e.target.value)} disabled={task.busy}><option value="">{c.selectProject}</option>{catalog.sharedProjects.map(project=><option key={project.id} value={project.id}>{project.title}</option>)}</select></Field>
-        <Field label={t.permission}><select value={role} onChange={e=>setRole(e.target.value as 'view'|'participate')} disabled={task.busy}><option value="view">{c.view}</option><option value="participate">{c.participate}</option></select></Field>
-        <FormError message={task.error}/><Button variant="primary" disabled={task.busy||!title.trim()||!projectId} onClick={()=>void task.run(async()=>{
-          await call('/native-sharing/configure',{})
-          const native=async<T,>(path:string,input:unknown):Promise<T>=>{const response=await fetch('/api/liveshare.'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(input)});const value=await response.json();if(!response.ok)throw new Error(c.nativeLogin);return value as T}
-          const started=await native<{state:string;authorizeUrl:string}>('ownerLoginStart',{})
-          try {
-            const {code}=await call<{code:string}>('/native-sharing/authorize',{authorizeUrl:started.authorizeUrl})
-            await native('ownerLoginRedeem',{state:started.state,code})
-          } catch(error) { await native('ownerLoginCancel',{state:started.state});throw error }
-          const result=await call<{link:string}>('/native-sharing',{sessionId,title,role,projectId});setLink(result.link)
-        })}>{c.nativeShare}</Button>
-      </>}
-    </div>
-  </Modal>
+
+type NativeRequest = { sessionId:string;sessionTitle?:string;sessionMode?:'view'|'write';allowsFork?:boolean;ttlMinutes?:number;accessMode?:'open'|'selected';allowedSubjectIds?:readonly string[] }
+type Selection = { blockedReason?:string;failureMessage:string;prepare(request:NativeRequest):Promise<NativeRequest> }
+type AudienceProps = Pick<Props,'useEnterpriseState'|'useLocale'|'controller'|'openAccountSettings'> & {
+  shareSessionId:string;disabled:boolean;onChange(value:Selection|undefined):void;
+}
+export function ShareAudience({shareSessionId,disabled,onChange,useEnterpriseState,useLocale,controller,openAccountSettings}:AudienceProps){
+  const state=useEnterpriseState(value=>value),t=shareAudienceCopy(useLocale(value=>value))
+  const [kind,setKind]=useState<'link'|'team'|'departments'|'members'>('link')
+  const [team,setTeam]=useState(''),[picked,setPicked]=useState<string[]>([])
+  const [record,setRecord]=useState<{id:string;detail?:EnterpriseDetail;error?:boolean}|null>(null),[revision,setRevision]=useState(0)
+  const teamId=state.catalog?.enterprises.some(item=>item.id===team)?team:state.catalog?.enterprises[0]?.id||''
+  useLayoutEffect(()=>setPicked([]),[teamId])
+  useEffect(()=>{
+    if(!state.signedIn||!teamId||kind==='link'||kind==='team')return
+    let active=true
+    setRecord({id:teamId})
+    void controller.call<EnterpriseDetail>('/organizations/'+teamId).then(detail=>{if(active)setRecord({id:teamId,detail})},()=>{if(active)setRecord({id:teamId,error:true})})
+    return()=>{active=false}
+  },[controller,state.signedIn,teamId,kind,revision])
+  const detail=record?.id===teamId?record.detail:undefined
+  const needsPeople=kind==='members'||kind==='departments'
+  const blockedReason=kind==='link'?undefined:!state.signedIn?t.signIn:!teamId?t.chooseTeam:needsPeople&&!detail?t.loading:needsPeople&&!picked.length?t.chooseRecipients:undefined
+  const projectId=state.catalog?.projects.find(project=>project.sessionIds.includes(shareSessionId))?.cloudId??undefined
+  const selection=useMemo<Selection>(()=>({...blockedReason?{blockedReason}:{},failureMessage:t.failed,prepare:request=>controller.call<NativeRequest>('/native-sharing/prepare',{
+    request,projectId,audience:kind==='link'?{kind}:kind==='team'?{kind,enterpriseId:teamId}:kind==='departments'?{kind,enterpriseId:teamId,departmentIds:picked}:{kind,enterpriseId:teamId,userIds:picked},
+  })}),[blockedReason,t,controller,projectId,kind,teamId,picked])
+  useLayoutEffect(()=>{onChange(selection);return()=>onChange(undefined)},[onChange,selection])
+  const choose=(value:string)=>setPicked(current=>current.includes(value)?current.filter(id=>id!==value):[...current,value])
+  const rows=kind==='departments'?detail?.departments.map(row=>({id:row.id,label:row.name})):detail?.members.map(row=>({id:row.userId,label:row.name||row.email}))
+  return <div className={css.shareAudience}>
+    <label>{t.title}<select value={kind} disabled={disabled} onChange={event=>{setKind(event.target.value as typeof kind);setPicked([])}}>
+      <option value="link">{t.link}</option><option value="team">{t.team}</option><option value="departments">{t.departments}</option><option value="members">{t.members}</option>
+    </select></label>
+    {kind==='link'?<p>{t.linkHint}</p>:!state.signedIn?<button type="button" onClick={openAccountSettings}>{t.signIn}</button>:<>
+      <label>{t.team}<select value={teamId} disabled={disabled} onChange={event=>{setTeam(event.target.value);setPicked([])}}>
+        <option value="">{t.chooseTeam}</option>{state.catalog?.enterprises.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
+      </select></label>
+      {needsPeople&&teamId&&(record?.error?<button type="button" onClick={()=>setRevision(value=>value+1)}>{t.retry}</button>:!detail?<p role="status">{t.loading}</p>:<div className={css.shareRecipients}>
+        {rows?.length?rows.map(row=><label key={row.id}><input type="checkbox" checked={picked.includes(row.id)} disabled={disabled} onChange={()=>choose(row.id)}/><span>{row.label}</span></label>):<p>{t.empty}</p>}
+      </div>)}
+      <p>{t.teamHint}</p>
+    </>}
+  </div>
 }

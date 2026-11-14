@@ -3,8 +3,10 @@
 
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { useLayoutEffect } from 'react'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '../src/client/index.ts'
+import type { ShareAudienceProps } from '../src/client/share-audience.ts'
 import { LiveshareShareDialog, type LiveshareShareDialogProps } from '../src/client/ShareDialog.tsx'
 import { en, zh } from '../src/client/locales.ts'
 import css from '../src/client/ShareDialog.module.css'
@@ -87,6 +89,7 @@ async function showDialog(
   identityPending?: Promise<OwnerIdentityStatus>,
   shareExtra?: Partial<CreatedShare>,
   relayExtra?: { readonly connectivity?: RelayConnectivityView; readonly permission?: RelayPublishView },
+  renderSlot?: LiveshareShareDialogProps['renderSlot'],
 ): Promise<OwnerSharesDouble> {
   const host = ownerSharesDouble({
     list: async () => accepted({ shares: (existingShare ? [existingItem] : []) as never }),
@@ -120,6 +123,7 @@ async function showDialog(
       onClose={onClose}
       {...(onManage === undefined ? {} : { onManage })}
       t={translate}
+      {...(renderSlot === undefined ? {} : { renderSlot })}
     />)
   })
   return host
@@ -1345,5 +1349,49 @@ describe('Liveshare dialog stored-record branches', () => {
     fireEvent.focus(link)
     expect(link.selectionStart).toBe(0)
     expect(link.selectionEnd).toBe(existing.link.length)
+  })
+})
+
+
+describe('native share audience contributions', () => {
+  it('prepares recipient fields while preserving the native permission choices', async () => {
+    const Audience = ({ onChange }: ShareAudienceProps) => {
+      useLayoutEffect(() => {
+        onChange({ failureMessage: 'Recipient preparation failed', prepare: async request => ({ ...request, sessionMode: 'write', allowsFork: true, accessMode: 'selected', allowedSubjectIds: ['team-intent'] }) })
+        return () => onChange(undefined)
+      }, [onChange])
+      return <span>Team recipients</span>
+    }
+    const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    expect(screen.getByText('Team recipients')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Create share' }))
+    await vi.waitFor(() => { expect(shareCreates(host)).toBe(1) })
+    expect(shareRequest(host)).toMatchObject({ accessMode: 'selected', allowedSubjectIds: ['team-intent'], sessionMode: 'view', allowsFork: false })
+  })
+
+
+  it('reports failed recipient preparation without creating a share or exposing the server error', async () => {
+    const Audience = ({ onChange }: ShareAudienceProps) => {
+      useLayoutEffect(() => {
+        onChange({ failureMessage: 'Could not prepare recipients', prepare: async () => { throw new Error('private server detail') } })
+        return () => onChange(undefined)
+      }, [onChange])
+      return null
+    }
+    const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    fireEvent.click(screen.getByRole('button', { name: 'Create share' }))
+    await vi.waitFor(() => { expect(screen.getByText('Could not prepare recipients')).toBeTruthy() })
+    expect(screen.queryByText('private server detail')).toBeNull()
+    expect(shareCreates(host)).toBe(0)
+  })
+
+  it('does not create while the recipient contribution is incomplete', async () => {
+    const Audience = ({ onChange }: ShareAudienceProps) => {
+      useLayoutEffect(() => { onChange({ blockedReason: 'Choose recipients', failureMessage: 'Recipient preparation failed', prepare: async request => request }); return () => onChange(undefined) }, [onChange])
+      return <span>Choose recipients</span>
+    }
+    const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
+    expect((screen.getByRole('button', { name: 'Create share' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(shareCreates(host)).toBe(0)
   })
 })

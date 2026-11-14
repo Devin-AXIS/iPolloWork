@@ -5,7 +5,7 @@ import {
   Button, IconCloseOutlineRegular, IconQuestionOutlineRegular, Input, Modal,
   Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { CreatedShare } from '../share-api-types.ts'
 import type { NS } from './locales.ts'
@@ -17,9 +17,10 @@ import { ShareEditPanel, useShareEdit } from './ShareEditPanel.tsx'
 import { ShareCreateForm, useShareCreateForm, type CreatedShareInfo } from './ShareCreateForm.tsx'
 import { useShareRelayAddress } from './share-relay-address.ts'
 import css from './ShareDialog.module.css'
+import type { ShareAudienceSelection } from './share-audience.ts'
 
 /** Props for one session-scoped share dialog. */
-export interface LiveshareShareDialogProps extends PropsLocale<typeof NS> {
+export interface LiveshareShareDialogProps extends PropsLocale<typeof NS>, Partial<PropsRenderSlots<'liveshare.share.audience'>> {
   /** Session this share exposes. */
   readonly sessionId: SessionId
   /** Human-facing Session title sent with the share; the panel deliberately does not print it. */
@@ -40,11 +41,12 @@ export interface LiveshareShareDialogProps extends PropsLocale<typeof NS> {
  * @returns the share modal.
  */
 export function LiveshareShareDialog({
-  sessionId, sessionTitle, defaultRelay, shares, onManage, onClose, t,
+  sessionId, sessionTitle, defaultRelay, shares, onManage, onClose, t, renderSlot,
 }: LiveshareShareDialogProps): ReactNode {
   const [link, setLink] = useState('')
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [audience, setAudience] = useState<ShareAudienceSelection>()
   const {
     draft: relayDraft, busy: relayBusy, error: relayError, reverify: relayReverify,
     effectiveRelay, named: relayNamed, connectivity, connectivityError,
@@ -97,7 +99,7 @@ export function LiveshareShareDialog({
 
   const createForm = useShareCreateForm({
     shares, sessionId, sessionTitle, connectivity, permission, ownerIdentity, offered: edit.offered,
-    testConnectivity, testPermission, onError: setError, onCreated, identityStateLine, t,
+    testConnectivity, testPermission, onError: setError, onCreated, identityStateLine, ...(audience === undefined ? {} : { audience }), t,
   })
   const { busy, modeOutcome, create, isCreating } = createForm
 
@@ -334,6 +336,7 @@ export function LiveshareShareDialog({
             <span className={statusClass()} role={statusAlerts() ? 'alert' : 'status'}>
               {statusLine()}
             </span>
+            {link === '' ? renderSlot?.('liveshare.share.audience', { shareSessionId: sessionId, disabled: busy || !canConfigure(), onChange: setAudience }) : null}
             {link === '' ? <ShareCreateForm form={createForm} disabled={!canConfigure()} t={t} /> : null}
             {/* What the share grants, edited here for an existing share. It belongs to the share, not to
             the address and account flow above it, so it renders only once a share exists; the panel
@@ -349,8 +352,8 @@ export function LiveshareShareDialog({
                 <Button
                   variant="primary"
                   disabled={busy || testing || !relayNamed || relayDraftUnsaved() || connectivity === 'unreachable'
-                  || permission === 'blocked' || !mayCreateShare(ownerIdentity)}
-                  title={createBlockedReason()}
+                  || permission === 'blocked' || !mayCreateShare(ownerIdentity) || audience?.blockedReason !== undefined}
+                  title={audience?.blockedReason ?? createBlockedReason()}
                   onClick={() => { void create() }}
                 >
                   {busy ? t('dialog.creating') : testing ? t('dialog.testing') : t('dialog.create')}
