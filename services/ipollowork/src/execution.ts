@@ -77,6 +77,20 @@ export const executionServiceSchema = z
   })
   .strict();
 type Definition = z.infer<typeof executionServiceSchema>;
+/** A draft connection to probe; `key` falls back to the stored key of `keyId`. */
+const probeSchema = executionServiceSchema
+  .pick({ baseUrl: true, keyId: true, key: true, headerName: true, headerPrefix: true })
+  .extend({ model: z.string().min(1).max(200).optional() })
+  .strict();
+export interface ProbeResult {
+  ok: boolean;
+  status: number;
+  latency: number;
+  /** `auth`: the upstream rejected the key; `unreachable`: no HTTP response; `timeout`: no response within 10 s; `upstream`: any other non-success status. */
+  reason?: "auth" | "unreachable" | "timeout" | "upstream";
+  /** Model ids from the upstream `/models` listing; empty when it has none. */
+  models: string[];
+}
 type ServiceRow = Row & {
   id: string;
   title: string;
@@ -269,6 +283,45 @@ export class ExecutionService {
       audit(this.store, actor, "service.save", s.id);
     });
     return { ok: true };
+  }
+  /**
+   * Probe a draft or saved connection before or after saving it. Without `model` this lists `/models`;
+   * with `model` it sends a one-token chat completion. Nothing is billed or recorded, and the key is never returned.
+   */
+  async probe(actor: Actor, raw: unknown): Promise<ProbeResult> {
+    requireAdmin(actor);
+    const draft = probeSchema.parse(raw);
+    const key = draft.key || this.settings.get("service-key/" + draft.keyId).key;
+    if (!key) throw new ServiceError("SERVICE_UNCONFIGURED", 400);
+    const base = draft.baseUrl.replace(/\/+$/, "");
+    const headers: Record<string, string> = { accept: "application/json", [draft.headerName]: draft.headerPrefix + key };
+    const signal = AbortSignal.timeout(10000), started = Date.now();
+    try {
+      const response = draft.model
+        ? await this.fetcher(base + "/chat/completions", {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: JSON.stringify({ model: draft.model, messages: [{ role: "user", content: "ping" }], max_tokens: 1, stream: false }),
+            redirect: "manual",
+            signal,
+          })
+        : await this.fetcher(base + "/models", { headers, redirect: "manual", signal });
+      const latency = Date.now() - started;
+      let models: string[] = [];
+      if (response.ok && !draft.model) {
+        const body = (await response.json().catch(() => null)) as { data?: unknown } | null;
+        if (body && Array.isArray(body.data))
+          models = body.data
+            .map((item) => (item && typeof item === "object" && "id" in item ? (item as { id: unknown }).id : undefined))
+            .filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 200)
+            .slice(0, 200);
+      } else await response.body?.cancel().catch(() => {});
+      // An upstream without a model listing still proves the address and key were accepted.
+      const ok = response.ok || (!draft.model && (response.status === 404 || response.status === 405));
+      return { ok, status: response.status, latency, models, ...(ok ? {} : { reason: response.status === 401 || response.status === 403 ? "auth" : "upstream" }) };
+    } catch {
+      return { ok: false, status: 0, latency: Date.now() - started, models: [], reason: signal.aborted ? "timeout" : "unreachable" };
+    }
   }
   calls(actor: Actor) {
     requireAdmin(actor);
@@ -568,6 +621,9 @@ export function mountExecution(app: App, service: ExecutionService) {
   );
   app.put("/api/v1/admin/services", async (c) =>
     c.json(service.save(c.get("actor"), await c.req.json())),
+  );
+  app.post("/api/v1/admin/services/probe", async (c) =>
+    c.json(await service.probe(c.get("actor"), await c.req.json())),
   );
   app.get("/api/v1/admin/service-calls", (c) =>
     c.json(service.calls(c.get("actor"))),

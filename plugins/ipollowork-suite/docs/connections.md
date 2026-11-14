@@ -1,6 +1,6 @@
 # Service connections
 
-The suite settings contain one Service connections entry. Plugin configuration pages show status and an action; secret fields appear only inside a native modal. A service with several keys declares them in one group. Saving clears the browser draft. Presence reads return booleans, not stored secrets.
+The suite settings contain one Service connections entry with one row per service. Each row shows its status and, when an official service exists for that provider, an Official / Own key switch; key fields expand inside the row only for the own-key source. Plugin configuration pages show status and an action that opens the same row in a native modal. A service with several keys declares them in one group. Saving clears the browser draft. Presence reads return booleans, not stored secrets.
 
 Plugins may use the optional `ipolloConnections` client service without making the suite a runtime dependency. The typed protocol is exported at `@ipollo/dsh-suite/connections` and maintained in [src/shared/connections.ts](../src/shared/connections.ts). Register inside a Cordis `ctx.inject(['ipolloConnections'], ...)` scope and attach the returned disposer to that scope. Stable group ids let two plugins share one service while unloading either registration preserves the other. A standalone plugin supplies its own native dialog when this service is absent.
 
@@ -18,7 +18,7 @@ When extending the catalog, derive an icon from the package's declared artwork. 
 
 The optional Host API is exported as types at `@ipollo/dsh-suite/services`. `bind(signal)` fixes the current account and service-source choices for one operation; `official(provider)` reports a selected official route, and `fetch` proxies matching provider URLs using the account's server-side grant. Unknown authenticated provider URLs fail closed. Public asset downloads and explicit own-key operations retain their direct Host transport. Unloading the service or changing accounts interrupts official operations; it never silently changes billing source.
 
-Signed-in service catalogs come from `/api/v1/services`. Administrators configure the upstream and eligible plans in the independent backend. The browser sees display records and source choices, not official keys. Model catalogs use the native pi-ai adapter and retain DSH message/tool serialization. No core loop or existing provider configuration changes.
+Signed-in service catalogs come from `/api/v1/services`. Administrators configure the upstream and eligible plans in the independent backend; `POST /api/v1/admin/services/probe` checks a draft or saved upstream by listing `/models` or sending a one-token chat completion, without billing or returning the key. The browser sees display records and source choices, not official keys. Model catalogs use the native pi-ai adapter and retain DSH message/tool serialization. No core loop or existing provider configuration changes.
 
 Existing stored user keys stay the default until an explicit official source is selected. Loading a document, inspecting local assets, or using an explicit user key does not require contacting the account backend. A missing service endpoint on an older backend offers no official connections. An explicitly selected missing official connection remains an error instead of switching payment sources.
 

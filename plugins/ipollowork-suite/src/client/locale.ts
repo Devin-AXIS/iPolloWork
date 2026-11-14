@@ -11,13 +11,15 @@ const en = {
   manage: 'Manage plugin', information: 'Plugin information', author: 'Developer', category: 'Category', packageName: 'Package name',
   component: 'Component', anyVersion: 'Not specified', noResources: 'No component entries are listed for this plugin.',
   homepage: 'Project website', version: 'Version', requires: 'Requires DSH', account: 'iPolloWork account',
-  accountIntro: 'Sign in to your iPollo account. Local DSH work remains available without signing in.',
-  email: 'Email', password: 'Password', signIn: 'Sign in', signOut: 'Disconnect this account', service: 'Account service',
-  accountName: 'Name', registerAccount: 'Create an account', registerAndSignIn: 'Create account and sign in', backToSignIn: 'Already registered? Sign in',
-  passwordHint: 'Use at least 10 characters', registrationError: 'Could not create the account. Check your details or sign in to an existing account.',
+  accountIntro: 'One account for official models, enterprise spaces and points.',
+  email: 'Email', password: 'Password', signIn: 'Sign in', signOut: 'Sign out', service: 'Account service',
+  registerAccount: 'Sign up', registerAndSignIn: 'Create account',
+  passwordHint: 'Password, at least 10 characters', registrationError: 'Could not create the account. Check your details or sign in to an existing account.',
   points: 'Available points', unavailable: 'Unavailable', guest: 'Not signed in', error: 'Unable to complete this operation. Please try again.',
   loginError: 'Sign-in failed. Check your email and password.', canceled: 'The sign-in was cancelled.',
   incompatibleHint: 'Choose a compatible release before installing.',
+  welcomeTitle: 'Welcome back', createTitle: 'Create your account', showPassword: 'Show password', hidePassword: 'Hide password',
+  officialServices: 'Official services', connected: 'Connected',
 }
 const zh: typeof en = {
   connections: '服务连接',
@@ -29,12 +31,14 @@ const zh: typeof en = {
   manage: '管理插件', information: '插件信息', author: '开发者', category: '分类', packageName: '包名',
   component: '组件', anyVersion: '未指定', noResources: '此插件暂无可显示的组件条目',
   homepage: '项目主页', version: '版本', requires: '需要 DSH', account: 'iPolloWork 账户',
-  accountIntro: '登录你的 iPollo 账户。不登录也可以继续使用本地 DSH 功能。',
-  email: '邮箱', password: '密码', signIn: '登录', signOut: '断开此账户', service: '账户服务',
-  accountName: '姓名', registerAccount: '注册账号', registerAndSignIn: '注册并登录', backToSignIn: '已有账号，返回登录',
-  passwordHint: '密码至少 10 位', registrationError: '注册失败，请检查填写信息，或尝试登录已有账号',
+  accountIntro: '一个账号，连接官方模型、企业空间和积分',
+  email: '邮箱', password: '密码', signIn: '登录', signOut: '退出登录', service: '账户服务',
+  registerAccount: '注册', registerAndSignIn: '注册并登录',
+  passwordHint: '密码，至少 10 位', registrationError: '注册失败，请检查填写信息，或尝试登录已有账号',
   points: '可用积分', unavailable: '暂时无法读取', guest: '未登录', error: '操作未完成，请重试',
   loginError: '登录失败，请检查邮箱和密码', canceled: '本次登录已取消', incompatibleHint: '请先选择与当前 DSH 兼容的版本',
+  welcomeTitle: '欢迎回来', createTitle: '创建你的账号', showPassword: '显示密码', hidePassword: '隐藏密码',
+  officialServices: '官方服务', connected: '已连接',
 }
 export function language(ctx: ClientContext): 'zh' | 'en' {
   const snapshot = ctx.locale.getSnapshot()

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
-import { LayoutDashboard, Users, Building2, Folder, Library, CreditCard, Receipt, Settings, Moon, Sun, LogOut, ArrowUpRight, Plus, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Users, Building2, Folder, Library, CreditCard, Receipt, Settings, Moon, Sun, LogOut, ArrowUpRight, ArrowRight, Plus, RefreshCw, Mail, Lock, Eye, EyeOff, Zap } from "lucide-react";
 import { api, count, date, text, operation, type Row, type User } from "./api.js";
 import { ActionForm, Field, Modal, Status, Table, useData, value } from "./components.js";
 import { Enterprises, Projects, Resources, Plans, SettingsPage, UsersPage, SharePage } from "./pages.js";
@@ -9,15 +9,31 @@ import { Services } from "./services.js";
 
 function Auth({ done }: { done: () => void }) {
   const [register, setRegister] = useState(false), [reset, setReset] = useState(false), [message, setMessage] = useState("");
-  return <main className="auth"><div className="auth-panel"><img src="/mark.svg" alt="iPollo" width="42"/><h1>{register ? "创建账号" : "欢迎回来"}</h1><p>登录 iPolloWork，连接你的工作与团队。</p>
-    <ActionForm label={register ? "注册并登录" : "登录"} submit={async f => {
-      await api("/api/auth/" + (register ? "sign-up" : "sign-in") + "/email", { name: value(f, "name"), email: value(f, "email"), password: value(f, "password") }); done();
-    }}>
-      {register && <Field label="姓名"><input name="name" required autoComplete="name"/></Field>}
-      <Field label="邮箱"><input name="email" type="email" required autoComplete="email"/></Field>
-      <Field label="密码"><input name="password" type="password" minLength={10} required autoComplete={register ? "new-password" : "current-password"}/></Field>
-    </ActionForm>
-    <div className="actions"><button className="link" onClick={() => setRegister(!register)}>{register ? "已有账号，返回登录" : "还没有账号？注册"}</button><button className="link" onClick={() => setReset(true)}>忘记密码</button></div>
+  const [reveal, setReveal] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget), email = value(form, "email");
+    setBusy(true); setError("");
+    try {
+      // Registration needs a display name; the email's local part is the default and can be changed later.
+      await api("/api/auth/" + (register ? "sign-up" : "sign-in") + "/email", { name: email.split("@")[0] || email, email, password: value(form, "password") });
+      done();
+    } catch (e) { setError(e instanceof Error ? e.message : "操作失败"); } finally { setBusy(false); }
+  };
+  return <main className="auth"><div className="auth-glow" aria-hidden="true"/><div className="auth-panel">
+    <span className="auth-mark"><img src="/mark.svg" alt="iPollo" width="22"/></span>
+    <h1>{register ? "创建你的账号" : "欢迎回来"}</h1><p>一个账号，连接官方模型、企业空间和积分</p>
+    <div className="segmented" role="group" aria-label="账号">
+      <button type="button" aria-pressed={!register} onClick={() => { setRegister(false); setError(""); }}>登录</button>
+      <button type="button" aria-pressed={register} onClick={() => { setRegister(true); setError(""); }}>注册</button>
+    </div>
+    <form className="auth-form" onSubmit={e => void submit(e)}>
+      <label className="icon-field"><Mail size={15}/><input name="email" type="email" placeholder="邮箱" required autoComplete="email" aria-label="邮箱"/></label>
+      <label className="icon-field"><Lock size={15}/><input name="password" type={reveal ? "text" : "password"} placeholder={register ? "密码，至少 10 位" : "密码"} minLength={10} required autoComplete={register ? "new-password" : "current-password"} aria-label="密码"/>
+        <button type="button" className="field-eye" aria-label={reveal ? "隐藏密码" : "显示密码"} onClick={() => setReveal(!reveal)}>{reveal ? <EyeOff size={15}/> : <Eye size={15}/>}</button></label>
+      <Status error={error}/>
+      <button className="primary submit" disabled={busy}>{busy ? "处理中…" : register ? "注册并登录" : "登录"}<ArrowRight size={15}/></button>
+    </form>
+    {!register && <button className="link forgot" onClick={() => setReset(true)}>忘记密码？</button>}
     {reset && <Modal title="重置密码" close={() => setReset(false)}><ActionForm label="发送重置邮件" submit={async f => {
       await api("/api/auth/request-password-reset", {email:value(f,"email"),redirectTo:location.origin+"/reset-password"}); setMessage("如果邮箱已注册，你会收到重置邮件。");
     }}><Field label="邮箱"><input name="email" type="email" required/></Field></ActionForm><p role="status">{message}</p></Modal>}
@@ -25,7 +41,7 @@ function Auth({ done }: { done: () => void }) {
 }
 function ResetPassword() {
   const [done,setDone]=useState(false);
-  return <main className="auth"><div className="auth-panel"><h1>设置新密码</h1>{done?<p>密码已更新。<a href="/">返回登录</a></p>:<ActionForm submit={async f=>{
+  return <main className="auth"><div className="auth-glow" aria-hidden="true"/><div className="auth-panel"><span className="auth-mark"><img src="/mark.svg" alt="iPollo" width="22"/></span><h1>设置新密码</h1>{done?<p>密码已更新。<a href="/">返回登录</a></p>:<ActionForm submit={async f=>{
     await api("/api/auth/reset-password",{token:new URLSearchParams(location.search).get("token"),newPassword:value(f,"password")});setDone(true);
   }}><Field label="新密码"><input name="password" type="password" minLength={10} autoComplete="new-password" required/></Field></ActionForm>}</div></main>;
 }
@@ -34,7 +50,7 @@ const navigation = [
   { id: "users", title: "用户", icon: Users, admin: true },
   { id: "enterprises", title: "企业", icon: Building2 },
   { id: "projects", title: "项目", icon: Folder },
-  { id: "services", title: "服务中心", icon: Settings },
+  { id: "services", title: "服务中心", icon: Zap },
   { id: "resources", title: "资源", icon: Library },
   { id: "plans", title: "套餐", icon: CreditCard },
   { id: "orders", title: "订单", icon: Receipt },

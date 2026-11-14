@@ -68,6 +68,7 @@ const en = {
   tooLarge: 'This conversation is too large to share as one snapshot.', projectMissing: 'This project is no longer available.',
   chooseColleague: 'Select at least one colleague.', sharingScope: 'Shared text is available only to the selected enterprise members.',
   changed: 'The conversation changed. Reopen the preview before sharing.',
+  inviteByEmail:'Invite by email', inviteSent:'Invitation link ready for {email}', newDepartment:'Department', departmentName:'Department name', changeRole:'Change role', changeDepartment:'Move to department', dismiss:'Dismiss'
 }
 const zh: typeof en = {
   localShareHint:'当前账户服务仅在本机运行；同事跨电脑使用分享链接前，需要连接团队共用的服务地址',
@@ -137,6 +138,7 @@ const zh: typeof en = {
   tooLarge: '会话内容过多，请拆分后分享', projectMissing: '此项目已不可用',
   chooseColleague: '请至少选择一位同事', sharingScope: '分享文字仅对所选企业成员开放',
   changed: '会话内容已更新，请重新打开预览后分享',
+  inviteByEmail:'输入邮箱，邀请同事', inviteSent:'已为 {email} 生成邀请链接', newDepartment:'部门', departmentName:'部门名称', changeRole:'修改身份', changeDepartment:'调整部门', dismiss:'关闭'
 }
 export type EnterpriseLabels = typeof en
 export function enterpriseCopy(ctx: ClientContext): EnterpriseLabels { return language(ctx) === 'zh' ? zh : en }

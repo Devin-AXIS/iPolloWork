@@ -1,76 +1,110 @@
 /** Members, departments and invitations of one enterprise, managed inline on the enterprise page. */
 import { useState, type FormEvent } from 'react'
-import { Button, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, Input, Menu, Modal, Pill, Tag } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconCloseOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { EnterpriseDetail } from '../shared/enterprise.ts'
 import type { EnterpriseController, EnterpriseDialog } from './enterprise-controller.ts'
 import { format, type EnterpriseLabels } from './enterprise-locale.ts'
-import { CopyLink, EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, roleName, useRecord, useTask, type Call } from './enterprise-ui.tsx'
+import { CopyLink, EmptyState, Field, FormError, ListSkeleton, Notice, roleName, useRecord, useTask, type Call } from './enterprise-ui.tsx'
+import { MailGlyph, Monogram } from './glyphs.tsx'
 import css from './suite.module.css'
 
 interface MembersProps { enterpriseId: string; userId: string; revision: number; t: EnterpriseLabels; call: Call; controller: EnterpriseController }
 
-function MemberMenu({ t, onEdit, onRemove }: { t: EnterpriseLabels; onEdit(): void; onRemove(): void }) {
+/** A small chip that opens a native menu of choices and applies the selection immediately. */
+function ChoiceChip({ label, value, options, onChoose, disabled = false, tone = 'plain' }: { label: string; value: string; options: { id: string; label: string }[]; onChoose(id: string): Promise<void>; disabled?: boolean; tone?: 'plain' | 'strong' }) {
+  const [open, setOpen] = useState(false)
+  const current = options.find(o => o.id === value)?.label ?? ''
+  if (disabled) return <span className={css.chip} data-tone={tone} data-static="">{current}</span>
+  return <Menu open={open} portal align="end" dense selectedId={value} onClose={() => setOpen(false)}
+    anchor={<button type="button" className={css.chip} data-tone={tone} aria-label={`${label}: ${current}`} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(v => !v)}>{current}<IconChevronDownOutlineRegular size={11}/></button>}
+    items={options} onSelect={id => { setOpen(false); if (id !== value) void onChoose(id) }}/>
+}
+
+function MemberMenu({ t, onRemove }: { t: EnterpriseLabels; onRemove(): void }) {
   const [open, setOpen] = useState(false)
   return <Menu open={open} portal align="end" onClose={() => setOpen(false)}
-    anchor={<Button variant="ghost" size="sm" aria-label={t.manage} icon={<IconEllipsisOutlineRegular size={16}/>} onClick={() => setOpen(v => !v)}/>}
-    items={[{ id: 'edit', label: t.edit }, { id: 'remove', label: t.remove, danger: true }]}
-    onSelect={id => { setOpen(false); if (id === 'edit') onEdit(); else onRemove() }}/>
+    anchor={<button type="button" className={css.iconGhost} aria-label={t.manage} onClick={() => setOpen(v => !v)}><IconEllipsisOutlineRegular size={15}/></button>}
+    items={[{ id: 'remove', label: t.remove, danger: true }]}
+    onSelect={() => { setOpen(false); onRemove() }}/>
 }
 
 export function MembersTab({ enterpriseId, userId, revision, t, call, controller }: MembersProps) {
   const detail = useRecord<EnterpriseDetail>('/organizations/' + enterpriseId, call, revision)
   const [query, setQuery] = useState(''), [department, setDepartment] = useState<string | null>(null)
-  const [departmentName, setDepartmentName] = useState(''), task = useTask(t)
+  const [addingDepartment, setAddingDepartment] = useState(false), [departmentName, setDepartmentName] = useState('')
+  const [email, setEmail] = useState(''), [role, setRole] = useState<'member' | 'admin'>('member'), [link, setLink] = useState<{ email: string; url: string } | null>(null)
+  const task = useTask(t)
   if (!detail.data) return detail.error ? <Notice error={detail.error} t={t} retry={detail.reload}/> : <ListSkeleton/>
   const data = detail.data, needle = query.trim().toLocaleLowerCase()
-  const departmentName_ = (id: string | null) => data.departments.find(d => d.id === id)?.name ?? t.unassigned
   const members = data.members.filter(m => (department === null || m.departmentId === department)
     && (!needle || m.name.toLocaleLowerCase().includes(needle) || m.email.toLocaleLowerCase().includes(needle)))
   const pending = data.invitations.filter(i => !i.accepted && !i.revoked)
+  const departmentOptions = [{ id: '', label: t.unassigned }, ...data.departments.map(d => ({ id: d.id, label: d.name }))]
+  const roleOptions = [{ id: 'member', label: t.member }, { id: 'admin', label: t.admin }]
+  const update = (member: EnterpriseDetail['members'][number], change: { role?: string; departmentId?: string | null }) => task.run(async () => {
+    await call('/organizations/' + enterpriseId + '/members/' + member.userId, { role: change.role ?? member.role, departmentId: change.departmentId === undefined ? member.departmentId : change.departmentId }, 'PATCH')
+    controller.notify(t.memberSaved); await controller.load()
+  })
   const addDepartment = (e: FormEvent) => { e.preventDefault(); void task.run(async () => {
-    await call('/organizations/' + enterpriseId + '/departments', { name: departmentName })
-    setDepartmentName(''); controller.notify(t.departmentAdded); await controller.load()
+    await call('/organizations/' + enterpriseId + '/departments', { name: departmentName.trim() })
+    setDepartmentName(''); setAddingDepartment(false); controller.notify(t.departmentAdded); await controller.load()
   }) }
-  return <div className={css.enterpriseStack}>
-    <Section title={t.members} meta={format(t.memberCount, { count: data.members.length })}
-      actions={data.canManage && <Button variant="primary" icon={<IconPlusOutlineRegular size={14}/>} onClick={() => controller.open({ kind: 'invite', enterpriseId })}>{t.invite}</Button>}>
-      <div className={css.memberFilters}>
-        <Input className={css.memberSearch!} icon={<IconSearchOutlineRegular size={16}/>} placeholder={t.searchMembers} aria-label={t.searchMembers} value={query} onChange={e => setQuery(e.target.value)}/>
-        {data.departments.length > 0 && <div className={css.pillRow} role="group" aria-label={t.departments}>
-          <Pill active={department === null} onClick={() => setDepartment(null)}>{t.allDepartments}</Pill>
-          {data.departments.map(d => <Pill key={d.id} active={department === d.id} onClick={() => setDepartment(d.id)}>{d.name}</Pill>)}
-        </div>}
+  const invite = (e: FormEvent) => { e.preventDefault(); void task.run(async () => {
+    const result = await call<{ url: string }>('/organizations/' + enterpriseId + '/invitations', { email: email.trim(), role, departmentId: department })
+    setLink({ email: email.trim(), url: result.url }); setEmail(''); controller.notify(t.inviteCreated); await controller.load()
+  }) }
+  return <div className={css.teamView}>
+    <div className={css.teamBar}>
+      <div className={css.chipRow} role="group" aria-label={t.departments}>
+        <button type="button" className={css.filterChip} aria-pressed={department === null} onClick={() => setDepartment(null)}>{t.allDepartments}<small>{data.members.length}</small></button>
+        {data.departments.map(d => <button key={d.id} type="button" className={css.filterChip} aria-pressed={department === d.id} onClick={() => setDepartment(d.id)}>
+          {d.name}<small>{data.members.filter(m => m.departmentId === d.id).length}</small></button>)}
+        {data.canManage && (addingDepartment
+          ? <form className={css.chipInput} onSubmit={addDepartment}><input autoFocus aria-label={t.departmentName} placeholder={t.departmentName} maxLength={120} value={departmentName} disabled={task.busy}
+              onChange={e => setDepartmentName(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setAddingDepartment(false); setDepartmentName('') } }}
+              onBlur={() => { if (!departmentName.trim()) setAddingDepartment(false) }}/>
+            <button type="submit" aria-label={t.addDepartment} disabled={task.busy || !departmentName.trim()}><IconCheckOutlineRegular size={13}/></button></form>
+          : <button type="button" className={css.filterChip} data-add="" onClick={() => setAddingDepartment(true)}><IconPlusOutlineRegular size={12}/>{t.newDepartment}</button>)}
       </div>
-      <div className={css.enterpriseList}>
-        {members.map(m => <Row key={m.userId} title={<>{m.name}{m.userId === userId && <Tag tone="quiet">{t.you}</Tag>}</>} meta={`${m.email} · ${departmentName_(m.departmentId)}`}
-          aside={<Tag tone={m.role === 'member' ? 'outline' : 'neutral'}>{roleName(m.role, t)}</Tag>}
-          actions={data.canManage && m.role !== 'owner' && m.userId !== userId ? <MemberMenu t={t}
-            onEdit={() => controller.open({ kind: 'member', enterpriseId, userId: m.userId })}
-            onRemove={() => controller.open({ kind: 'confirm', title: format(t.removeMemberTitle, { name: m.name }), description: t.removeMemberBody, confirmLabel: t.remove,
-              run: async () => { await call('/organizations/' + enterpriseId + '/members/' + m.userId, undefined, 'DELETE'); controller.notify(t.memberRemoved); await controller.load() } })}/> : undefined}/>)}
-        {!members.length && <p className={css.quietLine}>{t.noMembersMatch}</p>}
+      <label className={css.miniSearch}><IconSearchOutlineRegular size={14}/><input placeholder={t.searchMembers} aria-label={t.searchMembers} value={query} onChange={e => setQuery(e.target.value)}/></label>
+    </div>
+    {data.canManage && <form className={css.inviteBar} onSubmit={invite}>
+      <label className={css.fieldPill}><MailGlyph size={15}/><input type="email" required placeholder={t.inviteByEmail} aria-label={t.email} value={email} disabled={task.busy} onChange={e => setEmail(e.target.value)}/></label>
+      <div className={css.sourceSwitch} role="group" aria-label={t.role}>
+        {roleOptions.map(o => <button key={o.id} type="button" aria-pressed={role === o.id} onClick={() => setRole(o.id as 'member' | 'admin')}>{o.label}</button>)}
       </div>
-    </Section>
-    {data.canManage && pending.length > 0 && <Section title={t.invitations} meta={String(pending.length)}>
-      <div className={css.enterpriseList}>{pending.map(i => {
+      <button type="submit" className={css.keySave} disabled={task.busy || !email.trim()}>{t.invite}</button>
+    </form>}
+    {link && <div className={css.linkNote}><span>{format(t.inviteSent, { email: link.email })}</span><CopyLink url={link.url} t={t}/>
+      <button type="button" className={css.iconGhost} aria-label={t.dismiss} onClick={() => setLink(null)}><IconCloseOutlineRegular size={14}/></button></div>}
+    <FormError message={task.error}/>
+    <div className={css.peopleList}>
+      {members.map(m => <div key={m.userId} className={css.person}>
+        <Monogram id={m.email} label={m.name || m.email} size={32} round/>
+        <span className={css.personText}><strong>{m.name}{m.userId === userId && <span className={css.youTag}>{t.you}</span>}</strong><small>{m.email}</small></span>
+        <ChoiceChip label={t.changeDepartment} value={m.departmentId ?? ''} options={departmentOptions} disabled={!data.canManage || task.busy}
+          onChoose={id => update(m, { departmentId: id || null })}/>
+        {m.role === 'owner' ? <span className={css.chip} data-tone="strong" data-static="">{t.owner}</span>
+          : <ChoiceChip label={t.changeRole} value={m.role} options={roleOptions} tone={m.role === 'admin' ? 'strong' : 'plain'} disabled={!data.canManage || m.userId === userId || task.busy}
+            onChoose={id => update(m, { role: id })}/>}
+        <span className={css.personActions}>{data.canManage && m.role !== 'owner' && m.userId !== userId && <MemberMenu t={t}
+          onRemove={() => controller.open({ kind: 'confirm', title: format(t.removeMemberTitle, { name: m.name }), description: t.removeMemberBody, confirmLabel: t.remove,
+            run: async () => { await call('/organizations/' + enterpriseId + '/members/' + m.userId, undefined, 'DELETE'); controller.notify(t.memberRemoved); await controller.load() } })}/>}</span>
+      </div>)}
+      {!members.length && <p className={css.quietLine}>{t.noMembersMatch}</p>}
+      {data.canManage && pending.map(i => {
         const expired = i.expiresAt < Date.now()
-        return <Row key={i.id} title={i.email} meta={`${roleName(i.role, t)} · ${new Date(i.expiresAt).toLocaleDateString()}`}
-          aside={<Tag tone={expired ? 'outline' : 'neutral'}>{expired ? t.expired : t.pending}</Tag>}
-          actions={<>
-            <Button variant="ghost" size="sm" onClick={() => controller.open({ kind: 'invite', enterpriseId, email: i.email, role: i.role, replaces: i.id })}>{t.resend}</Button>
-            <Button variant="ghost" size="sm" onClick={() => controller.open({ kind: 'confirm', title: t.revokeInviteTitle, description: t.revokeInviteBody, confirmLabel: t.revoke,
-              run: async () => { await call('/organizations/' + enterpriseId + '/invitations/' + i.id, undefined, 'DELETE'); controller.notify(t.inviteRevoked); await controller.load() } })}>{t.revoke}</Button>
-          </>}/>
-      })}</div>
-    </Section>}
-    <Section title={t.departments} meta={String(data.departments.length)}>
-      <div className={css.enterpriseList}>{data.departments.map(d => <Row key={d.id} title={d.name} meta={format(t.memberCount, { count: data.members.filter(m => m.departmentId === d.id).length })}/>)}</div>
-      {data.canManage && <form className={css.inlineForm} onSubmit={addDepartment}>
-        <Input aria-label={t.name} placeholder={t.addDepartment} required maxLength={120} value={departmentName} onChange={e => setDepartmentName(e.target.value)} disabled={task.busy}/>
-        <Button variant="outline" type="submit" disabled={task.busy || !departmentName.trim()}>{t.addDepartment}</Button>
-      </form>}
-      <FormError message={task.error}/>
-    </Section>
+        return <div key={i.id} className={css.person} data-pending="">
+          <span className={css.pendingAvatar} aria-hidden="true"><MailGlyph size={14}/></span>
+          <span className={css.personText}><strong>{i.email}</strong><small>{expired ? t.expired : t.pending} · {roleName(i.role, t)} · {new Date(i.expiresAt).toLocaleDateString()}</small></span>
+          <span className={css.personActions}>
+            <button type="button" className={css.quietButton} onClick={() => controller.open({ kind: 'invite', enterpriseId, email: i.email, role: i.role, replaces: i.id })}>{t.resend}</button>
+            <button type="button" className={css.quietButton} onClick={() => controller.open({ kind: 'confirm', title: t.revokeInviteTitle, description: t.revokeInviteBody, confirmLabel: t.revoke,
+              run: async () => { await call('/organizations/' + enterpriseId + '/invitations/' + i.id, undefined, 'DELETE'); controller.notify(t.inviteRevoked); await controller.load() } })}>{t.revoke}</button>
+          </span>
+        </div>
+      })}
+    </div>
   </div>
 }
 
