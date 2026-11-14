@@ -72,7 +72,7 @@ jobs:
           store_path=$(PNPM_CONFIG_STORE_DIR="$store_root" pnpm store path --silent)
           echo "path=$store_path" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/cache/restore@v6.1.0
+      - uses: actions/cache/restore@v6
         if: runner.environment == 'github-hosted'
         with:
           path: ${{ steps.pnpm-store.outputs.path }}

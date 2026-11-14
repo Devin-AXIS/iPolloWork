@@ -69,7 +69,7 @@ jobs:
 
       # Read-only: the preview lane consumes the default-branch cache without
       # putting cache upload on its own path.
-      - uses: actions/cache/restore@v6.1.0
+      - uses: actions/cache/restore@v6
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
