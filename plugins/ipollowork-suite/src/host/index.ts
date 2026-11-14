@@ -9,7 +9,9 @@ import semver from "semver";
 import { ZodError } from "zod";
 import packageInfo from "../../package.json" with { type: "json" };
 import type { CredentialStore } from "../shared/types.ts";
+import { membershipSchema, membershipOrderSchema, membershipCheckoutSchema } from "../shared/membership.ts";
 import { mountServiceModels } from "./service-models.ts";
+import { mountOutputContinuation } from "./output-continuation.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
@@ -248,6 +250,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     config.account,
   );
   ctx.provide?.("ipolloServices", services);
+  ctx.inject?.(["agents"], mountOutputContinuation);
   ctx.inject?.(["llm", "agentDefaultModel", "sessionController"], (scope) => {
     if (!ctx.webServer.getOrigin) {
       services.modelStatus = "unsupported";
@@ -426,6 +429,18 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               const state = await account.signOut();
               await refreshAccount().catch(() => {});
               json(response, 200, state);
+              return;
+            }
+            if (request.method === "GET" && path === "/membership" && config.account) {
+              json(response, 200, membershipSchema.parse(await account.request("/api/v1/me/membership")));
+              return;
+            }
+            if (request.method === "POST" && path === "/membership/checkout" && config.account) {
+              json(response, 200, membershipCheckoutSchema.parse(await account.request("/api/v1/orders", membershipOrderSchema.parse(await body(request)))));
+              return;
+            }
+            if (request.method === "POST" && /^\/membership\/orders\/[a-f0-9-]{36}\/sync$/.test(path) && config.account) {
+              json(response, 200, membershipCheckoutSchema.parse(await account.request("/api/v1/orders/" + path.split("/")[3] + "/sync", {})));
               return;
             }
             if (path === "/enterprise/native-sharing") {

@@ -658,6 +658,8 @@ export interface Config extends ContactConfig {
 
 /** Questionnaire destination shared by Host and Client. */
 export interface ContactConfig {
+  /** Another installed account provider owns sign-in and account presentation. */
+  externalAccount?: boolean
   /** HTTPS questionnaire URL; override for a test form. */
   contactFormUrl: string
   /** Questionnaire source option; empty until Harness is supported by the form. */
@@ -2801,6 +2803,8 @@ export interface PlanModeConfig {
 ```ts config-catalog
 /** The pnpm executable, registries, and limits for diagnostics, lookups and connection checks. */
 export interface Config {
+  /** Bundles required by the application; their components cannot be disabled or removed. */
+  requiredBundles?: string[]
   /** The pnpm executable name or path; resolved through `PATH` like the `dsh plugin` command. */
   pnpmCommand?: string
   /** Maximum retained package-operation diagnostic bytes. */

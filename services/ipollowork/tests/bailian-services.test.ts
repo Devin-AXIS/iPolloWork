@@ -16,6 +16,26 @@ import { billingSchema, reserveUsage, usageCost } from "../src/pricing.js";
 import { ModelPricing } from "../web/model-pricing.js";
 import { testConfig } from "./database.js";
 
+test("legacy output defaults are repaired without replacing operator prices or explicit model values", async () => {
+  const app = await createService(await testConfig({}));
+  try {
+    const row = await app.store.one("SELECT plan_ids FROM execution_services WHERE id=?", "official-bailian");
+    const details = JSON.parse(String(row!.plan_ids));
+    details.models.find((model: { id: string }) => model.id === "deepseek-v4-pro").maxTokens = 8192;
+    details.models.find((model: { id: string }) => model.id === "qwen3.8-max").maxTokens = 64000;
+    const rate = details.billing.rates.find((item: { model: string }) => item.model === "deepseek-v4-pro");
+    rate.maxOutputTokens = 8192;
+    rate.outputPerMillion = 99000000;
+    await app.store.run("UPDATE execution_services SET plan_ids=? WHERE id=?", JSON.stringify(details), "official-bailian");
+    await seedOfficialServices(app.store);
+    const updated = JSON.parse(String((await app.store.one("SELECT plan_ids FROM execution_services WHERE id=?", "official-bailian"))!.plan_ids));
+    assert.equal(updated.models.find((model: { id: string }) => model.id === "deepseek-v4-pro").maxTokens, 393216);
+    assert.equal(updated.models.find((model: { id: string }) => model.id === "qwen3.8-max").maxTokens, 64000);
+    assert.equal(updated.billing.rates.find((item: { model: string }) => item.model === "deepseek-v4-pro").maxOutputTokens, 393216);
+    assert.equal(updated.billing.rates.find((item: { model: string }) => item.model === "deepseek-v4-pro").outputPerMillion, 99000000);
+  } finally { await app.close(); }
+});
+
 test("Alibaba presets retain operator choices and route third-party models with one workspace key", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-bailian-"));
   const app = await createService(await testConfig({ DATA_DIR: dir }));

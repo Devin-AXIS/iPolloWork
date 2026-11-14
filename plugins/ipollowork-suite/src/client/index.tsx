@@ -10,8 +10,8 @@ import { AccountController } from './account-controller.ts'
 import { mountAgents } from './agents.tsx'
 import { mountCoordinator } from './coordinator.tsx'
 import { mountEnterprise } from './enterprise.tsx'
-import { mountDesktopOnboarding } from './desktop-onboarding.ts'
 import { mountConnections } from './connections.tsx'
+import { mountOutputContinuationPresentation } from './output-continuation.tsx'
 import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
 import { shareAudienceCopy } from './share-audience-copy.ts'
 import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
@@ -26,6 +26,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   const info = await request<SuiteInfo & { theme: boolean; market: boolean; account: boolean; dedicatedDesktop?: boolean }>('/info', { signal: lifetime.signal })
   if (lifetime.signal.aborted) return
   const labels = labelSource(ctx)
+  mountOutputContinuationPresentation(ctx)
   mountConnections(ctx)
   mountAgents(ctx)
   mountCoordinator(ctx)
@@ -76,6 +77,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     ctx.effect(() => () => account.dispose(), 'ipollowork-suite: account state')
     const props = () => ({ origin: info.accountOrigin, refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })
     if (info.dedicatedDesktop) {
+      const { mountDesktopOnboarding } = await import('./desktop-onboarding.ts')
       document.title = 'iPolloWork'
       ctx.effect(() => ctx.remote.$on('credentials/record-updated', () => { void account.refresh() }),
         'ipollowork-suite: native account changes')

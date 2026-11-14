@@ -3,8 +3,9 @@ import { useEffect, useState, type FormEvent } from 'react'
 import type { AccountSnapshot } from './account-controller.ts'
 import type { Labels } from './locale.ts'
 import type { LauncherProps } from './native.ts'
-import { IconEyeOffOutlineRegular, IconEyeOutlineRegular, IconSparkleRegular } from '@deepseek-ai/dsh-client-ui-primitives'
-import { AccountArt, ArrowGlyph, CoinGlyph, LockGlyph, MailGlyph, Monogram } from './glyphs.tsx'
+import { IconEyeOffOutlineRegular, IconEyeOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { AccountArt, ArrowGlyph, LockGlyph, MailGlyph, Monogram } from './glyphs.tsx'
+import { MembershipPanel } from './membership.tsx'
 import css from './suite.module.css'
 
 interface AccountProps {
@@ -27,22 +28,8 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
   const message = error && (error === 'IPW_REGISTRATION_REJECTED' ? t.registrationError : error === 'IPW_SIGN_IN_REQUIRED' || error === 'IPW_INVALID_LOGIN' ? t.loginError : error === 'IPW_LOGIN_CANCELLED' ? t.canceled : t.error)
   const service = <p className={css.authService}><span data-state={error === 'IPW_SERVICE_UNAVAILABLE' ? 'down' : 'up'}/>{t.service} · <a href={origin} target="_blank" rel="noreferrer">{host}</a></p>
   if (account?.status === 'signed-in') {
-    const name = account.user.name || account.user.email
-    return <section className={css.authPage}>
-      <div className={css.glassCard}>
-        <div className={css.identity}>
-          <Monogram id={account.user.email} label={name} size={44} round/>
-          <div className={css.identityText}><strong>{name}</strong><small>{account.user.email}</small></div>
-        </div>
-        <div className={css.statRow}>
-          <div><small><CoinGlyph size={12}/>{t.points}</small><strong>{account.points === null ? '—' : account.points.toLocaleString()}</strong></div>
-          <div><small><IconSparkleRegular size={12}/>{t.accountStatus}</small><strong>{t.connected}</strong></div>
-        </div>
-        <div className={css.authFooter}>{service}<span className={css.spacer}/>
-          <button type="button" className={css.quietButton} onClick={() => void refresh()} disabled={busy}>{t.refresh}</button>
-          <button type="button" className={css.quietButton} onClick={() => void signOut()} disabled={busy}>{t.signOut}</button>
-        </div>
-      </div>
+    return <section className={`${css.authPage} ${css.memberPage}`}>
+      <MembershipPanel key={account.user.id} account={account} t={t} refreshAccount={refresh} signOut={signOut}/>
     </section>
   }
   return <section className={css.authPage}>

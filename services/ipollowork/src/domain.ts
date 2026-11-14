@@ -235,6 +235,15 @@ export async function wallet(store: Store, userId: string) {
     )) ?? { balance: 0, totalEarned: 0, totalSpent: 0 }
   );
 }
+/** Serialize account debits and budget reservations within the caller's transaction.
+ * @param store Account database in the caller's transaction.
+ * @param userId Wallet owner.
+ * @returns Resolves while retaining the wallet lock until transaction completion.
+ */
+export async function lockWallet(store: Store, userId: string) {
+  await store.run("INSERT INTO wallets(user_id) VALUES(?) ON CONFLICT(user_id) DO NOTHING", userId);
+  await store.one("SELECT user_id FROM wallets WHERE user_id=? FOR UPDATE", userId);
+}
 /** Must run within the caller's transaction; the reference prevents duplicate credit. */
 export async function ledgerEntry(
   store: Store,
@@ -245,14 +254,7 @@ export async function ledgerEntry(
   actorId: string | null = null,
   allowDebt = false,
 ) {
-  await store.run(
-    "INSERT INTO wallets(user_id) VALUES(?) ON CONFLICT(user_id) DO NOTHING",
-    userId,
-  );
-  await store.one(
-    "SELECT user_id FROM wallets WHERE user_id=? FOR UPDATE",
-    userId,
-  );
+  await lockWallet(store, userId);
   const previous = await store.one(
     "SELECT user_id,amount FROM ledger WHERE reference=?",
     reference,

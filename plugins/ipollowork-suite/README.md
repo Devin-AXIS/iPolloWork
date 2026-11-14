@@ -46,6 +46,10 @@ Local work and browsing the public catalog require no iPollo login. The account 
 
 The bundle replaces the built-in DeepSeek account UI and its notification UI through two ordinary profile overrides; the DeepSeek account service and other model-provider credentials remain intact. Disabling the bundle removes these overrides. With `account: false`, the suite presents no account UI.
 
+The account page shows membership, available credits, daily and weekly consumption, and seven days of usage. Its native cards and purchase dialog reuse the Stage account layout; account data, orders and payments belong to this standalone service. Checkout is offered only for configured payment channels and enabled plans.
+
+The suite uses provider model capacities without a separate product output limit. A committed truncated account-model response with no pending tool calls or queued human input continues through the native agent inbox. Continuation text is recorded as `ipollowork-output-continuation`; the client suppresses the protocol warning row. Unloading removes listeners and unclaimed continuation messages, while preserving user messages and recorded output.
+
 ## Limits
 
 The agent module registers discovery, native delegation, and project-memory tools. Account secrets and market administration are not injected into a conversation. A native pre-execution policy refuses direct `plugin_manager` mutations of this suite while preserving reads and management of other plugins. This is not tamper protection: shell/file access can bypass that tool, and DSH's built-in protected-package list does not automatically protect arbitrary third-party bundles. An administrator-managed installation still requires a generic management-authorization extension plus operating-system isolation if agents or third-party Host plugins can write the installation. Do not use hiding UI or this package's presence as an enterprise security boundary.

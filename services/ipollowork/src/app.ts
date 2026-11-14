@@ -29,6 +29,8 @@ import { mountPublications } from "./publications.js";
 
 export const settingFields: Record<string, readonly string[]> = {
   stripe: ["secretKey", "webhookSecret"],
+  alipay: ["appId", "sellerId", "privateKey", "publicKey", "sandbox"],
+  wechat: ["appId", "merchantId", "merchantSerial", "privateKey", "apiV3Key", "platformKeyId", "platformPublicKey"],
   oss: ["region", "bucket", "accessKeyId", "accessKeySecret"],
   app_store: [
     "bundleId",
@@ -46,6 +48,7 @@ const secrets = new Set([
   "accessKeyId",
   "accessKeySecret",
   "privateKey",
+  "apiV3Key",
 ]);
 
 /** Create the standalone HTTP service and its local persistence owner. */
@@ -340,6 +343,7 @@ export async function createService(config: Config) {
       ["localhost", "127.0.0.1", "[::1]"].includes(
         new URL(config.origin).hostname,
       ),
+      config.usageUtcOffsetMinutes,
     );
     await execution.recover();
     mountExecution(app, execution);

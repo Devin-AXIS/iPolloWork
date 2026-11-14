@@ -581,6 +581,7 @@ export function Plans({ user }: { user: User }) {
               {count(r.points)} 积分
               {Number(r.days) > 0 && " · " + r.days + " 天"}
             </p>
+            {r.kind === "membership" && <p>每日 {r.daily_points ? count(r.daily_points) : "不限"} · 每周 {r.weekly_points ? count(r.weekly_points) : "不限"} 积分</p>}
             <div className="actions">
               {admin ? (
                 <button onClick={() => openPlan(r)}>编辑套餐</button>
@@ -624,6 +625,8 @@ export function Plans({ user }: { user: User }) {
                   pointsCost: value(f, "pointsCost")
                     ? Number(value(f, "pointsCost"))
                     : null,
+                  dailyPoints: value(f, "dailyPoints") ? Number(value(f, "dailyPoints")) : null,
+                  weeklyPoints: value(f, "weeklyPoints") ? Number(value(f, "weeklyPoints")) : null,
                   enabled: f.get("enabled") === "on",
                   appleProductId: value(f, "apple") || null,
                 },
@@ -692,6 +695,7 @@ export function Plans({ user }: { user: User }) {
                   defaultValue={text(edit.points_cost)}
                 />
               </Field>
+              {planDraft.kind === "membership" && <><Field label="每日积分上限（留空不限）"><input name="dailyPoints" type="number" min="1" step="1" defaultValue={text(edit.daily_points)} /></Field><Field label="每周积分上限（留空不限）"><input name="weeklyPoints" type="number" min="1" step="1" defaultValue={text(edit.weekly_points)} /></Field></>}
             </div>
             <PlanBudgetPreview {...planDraft} />
             <Field label="App Store 商品 ID（可选）">
@@ -828,6 +832,8 @@ export function UsersPage() {
 }
 const settingsLabels: Record<string, Record<string, string>> = {
   stripe: { secretKey: "Secret key", webhookSecret: "Webhook secret" },
+  alipay: { appId: "应用 App ID", sellerId: "收款商户 PID", privateKey: "应用私钥 PEM", publicKey: "支付宝公钥 PEM", sandbox: "沙箱（1 开启，0 关闭）" },
+  wechat: { appId: "应用 App ID", merchantId: "商户号", merchantSerial: "商户证书序列号", privateKey: "商户私钥 PEM", apiV3Key: "API v3 密钥", platformKeyId: "微信支付公钥 ID", platformPublicKey: "微信支付公钥 PEM" },
   oss: {
     region: "地域（如 oss-cn-hangzhou）",
     bucket: "Bucket",
@@ -861,6 +867,8 @@ export function SettingsPage() {
                 {
                   {
                     stripe: "Stripe 支付",
+                    alipay: "支付宝",
+                    wechat: "微信支付",
                     oss: "阿里云 OSS",
                     app_store: "App Store 支付",
                   }[group]
@@ -879,7 +887,7 @@ export function SettingsPage() {
               >
                 {Object.entries(fields).map(([field, label]) => (
                   <Field key={field} label={label}>
-                    {field === "privateKey" ? (
+                    {/privateKey|publicKey/i.test(field) ? (
                       <textarea
                         name={field}
                         rows={3}

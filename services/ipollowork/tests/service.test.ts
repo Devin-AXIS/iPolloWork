@@ -291,7 +291,7 @@ test("standalone service: identity, enterprise isolation, files and payments", a
               "SELECT MAX(version) AS user_version FROM service_schema",
             )
           )?.user_version,
-          5,
+          6,
         );
       },
     );

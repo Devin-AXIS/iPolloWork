@@ -10,12 +10,14 @@ import {
   enterpriseAccess,
   isEnterpriseManager,
   ledgerEntry,
+  lockWallet,
   now,
   requireAdmin,
   requireEnterpriseManager,
   wallet,
 } from "./domain.js";
 import { ServiceError } from "./errors.js";
+import { requireUsageBudget } from "./usage.js";
 import {
   audienceOf,
   audienceSchema,
@@ -295,6 +297,7 @@ export class ExecutionService {
     private fetcher: typeof fetch = fetch,
     /** Development deployments on a loopback origin may connect enterprise models to loopback upstreams. */
     private loopbackUpstreams = false,
+    private usageUtcOffsetMinutes = 480,
   ) {}
   /** Mark interrupted requests uncertain only after their reservation lease expires. */
   async recover(): Promise<void> {
@@ -1086,6 +1089,7 @@ export class ExecutionService {
       )
       .digest("hex");
     const existing = await this.store.transaction(async () => {
+      if (points) await lockWallet(this.store, actor.id);
       const previous = await this.store.one<CallRow>(
         "SELECT * FROM service_calls WHERE id=?",
         input.requestId,
@@ -1102,7 +1106,8 @@ export class ExecutionService {
         )
       )
         throw new ServiceError("SERVICE_BUSY", 409);
-      if (points)
+      if (points) {
+        await requireUsageBudget(this.store, actor.id, points, this.usageUtcOffsetMinutes);
         await ledgerEntry(
           this.store,
           actor.id,
@@ -1110,6 +1115,7 @@ export class ExecutionService {
           "service/" + input.requestId,
           "官方服务 · " + s.title,
         );
+      }
       await this.store.run(
         "INSERT INTO service_calls(id,user_id,service_id,request_hash,state,points,created_at,updated_at,billing_snapshot) VALUES(?,?,?,?,'running',?,?,?,?)",
         input.requestId,

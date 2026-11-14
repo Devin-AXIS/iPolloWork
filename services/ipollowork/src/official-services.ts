@@ -194,8 +194,12 @@ export async function seedOfficialServices(store: Store): Promise<void> {
   const chatRates = new Map(rateSchema.array().parse(chatDetails.billing?.rates ?? []).map(rate => [rate.model, rate]));
   for (const entry of bailianChatPresets) {
     const previous = chatModels.get(entry.model.id);
-    chatModels.set(entry.model.id, { ...entry.model, ...previous, recommended: previous?.recommended ?? true });
-    if (!chatRates.has(entry.rate.model)) chatRates.set(entry.rate.model, entry.rate);
+    chatModels.set(entry.model.id, { ...entry.model, ...previous,
+      ...(previous?.maxTokens === 8192 ? { maxTokens: entry.model.maxTokens } : {}),
+      recommended: previous?.recommended ?? true });
+    const previousRate = chatRates.get(entry.rate.model);
+    if (!previousRate) chatRates.set(entry.rate.model, entry.rate);
+    else if (previousRate.maxOutputTokens === 8192) chatRates.set(entry.rate.model, { ...previousRate, maxOutputTokens: entry.rate.maxOutputTokens });
   }
   const chatBilling = chatDetails.billing ?? billing("chat", bailianSource, [...chatRates.values()]);
   await store.run("UPDATE execution_services SET plan_ids=? WHERE id=?", JSON.stringify({ ...chatDetails, models: [...chatModels.values()], billing: { ...chatBilling, rates: [...chatRates.values()] } }), "official-bailian");

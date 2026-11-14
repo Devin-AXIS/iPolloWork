@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/work-services",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",
@@ -24,6 +24,7 @@
     "@apple/app-store-server-library": "3.1.0",
     "@hono/node-server": "2.1.8",
     "ali-oss": "6.23.0",
+    "alipay-sdk": "4.14.0",
     "better-auth": "1.7.23",
     "hono": "4.13.18",
     "pg": "^8.23.1",
@@ -46,5 +47,10 @@
     "tsx": "4.20.6",
     "typescript": "5.9.3",
     "vite": "8.3.8"
+  },
+  "overrides": {
+    "alipay-sdk": {
+      "urllib": "4.9.1"
+    }
   }
 }

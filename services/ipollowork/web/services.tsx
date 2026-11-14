@@ -81,7 +81,6 @@ const presets = [
 ] as const;
 const chatRoute = [{ method: "POST", path: "/chat/completions", points: 1 }];
 /** Defaults for models added from a provider listing; edit them under advanced settings. */
-const MODEL_DEFAULTS = { contextWindow: 131072, maxTokens: 8192 };
 const HUES = [205, 172, 148, 38, 14, 218, 190, 28];
 
 /** Stable initial tile for a provider. */
@@ -572,7 +571,7 @@ function ServiceEditor({
         if (!models.length) {
           selected = result.models
             .slice(0, result.models.length <= 6 ? 6 : 3)
-            .map((id) => ({ id, name: id, ...MODEL_DEFAULTS }));
+            .map((id) => ({ id, name: id }));
           updateModels(selected);
         }
       }

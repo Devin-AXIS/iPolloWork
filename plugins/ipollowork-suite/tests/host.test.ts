@@ -109,6 +109,8 @@ test("the route requires native owner authorization and disappears when its plug
       status: "anonymous",
       origin: "https://work.ipollo.net",
     });
+    assert.equal((await fetch(base + "/membership")).status, 401);
+    assert.equal((await fetch(base + "/membership", { headers: { Cookie: "owner=test" } })).status, 401);
     assert(guard);
     assert.equal(
       (
@@ -129,6 +131,7 @@ test("the route requires native owner authorization and disappears when its plug
       404,
     );
     assert.equal(guard, undefined);
+    assert.equal((await fetch(base + "/membership", { headers: { Cookie: "owner=test" } })).status, 404);
   } finally {
     await new Promise<void>((done, reject) =>
       server.close((error) => (error ? reject(error) : done())),

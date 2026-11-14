@@ -11,11 +11,15 @@ import {
   requireAdmin,
   settleOrder,
   uid,
+  wallet,
   type Order,
 } from "./domain.js";
 import { validatePlanPrice } from "./pricing.js";
 import { Settings } from "./settings.js";
 import { ServiceError } from "./errors.js";
+import { accountUsage, recentUsage } from "./usage.js";
+import { paymentChannels, paymentProvider, providerOrder } from "./payment-providers/index.js";
+import type { PaymentEvent } from "./payment-providers/types.js";
 
 export const planSchema = z
   .object({
@@ -28,6 +32,8 @@ export const planSchema = z
       .regex(/^[A-Z]{3}$/)
       .default("CNY"),
     points: z.number().int().min(0).max(1_000_000_000),
+    dailyPoints: z.number().int().positive().max(1_000_000_000).nullable().optional(),
+    weeklyPoints: z.number().int().positive().max(1_000_000_000).nullable().optional(),
     days: z.number().int().min(0).max(36500).default(0),
     enabled: z.boolean().default(true),
     appleProductId: z.string().max(200).nullable().default(null),
@@ -42,7 +48,7 @@ export const planSchema = z
   .refine(
     (v) => v.kind !== "membership" || v.days > 0,
     "会员套餐必须设置有效天数",
-  );
+  ).refine(v => !v.dailyPoints || !v.weeklyPoints || v.dailyPoints <= v.weeklyPoints, "每日额度不能大于每周额度");
 
 /** Provider verification is outside database transactions; settlement is atomic. */
 export function mountPayments(
@@ -51,6 +57,65 @@ export function mountPayments(
   settings: Settings,
   config: Config,
 ) {
+  const applyPayment = async (provider: "alipay" | "wechat", event: PaymentEvent | null) => {
+    if (!event) return;
+    const order = await store.one<Order>(provider === "wechat" ? "SELECT * FROM orders WHERE provider='wechat' AND replace(id,'-','')=?" : "SELECT * FROM orders WHERE provider='alipay' AND id=?", event.orderId);
+    if (!order) throw new ServiceError("ORDER_NOT_FOUND", 404);
+    if (event.type === "paid" || event.type === "refund_succeeded") {
+      if (event.amount !== order.amount || event.currency !== order.currency || !event.paymentId) throw new ServiceError("PAYMENT_MISMATCH", 409);
+      await store.transaction(async () => {
+        await settleOrder(store, order.id, event.paymentId!, event.amount!, event.currency!);
+        if (event.type === "refund_succeeded") await refundOrder(store, event.paymentId!);
+      });
+    } else if (event.type === "expired" || event.type === "failed") {
+      await store.run("UPDATE orders SET status='failed' WHERE id=? AND status='pending'", order.id);
+    }
+  };
+  for (const id of ["alipay", "wechat"] as const) app.post("/hooks/" + id, async c => {
+    const raw = await c.req.text();
+    if (Buffer.byteLength(raw) > 524288) throw new ServiceError("INVALID_PAYMENT_SIGNATURE", 413);
+    let event: PaymentEvent | null;
+    try { event = await (await paymentProvider(id, settings, config)).verifyWebhook(raw, c.req.raw.headers); }
+    catch (cause) { throw new ServiceError("INVALID_PAYMENT_SIGNATURE", 400, "支付回调验证失败", { cause }); }
+    await applyPayment(id, event);
+    return id === "alipay" ? c.text("success") : c.json({ code: "SUCCESS" });
+  });
+  app.get("/api/v1/me/membership", async (c) => {
+    const actor = c.get("actor");
+    const [points, usage, memberships, plans, channels, history, pending] = await Promise.all([
+      wallet(store, actor.id), accountUsage(store, actor.id, config.usageUtcOffsetMinutes),
+      store.all("SELECT p.id,p.name,MAX(e.expires_at) AS expires_at FROM entitlements e JOIN plans p ON p.id=e.plan_id WHERE e.user_id=? AND e.revoked_at IS NULL AND e.starts_at<=? AND e.expires_at>? AND p.kind='membership' GROUP BY p.id,p.name ORDER BY MAX(e.expires_at) DESC LIMIT 100", actor.id, now(), now()),
+      store.all("SELECT * FROM plans WHERE enabled=1 AND kind='membership' ORDER BY amount,id LIMIT 200"),
+      paymentChannels(settings, config),
+      recentUsage(store, actor.id, config.usageUtcOffsetMinutes),
+      store.one("SELECT id,checkout FROM orders WHERE user_id=? AND status='pending' AND checkout IS NOT NULL ORDER BY created_at DESC LIMIT 1", actor.id),
+    ]);
+    return c.json({ points, usage, history, memberships: memberships.map(p => ({ id: p.id, name: p.name, expiresAt: p.expires_at })),
+      plans: plans.map(p => ({ id: p.id, name: p.name, description: p.description, amount: p.amount, currency: p.currency, points: p.points, days: p.days, dailyPoints: p.daily_points, weeklyPoints: p.weekly_points, pointsCost: p.points_cost })),
+      checkoutAvailable: channels.some(channel => channel.configured), channels,
+      pendingOrder: pending ? { orderId: pending.id, ...JSON.parse(String(pending.checkout)) } : null,
+    });
+  });
+  app.post("/api/v1/orders/:id/sync", async c => {
+    const order = await store.one<Order>("SELECT * FROM orders WHERE id=? AND user_id=?", c.req.param("id"), c.get("actor").id);
+    if (!order) throw new ServiceError("ORDER_NOT_FOUND", 404);
+    if (order.status === "pending" && (order.provider === "alipay" || order.provider === "wechat")) {
+      const provider = await paymentProvider(order.provider, settings, config);
+      await applyPayment(order.provider, await provider.queryPayment(providerOrder(order, provider.live, "iPolloWork")));
+    } else if (order.status === "pending" && order.provider === "stripe" && order.checkout) {
+      const checkout = z.object({ sessionId: z.string() }).parse(JSON.parse(String(order.checkout)));
+      const values = await settings.get("stripe");
+      if (!values.secretKey) throw new ServiceError("PAYMENT_NOT_CONFIGURED", 503);
+      const { default: Stripe } = await import("stripe");
+      const session = await new Stripe(values.secretKey).checkout.sessions.retrieve(checkout.sessionId);
+      if (session.payment_status === "paid") {
+        if (session.client_reference_id !== order.id || session.amount_total !== order.amount || session.currency?.toUpperCase() !== order.currency || typeof session.payment_intent !== "string") throw new ServiceError("PAYMENT_MISMATCH", 409);
+        await settleOrder(store, order.id, session.payment_intent, order.amount, order.currency);
+      }
+    }
+    const fresh = await store.one("SELECT status FROM orders WHERE id=?", order.id);
+    return c.json({ orderId: order.id, paid: fresh?.status === "paid", status: fresh?.status });
+  });
   app.get("/api/v1/plans", async (c) =>
     c.json({
       items: await store.all(
@@ -78,7 +143,7 @@ export function mountPayments(
     validatePlanPrice(p, config);
     await store.transaction(async () => {
       await store.run(
-        "INSERT INTO plans VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO plans VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         id,
         p.name,
         p.description,
@@ -91,6 +156,8 @@ export function mountPayments(
         p.appleProductId,
         now(),
         p.pointsCost,
+        p.dailyPoints ?? null,
+        p.weeklyPoints ?? null,
       );
       await audit(store, actor, "plan.create", id);
     });
@@ -104,7 +171,7 @@ export function mountPayments(
     validatePlanPrice(p, config);
     await store.transaction(async () => {
       const changed = await store.run(
-        "UPDATE plans SET name=?,description=?,kind=?,amount=?,currency=?,points=?,days=?,enabled=?,apple_product_id=?,points_cost=? WHERE id=?",
+        "UPDATE plans SET name=?,description=?,kind=?,amount=?,currency=?,points=?,days=?,enabled=?,apple_product_id=?,points_cost=?,daily_points=CASE WHEN ? THEN ? ELSE daily_points END,weekly_points=CASE WHEN ? THEN ? ELSE weekly_points END WHERE id=?",
         p.name,
         p.description,
         p.kind,
@@ -115,6 +182,10 @@ export function mountPayments(
         Number(p.enabled),
         p.appleProductId,
         p.pointsCost,
+        p.dailyPoints !== undefined,
+        p.dailyPoints ?? null,
+        p.weeklyPoints !== undefined,
+        p.weeklyPoints ?? null,
         id,
       );
       if (!changed.changes) throw new ServiceError("PLAN_NOT_FOUND", 404);
@@ -165,7 +236,7 @@ export function mountPayments(
     const input = z
       .object({
         planId: z.string(),
-        provider: z.enum(["stripe", "app_store", "points"]),
+        provider: z.enum(["stripe", "alipay", "wechat", "app_store", "points"]),
         requestId: z.uuid(),
       })
       .parse(await c.req.json());
@@ -206,6 +277,10 @@ export function mountPayments(
         400,
         "该套餐未关联 App Store 商品",
       );
+    const stripeConfig = input.provider === "stripe" ? await settings.get("stripe") : undefined;
+    if (["stripe", "alipay", "wechat"].includes(input.provider) && prior?.status !== "paid" && prior?.status !== "refunded" && !(await paymentChannels(settings, config)).find(channel => channel.id === input.provider)?.configured)
+      throw new ServiceError("PAYMENT_NOT_CONFIGURED", 503, "支付渠道尚未配置");
+    if ((input.provider === "alipay" || input.provider === "wechat") && p.currency !== "CNY") throw new ServiceError("PAYMENT_CURRENCY_UNAVAILABLE", 400, "此支付方式仅支持人民币");
     if (!prior)
       await store.run(
         "INSERT INTO orders VALUES(?,?,?,?,NULL,'pending',?,?,?,?,?,NULL)",
@@ -221,6 +296,7 @@ export function mountPayments(
       );
     if (prior?.status === "paid" || prior?.status === "refunded")
       return c.json({ orderId: prior.id, paid: prior.status === "paid" });
+    if (prior?.checkout) return c.json({ orderId: prior.id, ...JSON.parse(String(prior.checkout)) });
     if (input.provider === "points") {
       await store.transaction(async () => {
         const order = (await store.one<Order>(
@@ -278,8 +354,17 @@ export function mountPayments(
         orderId: input.requestId,
         productId: p.apple_product_id,
       });
-    const stripeConfig = await settings.get("stripe");
-    if (!stripeConfig.secretKey)
+    if (input.provider === "alipay" || input.provider === "wechat") {
+      const provider = await paymentProvider(input.provider, settings, config);
+      const order = (await store.one<Order>("SELECT * FROM orders WHERE id=?", input.requestId))!;
+      let checkout;
+      try { checkout = await provider.createCheckout(providerOrder(order, provider.live, String(p.name))); }
+      catch (cause) { throw new ServiceError("PAYMENT_UNAVAILABLE", 503, "支付服务暂不可用，可稍后同步订单状态", { cause }); }
+      const result = { provider: input.provider, ...(checkout.checkoutUrl ? { url: checkout.checkoutUrl } : {}), ...(checkout.qrCode ? { qrCode: checkout.qrCode } : {}) };
+      await store.run("UPDATE orders SET checkout=? WHERE id=? AND status='pending'", JSON.stringify(result), order.id);
+      return c.json({ orderId: order.id, ...result });
+    }
+    if (!stripeConfig?.secretKey || !stripeConfig.webhookSecret)
       throw new ServiceError("PAYMENT_NOT_CONFIGURED", 503, "支付渠道尚未配置");
     const { default: Stripe } = await import("stripe");
     const stripe = new Stripe(stripeConfig.secretKey);
@@ -304,7 +389,8 @@ export function mountPayments(
       },
       { idempotencyKey: input.requestId },
     );
-    return c.json({ orderId: input.requestId, url: checkout.url });
+    await store.run("UPDATE orders SET checkout=? WHERE id=? AND status='pending'", JSON.stringify({ url: checkout.url, sessionId: checkout.id, provider: "stripe" }), input.requestId);
+    return c.json({ orderId: input.requestId, url: checkout.url, provider: "stripe" });
   });
   app.post("/hooks/stripe", async (c) => {
     const s = await settings.get("stripe");

@@ -919,9 +919,10 @@ resolveAgent(sessionId: SessionId): Promise<ApiSessionAgentResult>
 
 /**
  * Select the first available account model after login when no provider API key is configured.
+ * @param requestedProvider - Registered account provider; defaults to the native account route.
  * @returns after saving the first available model or retaining the existing default.
  */
-@Remote async initializeDefaultModel(): Promise<void>
+@Remote async initializeDefaultModel(requestedProvider?: string): Promise<void>
 
 /**
  * Describe every currently routable model for Host-generation selectors.

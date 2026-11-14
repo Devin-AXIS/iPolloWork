@@ -362,6 +362,7 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .statRow strong { font-size:17px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums; }
 .authFooter { display:flex;align-items:center;gap:2px;flex-wrap:wrap;margin-top:16px; }
 .authFooter .authService { margin:0; }
+.memberPage { max-width:none;padding:0; }
 .quietButton { border:0;border-radius:7px;padding:4px 9px;font:inherit;font-size:12px;color:var(--g-sub, var(--ipw-muted));background:transparent;cursor:pointer;transition:background-color .15s,color .15s; }
 .quietButton:disabled { opacity:.4;cursor:default; }
 @media (hover:hover) { .quietButton:not(:disabled):hover,.fieldAction:hover { color:var(--g-ink, var(--ipw-text));background:var(--g-hover, var(--ipw-muted-surface)); }.authSwitch button:hover { color:var(--g-ink); }.authSubmit:not(:disabled):hover { background:var(--g-action-hover); }.authSubmit:not(:disabled):hover svg { transform:translateX(2px); } }

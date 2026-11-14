@@ -70,4 +70,10 @@ describe('historical package references', () => {
     expect(scan(file, [currentReference, 'packages/hypothetical/unpublished/src/types.ts', removedReference].join('\n')))
       .toEqual([{ file, line: 3, ref: removedReference }])
   })
+
+  it('resolves local references without interpreting a versioned external URL as a checkout path', () => {
+    const file = 'docs/upgrade-guide/guide.md'
+    expect(scan(file, `[Previous release](https://github.com/example/repo/blob/v1/${removedReference})\n${removedReference}`))
+      .toEqual([{ file, line: 2, ref: removedReference }])
+  })
 })

@@ -80,6 +80,13 @@ class FixtureAdapter extends LlmAdapter {
       model: options.model,
     });
     const body = JSON.stringify(options.messages);
+    if (body.includes("TRUNCATE_ONCE") && !body.includes("ipollowork-output-continuation")) {
+      yield { type: "block-start", index: 0, blockType: "text" };
+      yield { type: "text-delta", index: 0, text: "Saved partial work." };
+      yield { type: "block-end", index: 0, block: { type: "text", text: "Saved partial work." } };
+      yield { type: "finish", reason: { kind: "max-tokens" } };
+      return;
+    }
     if (
       body.includes("ARCHIVE_NATIVE_OUTPUT") &&
       !options.messages.some((message) => message.role === "tool")
@@ -261,6 +268,8 @@ export function apply(ctx: FixtureContext): void {
                   (event: { type: string }) =>
                     event.type === "deliverables/presented",
                 ).length,
+              continuations: agent.session.snapshotEvents().filter(event => event.type === "user/message"
+                && event.data.source.kind === "ipollowork-output-continuation").length,
             };
           } else value = { requests };
           response.writeHead(200, { "Content-Type": "application/json" });

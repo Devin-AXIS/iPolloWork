@@ -5,7 +5,7 @@ import type { AgentContext, AgentRef, NativeEntry, NativeFiber, PresetDefinition
 import type { AgentModelCatalog } from '../shared/agents.ts'
 /** Agent module of the existing iPolloWork suite. DSH owns execution, credentials, storage, and preset lifetimes. */
 import { fileURLToPath } from 'node:url'
-import { parseEntryYaml } from '@deepseek-ai/cordis-plugin-include'
+import yaml from 'js-yaml'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import * as SubagentTool from '@deepseek-ai/dsh-tool-subagent'
 import z from '@deepseek-ai/schemastery'
@@ -112,7 +112,11 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
   }
   const service = { store, coordinatorPreset: COORDINATOR_PRESET, projectFor: (agent: AgentRef | undefined) => projectForAgent(ctx, agent) }
   const baseDocument = await ctx.agentPresets.readDocument('standard')
-  const base = valueSchema.array(valueSchema.object({ name: valueSchema.string(), id: valueSchema.string().optional() }).catchall(valueSchema.unknown())).parse(parseEntryYaml(baseDocument.content))
+  const base = valueSchema.array(valueSchema.object({ name: valueSchema.string(), id: valueSchema.string().optional() }).catchall(valueSchema.unknown())).parse(yaml.load(baseDocument.content, {
+    schema: yaml.JSON_SCHEMA.extend(new yaml.Type('tag:yaml.org,2002:js', {
+      kind: 'scalar', resolve: data => typeof data === 'string', construct: data => ({ __jsExpr: data }),
+    })),
+  }))
   const releaseCoordinator = await ctx.agentPresets.register({
     id: COORDINATOR_PRESET, name: '总助手 · Main assistant', description: 'Coordinates saved specialists and temporary task workers.',
     plugins: [...structuredClone(base).filter(row => row.id !== 'persona'), { name: fileURLToPath(new URL('./coordinator-runtime.js', import.meta.url)) }],

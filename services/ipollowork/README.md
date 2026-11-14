@@ -53,7 +53,7 @@ Each provider has one key configuration shared by its capabilities. Alibaba incl
 
 The gateway authenticates each request, restricts paths and models, reserves credits atomically, and settles from provider usage. Video polling verifies job ownership. Duplicate request IDs cannot charge twice. Unknown outcomes retain their reservation until an administrator checks the provider; they are never blindly resubmitted. Response replay is available for 24 hours. One active gateway request per account is allowed.
 
-Stripe Checkout settles through signed callbacks at `/hooks/stripe`; App Store verification requires official keys and root certificates. Two disabled 30-day membership drafts are supplied. No live charge or automatic subscription renewal is implied by these presets. Cash and credit redemption prices remain separate, and enabled plans must satisfy the configured cost floor.
+Stripe, Alipay and WeChat checkout settle only after signed provider notifications or authenticated server-side status queries. Provider credentials are configured centrally; unconfigured channels cannot create orders. Two disabled 30-day membership drafts are supplied. Automatic renewal is not enabled. Cash and credit redemption prices remain separate, and enabled plans must satisfy the configured cost floor. Membership allowances and period usage are described in [billing](docs/billing.md).
 
 ## Verification
 

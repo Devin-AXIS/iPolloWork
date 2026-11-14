@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-suite",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
   "icon": "./assets/mark.svg",
   "type": "module",
@@ -75,31 +75,33 @@
     "test:im-upstream": "node --import tsx --test vendor/dsh-im/test/artifact-delivery.test.mjs vendor/dsh-im/test/image-input.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-registry.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-panel.test.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/cordis-plugin-include": "^1.1.0",
-    "@deepseek-ai/dsh-error": "0.2.2-rc.2",
-    "@deepseek-ai/dsh-experimental-liveshare": "^0.2.2-rc.2",
-    "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.2",
-    "@deepseek-ai/dsh-tool-subagent": "^0.2.2-rc.2",
-    "@deepseek-ai/dsh-tools": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-account": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-error": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-experimental-liveshare": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-tool-subagent": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
     "@deepseek-ai/schemastery": "3.19.0",
     "@earendil-works/pi-ai": "1.3.0",
     "@matrix-org/olm": "3.2.15",
     "js-yaml": "^4.3.2",
     "semver": "^7.8.5",
     "undici": "7.30.1",
-    "zod": "^4.6.7",
-    "qrcode": "1.5.4",
-    "@deepseek-ai/dsh-client-ui-settings-account": "0.2.2-rc.3"
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-fs": "^0.2.2-rc.2",
-    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.2 <0.2.3-0",
-    "@deepseek-ai/dsh-llm-pi-ai": ">=0.2.2-rc.2 <0.2.3-0"
+    "@deepseek-ai/dsh-fs": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.3"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.2-rc.2",
-    "@deepseek-ai/dsh-llm-pi-ai": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-agent-default-model": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.3",
     "@larksuiteoapi/node-sdk": "1.73.0",
     "@modelcontextprotocol/node": "^2.0.0",
     "@modelcontextprotocol/server": "^2.2.0",
@@ -107,6 +109,7 @@
     "@tencent-connect/qqbot-nodejs": "1.0.4",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^24.0.0",
+    "@types/qrcode": "1.5.6",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.7",
     "@types/semver": "^7.7.0",
@@ -120,13 +123,11 @@
     "jsdom": "^26.0.0",
     "mailparser": "^3.9.43",
     "nodemailer": "^10.1.4",
+    "qrcode": "1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tsx": "^4.20.0",
-    "typescript": "^5.9.0",
-    "@deepseek-ai/dsh-agent-default-model": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-api-session-controller": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3"
+    "typescript": "^5.9.0"
   },
   "optionalDependencies": {
     "sharp": "0.35.5"
