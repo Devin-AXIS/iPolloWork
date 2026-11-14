@@ -38,7 +38,7 @@ jobs:
     steps:
       - name: Require main for publication
         run: node -e "if (process.env.GITHUB_REF !== 'refs/heads/main') throw new Error('Desktop publication must be dispatched from main')"
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Reject debugging packages before dependency installation
@@ -78,7 +78,7 @@ jobs:
       DESKTOP_UPLOAD_WEBSITE: ${{ inputs.upload_website }}
       DSH_TELEMETRY_DISABLED: '1'
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           clean: false
@@ -125,7 +125,7 @@ jobs:
       DESKTOP_PUBLISH_ROUTE: ${{ needs.prepare.outputs.route }}
       DSH_TELEMETRY_DISABLED: '1'
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           clean: false
@@ -177,7 +177,7 @@ jobs:
       DESKTOP_ROLLOUT_PERCENTAGE: ${{ inputs.rollout_percentage }}
       DESKTOP_UPLOAD_WEBSITE: ${{ inputs.upload_website }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           clean: false
@@ -230,7 +230,7 @@ jobs:
       DESKTOP_WEBSITE_APPROVAL: ${{ needs.prepare.outputs.website-approval }}
       DESKTOP_UPLOAD_WEBSITE: ${{ inputs.upload_website }}
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           clean: false

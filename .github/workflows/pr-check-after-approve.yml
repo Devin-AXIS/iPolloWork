@@ -26,7 +26,7 @@ jobs:
       checks: write
     steps:
       # The head checkout is only the Git repository the check fetches into; it needs no files and runs no code.
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 1
