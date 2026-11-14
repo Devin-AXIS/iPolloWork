@@ -15,6 +15,7 @@ export const WELCOME_IPC = {
   copyLink: 'dsh-welcome:copy-link',
   state: 'dsh-welcome:state',
   signInAccount: 'dsh-welcome:sign-in-account',
+  signUpAccount: 'dsh-welcome:sign-up-account',
   takeNotice: 'dsh-welcome:take-notice',
 } as const
 
@@ -34,6 +35,13 @@ export interface WelcomeOperations {
    * @returns Whether the account service accepted sign-in.
    */
   signInAccount?(email: string, password: string): Promise<WelcomeSaveResult>
+  /** Register an account and store its session only in the Host.
+   * @param name - Account display name.
+   * @param email - Account email.
+   * @param password - Password sent to the account service.
+   * @returns Whether registration completed and signed in.
+   */
+  signUpAccount?(name: string, email: string, password: string): Promise<WelcomeSaveResult>
   /** @param eventName - allowed welcome event. @param attributes - approved fields without credentials. */
   analytics?<K extends WelcomeEventName>(eventName: K, attributes: ProductEventMap[K]): Promise<void>
   /** @returns the Host's current effective collection policy. */

@@ -170,7 +170,6 @@ export function createElectronBuilderConfig(
       // macOS matches the application locale against this bundle, not Electron Framework resources.
       extendInfo: {
         CFBundleDisplayName: 'iPolloWork',
-        CFBundleName: 'iPolloWork',
         CFBundleLocalizations: ['en', 'zh_CN', 'ja', 'es', 'fr', 'de', 'ru', 'pt'],
         NSMicrophoneUsageDescription: 'iPolloWork uses your microphone to transcribe speech into message drafts.',
       },

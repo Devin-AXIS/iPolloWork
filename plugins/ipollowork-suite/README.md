@@ -125,4 +125,6 @@ Service records carry a stable `category` (`language`, `image`, `video`, `audio`
 
 Official media calls select a service by its allowed route and the requested model. This lets image generation and speech share a provider endpoint and key without selecting the wrong category. Regional provider origins remain owned by the account service. Disabling the suite or choosing native personal credentials removes official routing.
 
-The `dedicatedDesktop` deployment option reuses the native welcome, credit, purpose and process pages with the iPolloWork account. API-key setup remains available. The desktop distribution embeds this bundle and its QR-code dependency; it does not require an npm installation at first launch.
+The `dedicatedDesktop` deployment option reuses the native welcome, credit, purpose and process pages with the iPolloWork account. The native account page provides email/password sign-in and registration with a display name and a password of at least 10 characters. API-key setup remains available. The desktop distribution embeds this bundle and its QR-code dependency; it does not require an npm installation at first launch.
+
+Suite 0.1.10 requires DSH 0.2.2-rc.3 or later in the 0.2.2 release line. Its HTTP routes use the native Connection admission service, including the Host/Origin checks and credential verification.

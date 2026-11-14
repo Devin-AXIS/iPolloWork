@@ -6,13 +6,13 @@ import { needsWelcome, WELCOME_IPC } from '../src/welcome-api.ts'
 const electron = vi.hoisted(() => ({
   create: vi.fn<(options: unknown) => ReturnType<typeof createWindow>>(),
   root: '/desktop-app',
-  handlers: new Map<string, (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>>(),
+  handlers: new Map<string, (event: unknown, value?: unknown, attributes?: unknown, secret?: unknown) => Promise<unknown>>(),
 }))
 vi.mock('electron', () => ({
   app: { getAppPath: () => electron.root },
   BrowserWindow: vi.fn(function (options: unknown) { return electron.create(options) }),
   ipcMain: {
-    handle: (name: string, handler: (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>) => {
+    handle: (name: string, handler: (event: unknown, value?: unknown, attributes?: unknown, secret?: unknown) => Promise<unknown>) => {
       if (electron.handlers.has(name)) throw new Error(`duplicate IPC handler: ${name}`)
       electron.handlers.set(name, handler)
     },
@@ -140,6 +140,21 @@ describe('desktop welcome window', () => {
     expect(copySignInLink).toHaveBeenCalledExactlyOnceWith('attempt')
     window.once.mock.calls[0]![1]()
     expect(electron.handlers.size).toBe(0)
+  })
+
+  it('accepts registration only from the owned frame with bounded account fields', async () => {
+    const window = createWindow()
+    electron.create.mockReturnValue(window)
+    const signUpAccount = vi.fn(async () => ({ ok: true as const }))
+    await openWelcomeWindow(resolveDesktopLocale('en'), { ...operations, signUpAccount })
+    const own = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
+    const register = electron.handlers.get(WELCOME_IPC.signUpAccount)!
+    await expect(register({ ...own, senderFrame: {} }, 'Member', 'member@example.test', 'test-password')).rejects.toThrow('unowned frame')
+    expect(await register(own, '', 'member@example.test', 'test-password')).toEqual({ ok: false })
+    expect(await register(own, 'Member', 'member@example.test', 'short')).toEqual({ ok: false })
+    expect(signUpAccount).not.toHaveBeenCalled()
+    expect(await register(own, 'Member', 'member@example.test', 'test-password')).toEqual({ ok: true })
+    expect(signUpAccount).toHaveBeenCalledExactlyOnceWith('Member', 'member@example.test', 'test-password')
   })
 
   it('does not show a superseded window when its delayed document finishes loading', async () => {

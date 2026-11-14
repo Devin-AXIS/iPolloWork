@@ -140,6 +140,9 @@ it('uses the iPolloWork account service without returning the session grant', as
   }
   const backend = connectDesktopWelcome(url, cookie, send, 'ipollo')
   expect(await backend.signInAccount?.('member@example.test', 'test-password')).toEqual({ ok: true })
+  expect(await backend.signUpAccount?.('Member', 'member@example.test', 'test-password')).toEqual({ ok: true })
+  expect(requests[1]?.input).toContain('/account/sign-up')
+  expect(JSON.parse(String(requests[1]?.init?.body))).toEqual({ name: 'Member', email: 'member@example.test', password: 'test-password' })
   expect(await backend.read()).toMatchObject({ loggedIn: true })
   expect(requests[0]?.init?.headers).toMatchObject({ cookie })
   expect(JSON.stringify(await backend.read())).not.toContain('not-exposed')

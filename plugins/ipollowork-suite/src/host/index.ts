@@ -49,6 +49,7 @@ export const name = "ipollowork-suite";
 export const inject = [
   "webServer",
   "connection",
+  "connection.authentication",
   "credentials",
   "pluginManager",
   "profileContext",
@@ -111,9 +112,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
     }): () => void;
   };
   connection: {
-    requestRejection(request: {
-      headers: IncomingMessage["headers"];
-    }): number | undefined;
+    admit(request: IncomingMessage): { rejection: number } | { peer: object };
   };
   credentials: CredentialStore;
   pluginManager: NativePluginManager;
@@ -298,11 +297,9 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
         path: API,
         handler: async (request, response) => {
           try {
-            const rejection = ctx.connection.requestRejection({
-              headers: request.headers,
-            });
-            if (rejection !== undefined) {
-              json(response, rejection, { error: "IPW_UNAUTHORIZED" });
+            const admission = ctx.connection.admit(request);
+            if ("rejection" in admission) {
+              json(response, admission.rejection, { error: "IPW_UNAUTHORIZED" });
               return;
             }
             const url = new URL(request.url ?? "/", "http://localhost");

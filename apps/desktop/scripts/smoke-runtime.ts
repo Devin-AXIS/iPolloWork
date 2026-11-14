@@ -54,7 +54,8 @@ export async function smokeDesktopRuntime(
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     writeFileSync(join(home, 'npmrc'), '')
-    createPluginProfile(profile)
+    const dedicatedSuite = runtime.sharedPackages.some(pkg => pkg.name === '@ipollo/dsh-suite')
+    createPluginProfile(profile, dedicatedSuite ? ['@ipollo/dsh-suite'] : [])
     const pluginName = 'desktop-runtime-smoke-plugin'
     const plugin = join(home, pluginName)
     mkdirSync(plugin, { recursive: true })
@@ -180,7 +181,7 @@ export function apply(ctx) {
     manifest.dependencies = { ...manifest.dependencies, [pluginName]: `file:${plugin}` }
     manifest.dsh.profile.bundles.push(pluginName)
     writeFileSync(join(profile, 'package.json'), JSON.stringify(manifest))
-    writeFileSync(join(profile, 'cordis.patch.yml'), '- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n')
+    appendFileSync(join(profile, 'cordis.patch.yml'), '- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n')
     const ready = await Promise.race([host.start(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
@@ -189,6 +190,37 @@ export function apply(ctx) {
     const response = await fetch(new URL('/', ready.url), { headers: { cookie } })
     if (response.status !== 200 || !(await response.text()).includes('<html')) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
+    }
+    if (dedicatedSuite) {
+      const suite = await fetch(new URL('/ipollowork-suite/info', ready.url), { headers: { cookie } })
+      if (!suite.ok || (await suite.json() as { name?: string }).name !== 'iPolloWork') {
+        throw new Error('desktop runtime: embedded iPolloWork suite did not start: HTTP ' + suite.status)
+      }
+      const account = await fetch(new URL('/ipollowork-suite/account', ready.url), { headers: { cookie } })
+      if (!account.ok || (await account.json() as { status?: string }).status !== 'anonymous') {
+        throw new Error('desktop runtime: embedded account route did not start signed out')
+      }
+      const anonymous = await fetch(new URL('/ipollowork-suite/account', ready.url))
+      const foreignOrigin = await fetch(new URL('/ipollowork-suite/account', ready.url), {
+        headers: { cookie, origin: 'https://untrusted.example' },
+      })
+      if (anonymous.status !== 401 || foreignOrigin.status !== 403) {
+        throw new Error('desktop runtime: account route admitted an untrusted request')
+      }
+      const method = 'pluginManager/listPlugins'
+      const inventoryResponse = await fetch(new URL(`/api/${method}`, ready.url), {
+        method: 'POST', headers: { cookie, 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 'suite-smoke', method, payload: { args: {} } }),
+      })
+      const inventory = await inventoryResponse.json() as {
+        result: { ok: boolean; value?: { moduleName: string; fiberPhase: string | null; readOnlyReason?: string }[] }
+      }
+      const rows = inventory.result.value?.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
+      if (!inventory.result.ok || rows?.length !== 3
+        || rows.some(row => row.fiberPhase !== 'active' || row.readOnlyReason !== 'management-required')) {
+        throw new Error('desktop runtime: required iPolloWork components are inactive or mutable')
+      }
+      console.log('desktop runtime: iPolloWork components, account routes, and request admission passed')
     }
     const pluginResponse = await fetch(new URL('/desktop-smoke', ready.url), { headers: { cookie } })
     if (await pluginResponse.text() !== 'plugin route ready') throw new Error('desktop runtime: plugin HTTP route failed')

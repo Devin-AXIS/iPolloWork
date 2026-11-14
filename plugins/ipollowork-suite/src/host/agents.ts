@@ -5,8 +5,7 @@ import type { AgentContext, AgentRef, NativeEntry, NativeFiber, PresetDefinition
 import type { AgentModelCatalog } from '../shared/agents.ts'
 /** Agent module of the existing iPolloWork suite. DSH owns execution, credentials, storage, and preset lifetimes. */
 import { fileURLToPath } from 'node:url'
-import { load } from 'js-yaml'
-import { entryListSchema } from '@deepseek-ai/cordis-plugin-include'
+import { parseEntryYaml } from '@deepseek-ai/cordis-plugin-include'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import * as SubagentTool from '@deepseek-ai/dsh-tool-subagent'
 import z from '@deepseek-ai/schemastery'
@@ -17,7 +16,7 @@ import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 
 export const name = 'ipollowork-agents'
-export const inject = ['webServer', 'connection', 'credentials', 'storageDomain', 'workspaceRegistry', 'agentPresets', 'sessionController', 'skills', 'tools', 'systemPrompt', 'subagents', 'mcpManager']
+export const inject = ['webServer', 'connection', 'connection.authentication', 'credentials', 'storageDomain', 'workspaceRegistry', 'agentPresets', 'sessionController', 'skills', 'tools', 'systemPrompt', 'subagents', 'mcpManager']
 const API = '/ipollowork-suite/agents'
 const runtime = fileURLToPath(new URL('./agent-runtime.js', import.meta.url))
 
@@ -113,7 +112,7 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
   }
   const service = { store, coordinatorPreset: COORDINATOR_PRESET, projectFor: (agent: AgentRef | undefined) => projectForAgent(ctx, agent) }
   const baseDocument = await ctx.agentPresets.readDocument('standard')
-  const base = valueSchema.array(valueSchema.object({ name: valueSchema.string(), id: valueSchema.string().optional() }).catchall(valueSchema.unknown())).parse(load(baseDocument.content, { schema: entryListSchema }))
+  const base = valueSchema.array(valueSchema.object({ name: valueSchema.string(), id: valueSchema.string().optional() }).catchall(valueSchema.unknown())).parse(parseEntryYaml(baseDocument.content))
   const releaseCoordinator = await ctx.agentPresets.register({
     id: COORDINATOR_PRESET, name: '总助手 · Main assistant', description: 'Coordinates saved specialists and temporary task workers.',
     plugins: [...structuredClone(base).filter(row => row.id !== 'persona'), { name: fileURLToPath(new URL('./coordinator-runtime.js', import.meta.url)) }],
@@ -232,8 +231,8 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
     kind: 'prefix', path: API,
     handler: async (request, response) => {
       try {
-        const denied = ctx.connection.requestRejection({ headers: request.headers })
-        if (denied !== undefined) { reply(response, denied, { error: 'IPOLLO_UNAUTHORIZED' }); return }
+        const admission = ctx.connection.admit(request)
+        if ('rejection' in admission) { reply(response, admission.rejection, { error: 'IPOLLO_UNAUTHORIZED' }); return }
         const url = new URL(request.url ?? '/', 'http://localhost')
         const path = url.pathname.slice(API.length)
         if (!url.pathname.startsWith(`${API}/`)) { reply(response, 404, { error: 'IPOLLO_NOT_FOUND' }); return }

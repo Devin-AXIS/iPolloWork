@@ -21,6 +21,8 @@ export interface DesktopWelcomeBackend {
   readonly account: DesktopAccountBackend
   /** Submit credentials to the owned iPolloWork Host and return no credential material. */
   signInAccount?(email: string, password: string): Promise<{ ok: boolean }>
+  /** Register through the owned iPolloWork service without returning its session grant. */
+  signUpAccount?(name: string, email: string, password: string): Promise<{ ok: boolean }>
   /** @param event - desktop-owned fields. @returns after local Host intake. */
   report(event: ProductEvent): Promise<void>
   /** @returns Configured-key presence and the shared language and theme preferences, without credential values. */
@@ -73,8 +75,8 @@ export function connectDesktopWelcome(
     return envelope.result.value
   }
   const account = desktopAccountBackend(origin, invoke, cookie)
-  const suiteAccount = async (body?: { email: string; password: string }): Promise<boolean> => {
-    const response = await send(new URL(body === undefined ? '/ipollowork-suite/account' : '/ipollowork-suite/account/sign-in', origin).href, {
+  const suiteAccount = async (body?: { email: string; password: string; name?: string }): Promise<boolean> => {
+    const response = await send(new URL(body === undefined ? '/ipollowork-suite/account' : body.name === undefined ? '/ipollowork-suite/account/sign-in' : '/ipollowork-suite/account/sign-up', origin).href, {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error',
       headers: { cookie, 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -147,6 +149,10 @@ export function connectDesktopWelcome(
     account,
     read,
     ...(accountMode === 'ipollo' ? {
+      async signUpAccount(name: string, email: string, password: string) {
+        try { return { ok: await suiteAccount({ name, email, password }) } }
+        catch (_error) { return { ok: false } }
+      },
       async signInAccount(email: string, password: string) {
         try { return { ok: await suiteAccount({ email, password }) } }
         catch (_error) { return { ok: false } }

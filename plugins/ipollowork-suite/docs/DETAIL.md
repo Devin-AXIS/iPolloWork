@@ -9,3 +9,5 @@ Open iPolloWork market on the Plugins page to search the curated directory, insp
 The iPolloWork account entry connects your account and reads available points. Local features and the public catalog work without signing in. Disconnect removes only this device's suite credential.
 
 An enterprise catalog, administrator authorization, and tenant isolation are not connected in this version. The suite is not an isolation mechanism for untrusted plugins.
+
+The dedicated desktop distribution preserves the native welcome, credit, purpose and process pages with the iPolloWork brand and account. The login page supports email/password sign-in and registration with a display name and a password of at least 10 characters. The suite is included in the installation and remains enabled.

@@ -66,7 +66,7 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     active = false
     for (const channel of [
       WELCOME_IPC.analyticsEnabled, WELCOME_IPC.analytics, WELCOME_IPC.takeNotice, WELCOME_IPC.saveApiKey,
-      WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.cancel, WELCOME_IPC.copyLink, WELCOME_IPC.signInAccount,
+      WELCOME_IPC.skip, WELCOME_IPC.start, WELCOME_IPC.cancel, WELCOME_IPC.copyLink, WELCOME_IPC.signInAccount, WELCOME_IPC.signUpAccount,
     ]) {
       ipcMain.removeHandler(channel)
     }
@@ -106,6 +106,12 @@ export async function openWelcomeWindow(locale: DesktopLocale, operations: Welco
     assertSender(event)
     if (typeof email !== 'string' || email.length > 320 || typeof password !== 'string' || password.length > 1024) return { ok: false }
     return await operations.signInAccount?.(email, password) ?? { ok: false }
+  })
+  ipcMain.handle(WELCOME_IPC.signUpAccount, async (event, name: unknown, email: unknown, password: unknown) => {
+    assertSender(event)
+    if (typeof name !== 'string' || !name.trim() || name.trim().length > 120 || typeof email !== 'string'
+      || email.length > 254 || typeof password !== 'string' || password.length < 10 || password.length > 1024) return { ok: false }
+    return await operations.signUpAccount?.(name, email, password) ?? { ok: false }
   })
   ipcMain.handle(WELCOME_IPC.start, async (event) => { assertSender(event); return operations.startSignIn() })
   ipcMain.handle(WELCOME_IPC.cancel, async (event, id: unknown) => {

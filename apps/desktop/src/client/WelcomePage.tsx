@@ -6,12 +6,12 @@ import { StateDot } from '@deepseek-ai/dsh-client-ui-primitives/src/StateDot.tsx
 import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
 import type { WelcomeApi } from '../welcome-api.ts'
 
-type Page = 'entry' | 'key' | 'account' | 'login'
+type Page = 'entry' | 'key' | 'account' | 'login' | 'register'
 
 /**
  * Render the standalone welcome flow using shell-owned operations and localized copy.
  * Clearing the account attempt returns the sign-in status page to the initial choices.
- * @param props.api - isolated preload API; no account credentials reach the renderer.
+ * @param props.api - isolated preload API; session grants remain in the Host.
  * @returns welcome pages with fixed bottom actions.
  */
 export function Welcome({ api }: { api: WelcomeApi }) {
@@ -27,6 +27,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const [copyFeedback, setCopyFeedback] = useState<{ status: 'idle' | 'busy' | 'copied' | 'failed' }>({ status: 'idle' })
   const copyState = copyFeedback.status
   const [draft, setDraft] = useState('')
+  const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
@@ -43,7 +44,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
     setPage(next)
   }
   function showAccount(state: AccountView) {
-    if (pageRef.current === 'key' || pageRef.current === 'login' || (state.attempt === null && pageRef.current === 'entry')) return
+    if (pageRef.current === 'key' || pageRef.current === 'login' || pageRef.current === 'register' || (state.attempt === null && pageRef.current === 'entry')) return
     attemptRef.current = state.attempt
     setAttempt(state.attempt)
     setStarting(false)
@@ -129,13 +130,17 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   }
   async function signIn(event: FormEvent) {
     event.preventDefault()
-    if (busyRef.current || api.signInAccount === undefined) return
+    const signUpAccount = api.signUpAccount
+    const signInAccount = api.signInAccount
+    if (busyRef.current || (page === 'register' ? signUpAccount === undefined : signInAccount === undefined)) return
     busyRef.current = true
     setBusy(true); setError('')
     try {
-      const result = await api.signInAccount(email.trim(), password)
-      if (!result.ok && mounted.current) setError(m.welcomeAuthFailed)
-    } catch (_error) { if (mounted.current) setError(m.welcomeAuthFailed) }
+      const result = page === 'register' && signUpAccount !== undefined
+        ? await signUpAccount(name.trim(), email.trim(), password)
+        : signInAccount === undefined ? { ok: false } : await signInAccount(email.trim(), password)
+      if (!result.ok && mounted.current) setError(page === 'register' ? m.welcomeRegisterFailed : m.welcomeAuthFailed)
+    } catch (_error) { if (mounted.current) setError(page === 'register' ? m.welcomeRegisterFailed : m.welcomeAuthFailed) }
     finally { busyRef.current = false; if (mounted.current) { setBusy(false); setPassword('') } }
   }
   async function start() {
@@ -183,7 +188,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
   const title = phase === 'initializing' ? m.welcomeAuthStarting
     : waiting ? m.welcomeAuthWaiting : phase === 'expired' ? m.welcomeAuthExpired
       : phase === 'failed' ? m.welcomeAuthFailed : m.welcomeAuthExchanging
-  const heading = page === 'entry' ? 'welcome-heading' : page === 'key' ? 'key-title' : page === 'login' ? 'login-title' : 'auth-status'
+  const heading = page === 'entry' ? 'welcome-heading' : page === 'key' ? 'key-title' : (page === 'login' || page === 'register') ? 'login-title' : 'auth-status'
 
   return <>
     {expiryNotice && <Toast text={m.welcomeSessionExpired} onDone={() => { setExpiryNotice(false) }} />}
@@ -204,18 +209,23 @@ export function Welcome({ api }: { api: WelcomeApi }) {
           <p id="key-error" className="key-error" role="alert" hidden={error === ''}>{error}</p>
         </div>
       </form>
-      <form id="login-form" className="key-form" hidden={page !== 'login'} onSubmit={(event) => { void signIn(event) }} aria-busy={busy}>
-        <header className="key-heading"><h1 id="login-title">{m.welcomeSignIn} {m.welcomeBrand}</h1></header>
+      <form id="login-form" className="key-form" hidden={page !== 'login' && page !== 'register'} onSubmit={(event) => { void signIn(event) }} aria-busy={busy}>
+        <header className="key-heading"><h1 id="login-title">{page === 'register' ? m.welcomeRegister : m.welcomeSignIn} {m.welcomeBrand}</h1></header>
         <div className="key-field">
+          {page === 'register' && <>
+            <label className="visually-hidden" htmlFor="login-name">{m.welcomeName}</label>
+            <input id="login-name" type="text" autoComplete="nickname" placeholder={m.welcomeName} value={name} onChange={event => setName(event.target.value)} required maxLength={120} disabled={busy}/>
+          </>}
           <label className="visually-hidden" htmlFor="login-email">{m.welcomeEmail}</label>
           <input id="login-email" type="email" autoComplete="username" placeholder={m.welcomeEmail} value={email} onChange={event => setEmail(event.target.value)} required disabled={busy}/>
           <label className="visually-hidden" htmlFor="login-password">{m.welcomePassword}</label>
-          <input id="login-password" type="password" autoComplete="current-password" placeholder={m.welcomePassword} value={password} onChange={event => setPassword(event.target.value)} required disabled={busy}/>
+          <input id="login-password" type="password" autoComplete={page === 'register' ? 'new-password' : 'current-password'} minLength={page === 'register' ? 10 : 1} placeholder={page === 'register' ? m.welcomeRegisterPassword : m.welcomePassword} value={password} onChange={event => setPassword(event.target.value)} required disabled={busy}/>
           {error && <p className="key-error" role="alert">{error}</p>}
         </div>
       </form>
-      <div className="actions" hidden={page !== 'login'}>
-        <button className="primary" type="submit" form="login-form" disabled={busy || !email || !password}>{m.welcomeSignIn}</button>
+      <div className="actions" hidden={page !== 'login' && page !== 'register'}>
+        <button className="primary" type="submit" form="login-form" disabled={busy || !email || !password || (page === 'register' && (!name.trim() || password.length < 10))}>{page === 'register' ? m.welcomeRegister : m.welcomeSignIn}</button>
+        {api.signUpAccount && <button id="switch-account-mode" className="secondary" type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); navigate(page === 'register' ? 'login' : 'register') }}>{page === 'register' ? m.welcomeSignIn : m.welcomeRegister}</button>}
         <button className="secondary" type="button" disabled={busy} onClick={() => { setPassword(''); setError(''); navigate('entry') }}>{m.welcomeKeyBack}</button>
       </div>
       <section id="auth-page" className={`key-heading ${waiting ? 'auth-waiting' : phase === 'expired' ? 'auth-expired' : ''}`}

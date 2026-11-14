@@ -25,9 +25,7 @@ interface FixtureContext {
     }): () => void;
   };
   connection: {
-    requestRejection(req: {
-      headers: IncomingMessage["headers"];
-    }): number | undefined;
+    admit(req: IncomingMessage): { rejection: number } | { peer: object };
   };
   workspaceRegistry: {
     create(
@@ -163,6 +161,7 @@ export const name = "ipollo-native-fixture";
 export const inject = [
   "webServer",
   "connection",
+  "connection.authentication",
   "llm",
   "agents",
   "sessionController",
@@ -180,11 +179,9 @@ export function apply(ctx: FixtureContext): void {
       kind: "prefix",
       path: "/ipollo-fixture",
       handler: async (request, response) => {
-        const denied = ctx.connection.requestRejection({
-          headers: request.headers,
-        });
-        if (denied !== undefined) {
-          response.writeHead(denied);
+        const admission = ctx.connection.admit(request);
+        if ("rejection" in admission) {
+          response.writeHead(admission.rejection);
           response.end();
           return;
         }

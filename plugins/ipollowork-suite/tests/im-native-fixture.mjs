@@ -18,7 +18,7 @@ import { WecomAppStateStore } from '../vendor/dsh-im/src/channels/wecom-app/stat
 import { BotWorkspaceStore, createBotWorkspaceScope } from '../vendor/dsh-im/src/channels/shared/bot-workspace-store.mjs';
 
 export const name = 'ipollo-im-replay';
-export const inject = ['webServer', 'connection', 'llm', 'agents', 'sessionController', 'workspaceRegistry', 'fileUploads', 'typertGateway'];
+export const inject = ['webServer', 'connection', 'connection.authentication', 'llm', 'agents', 'sessionController', 'workspaceRegistry', 'fileUploads', 'typertGateway'];
 const requests = [];
 const delegationRequests = [];
 class MediaAdapter extends LlmAdapter {
@@ -61,8 +61,8 @@ class MediaAdapter extends LlmAdapter {
 export function apply(ctx) {
   ctx.llm.registerAdapter(['ipollo-im-fixture'], new MediaAdapter());
   ctx.effect(() => ctx.webServer.register({ kind: 'prefix', path: '/ipollo-im-replay', handler: async (req, res) => {
-    const denied = ctx.connection.requestRejection({ headers: req.headers });
-    if (denied !== undefined) { res.writeHead(denied); res.end(); return; }
+    const admission = ctx.connection.admit(req);
+    if ('rejection' in admission) { res.writeHead(admission.rejection); res.end(); return; }
     try {
       const chunks = [];
       for await (const chunk of req) chunks.push(chunk);

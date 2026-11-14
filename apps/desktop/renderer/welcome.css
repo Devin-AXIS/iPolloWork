@@ -342,4 +342,4 @@ body {
 
 .auth-waiting .copy-link:disabled { cursor: default; }
 
-#login-password { margin-top: 12px; }
+.key-field input + label + input { margin-top: 12px; }

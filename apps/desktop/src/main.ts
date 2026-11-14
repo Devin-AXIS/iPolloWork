@@ -1241,7 +1241,7 @@ async function main(): Promise<void> {
   const refreshApplicationMenu = (): void => {
     Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
       ? windowsDevToolsShortcuts : [{
-        label: darwin ? app.name : currentDesktopLocale().messages.application,
+        label: darwin ? currentDesktopLocale().messages.welcomeBrand : currentDesktopLocale().messages.application,
         submenu: [...applicationItems(), devToolsF12Shortcut],
       }, ...platformMenus()]))
     tray?.relabel()
@@ -1417,6 +1417,11 @@ async function main(): Promise<void> {
         },
         signInAccount: async (email, password) => {
           const result = await welcomeBackend?.signInAccount?.(email, password) ?? { ok: false }
+          if (result.ok) await enterWorkspace()
+          return result
+        },
+        signUpAccount: async (name, email, password) => {
+          const result = await welcomeBackend?.signUpAccount?.(name, email, password) ?? { ok: false }
           if (result.ok) await enterWorkspace()
           return result
         },

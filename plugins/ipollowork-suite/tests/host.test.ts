@@ -59,8 +59,8 @@ test("the route requires native owner authorization and disappears when its plug
       },
     },
     connection: {
-      requestRejection: (request) =>
-        request.headers.cookie === "owner=test" ? undefined : 401,
+      admit: (request) =>
+        request.headers.cookie === "owner=test" ? { peer: {} } : { rejection: 401 },
     },
     credentials: {
       readRecord: async () => undefined,

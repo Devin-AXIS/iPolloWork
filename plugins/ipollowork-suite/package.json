@@ -7,7 +7,7 @@
   "license": "UNLICENSED",
   "engines": {
     "node": ">=24.9.0",
-    "dsh": ">=0.2.2-rc.2 <0.2.3-0"
+    "dsh": ">=0.2.2-rc.3 <0.2.3-0"
   },
   "exports": {
     "./connections": {
