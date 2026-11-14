@@ -30,7 +30,7 @@
 
 ## 配置
 
-在 profile 补丁中覆盖 `ipollowork-suite` 行的 `config`。字段包括 `accountOrigin`（默认 `https://i.ipollo.ai`）、`catalogPath`（默认使用内置目录）、`requestTimeoutMs`（20000）、`maxResponseBytes`（1048576），以及 `theme`、`market`、`account`（均为 true）。公网账号服务必须使用 HTTPS；HTTP 仅供回环地址开发使用。切换账号服务来源时，不会复用其他来源已保存的凭据。
+在 profile 补丁中覆盖 `ipollowork-suite` 行的 `config`。字段包括 `accountOrigin`（默认 `http://localhost:4785`，连接另行启动的本机账号服务）、`catalogPath`（默认使用内置目录）、`requestTimeoutMs`（20000）、`maxResponseBytes`（1048576），以及 `theme`、`market`、`account`（均为 true）。公网账号服务必须显式配置 HTTPS 来源；HTTP 仅供回环地址开发使用。切换账号服务来源时，不会复用其他来源已保存的凭据。
 
 编辑 `catalog/index.json` 维护市场，其格式保持为 DSH format 1。默认目录的 Creative 分类首先显示 Design（包含 PPT）和 Video。当前安装包位于 `catalog/packages/`，`catalog/bundled-releases.json` 固定其版本与 SHA-256 哈希。仅对该默认目录，Host 会校验文件，将其原子复制到 DSH home 中按内容寻址的持久缓存，并向 DSH 现有安装器提供本地 `file:` 规格。保存的安装来源因此能够在套件升级或移除后继续使用，不需要未发布的 npm 版本；显示卡片不会安装或启用插件。更新版本时同时替换压缩包与校验记录。自定义 `catalogPath` 索引保留声明的原生 npm/Git 来源。
 

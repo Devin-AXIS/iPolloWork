@@ -8,7 +8,7 @@ export interface Config {
   theme?: boolean; market?: boolean; account?: boolean;
 }
 export const Config = z.object({
-  accountOrigin: z.string().default('https://i.ipollo.ai'),
+  accountOrigin: z.string().default('http://localhost:4785'),
   catalogPath: z.string().default(fileURLToPath(new URL('../../catalog/index.json', import.meta.url))),
   requestTimeoutMs: z.number().min(1000).max(60000).default(20000),
   maxRequestBytes: z.number().min(16384).max(1048576).default(262144),

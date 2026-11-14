@@ -37,7 +37,7 @@ test('the route requires native owner authorization and disappears when its plug
     assert.equal((await fetch(base + '/info')).status, 401)
     assert.equal((await fetch(base + '/account/sign-up', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 401)
     const account = await fetch(base + '/account', { headers: { Cookie: 'owner=test' } })
-    assert.deepEqual(await account.json(), { status: 'anonymous', origin: 'https://i.ipollo.ai' })
+    assert.deepEqual(await account.json(), { status: 'anonymous', origin: 'http://localhost:4785' })
     assert(guard)
     assert.equal((await guard({ name: 'plugin_manager', arguments: { action: 'remove_bundle', target: '@ipollo/dsh-suite' } }, async () => ({ kind: 'allow' }))).kind, 'deny')
     for (const dispose of disposers.reverse()) dispose()

@@ -16,6 +16,10 @@ function credentials() {
 const user = { id: 'test-user', name: 'Test member', email: 'test@example.com' }
 const config = resolveConfig({ accountOrigin: 'https://account.example.com' })
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
+test('the default account service is local and explicit deployments remain authoritative', () => {
+  assert.equal(resolveConfig({}).accountOrigin, 'http://localhost:4785')
+  assert.equal(resolveConfig({ accountOrigin: 'https://accounts.example.com' }).accountOrigin, 'https://accounts.example.com')
+})
 const success: typeof fetch = async (input, init) => {
   const path = new URL(String(input)).pathname
   if (path.endsWith('/sign-in/email')) return json({ token: 'private-session-token', user })
