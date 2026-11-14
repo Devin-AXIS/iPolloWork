@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.2/ipollowork-postgres/guide.md
+/:
+  en: 38e8e717e089b78c
+  zh: 26655ee6ad6bf3ea
+/ipollowork-postgresql-and-output-storage:
+  en: 07e701f9938312e1
+  zh: 037ecaad306619e8
+/ipollowork-postgresql-and-output-storage/change:
+  en: 4b9164f50b2ca4b3
+  zh: f22df1956cd36764
+/ipollowork-postgresql-and-output-storage/migration:
+  en: 9f04b441f7d6d478
+  zh: 21045c7c6f8c29cc

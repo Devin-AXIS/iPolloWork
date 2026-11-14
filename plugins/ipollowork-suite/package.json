@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-suite",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
   "icon": "./assets/mark.svg",
   "type": "module",
@@ -81,17 +81,18 @@
     "@deepseek-ai/dsh-tool-subagent": "^0.2.2-rc.2",
     "@deepseek-ai/dsh-tools": "^0.2.2-rc.2",
     "@deepseek-ai/schemastery": "3.19.0",
+    "@earendil-works/pi-ai": "1.3.0",
     "@matrix-org/olm": "3.2.15",
     "js-yaml": "^4.3.2",
     "semver": "^7.8.5",
     "undici": "7.30.1",
-    "zod": "^4.6.7",
-    "@earendil-works/pi-ai": "1.3.0"
+    "zod": "^4.6.7"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-llm-pi-ai": ">=0.2.2-rc.2 <0.2.3-0",
-    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.2 <0.2.3-0"
+    "@deepseek-ai/dsh-fs": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-llm": ">=0.2.2-rc.2 <0.2.3-0",
+    "@deepseek-ai/dsh-llm-pi-ai": ">=0.2.2-rc.2 <0.2.3-0"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-client-ui-primitives": "^0.2.2-rc.2",

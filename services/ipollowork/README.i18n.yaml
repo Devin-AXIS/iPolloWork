@@ -3,35 +3,26 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write services/ipollowork/README.md
 /ipollowork-services:
-  en: 18cb540429af9d35
-  zh: 0194f99424f51ec3
+  en: d566945f3b58ef8e
+  zh: 3c7683c89b8765b5
 /ipollowork-services/run:
-  en: 14eae7fd1dd3bcef
-  zh: a7c70036583ab674
-/ipollowork-services/storage-and-deployment:
-  en: b629e0af4c0b5dc2
-  zh: 1e0c3c4cb12e64a1
-/ipollowork-services/scope:
-  en: 339f4d7871d3151a
-  zh: 13e410fb690e02b2
-/ipollowork-services/work-connection:
-  en: 2651c88870cf0816
-  zh: fc14fb4f849c9b63
-/ipollowork-services/checks:
-  en: 62b71977cfe7195c
-  zh: ce91627d3bb03539
-/ipollowork-services/project-collaboration:
-  en: 87120a59e0c31f15
-  zh: 8e0beda8a7006ee0
-/ipollowork-services/native-session-relay:
-  en: a106a88a76c58c27
-  zh: 214b3b8309a99e67
-/ipollowork-services/official-execution-services:
-  en: ff5758632d70ce7a
-  zh: 17af7b25c48d5999
-/ipollowork-services/share-audiences:
-  en: f7ec1f79cdace82c
-  zh: beb116e7c1cfbc89
-/ipollowork-services/enterprise-assets:
-  en: 16db079496635cc4
-  zh: 8c4a0c42463d58f5
+  en: 2a349bc7d457463f
+  zh: 08e040a1bfc92e13
+/ipollowork-services/data-and-deployment:
+  en: 667fd7e1f236e505
+  zh: 46886a9709460bb7
+/ipollowork-services/accounts-and-permissions:
+  en: 205c9d07cc82befb
+  zh: 0c8cfabef2d63db3
+/ipollowork-services/native-dsh-connection:
+  en: 8816baffa43563dd
+  zh: 2f818f13185c130d
+/ipollowork-services/sharing:
+  en: 4e165ce94021c465
+  zh: 7af5989cca0b5167
+/ipollowork-services/official-services-and-plans:
+  en: 4dcdb72c8f993cfb
+  zh: adcdbc19eb3e7862
+/ipollowork-services/verification:
+  en: 1896b63a1fcbd00d
+  zh: a1804b94fdb109c7

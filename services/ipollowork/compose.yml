@@ -1,20 +1,47 @@
 services:
+  postgres:
+    image: postgres:17-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ipollowork
+      POSTGRES_USER: ipollowork
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a private database password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U ipollowork -d ipollowork']
+      interval: 5s
+      timeout: 3s
+      retries: 20
   work:
     build: .
     restart: unless-stopped
     init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "127.0.0.1:4785:4785"
     environment:
       SERVICE_ORIGIN: ${SERVICE_ORIGIN:?Set the public HTTPS origin}
+      DATABASE_URL: postgresql://ipollowork:${POSTGRES_PASSWORD}@postgres:5432/ipollowork
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-20}
       HOST: 0.0.0.0
       PORT: 4785
       DATA_DIR: /data
       TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
       MAIL_WEBHOOK_URL: ${MAIL_WEBHOOK_URL:-}
       MAIL_WEBHOOK_TOKEN: ${MAIL_WEBHOOK_TOKEN:-}
+      PERSONAL_STORAGE_GIB: ${PERSONAL_STORAGE_GIB:-200}
+      ORGANIZATION_STORAGE_GIB: ${ORGANIZATION_STORAGE_GIB:-500}
+      PERSONAL_RETENTION_DAYS: ${PERSONAL_RETENTION_DAYS:-7}
+      MAX_ARTIFACT_BYTES: ${MAX_ARTIFACT_BYTES:-536870912}
+      PAYMENT_FEE_BPS: ${PAYMENT_FEE_BPS:-500}
+      MINIMUM_MARGIN_BPS: ${MINIMUM_MARGIN_BPS:-3000}
+      MEMBERSHIP_OPERATING_RESERVE_FEN: ${MEMBERSHIP_OPERATING_RESERVE_FEN:-3000}
     volumes:
       - work-data:/data
     stop_grace_period: 30s
 volumes:
   work-data:
+  postgres-data:

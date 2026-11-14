@@ -1,0 +1,7 @@
+{
+  "presented": 1,
+  "outputPaths": ["result.html"],
+  "version": 1,
+  "inputPresentLocally": true,
+  "inputAbsentFromModel": true
+}

@@ -1,87 +1,137 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
 import { z } from "zod";
 import type { App } from "./http.js";
 import type { Store } from "./database.js";
 import type { Config } from "./config.js";
-import { enterpriseAccess, now, requireAdmin, resourceAccess, uid } from "./domain.js";
-import { Settings } from "./settings.js";
+import {
+  enterpriseAccess,
+  now,
+  requireAdmin,
+  resourceAccess,
+  uid,
+} from "./domain.js";
+import type { Storage } from "./storage.js";
 import { ServiceError } from "./errors.js";
 
-/** OSS stores private bodies; SQLite owns searchable metadata and authorization. */
-export function mountResources(app: App,store:Store,settings:Settings,config:Config) {
-  app.get("/api/v1/resources",c=>{
-    const actor=c.get("actor"),q=(c.req.query("q")??"").slice(0,200),kind=c.req.query("kind")??"skill",enterprise=c.req.query("enterpriseId")??"";
-    const items=store.all("SELECT id,title,description,kind,version,visibility,enterprise_id,bytes,created_at FROM resources r WHERE kind=? AND (?='' OR enterprise_id=?) AND instr(lower(title||' '||description),lower(?))>0 AND (owner_id=? OR visibility='public' OR ?='admin' OR (visibility='enterprise' AND EXISTS(SELECT 1 FROM members m WHERE m.enterprise_id=r.enterprise_id AND m.user_id=?))) ORDER BY created_at DESC LIMIT 200",kind,enterprise,enterprise,q,actor.id,actor.role,actor.id);
-    return c.json({items});
+/** OSS stores private bodies; PostgreSQL owns searchable metadata and authorization. */
+export function mountResources(
+  app: App,
+  store: Store,
+  storage: Storage,
+  config: Config,
+) {
+  app.get("/api/v1/resources", async (c) => {
+    const actor = c.get("actor"),
+      q = (c.req.query("q") ?? "").slice(0, 200),
+      kind = c.req.query("kind") ?? "skill",
+      enterprise = c.req.query("enterpriseId") ?? "";
+    const items = await store.all(
+      "SELECT id,title,description,kind,version,visibility,enterprise_id,bytes,created_at FROM resources r WHERE kind=? AND (?='' OR enterprise_id=?) AND position(lower(?) in lower(title||' '||description))>0 AND (owner_id=? OR visibility='public' OR ?='admin' OR (visibility='enterprise' AND EXISTS(SELECT 1 FROM members m WHERE m.enterprise_id=r.enterprise_id AND m.user_id=?))) ORDER BY created_at DESC LIMIT 200",
+      kind,
+      enterprise,
+      enterprise,
+      q,
+      actor.id,
+      actor.role,
+      actor.id,
+    );
+    return c.json({ items });
   });
-  app.post("/api/v1/resources",async c=>{
-    const actor=c.get("actor");
+  app.post("/api/v1/resources", async (c) => {
+    const actor = c.get("actor");
     let uploaded: Buffer | undefined;
     let payload: unknown;
-    if(c.req.header("content-type")?.startsWith("multipart/form-data")) {
-      const form=await c.req.formData(), file=form.get("file"), metadata=form.get("metadata");
-      if(!(file instanceof File) || typeof metadata!=="string") throw new ServiceError("INVALID_UPLOAD",400,"请选择文件");
-      if(file.size>24*1024*1024) throw new ServiceError("UPLOAD_TOO_LARGE",413);
-      uploaded=Buffer.from(await file.arrayBuffer());
-      payload=JSON.parse(metadata);
-    } else payload=await c.req.json();
-    const input=z.object({
-      title:z.string().trim().min(1).max(200),description:z.string().max(3000).default(""),
-      kind:z.enum(["skill","plugin","attachment"]),version:z.string().max(60).default("1.0.0"),
-      visibility:z.enum(["public","enterprise","private"]).default("private"),enterpriseId:z.string().nullable().default(null),
-      content:z.string().max(2_000_000).default(""),mime:z.string().max(100).default("text/markdown"),
-    }).parse(payload);
-    if(input.visibility==="public") requireAdmin(actor);
-    if(input.visibility==="enterprise" && !input.enterpriseId) throw new ServiceError("ENTERPRISE_REQUIRED",400);
-    if(input.enterpriseId) enterpriseAccess(store,actor,input.enterpriseId,input.visibility==="enterprise");
-    const id=uid(),body=uploaded??Buffer.from(input.content,"utf8");
-    const storageKey=await storeBody(settings,config,id,input.enterpriseId,input.mime,body);
-    if(input.enterpriseId) enterpriseAccess(store,actor,input.enterpriseId,input.visibility==="enterprise");
-    store.run("INSERT INTO resources VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",id,actor.id,input.enterpriseId,input.kind,input.visibility,input.title,input.description,input.version,storageKey,input.mime,body.length,createHash("sha256").update(body).digest("hex"),now());
-    return c.json({id},201);
+    if (c.req.header("content-type")?.startsWith("multipart/form-data")) {
+      const form = await c.req.formData(),
+        file = form.get("file"),
+        metadata = form.get("metadata");
+      if (!(file instanceof File) || typeof metadata !== "string")
+        throw new ServiceError("INVALID_UPLOAD", 400, "请选择文件");
+      if (file.size > 24 * 1024 * 1024)
+        throw new ServiceError("UPLOAD_TOO_LARGE", 413);
+      uploaded = Buffer.from(await file.arrayBuffer());
+      payload = JSON.parse(metadata);
+    } else payload = await c.req.json();
+    const input = z
+      .object({
+        title: z.string().trim().min(1).max(200),
+        description: z.string().max(3000).default(""),
+        kind: z.enum(["skill", "plugin", "attachment"]),
+        version: z.string().max(60).default("1.0.0"),
+        visibility: z
+          .enum(["public", "enterprise", "private"])
+          .default("private"),
+        enterpriseId: z.string().nullable().default(null),
+        content: z.string().max(2_000_000).default(""),
+        mime: z.string().max(100).default("text/markdown"),
+      })
+      .parse(payload);
+    if (input.visibility === "public") requireAdmin(actor);
+    if (input.visibility === "enterprise" && !input.enterpriseId)
+      throw new ServiceError("ENTERPRISE_REQUIRED", 400);
+    if (input.enterpriseId)
+      await enterpriseAccess(
+        store,
+        actor,
+        input.enterpriseId,
+        input.visibility === "enterprise",
+      );
+    const id = uid(),
+      body = uploaded ?? Buffer.from(input.content, "utf8");
+    const storageKey = await storage.put(
+      id,
+      { userId: actor.id, organizationId: input.enterpriseId },
+      input.mime,
+      body,
+      {
+        permanent: input.kind !== "attachment" || input.visibility === "public",
+      },
+    );
+    await storage.persist(storageKey, async () => {
+      if (input.enterpriseId)
+        await enterpriseAccess(
+          store,
+          actor,
+          input.enterpriseId,
+          input.visibility === "enterprise",
+        );
+      await store.run(
+        "INSERT INTO resources(id,owner_id,enterprise_id,kind,visibility,title,description,version,storage_key,mime,bytes,sha256,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        id,
+        actor.id,
+        input.enterpriseId,
+        input.kind,
+        input.visibility,
+        input.title,
+        input.description,
+        input.version,
+        storageKey,
+        input.mime,
+        body.length,
+        createHash("sha256").update(body).digest("hex"),
+        now(),
+      );
+    });
+    return c.json({ id }, 201);
   });
-  app.get("/api/v1/resources/:id/download",async c=>{
-    const resource=resourceAccess(store,c.get("actor"),c.req.param("id"));
-    return downloadBody(settings,config,resource.storage_key,resource.id+".txt");
+  app.get("/api/v1/resources/:id/download", async (c) => {
+    const resource = await resourceAccess(
+      store,
+      c.get("actor"),
+      c.req.param("id"),
+    );
+    return await storage.download(resource.storage_key, resource.title + "");
   });
-  app.get("/api/v1/resources/:id/content",async c=>{
-    const resource=resourceAccess(store,c.get("actor"),c.req.param("id"));
-    if(resource.kind!=="skill") throw new ServiceError("NOT_A_SKILL",400);
-    return c.json({id:resource.id,content:(await readBody(settings,config,resource.storage_key)).toString("utf8")});
+  app.get("/api/v1/resources/:id/content", async (c) => {
+    const resource = await resourceAccess(
+      store,
+      c.get("actor"),
+      c.req.param("id"),
+    );
+    if (resource.kind !== "skill") throw new ServiceError("NOT_A_SKILL", 400);
+    return c.json({
+      id: resource.id,
+      content: (await storage.read(resource.storage_key)).toString("utf8"),
+    });
   });
-}
-
-async function ossClient(settings:Settings) {
-  const s=settings.get("oss");
-  if(!s.region || !s.accessKeyId || !s.accessKeySecret) throw new ServiceError("OSS_NOT_CONFIGURED",503);
-  const {default:OSS}=await import("ali-oss");
-  return new OSS({region:s.region,bucket:s.bucket,accessKeyId:s.accessKeyId,accessKeySecret:s.accessKeySecret,secure:true});
-}
-/**
- * Write a new private body and return its storage key. OSS objects are private when a bucket is configured; otherwise
- * the body is created exclusively under the data directory.
- */
-export async function storeBody(settings:Settings,config:Config,id:string,enterpriseId:string|null,mime:string,body:Buffer):Promise<string> {
-  if(settings.get("oss").bucket) {
-    const key=(enterpriseId??"personal")+"/"+id;
-    await (await ossClient(settings)).put(key,body,{headers:{"Content-Type":mime,"x-oss-object-acl":"private"}});
-    return "oss/"+key;
-  }
-  await mkdir(resolve(config.dataDir,"files"),{recursive:true,mode:0o700});
-  await writeFile(resolve(config.dataDir,"files",id),body,{flag:"wx",mode:0o600});
-  return "local/"+id;
-}
-/** Read a stored body by key; rejects keys outside the two storage layouts. */
-export async function readBody(settings:Settings,config:Config,storageKey:string):Promise<Buffer> {
-  if(storageKey.startsWith("oss/")) return (await (await ossClient(settings)).get(storageKey.slice(4))).content as Buffer;
-  if(!/^local\/[a-f0-9-]{36}$/.test(storageKey)) throw new ServiceError("INVALID_STORAGE_KEY",409);
-  return readFile(resolve(config.dataDir,"files",storageKey.slice(6)));
-}
-/** Answer a download: a short-lived signed URL for OSS, or the private body itself. */
-export async function downloadBody(settings:Settings,config:Config,storageKey:string,filename:string):Promise<Response> {
-  if(storageKey.startsWith("oss/")) return Response.json({url:(await ossClient(settings)).signatureUrl(storageKey.slice(4),{expires:60,response:{"content-disposition":"attachment"}})});
-  const content=await readBody(settings,config,storageKey);
-  return new Response(new Uint8Array(content),{headers:{"Content-Type":"application/octet-stream","Content-Disposition":"attachment; filename*=UTF-8''"+encodeURIComponent(filename),"Cache-Control":"private, no-store"}});
 }

@@ -1,11 +1,11 @@
 # iPolloWork services
 
-This independent commercial account and collaboration service runs as one Node.js process with SQLite and private files or OSS. Production must not import iPolloCloud, Next.js, PostgreSQL, a Worker provisioner, or DSH.
+This independent account, billing and collaboration service uses PostgreSQL for metadata and private Alibaba OSS for production objects. Do not import DSH, the old Cloud runtime, Next.js or a worker provisioner. Local development may use the service-owned file cache; never manage native workspace files through cloud retention.
 
-Keep authentication in Better Auth. Validate inputs, check enterprise membership per request, and keep payment, points and entitlement updates atomic and idempotent. Never accept a client-reported payment result. Private files require authorization; OSS objects remain private.
+Keep authentication in Better Auth. Validate requests, check current organization and project permissions, and keep orders, credit reservations, quotas and file metadata atomic and idempotent. Provider credentials remain server-side. Do not trust client payment results or usage claims.
 
-Use strict TypeScript and ESM. Changes require npm run check, npm run build and focused HTTP/persistence tests. Business migrations use monotonic PRAGMA user_version. Never overwrite customer databases.
+Use strict TypeScript and ESM. Run `npm run check`, `npm run build` and focused HTTP/persistence checks. Business schema versions increase monotonically in `service_schema`; preserve committed SQLite generations for the explicit importer. Back up PostgreSQL and the authentication secret before migration. Never overwrite a customer database.
 
-Legacy import is an explicit administrator command, not a runtime dependency. Preserve user IDs, password hashes, plans and ledger history; do not import old login sessions. Never log credentials or customer data.
+SQLite import is an operator command into an empty target. Preserve identities, password hashes, sessions, balances and file ownership. Never log credentials or customer content. Use separate PostgreSQL schemas for tests.
 
 For local reviews, follow the [single-preview workflow](../../plugins/ipollowork-suite/AGENTS.md#preview-handoff).
