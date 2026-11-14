@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/work-services",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",
@@ -20,6 +20,7 @@
     "bench:database": "tsx scripts/benchmark-database.ts"
   },
   "dependencies": {
+    "@alicloud/credentials": "2.4.7",
     "@apple/app-store-server-library": "3.1.0",
     "@hono/node-server": "2.1.8",
     "ali-oss": "6.23.0",

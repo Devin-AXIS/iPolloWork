@@ -23,7 +23,7 @@ Open http://localhost:4785. Registration is available on the login page; first-a
 
 Personal unpublished outputs expire after seven days. Published project outputs and organization outputs remain until explicitly removed. Cloud cleanup never deletes native local files. Default quotas are 200 GiB per person and 500 GiB per organization; administrators can change each owner's limit. Limits represent allowed capacity, not preallocated storage or a promise of free traffic.
 
-`compose.yml` provides PostgreSQL and the service with persistent volumes. Set `POSTGRES_PASSWORD` and an HTTPS `SERVICE_ORIGIN`; keep the database private. Public deployments require OSS by default. Without OSS, loopback development uses a private service cache. The native session relay keeps live sockets in one process: this release supports one relay instance, even though PostgreSQL supports concurrent connections. Do not round-robin independent relay processes.
+`compose.yml` provides PostgreSQL and the service with persistent volumes. Set `POSTGRES_PASSWORD` and an HTTPS `SERVICE_ORIGIN`; keep the database private. Public deployments require OSS by default. Without OSS, loopback development uses a private service cache. [Alibaba Cloud deployment](deploy/README.md) adds automatic HTTPS and scoped ECS credentials for OSS. The native session relay keeps live sockets in one process: this release supports one relay instance, even though PostgreSQL supports concurrent connections. Do not round-robin independent relay processes.
 
 ## Accounts and permissions
 

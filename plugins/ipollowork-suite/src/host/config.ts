@@ -15,9 +15,10 @@ export interface Config {
   uploadTimeoutMs?: number;
   maxArtifactBytes?: number;
   archiveHistoryLimit?: number;
+  automaticOutputArchive?: boolean;
 }
 export const Config = z.object({
-  accountOrigin: z.string().default("http://localhost:4785"),
+  accountOrigin: z.string().default("https://work.ipollo.net"),
   catalogPath: z
     .string()
     .default(
@@ -29,6 +30,7 @@ export const Config = z.object({
   uploadTimeoutMs: z.number().min(1000).max(1800000).default(300000),
   maxArtifactBytes: z.number().min(1024).max(2147483648).default(536870912),
   archiveHistoryLimit: z.number().min(10).max(10000).default(500),
+  automaticOutputArchive: z.boolean().default(false),
   theme: z.boolean().default(true),
   market: z.boolean().default(true),
   account: z.boolean().default(true),

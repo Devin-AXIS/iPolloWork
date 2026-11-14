@@ -1,0 +1,37 @@
+services:
+  edge:
+    image: ${CADDY_IMAGE:-caddy:2.11.9-alpine}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SERVICE_DOMAIN: ${SERVICE_DOMAIN:?Set the public hostname}
+      PUBLICATION_DOMAIN: ${PUBLICATION_DOMAIN:?Set the separate publication hostname}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - edge-data:/data
+      - edge-config:/config
+    networks:
+      default:
+        ipv4_address: ${PROXY_IP:-10.238.82.254}
+    depends_on:
+      - work
+  work:
+    build:
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24.15.0-bookworm-slim}
+    environment:
+      TRUSTED_PROXY_IPS: ${PROXY_IP:-10.238.82.254}
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${SERVICE_SUBNET:-10.238.82.0/24}
+volumes:
+  edge-data:
+  edge-config:

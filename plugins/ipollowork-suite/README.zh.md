@@ -30,7 +30,7 @@
 
 ## 配置
 
-在 profile 补丁中覆盖 `ipollowork-suite` 行的 `config`。字段包括 `accountOrigin`（默认 `http://localhost:4785`，连接另行启动的本机账号服务）、`catalogPath`（默认使用内置目录）、`requestTimeoutMs`（20000）、`maxResponseBytes`（1048576），以及 `theme`、`market`、`account`（均为 true）。公网账号服务必须显式配置 HTTPS 来源；HTTP 仅供回环地址开发使用。切换账号服务来源时，不会复用其他来源已保存的凭据。
+在 profile 补丁中覆盖 `ipollowork-suite` 行的 `config`。字段包括 `accountOrigin`（默认 `https://work.ipollo.net`）、`catalogPath`（默认使用内置目录）、`requestTimeoutMs`（20000）、`maxResponseBytes`（1048576），以及 `theme`、`market`、`account`（均为 true）。账号服务必须使用 HTTPS 来源；HTTP 仅供回环地址开发使用。切换账号服务来源时，不会复用其他来源已保存的凭据。
 
 编辑 `catalog/index.json` 维护市场，其格式保持为 DSH format 1。默认目录的 Creative 分类首先显示 Design（包含 PPT）和 Video。当前安装包位于 `catalog/packages/`，`catalog/bundled-releases.json` 固定其版本与 SHA-256 哈希。仅对该默认目录，Host 会校验文件，将其原子复制到 DSH home 中按内容寻址的持久缓存，并向 DSH 现有安装器提供本地 `file:` 规格。保存的安装来源因此能够在套件升级或移除后继续使用，不需要未发布的 npm 版本；显示卡片不会安装或启用插件。更新版本时同时替换压缩包与校验记录。自定义 `catalogPath` 索引保留声明的原生 npm/Git 来源。
 
@@ -100,7 +100,7 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 
 通过原生目录表单创建个人或组织项目。项目可按成员或部门授予查看、参与、维护权限，每次请求都检查当前成员关系。维护者管理权限并接纳贡献，本地工作仍在所选目录中。
 
-项目包含概览、文件、项目记忆和改动。概览围绕参与者和实际贡献数量，文件显示输出版本、作者和容量，支持下载、手动上传及失败重试。只流式归档原生 `present` 声明的完成输出，不上传输入文件或完整本地 Session。维护者可关闭输出归档；账号切换使排队的旧传输失效。云端到期不删除本地文件，规则见[存储说明](../../services/ipollowork/docs/storage.md)。
+项目包含概览、文件、项目记忆和改动。概览围绕参与者和实际贡献数量，文件显示输出版本、作者和容量，支持下载及手动上传。原生 `present` 默认不上传文件，不上传输入文件或完整本地 Session。参与者选择需上传的输出，维护者管理上传权限。云端到期不删除本地文件，规则见[存储说明](../../services/ipollowork/docs/storage.md)。
 
 关联文件只包含服务来源和项目 ID。每轮模型开始前重新授权并读取当前项目记忆，撤销访问后不会复用旧上下文。`ipollo_project_memory` 可读取、提交提炼知识，或由维护者携带版本和贡献 ID 明确合并。完整摘要最多 8,000 字符、两级标题，版本冲突保留草稿。后台不运行模型，不需要 Git，也不批量同步本地状态。
 
@@ -110,9 +110,11 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 
 原生中继测试使用隔离服务和配置，将 `IPOLLO_QA_URL`、`IPOLLO_RELAY_ORIGIN`、`IPOLLO_RELAY_TEST_PASSWORD` 指向测试实例后执行 `node --import tsx --test tests/liveshare-native.test.ts`。不要对工作配置运行该测试。
 
-套件输出上传配置为 `uploadTimeoutMs`（300,000）、`maxArtifactBytes`（536,870,912）和 `archiveHistoryLimit`（500）。内存队列不保留完整 Session 对象；队列满时 Host 提示从项目页上传本地文件。完成记录有数量上限，后端请求 ID 保证重放不会创建重复版本。
+套件输出上传配置为 `uploadTimeoutMs`（300,000）和 `maxArtifactBytes`（536,870,912）。部署专用的 `automaticOutputArchive` 默认为 false；启用后，关联项目会在具备上传权限时流式归档原生展示的完成输出，`archiveHistoryLimit`（500）限制上传记录数量。内存队列不保留完整 Session 对象；队列满时 Host 提示从项目页上传本地文件。完成记录有数量上限，后端请求 ID 保证重放不会创建重复版本。
 
-输出归档的无 Key 测试使用隔离 PostgreSQL 服务和配置，编译 `tests/native-fixture.ts` 并加载 `tests/native.patch.yml`，然后运行 `IPOLLO_ARCHIVE_QA_URL=<private-owner-url> node --import tsx --test tests/project-archive-native.test.ts`。它验证原生呈现事件、超过 24 MiB 的授权下载、不归档输入，以及项目归档开关。预期结果保存在 `tests/expected`。
+可选的 Host 服务还可发布在 Design 中选定的文件集。它使用当前账号流式上传文件，在已有项目关联时保留项目归属，并在服务的独立浏览来源打开完整发布。独立安装的 Design 仍使用自己的存储服务设置。存储密钥和账号令牌不会进入生成的页面。
+
+输出归档的无 Key 测试使用隔离 PostgreSQL 服务和配置，编译 `tests/native-fixture.ts` 并加载 `tests/native.patch.yml`，然后运行 `IPOLLO_ARCHIVE_QA_URL=<private-owner-url> node --import tsx --test tests/project-archive-native.test.ts`。它验证原生展示保留在本地、明确选择输出后上传、超过 24 MiB 的授权下载和输入排除。预期结果保存在 `tests/expected`。
 
 从组织空间创建项目时，归属固定为当前组织；个人创建保留在全局目录入口。组织后台不展示共享会话页签或未归属的个人项目，原生会话分享仍在对应会话中操作。
 

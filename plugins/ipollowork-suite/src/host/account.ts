@@ -133,20 +133,53 @@ export class AccountService {
     body: ReadableStream<Uint8Array>,
     signal: AbortSignal,
   ): Promise<unknown> {
+    return this.uploadFile(
+      "/api/v1/projects/" + encodeURIComponent(projectId) + "/artifacts/upload",
+      "POST",
+      { "x-ipw-artifact": metadata },
+      body,
+      signal,
+    );
+  }
+  /** Upload one selected publication file through the authenticated service. */
+  async uploadPublication(
+    id: string,
+    path: string,
+    body: ReadableStream<Uint8Array>,
+    signal: AbortSignal,
+  ): Promise<unknown> {
+    return this.uploadFile(
+      "/api/v1/publications/" +
+        encodeURIComponent(id) +
+        "/files/" +
+        path.split("/").map(encodeURIComponent).join("/"),
+      "PUT",
+      {},
+      body,
+      signal,
+    );
+  }
+  private async uploadFile(
+    path: string,
+    method: string,
+    headers: Record<string, string>,
+    body: ReadableStream<Uint8Array>,
+    signal: AbortSignal,
+  ): Promise<unknown> {
     const revision = this.revision,
       grant = await this.grant();
     if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
     if (revision !== this.revision)
       throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
     const init: RequestInit & { duplex: "half" } = {
-      method: "POST",
+      method,
       duplex: "half",
       redirect: "error",
       body,
       headers: {
         Authorization: `Bearer ${grant.token}`,
         "Content-Type": "application/octet-stream",
-        "x-ipw-artifact": metadata,
+        ...headers,
       },
       signal: AbortSignal.any([
         this.signal,
@@ -154,13 +187,7 @@ export class AccountService {
         AbortSignal.timeout(this.config.uploadTimeoutMs),
       ]),
     };
-    const response = await this.fetcher(
-      this.config.accountOrigin +
-        "/api/v1/projects/" +
-        encodeURIComponent(projectId) +
-        "/artifacts/upload",
-      init,
-    );
+    const response = await this.fetcher(this.config.accountOrigin + path, init);
     const value = await readJson(response, this.config.maxResponseBytes);
     if (!response.ok)
       throw new SuiteError(

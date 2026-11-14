@@ -14,8 +14,8 @@
     "design-video": {
       "repository": "https://github.com/Devin-AXIS/deepseek-design",
       "branch": "main",
-      "version": "1.0.0-beta.17",
-      "gitTree": "30f28ade9d8c46a41f13746b8660bbb5833bdb94"
+      "version": "1.0.0-beta.18",
+      "gitTree": "6564980c387601a1b4b35a5645ede3b09a4bceae"
     },
     "dsh": {
       "repository": "https://github.com/Devin-AXIS/iPolloWork",
@@ -43,30 +43,38 @@
     "owner-storage-quotas",
     "native-output-archives",
     "compact-project-memory",
-    "usage-metered-billing"
+    "usage-metered-billing",
+    "ecs-role-object-storage",
+    "https-account-service",
+    "explicit-output-uploads",
+    "account-backed-web-publication",
+    "private-oss-published-sites"
   ],
   "files": {
     "plugins/ipollowork-suite/.gitignore": "a35acbae4cc64fb775bf5fa46757a1118d9766e5720aba5a995b0f5b4dccf2be",
     "plugins/ipollowork-suite/AGENTS.md": "3ca361d9c91b531f9f8d11188ba929c1a6e63bab3db861c5995bb017d573bfea",
-    "plugins/ipollowork-suite/README.md": "a6e33e7ebf40fe31049c90121bdf865a73a36f59551854b17bd513b31ef6e685",
+    "plugins/ipollowork-suite/README.i18n.yaml": "88991d8394f8df9defc1e80ccbe533ff4a112adcb02723189d26e5b765a9512b",
+    "plugins/ipollowork-suite/README.md": "4db9ce18224c993a7a97422e7605238de1433fccb9fb5311fe060375286b8940",
+    "plugins/ipollowork-suite/README.zh.md": "e6fc54cef69c50636c8c6c31d0bd0aa6586b547169674f1cfaa9a89de4dc1ca8",
     "plugins/ipollowork-suite/assets/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
-    "plugins/ipollowork-suite/catalog/bundled-releases.json": "5d1b47a17a18d80b2577c6e329f2663830ed7b4539b3616d8c40cefb3fcc3df4",
-    "plugins/ipollowork-suite/catalog/index.json": "b7cf8d21fc8dc6b175f55d5f238e62ad7b5c80cea27f47420d473d213d043bbc",
-    "plugins/ipollowork-suite/catalog/packages/deepseek-idesign-1.0.0-beta.17-11356f53044c.tgz": "11356f53044cbd6b640333fbe342136c1d0e48eb77381a68be4633066da2d2da",
-    "plugins/ipollowork-suite/catalog/packages/deepseek-ivideo-1.0.0-beta.17-791ac637cba8.tgz": "791ac637cba8895096a8aa88c7287068f6800bda319fcacc16ab08b6207072c3",
+    "plugins/ipollowork-suite/catalog/bundled-releases.json": "0e603772d7723bd4094e2e0381529cf6ab67933030c866d2f943899c55091ab8",
+    "plugins/ipollowork-suite/catalog/index.json": "3941fe9a0a46674c1abc8a0c71b9d06e89fa0ed6fdb321f77d5cad198b1be20e",
+    "plugins/ipollowork-suite/catalog/packages/deepseek-idesign-1.0.0-beta.18-45af46958f0b.tgz": "45af46958f0bb506dc699ad2f45bd52b761adb52a9e3990846bad538bf4f4ff1",
+    "plugins/ipollowork-suite/catalog/packages/deepseek-ivideo-1.0.0-beta.18-756e6fda4d6c.tgz": "756e6fda4d6c6a1ffa42d83c16a442a6e0ffa4ea99ece426495b915b3bc151ee",
     "plugins/ipollowork-suite/cordis.patch.yml": "e53c8bc3c85db1f49b583a05f872c15651fc01560153d5434ea81a9c9136676c",
     "plugins/ipollowork-suite/docs/DETAIL.md": "d6205c890dba55b8b4c2b25a31716e50a0b01d611625e96ae33ece308355c348",
     "plugins/ipollowork-suite/docs/DETAIL.zh.md": "275b4a511da57ecc09aa693942e79014be9def0ff6f18958d99c5490dc7f93f0",
     "plugins/ipollowork-suite/docs/architecture.md": "e1e274d029dc6b005cc4b8c679448eb262d6885fefe88018c7d0f939a68cbdb2",
     "plugins/ipollowork-suite/docs/connections.md": "fa44d79cbf05d6045467d26b6f4b5fa2c3f1adb25d2a52a89b28e88180331efe",
+    "plugins/ipollowork-suite/docs/enterprise-assets.md": "d642d39b336b56a4166fc5381805c007a8a80182e34ee51fffd411caf170dc7f",
     "plugins/ipollowork-suite/docs/upgrades/2026-11-14-project-collaboration.md": "a2e908940bc3c8579b06ecf08a8513bbe5039b7c9859ea0a7b07a78eac6e0be9",
     "plugins/ipollowork-suite/docs/upgrades/2026-11-14-project-spaces.md": "0ca9a3483c8f23058e5a8bcca4e0e54082be67ba51b777b3a1334fda16f532d4",
     "plugins/ipollowork-suite/docs/upgrades/2026-11-14-service-center.md": "c7ad721e8e5b915fb2c641409494ecd5c269b596d9ac3a6b99109b3c8aa8ad5f",
     "plugins/ipollowork-suite/docs/upgrades/main-assistant.md": "0309ff78256180954c9f166bafb9e5c477cb40c46639f468e500b756ddb8258a",
     "plugins/ipollowork-suite/locale/en.json": "5cf3a877034cce92e945518189e54822b24b3fd2e9558878a28aff9f1dc73443",
     "plugins/ipollowork-suite/locale/zh.json": "dec7f57d48ef83b40cc3c884184b4be2c92fc8f523fba08558ad3c8191f326ae",
-    "plugins/ipollowork-suite/package-lock.json": "bfe2d81397671ea7d0bafd279ed5d2ce8abc1b4217db968cd26e18f33969f385",
-    "plugins/ipollowork-suite/package.json": "24d7fd1d9baadda191ffc28162e75e6d1560937041448d50006b827c82101e20",
+    "plugins/ipollowork-suite/package-lock.json": "b42ed859366e9f222a15b4fd8aba53fd178c0969fdb95a871db6d836d939bb68",
+    "plugins/ipollowork-suite/package.json": "0214c3fcca4f90b08320fb7e8ec12cd60b4600e38cee1ac6ae581ad660956f36",
     "plugins/ipollowork-suite/scripts/build.mjs": "09d39f34dc3640311a399bcaa9bd15ee861d8a120d4b92cd5aa5a24e90d8bc90",
     "plugins/ipollowork-suite/scripts/catalog-artwork.mjs": "3fdec6f6948dc25297eeb38527095bc82fc58fe91245225ac9fe8c3b1cf9474c",
     "plugins/ipollowork-suite/scripts/smoke.mjs": "e1f80a75e528869125af13bb3908709fdd5b3bf241137a56c7d23672f5fa500f",
@@ -81,50 +89,57 @@
     "plugins/ipollowork-suite/src/client/connections.tsx": "9e966506cfe79681cdf4982d77c69d7d63f68b09e414af13f11f4f54143900e1",
     "plugins/ipollowork-suite/src/client/coordinator.tsx": "d98c03ac4992e5897c6557fa1105e18bb28434219ed3d5621ace21503d02ea75",
     "plugins/ipollowork-suite/src/client/css.d.ts": "dbe8004fa39fd2b7ba84d1d0c7dd626fc63d1756d054f3019e212e324f626047",
+    "plugins/ipollowork-suite/src/client/enterprise-assets.tsx": "882df0c37061cbac8972f499fa71997f0ba8dc1587c196da7fb158a5c1aa225a",
     "plugins/ipollowork-suite/src/client/enterprise-controller.ts": "cf5f3b4570bde8b1c28f2e4e7aaf9675c4cc773bb34803e3243aa012b626e7f7",
     "plugins/ipollowork-suite/src/client/enterprise-locale.ts": "e32166b21b4bc3899eae4f4b47c895f4226622d6b0e93dfe7d45a481d60fa1bb",
     "plugins/ipollowork-suite/src/client/enterprise-members.tsx": "bef1eabb4a77d556882f40cc1bc7e89208a50aac21e8e83fce167068a022f609",
     "plugins/ipollowork-suite/src/client/enterprise-share.tsx": "feb3d053820fbe9e8c7e4f62a094b218b3b64e751c68ab10348acd1299cbe57a",
     "plugins/ipollowork-suite/src/client/enterprise-ui.tsx": "c2d6327eb46fab0ee8773259927d7d33134951677424b3bda7238c82e5f5c33c",
     "plugins/ipollowork-suite/src/client/enterprise.tsx": "4723c8eb8948e0f2c7fa36e5245cd3841079d486223d365e5f1a379509d196d9",
+    "plugins/ipollowork-suite/src/client/glyphs.tsx": "a3ed90cf213cf6446f472aeef74607f01971de88177b99f96a54a195b8cb77d3",
     "plugins/ipollowork-suite/src/client/index.tsx": "32b37824a765d2d6c0afd81a71be6fc85c2372f6a6cc984e3bd556d613d2b5f6",
     "plugins/ipollowork-suite/src/client/locale.ts": "ed55b9c56537afa7cab0ef99a1081ef23902c5740677a27fc1ab97319cada168",
     "plugins/ipollowork-suite/src/client/market.tsx": "ef75cef4cf2bdd13b01799b1613216892ab1792ae96f958cbb8411d90b875856",
     "plugins/ipollowork-suite/src/client/native.ts": "5326e95823c3e1eebbbb7554c5ed5c913f5df0fc0b82d5922fc81f3a1ba2543d",
-    "plugins/ipollowork-suite/src/client/project-copy.ts": "0e993c096608e5549cf2c97b1d4ceb74a7bf86f8bd474b235d91f99cd0a907b4",
+    "plugins/ipollowork-suite/src/client/project-copy.ts": "04185915a48756442f34f4212ab90a0d7b48673f6b4f3d35cf0d30b42c7d4339",
     "plugins/ipollowork-suite/src/client/project-creation-actions.ts": "80f5739ff87e7f2549c2e734fb8353768c285ce105f706308109b92da94e1209",
     "plugins/ipollowork-suite/src/client/project-creation.tsx": "c16c2bf05ca0acb2d1ee0f4218a721e9c066d86ca21d6966d1cc730f55e803de",
+    "plugins/ipollowork-suite/src/client/project-files.tsx": "f59b564cc673f62d8cf9b738cfa8d68da2b0edc78ea60fbebed183b8b7832cc9",
     "plugins/ipollowork-suite/src/client/service-source.tsx": "08370faf2d33367a04c0023b7a3339c875a9b5abd4d64ea02dcb4c92f58ca8f5",
+    "plugins/ipollowork-suite/src/client/share-audience-copy.ts": "8463c9f2c7bf09eff420c6b023222917370c39dd985956600d7ba14b029135f3",
     "plugins/ipollowork-suite/src/client/suite.module.css": "25cab51722b44eccc2641dd065d8ed3d0cd6339dba15a1beeb310f9bca197818",
     "plugins/ipollowork-suite/src/client/theme.tsx": "5b631ce850f053b140bb02e5e8c4e204419dc93cbebba87012c49008ef10877a",
-    "plugins/ipollowork-suite/src/host/account.ts": "99eb3478c27a73e64e39cd7576a5e169670d67f8a4550139b648f2d33790f464",
+    "plugins/ipollowork-suite/src/host/account.ts": "f95d68f39dced3a47fbfef6613fd7d2dd8670a7fe523aff84aca32315a99e8d8",
     "plugins/ipollowork-suite/src/host/agent-avatar.ts": "cd4f4f11014ba1e5372b2088fa04dbc685809ba11517dfdc422fd9ee77497ea4",
     "plugins/ipollowork-suite/src/host/agent-native.ts": "a2f1e026199f3ee10718423a072b71dde69f28d27c7106c231adea61dc3c6ed6",
     "plugins/ipollowork-suite/src/host/agent-runtime.ts": "2d50afa0cc27737097aac1ad20d789d6a713f9190159fa6db7cd977dd67f7848",
     "plugins/ipollowork-suite/src/host/agent-store.ts": "42c437b37bef608ea2b7254f6ee1031a0ce5228654ebffa3a9e4c5bc78ae16a4",
     "plugins/ipollowork-suite/src/host/agents.ts": "dee775011e094b08d35b95957d919157370817202f1aafbc683c51d573f96392",
-    "plugins/ipollowork-suite/src/host/config.ts": "b326b574ef52defbcf3e34cb0728d9f241303959b880e81ee4ebd9e617ae5c55",
+    "plugins/ipollowork-suite/src/host/config.ts": "2b59949619d4b9cc95c8bb0ff89dca1ffed681ed04d1dabb6b4cc89f44bafefd",
     "plugins/ipollowork-suite/src/host/coordinator-entry.ts": "902460677a97793c0421766803581ac6ec94185aa04a9e6e6fe13468f41842ff",
     "plugins/ipollowork-suite/src/host/coordinator-runtime.ts": "06a67a1e9c66ef36594b5324f7ced2444432cc45dd343b05443699403520c30f",
+    "plugins/ipollowork-suite/src/host/enterprise-skills.ts": "8a06df5c0d6e90b421909bc078425ef1652957b4afe0b895d8c8948791f565f2",
     "plugins/ipollowork-suite/src/host/enterprise.ts": "1bbe73e2e401d4682001e6e7d81f6a685542e7b71ed66643cd35187fe5f193d0",
     "plugins/ipollowork-suite/src/host/errors.ts": "f4283c3368344567e1242b9dfec34e8c887cd84542aebcabd6a916fb516a1406",
     "plugins/ipollowork-suite/src/host/im-media.ts": "ccdf1e66c7e62c6824c11ab1a9f369dce59703a08bad04667c6834e5494a0204",
     "plugins/ipollowork-suite/src/host/im.ts": "07cc9575723c0a2eaa74a222f328929336158b4f91cd98287a1e5fa3f306d6b2",
-    "plugins/ipollowork-suite/src/host/index.ts": "49540bae657273ac2422a1c033904d199897522315ea81c79b47c8bfda96596c",
+    "plugins/ipollowork-suite/src/host/index.ts": "91bd373ac0c3da5b560e7d02891e1a0c86826f076260a01c299c83ddc2b61d98",
     "plugins/ipollowork-suite/src/host/management.ts": "985033e4644757a3b91b0889f2a7a4a0d6a9ec653c86ba40200105935c21f3ff",
     "plugins/ipollowork-suite/src/host/market.ts": "cf8be27c24207f2f474686347f47dd0635d36ff4251b04a5b78efda98800ad8d",
     "plugins/ipollowork-suite/src/host/native-sharing.ts": "a514cf99885b311d934b357267e891e71ac8d0edac6272a48f97df5a047d5169",
-    "plugins/ipollowork-suite/src/host/project-context.ts": "0ff698cbfb0daf02f11cb53357193cdd21c784b4327471ca4b4ae422832fcc7c",
+    "plugins/ipollowork-suite/src/host/project-archive.ts": "eb8c191bc81734afbfc5f69749dac87c9c61f14688f401dffd6d6265eaaecc9d",
+    "plugins/ipollowork-suite/src/host/project-context.ts": "0fe205e2101f45e2762aca6dae48d73e1f597727ffd55d1a123fcfe2369442b0",
     "plugins/ipollowork-suite/src/host/service-models.ts": "1b9c55c0f87e1d98c49ae3f9bceace031d677afe79cb277d7c37feed0c6119f0",
-    "plugins/ipollowork-suite/src/host/services.ts": "d22c7c7501831dfa9a8b81acc089bd49b365a0f4b104e9cd69f356d0b092b621",
+    "plugins/ipollowork-suite/src/host/services.ts": "51e4dd0e7cb46d4bbe32b82452516b29f0e5451a860201b62dea6e9419ea8a3c",
     "plugins/ipollowork-suite/src/shared/agents.ts": "81e700e7d5c47bf064d223247f6714c8c8d936d0159e0393b6a9a224525043f5",
     "plugins/ipollowork-suite/src/shared/avatar.ts": "d740bce9485e8f41c09d7b88d000901a0ce6051b48767a8a9b4dc3a8b5ca31f0",
     "plugins/ipollowork-suite/src/shared/connections.ts": "b02ea5ceff9fb484e88a408472945a1f75300289819f774a2848f77bc017da65",
     "plugins/ipollowork-suite/src/shared/coordinator.ts": "ab487f35fdfe3477beb1649e4f133e30b8f8f88f253adc1fee8ef42bd34271e5",
     "plugins/ipollowork-suite/src/shared/enterprise.ts": "fdc81dedfda4af06619cdc73e0e2cac64b8db65e0961e65c15d8cd0b03c47e52",
-    "plugins/ipollowork-suite/src/shared/services.ts": "21a1e03523ba715d012e30b149df92a811ed6fd18900667c5d6a7e5242c7bdee",
+    "plugins/ipollowork-suite/src/shared/service-categories.ts": "af5157c4c20e2f0594e4b6ca1e507ed4c73c310b18b3931102ca84ca3179b231",
+    "plugins/ipollowork-suite/src/shared/services.ts": "bab20cfb7674ba3e49fe0a51df778888e3eaa7d43f9d29cc4fc4b2b589031e6e",
     "plugins/ipollowork-suite/src/shared/types.ts": "246bae04d54c31c04bffdc914914ca211f29bfd0aca2c8a7c449d501ca75b0e2",
-    "plugins/ipollowork-suite/tests/account.test.ts": "a4fd7a5f9b6cf538285cd24e716ac8a18b5273bed8322d758cd516ce7cb99efb",
+    "plugins/ipollowork-suite/tests/account.test.ts": "6e1b723e49784d6aaf4321e626d3dcbe8d3c6c72f41fe167d9e4049192fc976f",
     "plugins/ipollowork-suite/tests/agent-avatar.test.ts": "645332d634f0f5373f4d4b805921516eae422d3ee6dd546afed4ebbc8dd1f5bd",
     "plugins/ipollowork-suite/tests/agents.test.ts": "da47d1c9bbb00852c953ad1fa547100f3a7a77414d6d74c5804ad5c94a21484e",
     "plugins/ipollowork-suite/tests/catalog-artwork.test.mjs": "57053c39b4e3191e7db9479f14f9959d6ee3180f00fb4e177a37f702a63c8c14",
@@ -134,8 +149,9 @@
     "plugins/ipollowork-suite/tests/coordinator.test.mjs": "7bc2eebdae48cac2343d6810b1e851cf771ea7c9a26e251203a9fbfe57b75992",
     "plugins/ipollowork-suite/tests/enterprise-controller.test.ts": "c8d2eb91058124c71517a6dc053507df27ce894495a0f0129e9e1fe3a239f094",
     "plugins/ipollowork-suite/tests/enterprise.test.ts": "bd0efcfe3f2a74c89bae47159b0867fec48391c13c21d7ba190b9619003019d4",
+    "plugins/ipollowork-suite/tests/expected/project-archive-native.json": "a3081b497133121c997ec5e282dbe605370807f443180df0254b65c605f71f74",
     "plugins/ipollowork-suite/tests/fixtures/avatar.png": "b1ff9c8ea3a780bad09b346c423d2d0e46815926879b18e841d928376a946640",
-    "plugins/ipollowork-suite/tests/host.test.ts": "66eefb15953bc783392467cf5270ab584d3a4c106893fcdc6bbe02e992388b28",
+    "plugins/ipollowork-suite/tests/host.test.ts": "8483e87fe0945269afae98347d1eaf3272c07d8fa54b55a1ba862ebf4776370b",
     "plugins/ipollowork-suite/tests/im-credentials.test.mjs": "7872683f6fe0f8db2586679c26ea7ce2e3c345c5b07baf635dece137d85b227d",
     "plugins/ipollowork-suite/tests/im-media.test.mjs": "23a10446d61dbdae6cc675b821dc5d8cdb7e580aba2db165823d0bad3d74b9cb",
     "plugins/ipollowork-suite/tests/im-menu.expected.json": "d30478547e08c2a9b795f1db937a53684c2fe4bd39f07ed1c6b6ca0a743aaa8d",
@@ -153,10 +169,13 @@
     "plugins/ipollowork-suite/tests/native.expected.json": "66095a1781a33dc41f7033a116be0c1e231f1c618098d370d20c8d666dbb5127",
     "plugins/ipollowork-suite/tests/native.patch.yml": "8c58aecccd4e075e3ea080d5f79770461e4fa91a2b2970b6008d85f386565d13",
     "plugins/ipollowork-suite/tests/native.test.ts": "69a7de9bf499658c6b74285e3a6c9481dbedb907ac855a07a17c0cc94e09ce2c",
+    "plugins/ipollowork-suite/tests/project-archive-native.test.ts": "f42cc7b9a78a68c638de49518b8dd25b444069b47bed1a72fe8b03f6b8cc24db",
+    "plugins/ipollowork-suite/tests/project-archive.test.ts": "5fc1d7f4e024ff56a9dc67bdb34123b3bbc2aafe2a643b410fc96c71317f37b6",
     "plugins/ipollowork-suite/tests/project-context.test.ts": "e462747bc47a010704f7f896c27da0333fe0b27ab32b999da5c55fd259e0354c",
+    "plugins/ipollowork-suite/tests/project-creation-ui.test.mjs": "ead5b3c98618f7d84ebd58ce1b90fe772b3720bf2670ea20530229dfdb5029e5",
     "plugins/ipollowork-suite/tests/project-creation.test.ts": "d811d871d75a2b22e6232cdca2c35a44e6b3d1fc755e773e03535e2987acb02b",
     "plugins/ipollowork-suite/tests/service-models.test.ts": "b6ca1d6f820e2b860d7c7a2fbf1b42f7de3b8d26614c746f24e2462462dfae2d",
-    "plugins/ipollowork-suite/tests/services.test.ts": "54e8a504a4df8bce93a261368bf8c1c64e842a046dc4476f47392e99f120bf72",
+    "plugins/ipollowork-suite/tests/services.test.ts": "78c29e0a845ea07a09b221760e5c145f1d1b7e316518dfdfa63f6d88b6c3ae22",
     "plugins/ipollowork-suite/tsconfig.json": "8a384883fddfe4b3c76b36e768aff15922371fb44adcb7a464ddf675cc313be1",
     "plugins/ipollowork-suite/vendor/dsh-im/LICENSE": "2e1c6321c5df1830b8758dd6d1cc1c70c41f561129581f1986b408255f67d588",
     "plugins/ipollowork-suite/vendor/dsh-im/README.md": "f06fb8ef3a2731dd02df0d464bfc9098a4aa6fbd00cce1cd53a7a748d86c654b",
@@ -654,107 +673,105 @@
     "plugins/ipollowork-suite/vendor/dsh-im/test/channels/feishu/slash-command-registry.test.mjs": "09710924d5ccb9cd989deab0e840cb8a0894c227dd9b0454cfa0626a969c7884",
     "plugins/ipollowork-suite/vendor/dsh-im/test/image-input.test.mjs": "54ad1e79a6b217ccaeabe18cb25376aaa604ea2c7048c7657fb431b1edf9c479",
     "plugins/ipollowork-suite/vendor/dsh-im/test/support/filesystem.mjs": "00da83f222779dd51f98d0a3956718e57fbb6f664187447d0bb64b8c195460dc",
-    "services/ipollowork/Dockerfile": "6e036db391dc9bc677d8cff66bc21549a2ef0ee85b101931a8d9e499f7da6bdc",
-    "services/ipollowork/README.md": "b9d54b55d5f09a2895c188e01abd9a4271858c64aaab675a7b37451164a4f038",
     "services/ipollowork/.dockerignore": "1145c9824935d3d02a60c10e9e451382769d03d6e8651f35336f96f5a8f5e49f",
+    "services/ipollowork/.env.example": "f28717f7ab8167d53b4f02ddbd18cedce31b866e08364b01943806d191f55361",
     "services/ipollowork/.gitignore": "335ae60275a2292d9744e1e9cd347e1cda26834d84ec20f4ef906d3304092ccb",
-    "services/ipollowork/package-lock.json": "10fb273fb41b655ce1adc4d2616fdffd15246f7701dd4d21dac7bb56c4455b1d",
-    "services/ipollowork/package.json": "5d7bc4ee46429bda36012c6316e73281b275beaf70d69d7211823a8fd915c836",
-    "services/ipollowork/tsconfig.server.json": "e6af4a5afdffe3a8ad2615299dc974d3237a8d6a17ddf2ddd0276e448d4ab306",
-    "services/ipollowork/tsconfig.json": "53b5bb09a729873b0c927012e80e807eff3cbf5468659293c26d48681b909fab",
-    "services/ipollowork/.env.example": "6fe1db6bb9fa9b89534513da6e672e0332c74bd0948a471a061f0bc50663f435",
     "services/ipollowork/AGENTS.md": "7c0bf333a64887e74c43c9b963bcc0d2efab0b3d64aba03a9950cff0c5a8330e",
-    "services/ipollowork/vite.config.ts": "ece95966e2c6530680c3cb209fb665c7dd42873307293ee91d0d41b403422268",
-    "services/ipollowork/compose.yml": "b08cfd18c78fbf29469727509116d8c50491f4838301843982a51095657df71a",
-    "services/ipollowork/web/main.tsx": "83e97773802b7d6eb4f109196486ca1aff34c20ddfe392920a0cb08c61e1d8b2",
-    "services/ipollowork/web/index.html": "b4d08f46ab975cce277470e32191fdafbed88a7714c5b705597f6fe402580377",
-    "services/ipollowork/web/liveshare-carrier.js": "286dfaa877e06bd9f7ebed26fc8652338dfc29d8e709bffb2d81f8c4c06adc74",
-    "services/ipollowork/web/services.tsx": "ec50ba560a2fb3c420a92f25924eda2dc61e1e5a8c9f825d5bb8f74ed5410d86",
-    "services/ipollowork/web/api.ts": "123227601db2cd88aded8d65970712908ce82b419d37d944fa4067e9d331e6cd",
-    "services/ipollowork/web/style.css": "9d64981f3223ae3b05adafe3c8d1f2996ee5f196a4dc3952a6d4f0d049579817",
-    "services/ipollowork/web/components.tsx": "72270aa06c21f7735fbafd13a58a178acc28387eca36de7912869bbcb2e6fefc",
-    "services/ipollowork/web/liveshare-carrier.LICENSE": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
-    "services/ipollowork/web/pages.tsx": "3e97a54157c451e4ef1c9d26422bb13e9f8649d4d9de37661b526f8dbd5cdfba",
-    "services/ipollowork/web/public/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
+    "services/ipollowork/Dockerfile": "8df811a6a6a7ac6ede7e24ac1ef49127d2bbbc4512dfef9bdc6c6acb117b7bdd",
+    "services/ipollowork/README.i18n.yaml": "3be14201b8db5db61e24a4aaa67c6c4df135ef2e536d6653b33494512919f889",
+    "services/ipollowork/README.md": "ae0df42cf60485e7cba2d274a5d21d305bfad08d0dda0aca0a4af6ff516aa735",
+    "services/ipollowork/README.zh.md": "0a9576c37a1d601900ad973a8a44288c5334677e461bb7bf10c87240058ca250",
+    "services/ipollowork/compose.yml": "786475ce7de07defa973ebb0d1eaeca9b9c296c8f798287f547555129a776eb7",
+    "services/ipollowork/deploy/Caddyfile": "ecf0f25476ce84c03e9d9f93701b78db5690f722bd7457a7e056e89ce4139bec",
+    "services/ipollowork/deploy/README.i18n.yaml": "2894805f4dcbb6adcb0f6700f8f4a7976320a91b041f4568c1e87ccd1d9a0134",
+    "services/ipollowork/deploy/README.md": "98eb4bf45c8661e4532eeec51fc8928ca989ca07133da1e63e6b1f7c1a7a7cb8",
+    "services/ipollowork/deploy/README.zh.md": "387bbb22306216ad2244ff6d0f5904dd9d9f2718809c7f91e263e4ccc752eb58",
+    "services/ipollowork/deploy/compose.production.yml": "acc71a4f876ce562b1a01305a0e1f4b8b65b6f2305b529fd3a3e71e67217ea0a",
     "services/ipollowork/deploy/nginx.conf": "d5751c70b34a3bc37f91a04ae87b19ed976cc5f4e4880e1efe5e688244bf3290",
-    "services/ipollowork/tests/service.test.ts": "186571b8d529a6751dac06f39c4ec68c2f9871d7d9b261863d98ab2efa05802d",
-    "services/ipollowork/tests/execution.test.ts": "041f0fbb71d911d071bf664e09e07675c21e2558bc25e01a83e9c3545f145eb2",
-    "services/ipollowork/tests/liveshare.test.ts": "01da16d180792d08467d0ec8300ee681cf8d3b4f479d485ec7c829939882c762",
-    "services/ipollowork/tests/project-space.test.ts": "802178614fb10549da94e0713f3f7df2656233df0a37f0213351748aef4d4d18",
-    "services/ipollowork/scripts/liveshare-carrier.mjs": "6003bfc29b467ad78bdec1ad34b702d63192a1a0bbdbad03cf221553683256b2",
-    "services/ipollowork/scripts/admin.ts": "5a963892e9c190d90d0c8ed18b68a88f74d59788141bcdc583a4ccf7286c26b4",
-    "services/ipollowork/scripts/build.mjs": "fecf9a7d427c207a226f5cdf0809cc49be180b84700f30220d6a24254b104096",
-    "services/ipollowork/scripts/backup.ts": "01c15ed9912bb7429bb1f682de6747f541703af72222f88f286dda4405fbfc27",
-    "services/ipollowork/src/migration-004.sql": "65ebe68df8deae7c9eec9d137db851783924926fee0ce23eb17f3da0cddf8a4c",
-    "services/ipollowork/src/migration-005.sql": "3ac52564fc4e84048f8844bc0a019ed27996b684d7d9c9532246a0ef395a992e",
-    "services/ipollowork/src/liveshare.ts": "df4f7917d552b69f076160c90498c98fb0b20ba1a9afb886c33d760618007cef",
-    "services/ipollowork/src/migration-006.sql": "1a788da5191583095b0215f3fd58c85043615bfde8ba3a1e31770a5d80c19d43",
-    "services/ipollowork/src/migration-002.sql": "797909a67649dad0d75242b4539ed9edfd1580ebb211a1bf3b8e914b02f19aa8",
-    "services/ipollowork/src/migration-003.sql": "b3eec3672da90f8c36f0b221bb9959f69432421746a17a39fe8f02551ea17976",
-    "services/ipollowork/src/enterprise.ts": "480caf86f4657a0f93860f693de61fd22d2092ae9147557b2d2e4b732d116471",
-    "services/ipollowork/src/errors.ts": "e708c5cb386af837aadf4572522e3466e1763fb171fbf58615e93ee32972c3af",
-    "services/ipollowork/src/schema.sql": "ba5983b83795d14af5382925c121eb57cb573094fa1eecdcca3b9ea10204b9aa",
-    "services/ipollowork/src/resources.ts": "e25eaeeec23920939978357e6516f901b32e86dcce6bd450c7078fab095917de",
-    "services/ipollowork/src/settings.ts": "4acaeec4b6098e9495e4d544653255f5825c75a12f244a85ae5dac5dedb980ca",
-    "services/ipollowork/src/app.ts": "b73e28a8335bf209f4ccab83d388a72566dee1ff5397feef23c9cc55d03a06fd",
-    "services/ipollowork/src/collaboration.ts": "c7a152e9701a9b0de5c07d2b923994dc4c4f9f53f0093f518c7816c17844a21b",
-    "services/ipollowork/src/http.ts": "4010cee90581d5d0c60a5438c4966f8c375710283b32840f05a449fae5454c8c",
-    "services/ipollowork/src/project-space.ts": "c78fbe7ab9c3973c0c36cc2ef2a5206429632b927ab5e19dd65c98f5d3a1ff96",
-    "services/ipollowork/src/database.ts": "161f5e975e5f080b4254c05c5ff87c9716f6a4127ac993b074fbd7c6493661c7",
-    "services/ipollowork/src/domain.ts": "e3dd89f6dccddda2543a37dfdbe687350163f39f55d1a74313533506aa0b9d5a",
-    "services/ipollowork/src/liveshare-http.ts": "a0cbb6d365e373d07174645ab59b6bff18c8b91c8680f8fbe2d58e4b1a8de19d",
-    "services/ipollowork/src/config.ts": "e1e9e996a81091f0a0f7924a4ba1ad48e78942d8893d746ba3d8a219c0d190e6",
-    "services/ipollowork/src/execution.ts": "e6dda8840d74f61b8ef589f441a87edc87f9ed78401ca4326376b1a0b091c40b",
-    "services/ipollowork/src/payments.ts": "13f86a22ca851b24cc58542600051656e47d6887b89c109e625e26443c2a5644",
-    "services/ipollowork/src/server.ts": "3d939e7b939458d3172d72daf6c20a7099461ad0699fb0ab4d1fe96cb4a73ebd",
-    "services/ipollowork/src/auth.ts": "f5f235492ae5439a2375cd83e2c1cd7ca7a5f0ec47fe3e4bb8377700489283b4",
-    "plugins/ipollowork-suite/README.i18n.yaml": "575f285be19a7525ce63bd960c903aac0d3bdc33899e08d8a5874b5a39d52177",
-    "plugins/ipollowork-suite/README.zh.md": "e03f0f81e43a5543d0990cc6169ac9bbab3c486b91f07f9dc47359ea5a090ae1",
-    "services/ipollowork/README.i18n.yaml": "226d04157d419f3a135e99494317bad0f2d6b76934914a59726b1638c1127537",
-    "services/ipollowork/README.zh.md": "a4f9f9b106f1b5bdc31fc4109645f80327ec87c083ad3290466cc434d73f5634",
-    "plugins/ipollowork-suite/src/client/share-audience-copy.ts": "8463c9f2c7bf09eff420c6b023222917370c39dd985956600d7ba14b029135f3",
-    "services/ipollowork/src/migration-007.sql": "8d1ce23acf2c22fb9fedae6af03a21485494e71373991c42d16024581654ae5c",
-    "services/ipollowork/src/share-audience.ts": "373ad5b34f64b7f0938f60d6a0ec89eb4bc5eddf70aa5779ff762ce81b660bf4",
-    "services/ipollowork/tests/share-audience.test.ts": "5222f8558a3d1c83a0711ba97a800c4d56a7a33ba9e174e4940a660339c91804",
-    "plugins/ipollowork-suite/src/client/glyphs.tsx": "a3ed90cf213cf6446f472aeef74607f01971de88177b99f96a54a195b8cb77d3",
-    "plugins/ipollowork-suite/docs/enterprise-assets.md": "d642d39b336b56a4166fc5381805c007a8a80182e34ee51fffd411caf170dc7f",
-    "plugins/ipollowork-suite/src/client/enterprise-assets.tsx": "882df0c37061cbac8972f499fa71997f0ba8dc1587c196da7fb158a5c1aa225a",
-    "plugins/ipollowork-suite/src/host/enterprise-skills.ts": "8a06df5c0d6e90b421909bc078425ef1652957b4afe0b895d8c8948791f565f2",
-    "services/ipollowork/src/enterprise-assets.ts": "b62fc8d170ae82fb727d3b7c56c528021f5b1c4134392aadadf8cdf9244ec111",
-    "services/ipollowork/src/grants.ts": "bd668acc48ea8f39e476f32f82dd41e877b0ccc32d869e008a7aee222a6ef075",
-    "services/ipollowork/src/migration-008.sql": "a6504a5715823c59bf5164c80d379972e7482a14fc0badccabf50e6bf797165a",
-    "services/ipollowork/tests/enterprise-assets.test.ts": "6e52e292ed9c45bffc593c32066ed8a97326d575cafd852a8740355608fb866e",
-    "plugins/ipollowork-suite/src/client/project-files.tsx": "f59b564cc673f62d8cf9b738cfa8d68da2b0edc78ea60fbebed183b8b7832cc9",
-    "plugins/ipollowork-suite/src/host/project-archive.ts": "eb8c191bc81734afbfc5f69749dac87c9c61f14688f401dffd6d6265eaaecc9d",
-    "plugins/ipollowork-suite/tests/expected/project-archive-native.json": "f5d3ee6f61663ba23aa35cb8a3fce7f5bc4f79b9e00d05ea7ca3027eb4e01f5f",
-    "plugins/ipollowork-suite/tests/project-archive-native.test.ts": "1b0adb085aec0f35b648099766fa5f529b235015c6c3d7961e28e7a178d1a46f",
-    "plugins/ipollowork-suite/tests/project-archive.test.ts": "5fc1d7f4e024ff56a9dc67bdb34123b3bbc2aafe2a643b410fc96c71317f37b6",
+    "services/ipollowork/deploy/oss-role-policy.json": "45477059c772a29ec19a5233c2bd6adb014fa62ac8a0bd9d680958c2a4da44b6",
+    "services/ipollowork/deploy/oss-role-trust.json": "1f89ea937d77a90eddf2e49bdfee3c033dc2c714689cbeb9b6d68cc1454e5051",
     "services/ipollowork/docs/billing.md": "7b71277156311fef4d0925aec2311f229d8cd8ba3a9c373964ab2e3017cdb7dd",
     "services/ipollowork/docs/capacity.md": "4030b8105051f00f3af4d90013ad493020684286cb64e44241652a819c9823ea",
-    "services/ipollowork/docs/storage.md": "db3045934f8d71190c0e327b768d9069c2b76cdfff5d3eb14198f3ab2e8d4a69",
+    "services/ipollowork/docs/storage.md": "efc176b31cda51dc557aa4b7e9d66f2ca5a84ef5af42a80d96c4c1989c6e9788",
+    "services/ipollowork/package-lock.json": "7bf222426b10e8ab49518c22dff95fa64741c7ad0a2ef0aa908ce9486f485cd6",
+    "services/ipollowork/package.json": "3c5f749fa8e426d720f47d900183814c84f9e3501ba72f5c2a33828f24bd7a22",
+    "services/ipollowork/scripts/admin.ts": "5a963892e9c190d90d0c8ed18b68a88f74d59788141bcdc583a4ccf7286c26b4",
+    "services/ipollowork/scripts/backup.ts": "01c15ed9912bb7429bb1f682de6747f541703af72222f88f286dda4405fbfc27",
     "services/ipollowork/scripts/benchmark-database.ts": "eb0a9ffa66a91f6d86107b5c053d4df5ab38a0e7489de60e9b25d95f9bee3852",
+    "services/ipollowork/scripts/build.mjs": "0126f7711106115378c33806656512dc967144b21c9b04d5a3f5a0b06742a28b",
     "services/ipollowork/scripts/import-sqlite.ts": "8f4dea8fd4f5b185f575f39d7c60310046109d7d52dd84825f12e6dee68d540f",
+    "services/ipollowork/scripts/liveshare-carrier.mjs": "6003bfc29b467ad78bdec1ad34b702d63192a1a0bbdbad03cf221553683256b2",
+    "services/ipollowork/src/app.ts": "5ff8c2995077385b42287ceb4af0e8de5c2b2d701329b66a16a0d7fe0715625b",
+    "services/ipollowork/src/auth.ts": "f5f235492ae5439a2375cd83e2c1cd7ca7a5f0ec47fe3e4bb8377700489283b4",
+    "services/ipollowork/src/collaboration.ts": "c7a152e9701a9b0de5c07d2b923994dc4c4f9f53f0093f518c7816c17844a21b",
+    "services/ipollowork/src/config.ts": "ad3cde718b392d134a6dfa53244f479e04bd5661c29d524277113634b29c86df",
+    "services/ipollowork/src/database.ts": "d34663bd7a936439eb549a2e4ea852072a4270d2c579e91e087356757d198db7",
+    "services/ipollowork/src/domain.ts": "e3dd89f6dccddda2543a37dfdbe687350163f39f55d1a74313533506aa0b9d5a",
+    "services/ipollowork/src/enterprise-assets.ts": "b62fc8d170ae82fb727d3b7c56c528021f5b1c4134392aadadf8cdf9244ec111",
+    "services/ipollowork/src/enterprise.ts": "480caf86f4657a0f93860f693de61fd22d2092ae9147557b2d2e4b732d116471",
+    "services/ipollowork/src/errors.ts": "1572e3399a10e3992efa5b5be4629ef60529037890b4d6e9fa8d163dc834c4b5",
+    "services/ipollowork/src/execution.ts": "e6dda8840d74f61b8ef589f441a87edc87f9ed78401ca4326376b1a0b091c40b",
+    "services/ipollowork/src/grants.ts": "bd668acc48ea8f39e476f32f82dd41e877b0ccc32d869e008a7aee222a6ef075",
+    "services/ipollowork/src/http.ts": "4010cee90581d5d0c60a5438c4966f8c375710283b32840f05a449fae5454c8c",
     "services/ipollowork/src/import-sqlite.ts": "9b4a8c92d613c481c5f019e50e3929158ebf02571dd836e58b0ada385fe6c5a5",
+    "services/ipollowork/src/liveshare-http.ts": "a0cbb6d365e373d07174645ab59b6bff18c8b91c8680f8fbe2d58e4b1a8de19d",
+    "services/ipollowork/src/liveshare.ts": "df4f7917d552b69f076160c90498c98fb0b20ba1a9afb886c33d760618007cef",
+    "services/ipollowork/src/migration-002.sql": "797909a67649dad0d75242b4539ed9edfd1580ebb211a1bf3b8e914b02f19aa8",
+    "services/ipollowork/src/migration-003.sql": "b3eec3672da90f8c36f0b221bb9959f69432421746a17a39fe8f02551ea17976",
+    "services/ipollowork/src/migration-004.sql": "65ebe68df8deae7c9eec9d137db851783924926fee0ce23eb17f3da0cddf8a4c",
+    "services/ipollowork/src/migration-005.sql": "3ac52564fc4e84048f8844bc0a019ed27996b684d7d9c9532246a0ef395a992e",
+    "services/ipollowork/src/migration-006.sql": "1a788da5191583095b0215f3fd58c85043615bfde8ba3a1e31770a5d80c19d43",
+    "services/ipollowork/src/migration-007.sql": "8d1ce23acf2c22fb9fedae6af03a21485494e71373991c42d16024581654ae5c",
+    "services/ipollowork/src/migration-008.sql": "a6504a5715823c59bf5164c80d379972e7482a14fc0badccabf50e6bf797165a",
     "services/ipollowork/src/migration-pg-002.sql": "0fbd0390803e24b52ee448cb4d70a2320489cce6a955a0f88efc9132cca5fb2d",
     "services/ipollowork/src/migration-pg-003.sql": "0fa69ab04d99c6df0c18b4322391856ef685144d662c8ca96728a55aabc0932e",
     "services/ipollowork/src/migration-pg-004.sql": "8917e0048e041514e58ab193cc7cd357e844c1093a186891f0e68bcafe6e0885",
+    "services/ipollowork/src/migration-pg-005.sql": "af4a857c7c61467b53685af9b620f767439b003e3c6d937176fe1f8fdcae10b2",
     "services/ipollowork/src/official-services.ts": "e32f5340077c1487fb19293108f86da14fa8a61437ab351275b86fbe426de662",
+    "services/ipollowork/src/oss-client.ts": "b5aa9490cbb04b09c717047e3623eab7fd580162cb330a16dd5b5359c7594a9b",
+    "services/ipollowork/src/payments.ts": "13f86a22ca851b24cc58542600051656e47d6887b89c109e625e26443c2a5644",
     "services/ipollowork/src/pricing.ts": "c8b35ad7126d4cc141a5b9024d299c533f44670c730f661756536de663227289",
     "services/ipollowork/src/project-archive.ts": "44105167690223b41561bf9681940e7e6fac5ae6f9044a83d5398a7702fd24ee",
+    "services/ipollowork/src/project-space.ts": "c78fbe7ab9c3973c0c36cc2ef2a5206429632b927ab5e19dd65c98f5d3a1ff96",
+    "services/ipollowork/src/publications.ts": "714ecb2fb3ec70a8a6c3b76c0e1323de3930c682141b4eee2966d2b717de6b73",
+    "services/ipollowork/src/resources.ts": "e25eaeeec23920939978357e6516f901b32e86dcce6bd450c7078fab095917de",
     "services/ipollowork/src/schema-postgres.sql": "525e0ba2e19980cda3b4cb9757dd1d21cb7ae0707ce8a8ebe7de453c171c514c",
+    "services/ipollowork/src/schema.sql": "ba5983b83795d14af5382925c121eb57cb573094fa1eecdcca3b9ea10204b9aa",
+    "services/ipollowork/src/server.ts": "3d939e7b939458d3172d72daf6c20a7099461ad0699fb0ab4d1fe96cb4a73ebd",
+    "services/ipollowork/src/service-categories.ts": "94781674e129eec44f0a50000e96f138fbb142ebc1129be9615cff1b6010abc4",
+    "services/ipollowork/src/settings.ts": "4acaeec4b6098e9495e4d544653255f5825c75a12f244a85ae5dac5dedb980ca",
+    "services/ipollowork/src/share-audience.ts": "373ad5b34f64b7f0938f60d6a0ec89eb4bc5eddf70aa5779ff762ce81b660bf4",
     "services/ipollowork/src/storage-http.ts": "3691f736de76e142850d0b715a05ac71b9aaa388a1efba48ff557892c14ae3f1",
     "services/ipollowork/src/storage-import.ts": "151d231b8919f07d5e18a09129df6cb1127afc3f754b43a1bd57e88664799847",
-    "services/ipollowork/src/storage.ts": "54353e30d2f333c23d981676ea8c798819a3dd9dcf1c68784021e2c9a207d29d",
+    "services/ipollowork/src/storage.ts": "aaf5daf933656a75fe082fe9bf38ba3857fd7113a2901671881b0fe37399f0b5",
     "services/ipollowork/tests/database.ts": "6bce932cc6e40e6667fa07569cc7d5695bbf334d0b438ca3ae16857a89815122",
+    "services/ipollowork/tests/enterprise-assets.test.ts": "6e52e292ed9c45bffc593c32066ed8a97326d575cafd852a8740355608fb866e",
+    "services/ipollowork/tests/execution.test.ts": "041f0fbb71d911d071bf664e09e07675c21e2558bc25e01a83e9c3545f145eb2",
+    "services/ipollowork/tests/liveshare.test.ts": "01da16d180792d08467d0ec8300ee681cf8d3b4f479d485ec7c829939882c762",
+    "services/ipollowork/tests/oss-client.test.ts": "78f6264b27cd9c26ab8859ca80ac67fcc71932ccb7c184e27e3da36b645c4a47",
     "services/ipollowork/tests/postgres.test.ts": "cff958f27bf9311db15bfe530ee7c902a6818ac5a3c8ff12ce71bc57c8c64cb2",
     "services/ipollowork/tests/pricing.test.ts": "0435f26181b298491a80759686ed75514fa85e2a671cfda8c78aa03454d79d4e",
     "services/ipollowork/tests/project-archive.test.ts": "f543cc61fe35856471cad7cac0ae4eff358de28fab56e5cb5c239063009d49a8",
+    "services/ipollowork/tests/project-space.test.ts": "802178614fb10549da94e0713f3f7df2656233df0a37f0213351748aef4d4d18",
+    "services/ipollowork/tests/publications.test.ts": "d47ffb2e58f4416126a3d5c34b909ac297f80d9d6c57f4bcade60bb60d1c0761",
+    "services/ipollowork/tests/service-categories.test.ts": "bc37bf80b69e44376ebf7c5d66e6ce74b5d0238ad20c43366ad83592597a3cf6",
+    "services/ipollowork/tests/service.test.ts": "05348c22f8e2c44222f92d4009f87564695013ef1aa55c2d5af0953860b49b23",
+    "services/ipollowork/tests/share-audience.test.ts": "9e95a4b1b12ca370e836c7578d5956c3f0d776c258a9e2530c28dbf439d730e5",
     "services/ipollowork/tests/storage.test.ts": "634981d88090a83b951efdbd095aa9d4b0783337146c297cfaaa5cf4a19ff054",
+    "services/ipollowork/tsconfig.json": "53b5bb09a729873b0c927012e80e807eff3cbf5468659293c26d48681b909fab",
+    "services/ipollowork/tsconfig.server.json": "e6af4a5afdffe3a8ad2615299dc974d3237a8d6a17ddf2ddd0276e448d4ab306",
+    "services/ipollowork/vite.config.ts": "ece95966e2c6530680c3cb209fb665c7dd42873307293ee91d0d41b403422268",
+    "services/ipollowork/web/api.ts": "123227601db2cd88aded8d65970712908ce82b419d37d944fa4067e9d331e6cd",
+    "services/ipollowork/web/components.tsx": "72270aa06c21f7735fbafd13a58a178acc28387eca36de7912869bbcb2e6fefc",
+    "services/ipollowork/web/index.html": "b4d08f46ab975cce277470e32191fdafbed88a7714c5b705597f6fe402580377",
+    "services/ipollowork/web/liveshare-carrier.LICENSE": "ebb4f09972aee8608be255debaf78451a68e95c290f55c240dec2ecfa16ea6be",
+    "services/ipollowork/web/liveshare-carrier.js": "286dfaa877e06bd9f7ebed26fc8652338dfc29d8e709bffb2d81f8c4c06adc74",
+    "services/ipollowork/web/main.tsx": "83e97773802b7d6eb4f109196486ca1aff34c20ddfe392920a0cb08c61e1d8b2",
+    "services/ipollowork/web/pages.tsx": "3e97a54157c451e4ef1c9d26422bb13e9f8649d4d9de37661b526f8dbd5cdfba",
+    "services/ipollowork/web/public/mark.svg": "fd5cee778f543c3f0d3a9a3cd72ba9a8dcdcc037a71a0583c39a9d78d65c9708",
+    "services/ipollowork/web/services.tsx": "ec50ba560a2fb3c420a92f25924eda2dc61e1e5a8c9f825d5bb8f74ed5410d86",
     "services/ipollowork/web/storage.tsx": "6e23f7f308f607e6ead6f8d82bc83bdc020687e9b5e710c633b4325d48ffabcf",
-    "plugins/ipollowork-suite/src/shared/service-categories.ts": "af5157c4c20e2f0594e4b6ca1e507ed4c73c310b18b3931102ca84ca3179b231",
-    "plugins/ipollowork-suite/tests/project-creation-ui.test.mjs": "ead5b3c98618f7d84ebd58ce1b90fe772b3720bf2670ea20530229dfdb5029e5",
-    "services/ipollowork/src/service-categories.ts": "94781674e129eec44f0a50000e96f138fbb142ebc1129be9615cff1b6010abc4",
-    "services/ipollowork/tests/service-categories.test.ts": "bc37bf80b69e44376ebf7c5d66e6ce74b5d0238ad20c43366ad83592597a3cf6"
+    "services/ipollowork/web/style.css": "9d64981f3223ae3b05adafe3c8d1f2996ee5f196a4dc3952a6d4f0d049579817"
   },
   "adjustments": [
     {
@@ -775,31 +792,31 @@
     },
     {
       "path": "services/ipollowork/README.md",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/src/host/config.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/tests/account.test.ts",
-      "reason": "Cover the local default and explicit account service override."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/README.md",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/tests/host.test.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/README.i18n.yaml",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/README.zh.md",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/src/client/collaboration.tsx",
@@ -819,7 +836,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/src/client/project-copy.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/src/client/suite.module.css",
@@ -827,7 +844,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/src/host/index.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/src/host/native-sharing.ts",
@@ -843,19 +860,19 @@
     },
     {
       "path": "services/ipollowork/README.i18n.yaml",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "services/ipollowork/README.zh.md",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "services/ipollowork/scripts/build.mjs",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/src/database.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/src/liveshare-http.ts",
@@ -867,7 +884,7 @@
     },
     {
       "path": "services/ipollowork/tests/service.test.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/src/client/share-audience-copy.ts",
@@ -883,7 +900,7 @@
     },
     {
       "path": "services/ipollowork/tests/share-audience.test.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/docs/connections.md",
@@ -935,11 +952,11 @@
     },
     {
       "path": "plugins/ipollowork-suite/package-lock.json",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/package.json",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/tsconfig.json",
@@ -971,7 +988,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/src/host/services.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/src/shared/enterprise.ts",
@@ -979,7 +996,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/src/shared/services.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/AGENTS.md",
@@ -987,7 +1004,7 @@
     },
     {
       "path": "services/ipollowork/src/app.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/src/domain.ts",
@@ -1023,7 +1040,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/src/host/account.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "plugins/ipollowork-suite/src/host/project-archive.ts",
@@ -1031,11 +1048,11 @@
     },
     {
       "path": "plugins/ipollowork-suite/src/host/project-context.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/tests/expected/project-archive-native.json",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/tests/native-fixture.ts",
@@ -1043,7 +1060,7 @@
     },
     {
       "path": "plugins/ipollowork-suite/tests/project-archive-native.test.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
     },
     {
       "path": "plugins/ipollowork-suite/tests/project-archive.test.ts",
@@ -1051,15 +1068,15 @@
     },
     {
       "path": "plugins/ipollowork-suite/tests/services.test.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/.env.example",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/compose.yml",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/docs/billing.md",
@@ -1071,15 +1088,15 @@
     },
     {
       "path": "services/ipollowork/docs/storage.md",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/package-lock.json",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/package.json",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/scripts/admin.ts",
@@ -1103,7 +1120,7 @@
     },
     {
       "path": "services/ipollowork/src/config.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/src/import-sqlite.ts",
@@ -1163,7 +1180,7 @@
     },
     {
       "path": "services/ipollowork/src/storage.ts",
-      "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     },
     {
       "path": "services/ipollowork/tests/database.ts",
@@ -1216,6 +1233,78 @@
     {
       "path": "services/ipollowork/tests/service-categories.test.ts",
       "reason": "Use PostgreSQL metadata and atomic owner quotas, archive native outputs without inputs, preserve project memory revisions, and meter shared official services."
+    },
+    {
+      "path": "services/ipollowork/Dockerfile",
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
+    },
+    {
+      "path": "services/ipollowork/deploy/Caddyfile",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/deploy/README.i18n.yaml",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/deploy/README.md",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/deploy/README.zh.md",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/deploy/compose.production.yml",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/deploy/oss-role-policy.json",
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
+    },
+    {
+      "path": "services/ipollowork/deploy/oss-role-trust.json",
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
+    },
+    {
+      "path": "services/ipollowork/src/errors.ts",
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
+    },
+    {
+      "path": "services/ipollowork/src/oss-client.ts",
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
+    },
+    {
+      "path": "services/ipollowork/tests/oss-client.test.ts",
+      "reason": "Connect the HTTPS account service, use scoped ECS role credentials for private OSS, and keep output uploads explicit by default."
+    },
+    {
+      "path": "plugins/ipollowork-suite/catalog/bundled-releases.json",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "plugins/ipollowork-suite/catalog/index.json",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "plugins/ipollowork-suite/catalog/packages/deepseek-idesign-1.0.0-beta.18-45af46958f0b.tgz",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "plugins/ipollowork-suite/catalog/packages/deepseek-ivideo-1.0.0-beta.18-756e6fda4d6c.tgz",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/src/migration-pg-005.sql",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/src/publications.ts",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
+    },
+    {
+      "path": "services/ipollowork/tests/publications.test.ts",
+      "reason": "Connect explicit native publication to account-owned private OSS storage, preserve relative assets on the separate public host, and keep unpublished outputs local."
     }
   ]
 }

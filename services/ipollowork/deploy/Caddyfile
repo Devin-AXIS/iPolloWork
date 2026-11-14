@@ -1,0 +1,11 @@
+{$SERVICE_DOMAIN} {
+    reverse_proxy work:4785 {
+        header_up X-Real-IP {remote_host}
+    }
+}
+
+{$PUBLICATION_DOMAIN} {
+  reverse_proxy work:4785 {
+    header_up X-Real-IP {remote_host}
+  }
+}

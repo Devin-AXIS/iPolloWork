@@ -29,6 +29,10 @@ export type ServiceChoice =
   | { source: "own" }
   | { source: "official"; serviceId: string };
 export interface ServiceBinding {
+  /** Publish an explicitly selected file set; file bodies stay in the Host. */
+  publish?(input: PublicationInput): Promise<{ url: string }>;
+  /** Whether this account service provides published file browsing. */
+  publicationStatus?(): Promise<boolean>;
   official(provider: string, hasOwnKey?: boolean): Promise<boolean>;
   request(
     provider: string,
@@ -36,6 +40,11 @@ export interface ServiceBinding {
     init?: RequestInit,
   ): Promise<Response>;
   fetch(input: string | URL | Request, init?: RequestInit): Promise<Response>;
+}
+export interface PublicationInput {
+  workspaceId: string;
+  entry: string;
+  files: { path: string; bytes: number; open(): ReadableStream<Uint8Array> }[];
 }
 export interface ServiceCenter {
   bind(signal?: AbortSignal): Promise<ServiceBinding>;

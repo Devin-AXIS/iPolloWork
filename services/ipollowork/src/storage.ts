@@ -9,6 +9,7 @@ import type { Store } from "./database.js";
 import type { Settings } from "./settings.js";
 import type { Config } from "./config.js";
 import { ServiceError } from "./errors.js";
+import { OssClients } from "./oss-client.js";
 
 type Scope = "personal" | "organization";
 interface Owner {
@@ -24,11 +25,14 @@ const GIB = 1024 ** 3;
 export class Storage {
   private timer?: ReturnType<typeof setInterval>;
   private cleaning?: Promise<void>;
+  private readonly oss: OssClients;
   constructor(
     private store: Store,
     private settings: Settings,
     private config: Config,
-  ) {}
+  ) {
+    this.oss = new OssClients(config.ossRamRole, config.ossInternal);
+  }
   start(): void {
     this.timer = setInterval(() => {
       this.cleaning ??= this.cleanup()
@@ -46,24 +50,10 @@ export class Storage {
   async close(): Promise<void> {
     clearInterval(this.timer);
     await this.cleaning;
+    this.oss.close();
   }
-  private async client() {
-    const setting = await this.settings.get("oss");
-    if (
-      !setting.region ||
-      !setting.bucket ||
-      !setting.accessKeyId ||
-      !setting.accessKeySecret
-    )
-      throw new ServiceError("OSS_NOT_CONFIGURED", 503, "请先配置阿里云 OSS");
-    const { default: OSS } = await import("ali-oss");
-    return new OSS({
-      region: setting.region,
-      bucket: setting.bucket,
-      accessKeyId: setting.accessKeyId,
-      accessKeySecret: setting.accessKeySecret,
-      secure: true,
-    });
+  private async client(publicEndpoint = false) {
+    return this.oss.create(await this.settings.get("oss"), publicEndpoint);
   }
   private async ensureQuota(scope: Scope, ownerId: string): Promise<void> {
     await this.store.run(
@@ -349,11 +339,22 @@ export class Storage {
       throw new ServiceError("INVALID_STORAGE_KEY", 409);
     return readFile(resolve(this.config.dataDir, "files", key.slice(6)));
   }
+  /** Stream an authorized published file without buffering its body. */
+  async stream(key: string, range?: { start: number; end: number }): Promise<ReadableStream<Uint8Array>> {
+    await this.requireReadable(key);
+    const source = key.startsWith("oss/")
+      ? (await (await this.client()).getStream(key.slice(4), range ? { headers: { Range: `bytes=${range.start}-${range.end}` } } : {})).stream
+      : /^local\/[a-f0-9-]{36}$/.test(key)
+        ? createReadStream(resolve(this.config.dataDir, "files", key.slice(6)), range)
+        : undefined;
+    if (!source) throw new ServiceError("INVALID_STORAGE_KEY", 409);
+    return Readable.toWeb(source) as ReadableStream<Uint8Array>;
+  }
   async download(key: string, filename: string): Promise<Response> {
     await this.requireReadable(key);
     if (key.startsWith("oss/"))
       return Response.json({
-        url: (await this.client()).signatureUrl(key.slice(4), {
+        url: (await this.client(true)).signatureUrl(key.slice(4), {
           expires: 60,
           response: { "content-disposition": "attachment" },
         }),

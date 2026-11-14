@@ -274,7 +274,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     void refreshSkills().catch(() => {});
   });
   const enterprise = new EnterpriseService(account, ctx, config.accountOrigin);
-  const archive = config.account
+  const archive = config.account && config.automaticOutputArchive
     ? new ProjectArchive(
         ctx,
         account,
@@ -523,12 +523,12 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               /^\/enterprise\/projects\/([A-Za-z0-9_-]+)\/archive-status$/.exec(
                 path,
               );
-            if (archiveStatus && archive) {
+            if (archiveStatus) {
               await account.request(
                 "/api/v1/projects/" + archiveStatus[1] + "/space",
               );
-              if (request.method === "POST") archive.retry(archiveStatus[1]!);
-              json(response, 200, { items: archive.status(archiveStatus[1]!) });
+              if (request.method === "POST" && archive) archive.retry(archiveStatus[1]!);
+              json(response, 200, { items: archive?.status(archiveStatus[1]!) ?? [] });
               return;
             }
             const artifactUpload =

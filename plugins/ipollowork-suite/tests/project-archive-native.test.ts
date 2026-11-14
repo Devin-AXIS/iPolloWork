@@ -1,15 +1,14 @@
-/** Native profile smoke: actual present events archive only completed outputs. */
+/** Native profile smoke: presentations remain local until an explicit upload. */
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { setTimeout } from "node:timers/promises";
 
 const url = process.env.IPOLLO_ARCHIVE_QA_URL;
 test(
-  "native output reaches the linked project, keeps inputs local and stops when archiving is disabled",
+  "native presentation stays local and selected outputs upload without their inputs",
   { skip: !url, timeout: 90000 },
   async () => {
     const login = await fetch(url!, { redirect: "manual" });
@@ -62,24 +61,38 @@ test(
         },
       );
       assert.equal(run.presented, 1);
-      const deadline = Date.now() + 10000;
-      let outputs: {
+      const local: {
         items: {
           id: string;
           path: string;
           version: number;
           resource_id: string;
         }[];
-      };
-      for (;;) {
-        outputs = await api(
-          "/ipollowork-suite/enterprise/projects/" + project.id + "/artifacts",
-        );
-        if (outputs.items.length) break;
-        if (Date.now() > deadline)
-          throw new Error("Native output was not archived");
-        await setTimeout(20);
-      }
+      } = await api(
+        "/ipollowork-suite/enterprise/projects/" + project.id + "/artifacts",
+      );
+      assert.equal(local.items.length, 0);
+      const selected = await readFile(join(folder, "result.html"));
+      const explicit = await fetch(
+        origin + "/ipollowork-suite/enterprise/projects/" + project.id + "/artifacts/upload",
+        {
+          method: "POST",
+          headers: {
+            Cookie: cookie,
+            "x-ipw-artifact": Buffer.from(JSON.stringify({
+              requestId: randomUUID(),
+              path: "result.html",
+              bytes: selected.length,
+              mime: "text/html",
+            })).toString("base64url"),
+          },
+          body: selected,
+        },
+      );
+      assert.equal(explicit.status, 201);
+      const outputs = await api<typeof local>(
+        "/ipollowork-suite/enterprise/projects/" + project.id + "/artifacts",
+      );
       const download = await fetch(
         origin +
           "/ipollowork-suite/enterprise/download/" +
@@ -90,6 +103,7 @@ test(
       assert.match(await download.text(), /Saved by DSH/);
       const summary = {
         presented: run.presented,
+        automaticOutputCount: local.items.length,
         outputPaths: outputs.items.map((file) => file.path),
         version: outputs.items[0]!.version,
         inputPresentLocally:

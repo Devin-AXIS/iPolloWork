@@ -23,7 +23,7 @@ npm start
 
 个人未发布的输出保留七天，已发布项目的输出及组织输出持续保留，直到明确删除。云端清理不删除本地原生文件。默认个人容量 200 GiB、组织容量 500 GiB，管理员可单独调整。配额是允许使用的容量，不是预分配空间，也不代表免费流量。
 
-`compose.yml` 提供 PostgreSQL 与服务的持久卷。设置 `POSTGRES_PASSWORD` 及 HTTPS `SERVICE_ORIGIN`，数据库不对公网开放。公网部署默认必须使用 OSS；本机开发未配置 OSS 时使用服务自己的私有缓存。原生会话中继的连接由单进程管理：虽然 PostgreSQL 支持并发连接，本版本仍使用一个中继实例，不应将独立中继进程放到轮询负载均衡后。
+`compose.yml` 提供 PostgreSQL 与服务的持久卷。设置 `POSTGRES_PASSWORD` 及 HTTPS `SERVICE_ORIGIN`，数据库不对公网开放。公网部署默认必须使用 OSS；本机开发未配置 OSS 时使用服务自己的私有缓存。[阿里云部署](deploy/README.zh.md) 增加自动 HTTPS 和限定权限的 ECS 存储身份。原生会话中继的连接由单进程管理：虽然 PostgreSQL 支持并发连接，本版本仍使用一个中继实例，不应将独立中继进程放到轮询负载均衡后。
 
 ## 账号与权限
 

@@ -9,6 +9,7 @@ import type {
   ServiceChoice,
   ServiceCenter,
   ServiceBinding,
+  PublicationInput,
 } from "../shared/services.ts";
 import { SuiteError } from "./errors.ts";
 import { serviceCategories } from "../shared/service-categories.ts";
@@ -207,6 +208,79 @@ export class Services implements ServiceCenter {
       );
     };
     return {
+      ...(this.enabled && choices["aliyun-oss"]?.source !== "own"
+        ? {
+            publicationStatus: async () => {
+              if (!this.enabled) return false;
+              const status = z
+                .object({ available: z.boolean() })
+                .parse(
+                  await this.account.request("/api/v1/publications/status"),
+                );
+              return status.available;
+            },
+            publish: async (input: PublicationInput) => {
+              if (!this.enabled)
+                throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
+              const active = AbortSignal.any([
+                this.signal,
+                ...(signal ? [signal] : []),
+              ]);
+              const check = () => {
+                active.throwIfAborted();
+                if (generation !== this.account.generation)
+                  throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+              };
+              check();
+              const projects = z
+                .object({
+                  items: z.array(
+                    z
+                      .object({
+                        id: z.string(),
+                        native_id: z.string().nullable().optional(),
+                      })
+                      .passthrough(),
+                  ),
+                })
+                .parse(await this.account.request("/api/v1/projects"));
+              const project = projects.items.find(
+                (item) => item.native_id === input.workspaceId,
+              );
+              const publication = z
+                .object({ id: z.string() })
+                .parse(
+                  await this.account.request("/api/v1/publications", {
+                    requestId: randomUUID(),
+                    entry: input.entry,
+                    projectId: project?.id,
+                    files: input.files.map(({ path, bytes }) => ({
+                      path,
+                      bytes,
+                    })),
+                  }),
+                );
+              for (const file of input.files) {
+                check();
+                await this.account.uploadPublication(
+                  publication.id,
+                  file.path,
+                  file.open(),
+                  active,
+                );
+              }
+              check();
+              return z
+                .object({ url: z.string().url() })
+                .parse(
+                  await this.account.request(
+                    "/api/v1/publications/" + publication.id + "/publish",
+                    {},
+                  ),
+                );
+            },
+          }
+        : {}),
       official: async (provider, hasOwnKey = false) => {
         const choice = choices[provider];
         if (choice?.source === "own") return false;

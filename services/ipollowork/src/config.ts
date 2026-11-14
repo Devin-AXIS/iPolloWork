@@ -31,6 +31,13 @@ const environment = z.object({
     .max(2_147_483_648)
     .default(536_870_912),
   REQUIRE_OSS: z.enum(["true", "false"]).optional(),
+  OSS_RAM_ROLE: z
+    .string()
+    .regex(/^[A-Za-z0-9.@_-]{1,64}$/)
+    .optional(),
+  OSS_INTERNAL: z.enum(["true", "false"]).default("false"),
+  PUBLICATION_ORIGIN: z.url().optional(),
+  MAX_PUBLICATION_FILES: z.coerce.number().int().min(1).max(1000).default(100),
   PERSONAL_STORAGE_GIB: z.coerce.number().int().positive().default(200),
   ORGANIZATION_STORAGE_GIB: z.coerce.number().int().positive().default(500),
   PERSONAL_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(7),
@@ -58,6 +65,10 @@ export interface Config {
   databaseSchema: string;
   maxArtifactBytes: number;
   requireOss: boolean;
+  ossRamRole?: string;
+  ossInternal: boolean;
+  publicationOrigin?: string;
+  maxPublicationFiles: number;
   personalStorageGiB: number;
   organizationStorageGiB: number;
   personalRetentionDays: number;
@@ -88,6 +99,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   )
     throw new Error("Public services require HTTPS");
   const dataDir = resolve(value.DATA_DIR);
+  const publication = value.PUBLICATION_ORIGIN
+    ? new URL(value.PUBLICATION_ORIGIN)
+    : undefined;
+  if (
+    publication &&
+    (publication.origin === origin.origin ||
+      publication.pathname !== "/" ||
+      publication.search ||
+      publication.hash ||
+      publication.username ||
+      publication.password ||
+      !(
+        publication.protocol === "https:" ||
+        (publication.protocol === "http:" &&
+          ["localhost", "127.0.0.1", "[::1]"].includes(publication.hostname))
+      ))
+  )
+    throw new Error(
+      "PUBLICATION_ORIGIN must be a separate HTTPS origin (or a separate loopback origin for development)",
+    );
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const secretPath = resolve(dataDir, "auth.secret");
   if (!value.AUTH_SECRET && !existsSync(secretPath))
@@ -116,6 +147,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     databasePoolSize: value.DATABASE_POOL_SIZE,
     databaseSchema: value.DATABASE_SCHEMA,
     maxArtifactBytes: value.MAX_ARTIFACT_BYTES,
+    ossRamRole: value.OSS_RAM_ROLE,
+    ossInternal: value.OSS_INTERNAL === "true",
+    publicationOrigin: publication?.origin,
+    maxPublicationFiles: value.MAX_PUBLICATION_FILES,
     requireOss:
       value.REQUIRE_OSS === undefined
         ? !["localhost", "127.0.0.1", "[::1]"].includes(origin.hostname)

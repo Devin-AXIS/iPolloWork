@@ -25,6 +25,7 @@ import { mountEnterpriseAssets } from "./enterprise-assets.js";
 import { mountResources } from "./resources.js";
 import { LiveshareRelay } from "./liveshare.js";
 import { mountLiveshare } from "./liveshare-http.js";
+import { mountPublications } from "./publications.js";
 
 export const settingFields: Record<string, readonly string[]> = {
   stripe: ["secretKey", "webhookSecret"],
@@ -69,17 +70,25 @@ export async function createService(config: Config) {
       },
     });
     const viewerHeaders = secureHeaders();
-    app.use("*", async (c, next) =>
-      c.req.path.startsWith("/__liveshare/assets/")
-        ? await viewerHeaders(c, next)
-        : await accountHeaders(c, next),
-    );
+    const publicationHeaders = secureHeaders({
+      contentSecurityPolicy: { sandbox: ["allow-scripts", "allow-same-origin", "allow-forms", "allow-popups", "allow-downloads"] },
+      referrerPolicy: "no-referrer",
+    });
+    app.use("*", async (c, next) => {
+      const publicationHost = config.publicationOrigin && new URL(c.req.url).host === new URL(config.publicationOrigin).host;
+      if (publicationHost) {
+        if (!c.req.path.startsWith("/p/")) return c.notFound();
+        return publicationHeaders(c, next);
+      }
+      if (c.req.path.startsWith("/p/")) return c.notFound();
+      return c.req.path.startsWith("/__liveshare/assets/") ? viewerHeaders(c, next) : accountHeaders(c, next);
+    });
     const regularBody = bodyLimit({
       maxSize: 25 * 1024 * 1024,
       onError: (c) => c.json({ error: "文件不能超过 24 MB" }, 413),
     });
     app.use("*", (c, next) =>
-      /^\/api\/v1\/projects\/[^/]+\/artifacts\/upload$/.test(c.req.path)
+      /^\/api\/v1\/projects\/[^/]+\/artifacts\/upload$/.test(c.req.path) || /^\/api\/v1\/publications\/[^/]+\/files\//.test(c.req.path)
         ? next()
         : regularBody(c, next),
     );
@@ -336,6 +345,7 @@ export async function createService(config: Config) {
     mountEnterprise(app, store, config);
     mountProjectSpace(app, store, storage, config);
     mountProjectArchive(app, store, storage, config);
+    mountPublications(app, store, storage, config);
     mountCollaboration(app, store);
     mountPayments(app, store, settings, config);
     mountResources(app, store, storage, config);

@@ -23,6 +23,7 @@ test("the route requires native owner authorization and disappears when its plug
     | ((call: ToolCall, next: () => Promise<Decision>) => Promise<Decision>)
     | undefined;
   const disposers: (() => void | Promise<void>)[] = [];
+  const subscriptions: string[] = [];
   const ctx: HostContext = {
     fs: {
       resolve: async () => {
@@ -39,6 +40,7 @@ test("the route requires native owner authorization and disappears when its plug
       if (dispose) disposers.push(dispose);
     },
     on: (_name, listener) => {
+      subscriptions.push(_name);
       if (_name === "tools/pre-execute")
         guard = listener as NonNullable<typeof guard>;
       const off = () => {
@@ -71,6 +73,8 @@ test("the route requires native owner authorization and disappears when its plug
     sessionQuery: { readSurface: async () => ({ events: [] }) },
   };
   apply(ctx, { catalogPath: resolve("catalog/index.json") });
+  assert(!subscriptions.includes("session/event"));
+  assert(!subscriptions.includes("agent/created"));
   const server = createServer((request, response) => {
     if (handler) void handler(request, response);
     else {
@@ -103,7 +107,7 @@ test("the route requires native owner authorization and disappears when its plug
     });
     assert.deepEqual(await account.json(), {
       status: "anonymous",
-      origin: "http://localhost:4785",
+      origin: "https://work.ipollo.net",
     });
     assert(guard);
     assert.equal(

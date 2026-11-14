@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-bookworm
+    image: ${POSTGRES_IMAGE:-postgres:17-bookworm}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ipollowork
@@ -30,6 +30,9 @@ services:
       PORT: 4785
       DATA_DIR: /data
       TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS:-}
+      OSS_RAM_ROLE: ${OSS_RAM_ROLE:-}
+      OSS_INTERNAL: ${OSS_INTERNAL:-false}
+      PUBLICATION_ORIGIN: ${PUBLICATION_ORIGIN:-}
       MAIL_WEBHOOK_URL: ${MAIL_WEBHOOK_URL:-}
       MAIL_WEBHOOK_TOKEN: ${MAIL_WEBHOOK_TOKEN:-}
       PERSONAL_STORAGE_GIB: ${PERSONAL_STORAGE_GIB:-200}

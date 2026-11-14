@@ -1395,7 +1395,7 @@ describe('native share audience contributions', () => {
     const Audience = ({ onChange }: ShareAudienceProps) => {
       useLayoutEffect(() => {
         onChange({ blockedReason: 'Recipient service unavailable', failureMessage: 'Could not save recipients', dirty: false, prepare: async request => request })
-        return () => onChange(undefined)
+        return () => { onChange(undefined) }
       }, [onChange])
       return null
     }
@@ -1411,7 +1411,7 @@ describe('native share audience contributions', () => {
       const [dirty, setDirty] = useState(true)
       useLayoutEffect(() => {
         onChange({ dirty, failureMessage: 'Could not save recipients', prepare: async request => request, save: async () => { await saved(currentShareId); setDirty(false) } })
-        return () => onChange(undefined)
+        return () => { onChange(undefined) }
       }, [onChange, currentShareId, dirty])
       return <span>Recipients for {currentShareId}</span>
     }
@@ -1431,7 +1431,7 @@ describe('native share audience contributions', () => {
     const Audience = ({ onChange }: ShareAudienceProps) => {
       useLayoutEffect(() => {
         onChange({ failureMessage: 'Recipient preparation failed', prepare: async request => ({ ...request, sessionMode: 'write', allowsFork: true, accessMode: 'selected', allowedSubjectIds: ['team-intent'] }) })
-        return () => onChange(undefined)
+        return () => { onChange(undefined) }
       }, [onChange])
       return <span>Team recipients</span>
     }
@@ -1447,7 +1447,7 @@ describe('native share audience contributions', () => {
     const Audience = ({ onChange }: ShareAudienceProps) => {
       useLayoutEffect(() => {
         onChange({ failureMessage: 'Could not prepare recipients', prepare: async () => { throw new Error('private server detail') } })
-        return () => onChange(undefined)
+        return () => { onChange(undefined) }
       }, [onChange])
       return null
     }
@@ -1460,11 +1460,11 @@ describe('native share audience contributions', () => {
 
   it('does not create while the recipient contribution is incomplete', async () => {
     const Audience = ({ onChange }: ShareAudienceProps) => {
-      useLayoutEffect(() => { onChange({ blockedReason: 'Choose recipients', failureMessage: 'Recipient preparation failed', prepare: async request => request }); return () => onChange(undefined) }, [onChange])
+      useLayoutEffect(() => { onChange({ blockedReason: 'Choose recipients', failureMessage: 'Recipient preparation failed', prepare: async request => request }); return () => { onChange(undefined) } }, [onChange])
       return <span>Choose recipients</span>
     }
     const host = await showDialog(200, false, undefined, undefined, undefined, undefined, undefined, undefined, undefined, ((_: 'liveshare.share.audience', props: ShareAudienceProps) => <Audience {...props} />) as NonNullable<LiveshareShareDialogProps['renderSlot']>)
-    expect((screen.getByRole('button', { name: 'Create share' }) as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByRole('button', { name: 'Create share' })).toHaveProperty('disabled', true)
     expect(shareCreates(host)).toBe(0)
   })
 })
