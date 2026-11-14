@@ -218,7 +218,7 @@ export function apply(ctx) {
       const rows = inventory.result.value?.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
       if (!inventory.result.ok || rows?.length !== 3
         || rows.some(row => row.fiberPhase !== 'active' || row.readOnlyReason !== 'management-required')) {
-        throw new Error('desktop runtime: required iPolloWork components are inactive or mutable')
+        throw new Error('desktop runtime: required iPolloWork components are inactive or mutable: ' + JSON.stringify({ ok: inventory.result.ok, rows: rows?.map(row => ({ moduleName: row.moduleName, fiberPhase: row.fiberPhase, readOnlyReason: row.readOnlyReason })) }))
       }
       const imMethod = 'dsh-im/weixin'
       const imResponse = await fetch(new URL(`/api/${imMethod}`, ready.url), {
