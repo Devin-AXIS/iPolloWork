@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { createService } from "../src/app.js";
 import { importSqlite } from "../src/import-sqlite.js";
 import { ledgerEntry, wallet, settleOrder } from "../src/domain.js";
+import { migrate } from "../src/database.js";
 import { testConfig } from "./database.js";
 
 test("SQLite import preserves identities and ledger, rejects nonempty targets and leaves the source unchanged", async () => {
@@ -207,4 +208,23 @@ test("concurrent membership payments stack both terms when no credits are grante
     const terms=await service.store.all("SELECT expires_at FROM entitlements WHERE user_id=? ORDER BY expires_at",user.id);
     assert.deepEqual(terms.map(term=>term.expires_at),[start+30*86400000,start+60*86400000]);
   } finally { context.mock.timers.reset(); await service.close(); await rm(dir,{recursive:true,force:true}); }
+});
+
+
+test("schema seven removes the old per-account running-request constraint", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ipw-parallel-migration-"));
+  const config = await testConfig({ DATA_DIR: dir, SERVICE_ORIGIN: "http://localhost:4785" });
+  const service = await createService(config);
+  try {
+    await service.store.run("DELETE FROM service_schema WHERE version=7");
+    await service.store.run("CREATE UNIQUE INDEX service_calls_one_running ON service_calls(user_id) WHERE state='running'");
+    await service.store.run("ALTER TABLE plans DROP COLUMN daily_points CASCADE, DROP COLUMN weekly_points");
+    await service.store.run("ALTER TABLE orders DROP COLUMN checkout");
+    await service.store.run("DROP INDEX service_calls_user_created; DROP INDEX orders_wechat_merchant");
+    await migrate(service.store, config);
+    await migrate(service.store, config);
+    assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM pg_indexes WHERE schemaname=current_schema() AND indexname='service_calls_one_running'"))?.total, 0);
+    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 7);
+    assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM information_schema.columns WHERE table_schema=current_schema() AND ((table_name='plans' AND column_name IN ('daily_points','weekly_points')) OR (table_name='orders' AND column_name='checkout'))"))?.total, 3);
+  } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });

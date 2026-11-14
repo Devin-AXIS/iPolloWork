@@ -62,22 +62,27 @@ test('running reservations count toward usage, failed calls release it, and dupl
     const { user } = await app.auth.api.signUpEmail({ body: { email: 'pending@example.test', name: 'Pending', password: 'Membership-test-password' } });
     const actor = { ...user, role: 'admin' };
     await app.store.transaction(() => ledgerEntry(app.store, user.id, 100, 'pending-fixture', 'Fixture'));
-    let entered!: () => void, release!: () => void;
+    let entered!: () => void, secondEntered!: () => void, release!: () => void, count = 0;
     const ready = new Promise<void>(resolve => { entered = resolve; });
+    const secondReady = new Promise<void>(resolve => { secondEntered = resolve; });
     const response = new Promise<void>(resolve => { release = resolve; });
-    const executor = new ExecutionService(app.store, app.settings, async () => { entered(); await response; return Response.json({}, { status: 400 }); });
+    const executor = new ExecutionService(app.store, app.settings, async () => { count++; if (count === 1) entered(); else secondEntered(); await response; return Response.json({}, { status: 400 }); });
     await executor.save(actor, { id: 'pending', title: 'Pending', provider: 'fixture', keyId: 'pending', key: 'fixture-key', baseUrl: 'https://example.test', enabled: true, capabilities: ['chat'], routes: [{ method: 'POST', path: '/call', points: 4 }] });
     const input = { requestId: randomUUID(), method: 'POST', path: '/call', contentType: 'application/json', body: Buffer.from('{}').toString('base64') };
     const running = executor.invoke(actor, 'pending', input);
     const outcome = running.then(() => null, error => error);
+    let secondOutcome: Promise<unknown> | undefined;
     try {
       await Promise.race([ready, outcome.then(error => { throw error ?? new Error('Request finished before the reservation could be observed'); })]);
       const used = await accountUsage(app.store, user.id, 480);
       assert.equal(used.daily.used, 4);
       assert.equal(used.daily.reserved, 4);
       await assert.rejects(executor.invoke(actor, 'pending', input), { code: 'SERVICE_CALL_RUNNING' });
-      await assert.rejects(executor.invoke(actor, 'pending', { ...input, requestId: randomUUID() }), { code: 'SERVICE_BUSY' });
-    } finally { release(); await outcome; }
+      secondOutcome = executor.invoke(actor, 'pending', { ...input, requestId: randomUUID() }).then(() => null, error => error);
+      await Promise.race([secondReady, secondOutcome.then(error => { throw error ?? new Error('Second request finished before its reservation'); })]);
+      assert.equal((await accountUsage(app.store, user.id, 480)).daily.reserved, 8);
+      assert.equal((await wallet(app.store, user.id)).balance, 92);
+    } finally { release(); await Promise.all([outcome, secondOutcome]); }
     assert(await outcome);
     assert.equal((await accountUsage(app.store, user.id, 480)).daily.used, 0);
     assert.equal((await wallet(app.store, user.id)).balance, 100);
