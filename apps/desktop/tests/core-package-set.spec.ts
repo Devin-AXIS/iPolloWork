@@ -74,6 +74,7 @@ describe('desktop core package set', () => {
     expect(policy).toContain('"esbuild@0.25.12": true')
     expect(policy).toContain('"sharp@0.34.5": true')
     expect(policy).toContain('"onnxruntime-node@1.27.0": true')
+    expect(policy).toContain('"onnxruntime-node@1.21.0": true')
     expect(policy).not.toContain('dangerouslyAllowAllBuilds')
   })
 
