@@ -23,6 +23,7 @@ function fixture(signedIn = true) {
     readRecord: async () => (signedIn ? { kind: 'grant', payload: { version: 1, origin: 'https://account.test', token: 'test-token' } } : undefined),
     modifyRecord: async () => undefined, deleteRecord: async () => {},
   }, resolveConfig({ accountOrigin: 'https://account.test' }), new AbortController().signal, async (input, init) => {
+    init?.signal?.throwIfAborted()
     const path = new URL(String(input)).pathname
     const body = init?.body ? JSON.parse(String(init.body)) : undefined
     calls.push({ method: init?.method ?? 'GET', path, body })
@@ -64,11 +65,11 @@ test('plugins open an app by name and use collection helpers that send JSON stat
 
 test('the app_data tool opens the app for the session workspace and runs the statement', async () => {
   const { calls, service } = fixture()
-  const tool = appDataTool(service, cwd => (cwd === '/work/site' ? 'Studio site' : undefined))
+  const tool = appDataTool(service, cwd => (cwd === '/work/site' ? 'Studio site' : undefined), () => false)
   assert.equal(tool.name, 'app_data')
   const value = await tool.execute(
     { app: 'Studio site', kind: 'site', statement: { insert: 'books', values: { title: 'Dune' } } },
-    { agent: { session: { header: { cwd: '/work/site' } } } } as never,
+    { agent: { session: { header: { cwd: '/work/site' } } }, signal: new AbortController().signal } as never,
   )
   assert.deepEqual(value, { item: book })
   assert.deepEqual(calls.find(call => call.path === '/api/data/v1/apps')?.body, { name: 'Studio site', kind: 'site', workspace: 'Studio site' })
@@ -82,10 +83,29 @@ test('the app_data tool opens the app for the session workspace and runs the sta
   assert.equal(calls.slice(before).some(call => call.method === 'POST'), false, 'reading an unknown app creates nothing')
   await tool.execute({ app: 'reading list', kind: 'plugin', statement: { batch: [{ count: 'books' }] } }, {} as never)
   assert.deepEqual([calls.at(-1)?.path, calls.at(-1)?.body], [`/api/data/v1/apps/${APP}/run`, { batch: [{ count: 'books' }] }], 'a read batch reaches the existing app by name, ignoring letter case')
-  const signedOut = appDataTool(fixture(false).service, () => undefined)
+  const signedOut = appDataTool(fixture(false).service, () => undefined, () => false)
   await assert.rejects(signedOut.execute({ app: 'x', kind: 'plugin', statement: { info: true } }, {} as never), (error: unknown) =>
     error instanceof Error && error.message.includes('not signed in to iPolloWork'))
   assert.ok(APP_DATA_SKILL.content.length < 8192, 'the skill stays below the result pruning threshold')
+})
+
+test('the app_data tool reads concurrently, writes in order, refuses read-only writes and forwards cancellation', async () => {
+  const { calls, service } = fixture()
+  const session = { header: { cwd: '/work' } }
+  const tool = appDataTool(service, () => undefined, current => current === session)
+  const args = (statement: object) => ({ app: 'Reading list', kind: 'plugin', statement })
+  assert.equal(tool.isConcurrencySafe?.(args({ find: 'books' })), true)
+  assert.equal(tool.isConcurrencySafe?.(args({ batch: [{ get: 'books', id: 'b1' }, { count: 'books' }] })), true)
+  assert.equal(tool.isConcurrencySafe?.(args({ insert: 'books', values: {} })), false)
+  const exec = { agent: { session }, signal: new AbortController().signal } as never
+  assert.deepEqual(await tool.execute(args({ count: 'books' }), exec), { count: 1 }, 'a read-only session still reads')
+  const before = calls.length
+  await assert.rejects(tool.execute(args({ insert: 'books', values: { title: 'Dune' } }), exec), (error: unknown) =>
+    error instanceof AppDataRejection && error.code === 'IPW_DATA_READ_ONLY' && error.reason.includes('reads still work'))
+  assert.equal(calls.length, before, 'a refused write sends nothing')
+  const stop = new AbortController()
+  stop.abort(new Error('stopped by user'))
+  await assert.rejects(tool.execute(args({ count: 'books' }), { signal: stop.signal } as never), /stopped by user/)
 })
 
 test('the Data page routes list, describe, query and delete apps', async () => {

@@ -260,8 +260,18 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   const appData = new AppDataService(account);
   if (config.account) {
     ctx.provide?.("ipolloData", appData);
-    ctx.tools?.register(
-      appDataTool(appData, (cwd) => ctx.workspaceRegistry.list().find((item) => item.path === cwd)?.title),
+    ctx.inject?.(["tools", "sandboxPolicy"], (scope) =>
+      scope.effect(
+        () =>
+          scope.tools.register(
+            appDataTool(
+              appData,
+              (cwd) => ctx.workspaceRegistry.list().find((item) => item.path === cwd)?.title,
+              (session) => scope.sandboxPolicy.resolve({ session }).mode === "read-only",
+            ),
+          ),
+        "ipollowork-suite: app data tool",
+      ),
     );
   }
   ctx.inject?.(["agents"], mountOutputContinuation);

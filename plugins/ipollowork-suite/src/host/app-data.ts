@@ -5,7 +5,7 @@
  * database connection.
  */
 import { z } from 'zod'
-import { defineTool, type ToolDefinition } from '@deepseek-ai/dsh-tools'
+import { defineTool, type ToolDefinition, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import type { AccountService } from './account.ts'
 import { AppDataRejection, SuiteError } from './errors.ts'
 import { createDataApp, type DataApp, type DataAppDetail, type DataAppKind, type DataAppList, type IpolloData } from '../shared/app-data.ts'
@@ -33,20 +33,24 @@ const openInput = z.object({ name: z.string().trim().min(1).max(80), organizatio
 export class AppDataService implements IpolloData {
   constructor(private readonly account: AccountService) {}
 
-  /** @returns the signed-in account's personal and organization apps, and every organization it belongs to. */
-  async apps(): Promise<DataAppList> {
+  /**
+   * @param signal - cancels the request.
+   * @returns the signed-in account's personal and organization apps, and every organization it belongs to.
+   */
+  async apps(signal?: AbortSignal): Promise<DataAppList> {
     return z.object({ items: z.array(summary), organizations: z.array(z.object({ id: z.string(), name: z.string() })) })
-      .parse(await this.account.request(BASE))
+      .parse(await this.account.request(BASE, undefined, undefined, signal))
   }
   /**
    * Return the app with this name, creating it on first use.
    * @param input - app name, the kind recorded when it is created, an optional organization name or id, and the creating workspace's title.
+   * @param signal - cancels the request.
    * @returns the app detail.
    */
-  async ensure(input: { name: string; kind: DataAppKind; organization?: string | undefined; workspace?: string | undefined }): Promise<DataAppDetail> {
-    const enterpriseId = input.organization ? await this.organization(input.organization) : undefined
+  async ensure(input: { name: string; kind: DataAppKind; organization?: string | undefined; workspace?: string | undefined }, signal?: AbortSignal): Promise<DataAppDetail> {
+    const enterpriseId = input.organization ? await this.organization(input.organization, signal) : undefined
     const body = { name: input.name, kind: input.kind, ...(enterpriseId ? { enterpriseId } : {}), ...(input.workspace ? { workspace: input.workspace } : {}) }
-    return z.object({ app: detail }).parse(await this.account.request(BASE, body)).app
+    return z.object({ app: detail }).parse(await this.account.request(BASE, body, undefined, signal)).app
   }
   /**
    * @param id - the app id.
@@ -66,20 +70,22 @@ export class AppDataService implements IpolloData {
    * Run one statement or `{batch}` against an app.
    * @param id - the app id.
    * @param statement - the JSON statement.
+   * @param signal - cancels the request; a write may still have committed.
    * @returns the statement result.
    */
-  async run(id: string, statement: unknown): Promise<Result> {
-    return result.parse(await this.account.request(`${BASE}/${encodeURIComponent(id)}/run`, statement))
+  async run(id: string, statement: unknown, signal?: AbortSignal): Promise<Result> {
+    return result.parse(await this.account.request(`${BASE}/${encodeURIComponent(id)}/run`, statement, undefined, signal))
   }
   /**
    * Find an existing app by name without creating it.
    * @param name - the app name; letter case and surrounding spaces are ignored.
    * @param organization - organization name or id, or undefined for personal apps.
+   * @param signal - cancels the requests.
    * @returns the app and the owner's other apps, so a miss can name what exists.
    */
-  async find(name: string, organization?: string): Promise<{ app: DataAppList['items'][number] | undefined; others: DataAppList['items'] }> {
-    const enterpriseId = organization ? await this.organization(organization) : undefined
-    const owned = (await this.apps()).items.filter(app => (enterpriseId ? app.owner.id === enterpriseId : app.owner.kind === 'user'))
+  async find(name: string, organization?: string, signal?: AbortSignal): Promise<{ app: DataAppList['items'][number] | undefined; others: DataAppList['items'] }> {
+    const enterpriseId = organization ? await this.organization(organization, signal) : undefined
+    const owned = (await this.apps(signal)).items.filter(app => (enterpriseId ? app.owner.id === enterpriseId : app.owner.kind === 'user'))
     const wanted = name.trim().toLowerCase()
     return { app: owned.find(app => app.name.trim().toLowerCase() === wanted), others: owned }
   }
@@ -87,9 +93,9 @@ export class AppDataService implements IpolloData {
     const app = await this.ensure({ name, kind: 'plugin', organization: options.organization })
     return createDataApp(app.id, statement => this.run(app.id, statement))
   }
-  private async organization(value: string): Promise<string> {
+  private async organization(value: string, signal?: AbortSignal): Promise<string> {
     const items = z.object({ items: z.array(z.object({ id: z.string(), name: z.string() })) })
-      .parse(await this.account.request('/api/v1/me/orgs')).items
+      .parse(await this.account.request('/api/v1/me/orgs', undefined, undefined, signal)).items
     const found = items.find(item => item.id === value) ?? items.find(item => item.name.toLowerCase() === value.toLowerCase())
     if (!found)
       throw new AppDataRejection('IPW_ORGANIZATION_NOT_FOUND', 404,
@@ -141,13 +147,20 @@ function reads(statement: Record<string, unknown>): boolean {
   const list = Array.isArray(statement.batch) ? (statement.batch as Record<string, unknown>[]) : [statement]
   return list.every(item => item !== null && typeof item === 'object' && Object.keys(item).some(key => READS.has(key)))
 }
+type Session = NonNullable<ToolRunContext['agent']>['session']
 /**
- * The model's app data tool. A new app records its kind and the title of the workspace it was created from.
+ * The model's app data tool. A new app records its kind and the title of the workspace it was created from. Reads run
+ * concurrently; writes run in call order and are refused in read-only sessions, because they change account data.
  * @param service - the app data service.
  * @param workspaceOf - resolves a session's working directory to its workspace title.
+ * @param readOnly - whether the session's sandbox policy is read-only.
  * @returns the tool definition.
  */
-export function appDataTool(service: AppDataService, workspaceOf: (cwd: string | undefined) => string | undefined): ToolDefinition {
+export function appDataTool(
+  service: AppDataService,
+  workspaceOf: (cwd: string | undefined) => string | undefined,
+  readOnly: (session: Session) => boolean,
+): ToolDefinition {
   return defineTool({
     name: 'app_data',
     description: [
@@ -176,17 +189,23 @@ export function appDataTool(service: AppDataService, workspaceOf: (cwd: string |
       schema: { type: 'json' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }],
     },
+    isConcurrencySafe: args => reads(args.statement),
     async execute(args, exec) {
+      const signal = exec.signal
       return signedIn(async () => {
         if (reads(args.statement)) {
-          const { app, others } = await service.find(args.app, args.organization)
+          const { app, others } = await service.find(args.app, args.organization, signal)
           if (!app)
             throw new AppDataRejection('DATA_APP_NOT_FOUND', 404,
               `No app is named "${args.app}" yet; reads do not create apps, and the first write does. Existing apps: ${others.map(item => `${item.name} (${item.kind})`).join(', ') || 'none'}.`)
-          return service.run(app.id, args.statement)
+          return service.run(app.id, args.statement, signal)
         }
-        const app = await service.ensure({ name: args.app, kind: args.kind, organization: args.organization, workspace: workspaceOf(exec.agent?.session.header.cwd) })
-        return service.run(app.id, args.statement)
+        const session = exec.agent?.session
+        if (session && readOnly(session))
+          throw new AppDataRejection('IPW_DATA_READ_ONLY', 403,
+            'This session is read-only, so app data writes are refused; reads still work. Ask the user to switch the session to a writable mode before changing records.')
+        const app = await service.ensure({ name: args.app, kind: args.kind, organization: args.organization, workspace: workspaceOf(session?.header.cwd) }, signal)
+        return service.run(app.id, args.statement, signal)
       })
     },
     presentCall: args => ({

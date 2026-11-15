@@ -70,6 +70,7 @@ export class AccountService {
     token?: string,
     body?: unknown,
     method?: string,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -83,11 +84,13 @@ export class AccountService {
         },
         signal: AbortSignal.any([
           this.signal,
+          ...(signal ? [signal] : []),
           AbortSignal.timeout(this.config.requestTimeoutMs),
         ]),
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch (cause) {
+      if (signal?.aborted) throw signal.reason;
       throw new SuiteError("IPW_ACCOUNT_UNAVAILABLE", 502, { cause });
     }
     if (!response.ok) {
@@ -128,15 +131,16 @@ export class AccountService {
     }
     return readJson(response, this.config.maxResponseBytes);
   }
-  /** Call an account-owned business endpoint with the saved, origin-bound grant. */
+  /** Call an account-owned business endpoint with the saved, origin-bound grant; `signal` cancels only this call. */
   async request(
     path: string,
     body?: unknown,
     method?: string,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     const grant = await this.grant();
     if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
-    return this.send(path, grant.token, body, method);
+    return this.send(path, grant.token, body, method, signal);
   }
   /** Call a capability with the operation lifetime and keep the account token inside the Host.
    * @param path Allowlisted capability or receipt URL path.
