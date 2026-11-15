@@ -235,8 +235,10 @@ export function apply(ctx) {
         result: { ok: boolean; value?: { moduleName: string; fiberPhase: string | null; readOnlyReason?: string }[] }
       }
       const rows = inventory.result.value?.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
-      if (!inventory.result.ok || rows?.length !== 4
-        || rows.some(row => row.fiberPhase !== 'active' || row.readOnlyReason !== 'unaddressable')) {
+      const optionalModules = new Set(['@ipollo/dsh-suite/aliyun-sandbox', '@ipollo/dsh-suite/cloud'])
+      if (!inventory.result.ok || rows?.length !== 7
+        || rows.some(row => (row.fiberPhase !== 'active' && !(optionalModules.has(row.moduleName) && row.fiberPhase === null))
+          || row.readOnlyReason !== 'unaddressable')) {
         throw new Error('desktop runtime: iPolloWork components are inactive: ' + JSON.stringify({ ok: inventory.result.ok, rows: rows?.map(row => ({ moduleName: row.moduleName, fiberPhase: row.fiberPhase, readOnlyReason: row.readOnlyReason })) }))
       }
       for (const [operation, args, code] of [
