@@ -5,7 +5,7 @@ export interface DesktopElectronBuilderConfig {
   readonly appId: string
   readonly copyright: string
   readonly artifactName: string
-  readonly protocols: readonly [{ readonly name: 'DeepSeek Harness'; readonly schemes: readonly ['dsh'] }]
+  readonly protocols: readonly [{ readonly name: 'iPolloWork'; readonly schemes: readonly ['dsh'] }]
   readonly directories: {
     readonly output: string
   }
@@ -47,7 +47,8 @@ export interface DesktopElectronBuilderConfig {
     }
   }
   readonly nsis: {
-    readonly uninstallDisplayName: '${productName}'
+    readonly shortcutName: 'iPolloWork'
+    readonly uninstallDisplayName: 'iPolloWork'
     readonly include: string
     readonly oneClick: false
     readonly perMachine: false

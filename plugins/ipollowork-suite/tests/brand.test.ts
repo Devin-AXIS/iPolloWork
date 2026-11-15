@@ -19,8 +19,9 @@ const DSH_INDEX = `<!doctype html>
   <body><div id="root"></div></body>
 </html>`;
 
-test("the served page carries iPolloWork's title, icons and manifest", () => {
+test("the served page carries iPolloWork's title, icons, manifest and boot page", () => {
   const html = brandIndex(DSH_INDEX);
+  assert.match(html, /\[data-dsh-boot\]>div>div:first-child::after\{content:'iPolloWork'/);
   assert.match(html, /<title>iPolloWork<\/title>/);
   assert.match(html, /apple-mobile-web-app-title" content="iPolloWork"/);
   assert.doesNotMatch(html, /DeepSeek|favicon-dark|\.\/manifest|\.\/apple-touch/);

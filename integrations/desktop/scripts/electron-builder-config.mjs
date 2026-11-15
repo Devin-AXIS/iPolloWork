@@ -110,7 +110,7 @@ export function createElectronBuilderConfig(
   const packaged = resolveDesktopBuildCommit(env)
   return {
     appId,
-    protocols: [{ name: 'DeepSeek Harness', schemes: ['dsh'] }],
+    protocols: [{ name: 'iPolloWork', schemes: ['dsh'] }],
     extraMetadata: {
       productName: 'iPolloWork',
       dshDesktopAppId: appId,
@@ -120,8 +120,8 @@ export function createElectronBuilderConfig(
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
     productName: 'DeepSeek Harness',
-    // The default copyright uses author.name; this line names the product instead.
-    copyright: `Copyright © ${new Date().getFullYear()} \${productName}`,
+    // The default copyright uses author.name; this line names the product shown to users instead.
+    copyright: `Copyright © ${new Date().getFullYear()} iPolloWork`,
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
     artifactName: `deepseek-harness-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
     directories: { output: output.directory },
@@ -265,7 +265,9 @@ export function createElectronBuilderConfig(
       target: ['AppImage'],
     },
     nsis: {
-      uninstallDisplayName: '${productName}',
+      // Shortcuts and the installed-programs list show the product name; file and directory names keep productName.
+      shortcutName: 'iPolloWork',
+      uninstallDisplayName: 'iPolloWork',
       installerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
       uninstallerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
       include: fileURLToPath(new URL('./installer.nsh', import.meta.url)),

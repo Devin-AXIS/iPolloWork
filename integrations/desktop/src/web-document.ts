@@ -8,6 +8,19 @@ const MIME: Readonly<Record<string, string>> = {
   '.woff2': 'font/woff2', '.png': 'image/png', '.ico': 'image/x-icon',
 }
 const BOOT = '<script>globalThis.__DSH_BOOT_READY__ = Promise.withResolvers()</script>'
+/** iPolloWork's mark, as a mask image for the boot page. */
+const MARK = "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 281 296'><path d='M149.4 0H130.52C120.17 0 111.78 8.39 111.78 18.74V43.35C111.78 53.7 120.17 62.09 130.52 62.09H149.4C159.75 62.09 168.14 53.7 168.14 43.35V18.74C168.14 8.39 159.75 0 149.4 0Z'/><path d='M278.06 89.81L259.66 57.93C256.86 53.08 250.66 51.42 245.81 54.22L139.8 115.43L34.15 54.44C29.3 51.64 23.1 53.3 20.3 58.15L2.3 89.31C-0.5 94.16 1.16 100.36 6.01 103.16L116.9 167.18C121.75 169.98 127.95 168.32 130.75 163.47L140.03 147.4L149.6 163.97C152.4 168.82 158.6 170.48 163.45 167.68L274.34 103.66C279.19 100.86 280.85 94.66 278.06 89.81Z'/><path d='M273.55 192.14L146.77 118.94C144.97 117.9 142.99 117.48 141.06 117.6C138.76 117.16 136.29 117.51 134.1 118.77L6.57 192.41C1.72 195.21 0.06 201.41 2.86 206.26L20.86 237.44C23.66 242.29 29.86 243.95 34.71 241.15L112.03 196.51V285.58C112.03 291.18 116.57 295.72 122.17 295.72H158.18C163.78 295.72 168.32 291.18 168.32 285.58V196.64L245.28 241.07C250.13 243.87 256.33 242.21 259.13 237.36L277.24 205.99C280.04 201.14 278.38 194.94 273.55 192.14Z'/></svg>\")"
+/**
+ * DSH's framework-free boot page shows while the Host starts, before any plugin loads; it carries iPolloWork's name
+ * and mark instead of DSH's wordmark. The page exposes only data attributes: the wordmark is its card's first child.
+ */
+const BRAND = '<style>'
+  + '[data-dsh-boot]>div>div:first-child{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:0;line-height:0;letter-spacing:0}'
+  + `[data-dsh-boot]>div>div:first-child::before{content:'';width:34px;height:36px;background:currentColor;-webkit-mask:${MARK} center/contain no-repeat;mask:${MARK} center/contain no-repeat}`
+  + "[data-dsh-boot]>div>div:first-child::after{content:'iPolloWork';font-size:17px;line-height:24px;font-weight:600;letter-spacing:-.01em}"
+  + '[data-dsh-boot] [data-dsh-boot-spinner]+div{display:none}'
+  + '</style>'
+const TITLE = /<title>[^<]*<\/title>/
 
 /**
  * Read an application-owned static asset; the index waits for asynchronous Host injections.
@@ -29,7 +42,7 @@ export async function serveWebDocument(request: Request, root: string): Promise<
     throw error
   }
   const content = pathname === '/' || pathname === '/index.html'
-    ? body.toString().replace('<head>', '<head>' + BOOT) : new Uint8Array(body)
+    ? body.toString().replace('<head>', '<head>' + BOOT + BRAND).replace(TITLE, '<title>iPolloWork</title>') : new Uint8Array(body)
   return new Response(request.method === 'HEAD' ? null : content, {
     headers: { 'content-type': MIME[extname(target)] ?? 'application/octet-stream' },
   })
