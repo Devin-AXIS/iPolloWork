@@ -15,7 +15,7 @@ const update = { publicUrl: 'https://desktop-updates.example.com/dsh-desk/feeds/
 async function fixture(): Promise<{ appPath: string; resourcesDir: string }> {
   const root = await mkdtemp(join(tmpdir(), 'desktop-macos-update-config-'))
   roots.push(root)
-  const appPath = join(root, 'DeepSeek Harness.app')
+  const appPath = join(root, 'iPolloWork.app')
   const resourcesDir = join(appPath, 'Contents', 'Resources')
   await mkdir(resourcesDir, { recursive: true })
   return { appPath, resourcesDir }

@@ -78,7 +78,7 @@ export async function packageMacOSArtifacts(
   const expected = resolveMacOSSigningEnvironment(environment)
   const credentials = resolveMacOSNotarizationEnvironment(environment)
   const update = resolveDesktopAutoUpdateConfig(environment, 'darwin', arch)
-  const appPath = join(artifactsRoot, arch === 'arm64' ? 'mac-arm64' : 'mac', 'DeepSeek Harness.app')
+  const appPath = join(artifactsRoot, arch === 'arm64' ? 'mac-arm64' : 'mac', 'iPolloWork.app')
   const root = await mkdtemp(join(dirname(artifactsRoot), 'notarization-'))
   const zipApp = join(root, 'zip', basename(appPath))
   const dmgApp = join(root, 'dmg', basename(appPath))

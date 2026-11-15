@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for guide.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/upgrade-guide/v0.2.2-rc.3/ipollowork-desktop-name/guide.md
+/:
+  en: 81f6a128811a3960
+  zh: 54124e45e502734d
+/ipollowork-desktop-name:
+  en: d6c059c794d7e4bf
+  zh: 385d66e033929b8f
+/ipollowork-desktop-name/change:
+  en: eb7094099ccbea46
+  zh: f8e464e38f16a0e9
+/ipollowork-desktop-name/migration:
+  en: b7a9568e7d40beef
+  zh: 4ae977153244a581

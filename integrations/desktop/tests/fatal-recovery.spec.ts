@@ -28,7 +28,7 @@ async function shown(operations: { show: ReturnType<typeof vi.fn> }): Promise<vo
   await vi.waitFor(() => { expect(operations.show).toHaveBeenCalled() })
 }
 
-const REPORT_PATH = 'C:\\Users\\someone\\AppData\\Roaming\\DeepSeek Harness\\logs\\crash-2026-09-22T10-30-00-000Z-host.log'
+const REPORT_PATH = 'C:\\Users\\someone\\AppData\\Roaming\\iPolloWork\\logs\\crash-2026-09-22T10-30-00-000Z-host.log'
 
 afterEach(() => { vi.restoreAllMocks() })
 

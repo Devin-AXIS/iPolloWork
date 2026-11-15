@@ -51,7 +51,7 @@ describe('installer preparation preserves application dependencies', () => {
         metadata: { value: metadata },
       })
       const appInfo = new AppInfo(metadataPackager, undefined)
-      expect(appInfo.companyName).toBe('Hangzhou DeepSeek Artificial Intelligence Co., Ltd.')
+      expect(appInfo.companyName).toBe('iPolloWork contributors')
       expect(appInfo.copyright).toBe(`Copyright © ${new Date().getFullYear()} iPolloWork`)
       if (platform === 'win32') {
         expect(expandMacro(config.nsis.uninstallDisplayName, null, appInfo, {}, false)).toBe('iPolloWork')

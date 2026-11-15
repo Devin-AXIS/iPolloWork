@@ -1,11 +1,11 @@
 {
   "darwin:en-US": {
     "menu": [
-      { "label": "About DeepSeek Harness", "role": "about" },
+      { "label": "About iPolloWork", "role": "about" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "DeepSeek Harness",
+      "applicationName": "iPolloWork",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",
@@ -14,11 +14,11 @@
   },
   "darwin:zh-CN": {
     "menu": [
-      { "label": "关于 DeepSeek Harness", "role": "about" },
+      { "label": "关于 iPolloWork", "role": "about" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "DeepSeek Harness",
+      "applicationName": "iPolloWork",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",
@@ -27,11 +27,11 @@
   },
   "win32:zh-CN": {
     "menu": [
-      { "label": "关于 DeepSeek Harness" },
+      { "label": "关于 iPolloWork" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "DeepSeek Harness",
+      "applicationName": "iPolloWork",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",
@@ -40,11 +40,11 @@
   },
   "win32:en-US": {
     "menu": [
-      { "label": "About DeepSeek Harness" },
+      { "label": "About iPolloWork" },
       { "type": "separator" }
     ],
     "options": {
-      "applicationName": "DeepSeek Harness",
+      "applicationName": "iPolloWork",
       "applicationVersion": "1.0.0",
       "version": "",
       "copyright": "",

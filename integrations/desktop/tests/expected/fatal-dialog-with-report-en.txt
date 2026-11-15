@@ -1,8 +1,8 @@
-DeepSeek Harness is unavailable
+iPolloWork is unavailable
 The application could not start or stopped unexpectedly.
 Desktop Host failed
 Plugin initialization failed
-Diagnostic report: C:\Users\someone\AppData\Roaming\DeepSeek Harness\logs\crash-2026-09-22T10-30-00-000Z-host.log
+Diagnostic report: C:\Users\someone\AppData\Roaming\iPolloWork\logs\crash-2026-09-22T10-30-00-000Z-host.log
 
 If application files are missing or damaged, close the application and reinstall it. Your tasks are stored separately.
 Exit

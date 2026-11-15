@@ -1,4 +1,4 @@
-DeepSeek Harness is unavailable
+iPolloWork is unavailable
 The application could not start or stopped unexpectedly.
 Desktop Host failed
 Plugin initialization failed

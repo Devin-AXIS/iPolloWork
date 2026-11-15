@@ -114,7 +114,7 @@ inline std::wstring Headline(int code, const std::wstring& output, const std::ws
 
 inline std::wstring Compose(int code, const std::wstring& archive, const std::wstring& destination, const std::wstring& output,
                             const std::wstring& timestamp, const std::wstring& windowsVersion) {
-    std::wstring report = L"DeepSeek Harness installer: extraction failed\r\n";
+    std::wstring report = L"iPolloWork installer: extraction failed\r\n";
     report += L"Time: " + timestamp + L"\r\n";
     report += L"Result: " + DescribeResult(code) + L"\r\n";
     report += L"Archive: " + archive + L"\r\n";

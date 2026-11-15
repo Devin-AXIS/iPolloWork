@@ -1,6 +1,6 @@
 [
   {
-    "label": "About DeepSeek Harness",
+    "label": "About iPolloWork",
     "role": "about"
   },
   {
@@ -24,7 +24,7 @@
   },
   {
     "role": "hide",
-    "label": "Hide DeepSeek Harness"
+    "label": "Hide iPolloWork"
   },
   {
     "role": "hideOthers",
@@ -39,6 +39,6 @@
   },
   {
     "role": "quit",
-    "label": "Quit DeepSeek Harness"
+    "label": "Quit iPolloWork"
   }
 ]
