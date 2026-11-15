@@ -1,7 +1,0 @@
-version: 1
-scenario: hook-codex-promptsubmit-block
-profile: headless
-composition: default
-recording: authored
-header:
-  class: default

@@ -1,4 +1,4 @@
-# iPolloWork 套件
+# iPolloWork
 
 为 DSH 添加 iPolloWork 品牌外观、渐变输入框、自有插件市场和账户入口。原有会话、模型和功能插件继续由 DSH 管理。
 

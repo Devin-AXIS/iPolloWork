@@ -1,5 +1,6 @@
 /** IM adapters shipped inside the iPolloWork bundle; DSH owns their lifecycle. */
 import type { Context } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-plugin-manager'
 import { HarnessError } from '@deepseek-ai/dsh-error'
 import { createImHostPlugin, inject as nativeInject } from '../../vendor/dsh-im/plugin-src/host/index.mjs'
 import { COORDINATOR_PRESET } from '../shared/coordinator.ts'
@@ -7,7 +8,6 @@ import { COORDINATOR_PRESET } from '../shared/coordinator.ts'
 export const name = 'ipollowork-im'
 export const inject = [...nativeInject, 'pluginManager', 'fileUploads', 'ipolloAgents', 'agentPresets']
 interface ImContext extends Context {
-  pluginManager: { listBundles(): Promise<{ name: string; enabled: boolean }[]> }
   agentPresets: { resolve(id: string): Promise<{ broken?: string }> }
 }
 

@@ -1,9 +1,0 @@
-version: 1
-scenario: persistent-pwsh-tool-turn
-profile: headless
-composition: persistent-pwsh
-recording: live
-header:
-  class: persistent-pwsh
-  pin: true
-platform: pwsh

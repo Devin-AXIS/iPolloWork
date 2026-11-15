@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "SSH process sandbox",
-    "description": "Build sandbox commands for remote POSIX processes through the shared SSH helper."
-  }
-}

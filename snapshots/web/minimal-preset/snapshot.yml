@@ -1,8 +1,0 @@
-version: 1
-scenario: minimal-preset
-profile: web
-composition: web-minimal
-recording: authored
-header:
-  class: web-minimal
-  pin: true

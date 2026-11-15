@@ -2,9 +2,9 @@ name: iPolloWork integrations
 on:
   push:
     branches: [main]
-    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml']
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
   pull_request:
-    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml']
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -27,17 +27,14 @@ jobs:
         with:
           node-version: '24.15.0'
       - uses: pnpm/action-setup@v5.0.0
-      - name: Build matching DSH workspace
+      - name: Build pinned official DSH dependency
         run: |
-          pnpm install --frozen-lockfile
-          pnpm run build:artifacts
+          npm run setup:build
+          npm test
+          npm run check:upstream
+          npm run check:docs
       - name: Check enterprise connector
         run: npm run check --prefix plugins/ipollo-enterprise
-      - name: Install suite dependencies
-        working-directory: plugins/ipollowork-suite
-        run: |
-          npm ci --ignore-scripts --workspaces=false
-          npm run link:workspace
       - name: Check and package suite
         working-directory: plugins/ipollowork-suite
         run: |

@@ -1,3 +1,0 @@
-- status:
-  - text: Disconnected.
-  - button "Reconnect"

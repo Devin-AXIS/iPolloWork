@@ -1,7 +1,0 @@
-# Bilingual-pair consistency record for extensions.md (docs/i18n/README.md): per heading
-# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
-# After editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write docs/subsystems/extensions.md
-/extensions:
-  en: 59e910050ccf630f
-  zh: fa0f7d54ee45c2b8

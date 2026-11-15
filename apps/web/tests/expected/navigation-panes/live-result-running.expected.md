@@ -1,7 +1,0 @@
-- tabpanel "Result":
-  - region "Raw result":
-    - heading "Raw result" [level=3]
-    - paragraph: Running…
-  - region "Rendered result":
-    - heading "Rendered result" [level=3]
-    - paragraph: Running…

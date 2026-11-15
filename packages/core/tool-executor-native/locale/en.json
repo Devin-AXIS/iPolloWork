@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Native tool execution",
-    "description": "Executes model tool calls directly."
-  }
-}

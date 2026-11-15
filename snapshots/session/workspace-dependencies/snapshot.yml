@@ -1,9 +1,0 @@
-version: 1
-scenario: workspace-dependencies
-profile: headless
-composition: workspace-dependencies
-recording: authored
-header:
-  class: workspace-dependencies
-  pin: true
-  systemPromptSource: office-skills

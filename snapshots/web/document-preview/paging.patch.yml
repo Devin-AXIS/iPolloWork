@@ -1,7 +1,0 @@
-# Paging and unavailable-service guidance through the shipped Office viewer.
-- id: workspace-files
-  name: '@deepseek-ai/dsh-api-workspace-files'
-  config:
-    maxLines: 64
-- id: office-kit
-  disabled: true

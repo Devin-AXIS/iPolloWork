@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Token authentication",
-    "description": "Exchange a launch token for browser access and authenticate requests with signed Cookies."
-  }
-}

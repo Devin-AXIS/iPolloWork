@@ -1,1 +1,0 @@
-Project budget snapshot instruction.

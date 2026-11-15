@@ -1,8 +1,0 @@
-version: 1
-scenario: pty-tools-sandbox-backend
-profile: headless
-composition: pty-sandbox-backend
-recording: authored
-header:
-  class: pty-sandbox-backend
-  pin: true

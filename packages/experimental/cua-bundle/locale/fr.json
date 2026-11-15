@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Utilisation de l'ordinateur",
-    "description": "Contrôlez des applications sur macOS et Windows. Si vous installez DSH avec npm sous Windows, configurez séparément le programme auxiliaire.",
-    "detail": "docs/DETAIL.md"
-  }
-}

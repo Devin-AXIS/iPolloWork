@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "interfaz de control terminal",
-    "description": "Proporciona a los clientes la capacidad de crear, ingresar, leer y restaurar terminales de sesión."
-  }
-}

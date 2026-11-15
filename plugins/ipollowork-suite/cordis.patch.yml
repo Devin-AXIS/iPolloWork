@@ -3,6 +3,8 @@
 - id: ui-account-notifications
   disabled: true
 - insert:
+    - id: ipollowork-onboarding
+      name: '@ipollo/dsh-suite/onboarding'
     - id: liveshare-share-host
       name: '@deepseek-ai/dsh-experimental-liveshare'
       config: {}

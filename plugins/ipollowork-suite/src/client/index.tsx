@@ -53,9 +53,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
         document.removeEventListener('visibilitychange', visible)
       }
     }, 'ipollowork-suite: refresh account on return')
-    ctx.on('liveshare/prepare-owner', async (signal, next) => {
-      const previous = await next()
-      if (previous.error) return previous
+    const prepareShare = async (signal: AbortSignal) => {
+      const previous = {};
       const t = shareAudienceCopy(language(ctx))
       await account.refresh()
       signal.throwIfAborted()
@@ -74,7 +73,9 @@ export async function apply(ctx: ClientContext): Promise<void> {
       } catch (_error) {
         return { error: t.connectionFailed }
       }
-    })
+    }
+    const { mountSharing } = await import('./sharing/mount.ts')
+    mountSharing(ctx, prepareShare)
     mountEnterprise(ctx, account)
     mountData(ctx, account)
     ctx.provide('ipolloData', createBrowserAppData())

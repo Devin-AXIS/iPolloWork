@@ -1,8 +1,0 @@
-# Disable the external Session uploader in this local fixture.
-- id: session-log-deepseek
-  config:
-    enabled: false
-
-- insert:
-    - id: minimal-checkpoint-observer
-      name: './checkpoint-observer.mjs'

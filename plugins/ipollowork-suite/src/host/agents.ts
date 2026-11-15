@@ -14,9 +14,10 @@ import { COORDINATOR_PRESET } from '../shared/coordinator.ts'
 import { openCoordinator } from './coordinator-entry.ts'
 import { homedir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
+import * as NativeConnection from '@deepseek-ai/dsh-client-connection'
 
 export const name = 'ipollowork-agents'
-export const inject = ['webServer', 'connection', 'connection.authentication', 'credentials', 'storageDomain', 'workspaceRegistry', 'agentPresets', 'sessionController', 'skills', 'tools', 'systemPrompt', 'subagents', 'mcpManager']
+export const inject = ['webServer', 'connection', ...('ConnectionAuthentication' in NativeConnection ? ['connection.authentication'] : []), 'credentials', 'storageDomain', 'workspaceRegistry', 'agentPresets', 'sessionController', 'skills', 'tools', 'systemPrompt', 'subagents', 'mcpManager']
 const API = '/ipollowork-suite/agents'
 const runtime = fileURLToPath(new URL('./agent-runtime.js', import.meta.url))
 

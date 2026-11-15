@@ -1,5 +1,0 @@
-- list "Background jobs":
-  - listitem:
-    - button "Finished 1" [expanded]
-    - button "Clear"
-  - listitem: "bash for _ in $(seq 1 3000); do [ -e .background-job-list.release ] && break; sleep 0.2; done signal: SIGTERM; cancelled by the user {{duration}}"

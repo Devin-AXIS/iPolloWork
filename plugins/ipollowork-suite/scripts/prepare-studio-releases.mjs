@@ -11,13 +11,16 @@ const index = JSON.parse(await readFile(join(catalog, 'index.json'), 'utf8'));
 const releases = [];
 for (const name of ['deepseek-idesign', 'deepseek-ivideo']) {
   const archive = join(resolve(source), `${name}-${version}.tgz`);
-  const entry = path => execFileSync('tar', ['-xOzf', archive, `package/${path}`], { encoding: 'utf8' });
+  const entry = path => execFileSync('tar', ['-xOzf', archive, `package/${path}`], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
   const manifest = JSON.parse(entry('package.json'));
   if (manifest.name !== name || manifest.version !== version || !manifest.dsh?.bundle?.patch)
     throw new Error('Unexpected Studio package metadata');
   const patch = yaml.load(entry(manifest.dsh.bundle.patch.replace(/^\.\//, '')));
   const row = patch.flatMap(item => item.insert ?? []).find(item => item.name === name);
-  if (!row?.inject?.includes('connection.authentication')) throw new Error('Studio archive lacks native authentication');
+  if (!row) throw new Error('Studio archive lacks its native plugin entry');
+  const host = entry('lib/index.js');
+  if (!host.includes('ConnectionAuthentication') || !host.includes('connection.authentication') || !host.includes('admit(req)'))
+    throw new Error('Studio archive lacks host-native owner authentication');
   const sha256 = createHash('sha256').update(await readFile(archive)).digest('hex');
   const file = `${name}-${version}-${sha256.slice(0, 12)}.tgz`;
   const item = index.plugins.find(item => item.name === name);

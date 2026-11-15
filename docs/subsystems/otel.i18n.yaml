@@ -1,7 +1,0 @@
-# Bilingual-pair consistency record for otel.md (docs/i18n/README.md): per heading
-# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
-# After editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write docs/subsystems/otel.md
-/otel-reporting:
-  en: cdeb3f13ccb9f2b4
-  zh: d0bd71c86bf29858

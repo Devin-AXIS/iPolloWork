@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Comptage des jetons",
-    "description": "Estimez l'utilisation du jeton du contexte du modèle pour déterminer le budget pour des fonctions telles que la compression."
-  }
-}

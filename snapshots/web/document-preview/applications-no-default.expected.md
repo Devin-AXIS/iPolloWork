@@ -1,2 +1,0 @@
-- button "Open"
-- button "More ways to open"

@@ -1,6 +1,0 @@
-- dialog "Restore all default shortcuts?":
-  - heading "Restore all default shortcuts?" [level=2]
-  - button "Close confirmation"
-  - paragraph: Restore the default shortcuts for this platform. All modified or removed shortcuts will be restored. Other platforms are unaffected.
-  - button "Cancel"
-  - button "Restore default"

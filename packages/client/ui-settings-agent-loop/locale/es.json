@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Configuración de ejecución del agente",
-    "description": "Configure el número máximo de llamadas a herramientas que se pueden ejecutar simultáneamente."
-  }
-}

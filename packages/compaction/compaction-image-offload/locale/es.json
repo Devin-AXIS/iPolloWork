@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Desinstalar imágenes históricas",
-    "description": "Reemplace las imágenes históricas que excedan el presupuesto de imagen del modelo con referencias de archivos adjuntos y vuelva a intentar la solicitud."
-  }
-}

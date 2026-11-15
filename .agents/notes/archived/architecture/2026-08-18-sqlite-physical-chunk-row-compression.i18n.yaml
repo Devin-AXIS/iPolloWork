@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-18-sqlite-physical-chunk-row-compression.md
-2026-08-18-sqlite-physical-chunk-row-compression.md: 031e9a27575b9e802718dac040f9735335d39d0a
-2026-08-18-sqlite-physical-chunk-row-compression.zh.md: 1bc493c690de12c5eb9805f615cc32280cc3e608

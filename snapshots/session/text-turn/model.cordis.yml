@@ -1,8 +1,0 @@
-# The recorded request header selects the replay route. This keeps model
-# selection in session JSONL instead of duplicating it across manifests.
-
-- id: agent-default-model
-  name: '@deepseek-ai/dsh-agent-default-model'
-  config:
-    provider: !!js process.env.DSH_SNAPSHOT_PROVIDER
-    model: !!js process.env.DSH_SNAPSHOT_MODEL

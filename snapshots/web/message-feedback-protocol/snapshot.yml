@@ -1,7 +1,0 @@
-version: 1
-scenario: message-feedback-protocol
-profile: web
-composition: web-default
-recording: authored
-header:
-  class: web-default

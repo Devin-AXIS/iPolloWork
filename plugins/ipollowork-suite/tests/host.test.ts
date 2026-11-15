@@ -12,7 +12,7 @@ import packageInfo from "../package.json" with { type: "json" };
 import { apply, type HostContext } from "../src/host/index.ts";
 import type { Decision, ToolCall } from "../src/host/management.ts";
 
-test("the route requires native owner authorization and disappears when its plugin unloads", async () => {
+for (const dedicatedDesktop of [false, true]) test(`native authorization and delivery policy (${dedicatedDesktop})`, async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-host-"));
   const anchor = join(dir, "package.json");
   await writeFile(anchor, JSON.stringify({ version: "0.2.2-rc.2" }));
@@ -72,7 +72,7 @@ test("the route requires native owner authorization and disappears when its plug
     workspaceRegistry: { list: () => [] },
     sessionQuery: { readSurface: async () => ({ events: [] }) },
   };
-  apply(ctx, { catalogPath: resolve("catalog/index.json") });
+  apply(ctx, { catalogPath: resolve("catalog/index.json"), dedicatedDesktop });
   assert(!subscriptions.includes("session/event"));
   assert(!subscriptions.includes("agent/created"));
   const server = createServer((request, response) => {
@@ -122,7 +122,7 @@ test("the route requires native owner authorization and disappears when its plug
           async () => ({ kind: "allow" }),
         )
       ).kind,
-      "deny",
+      dedicatedDesktop ? "deny" : "allow",
     );
     for (const dispose of disposers.reverse()) await dispose();
     assert.equal(

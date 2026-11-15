@@ -52,3 +52,18 @@ native/system/test/bin/
 
 # Generated company-signed CUA release record.
 /packages/experimental/cua-macos/cua-helper.json
+
+# Downloaded official DSH source and generated resolution links.
+/.upstream/
+/apps
+/packages
+/vendor
+/native
+/scripts
+/node_modules
+/tsconfig.base.json
+/tsconfig.base.client.json
+/tsconfig.node.base.json
+/vitest.shared.ts
+/integrations/desktop-host/application.yml
+/integrations/desktop-host/assets/mark.svg

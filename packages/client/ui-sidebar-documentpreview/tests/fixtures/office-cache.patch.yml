@@ -1,4 +1,0 @@
-- id: ui-sidebar-documentpreview
-  config:
-    office:
-      maxCachedEntries: 2

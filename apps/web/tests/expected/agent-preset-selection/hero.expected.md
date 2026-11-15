@@ -1,2 +1,0 @@
-- button "Choose workspace": workspace
-- button "Standard mode"

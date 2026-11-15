@@ -1,9 +1,0 @@
-version: 1
-scenario: diff-context
-profile: web
-composition: default
-recording: authored
-header:
-  class: default
-session:
-  source: ../../session/fs-edit/session.v4.jsonl

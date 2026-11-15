@@ -1,9 +1,0 @@
-version: 1
-scenario: bash-abort-row
-profile: web
-composition: acp-default
-recording: authored
-header:
-  class: acp-default
-session:
-  source: ../../acp/cancel-tool-calls/session.v4.jsonl

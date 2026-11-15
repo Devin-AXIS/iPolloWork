@@ -1,5 +1,0 @@
-- menu:
-  - menuitem "Right sidebar View alongside this conversation"
-  - menuitem "Session tab Open beside Chat and Trajectory"
-  - menuitem "Global page Open from the left sidebar"
-  - menuitem "Write your own Describe where you want it"

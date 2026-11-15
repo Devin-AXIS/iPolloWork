@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "agent",
-    "description": "Gérez les instances d'agent, leur contexte d'exécution et leurs événements."
-  }
-}

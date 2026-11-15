@@ -1,3 +1,0 @@
-- listitem:
-  - button "Edit shortcut for New Session"
-  - text: New Session A B

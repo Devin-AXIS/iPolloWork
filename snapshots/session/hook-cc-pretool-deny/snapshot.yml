@@ -1,7 +1,0 @@
-version: 1
-scenario: hook-cc-pretool-deny
-profile: headless
-composition: default
-recording: live
-header:
-  class: default

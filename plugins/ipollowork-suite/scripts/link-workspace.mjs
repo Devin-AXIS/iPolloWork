@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util'
 import { satisfies } from 'semver'
 
 const directory = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const { values } = parseArgs({ options: { root: { type: 'string', default: resolve(directory, '../..') } } })
+const { values } = parseArgs({ options: { root: { type: 'string', default: resolve(directory, '../../.upstream/dsh') } } })
 const root = realpathSync(values.root)
 const manifest = path => JSON.parse(readFileSync(path, 'utf8'))
 if (manifest(join(root, 'package.json')).name !== '@deepseek-ai/dsh-root') throw new Error('Select the iPolloWork DSH repository with --root')

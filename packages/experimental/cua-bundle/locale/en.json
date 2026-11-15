@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Computer use",
-    "description": "Control applications on macOS and Windows. On Windows, npm installations require a separately configured helper.",
-    "detail": "docs/DETAIL.md"
-  }
-}

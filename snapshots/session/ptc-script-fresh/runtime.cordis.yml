@@ -1,4 +1,0 @@
-- id: ptc-runtime
-  config:
-    executionMode: vm-script
-    scriptPersistence: false

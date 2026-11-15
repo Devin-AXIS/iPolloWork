@@ -1,9 +1,0 @@
-version: 1
-scenario: cancel
-profile: acp
-composition: acp-default
-recording: authored
-header:
-  class: acp-default
-replay:
-  override: true

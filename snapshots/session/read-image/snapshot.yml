@@ -1,9 +1,0 @@
-version: 1
-scenario: read-image
-profile: headless
-composition: image
-recording: authored
-header:
-  class: image
-  pin: true
-  toolSchemasSource: text-turn

@@ -1,2 +1,0 @@
-- tree "Search results":
-  - treeitem "Untitled {{workspace}}"

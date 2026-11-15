@@ -1,2 +1,0 @@
-hover=~/Documents/project
-copy=Copy: /home/fixture/Documents/project

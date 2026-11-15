@@ -1,9 +1,0 @@
-version: 1
-scenario: advanced-toolchain-runtime
-profile: headless
-composition: advanced
-recording: authored
-header:
-  class: advanced
-  systemPromptSource: cordis-inspect-jsdoc
-  toolSchemasSource: cordis-inspect-jsdoc

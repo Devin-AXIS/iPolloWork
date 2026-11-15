@@ -1,7 +1,0 @@
-# This scenario adds Ralph over the shared headless composition.
-- insert:
-    - id: tool-ralph
-      name: '@deepseek-ai/dsh-tool-ralph'
-      config:
-        subagentProvider: spawn
-        maxRounds: 64

@@ -1,8 +1,0 @@
-version: 1
-scenario: escalation-rejected
-profile: acp
-composition: acp-default
-recording: live
-header:
-  class: acp-default
-permission: workspace-write

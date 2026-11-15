@@ -1,3 +1,0 @@
-# Exercise the workspace file browser without the document preview.
-- id: ui-sidebar-documentpreview
-  disabled: true

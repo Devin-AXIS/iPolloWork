@@ -1,7 +1,0 @@
-version: 1
-scenario: hook-cc-invalid-matcher
-profile: headless
-composition: default
-recording: authored
-header:
-  class: default

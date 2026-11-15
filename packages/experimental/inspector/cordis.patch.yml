@@ -1,5 +1,0 @@
-# Explicit local debugging overlay; the Host prints its debugging URL.
-
-- insert:
-    - id: experimental-inspector
-      name: './lib/index.js'

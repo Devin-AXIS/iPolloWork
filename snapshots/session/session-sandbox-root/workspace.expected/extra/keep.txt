@@ -1,1 +1,0 @@
-Extra writable directory fixture.

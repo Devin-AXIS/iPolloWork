@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Harness 開発コンテキスト",
-    "description": "Harness のソースディレクトリと Web URL をモデルに伝えます。それらを理由にシステムプロンプトを変更しません。"
-  }
-}

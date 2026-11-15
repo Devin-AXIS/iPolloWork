@@ -1,9 +1,0 @@
-version: 1
-scenario: subagent-list-agents
-profile: sdk
-composition: default
-recording: authored
-header:
-  class: default
-  childSystemPrompts: [1]
-  childToolSchemas: [1]

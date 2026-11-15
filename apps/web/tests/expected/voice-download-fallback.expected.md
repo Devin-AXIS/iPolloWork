@@ -1,4 +1,0 @@
-- alert:
-  - paragraph: "Cannot download model.int8.onnx: the download service returned HTTP 502."
-  - paragraph: Confirm that the download address is available and the proxy can reach the download service, or retry later.
-  - text: "Download source: https://fallback-model-source.example"

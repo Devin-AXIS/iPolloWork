@@ -1,5 +1,0 @@
-- insert:
-    - id: goal-request-capture
-      name: '../manual-compact/capture-requests.mjs'
-      config:
-        path: !!js dshHomePath('goal-requests.jsonl')

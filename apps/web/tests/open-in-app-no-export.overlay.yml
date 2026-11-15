@@ -1,3 +1,0 @@
-# Header ownership must not depend on the optional export contributor.
-- id: session-log-download
-  disabled: true

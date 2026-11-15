@@ -10,6 +10,7 @@ import { ZodError } from "zod";
 import packageInfo from "../../package.json" with { type: "json" };
 import type { CredentialStore } from "../shared/types.ts";
 import { membershipSchema, membershipOrderSchema, membershipCheckoutSchema } from "../shared/membership.ts";
+import { initializeAccountModel } from "./default-model.ts";
 import { mountServiceModels } from "./service-models.ts";
 import { mountOutputContinuation } from "./output-continuation.ts";
 import type { Context } from "@deepseek-ai/cordis";
@@ -51,12 +52,13 @@ import {
   type ToolCall,
   type Decision,
 } from "./management.ts";
+import * as NativeConnection from "@deepseek-ai/dsh-client-connection";
 export { Config };
 export const name = "ipollowork-suite";
 export const inject = [
   "webServer",
   "connection",
-  "connection.authentication",
+  ...("ConnectionAuthentication" in NativeConnection ? ["connection.authentication"] : []),
   "credentials",
   "pluginManager",
   "profileContext",
@@ -234,7 +236,7 @@ async function relayDownload(
 export function apply(ctx: HostContext, input: ConfigInput): void {
   const config = resolveConfig(input);
   ctx.on("tools/pre-execute", async (call, next) =>
-    blocksSuiteManagement(call, ctx.fiber.entry?.id)
+    config.dedicatedDesktop && blocksSuiteManagement(call, ctx.fiber.entry?.id)
       ? MANAGEMENT_DENIAL
       : next(),
   );
@@ -263,7 +265,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     );
   }
   ctx.inject?.(["agents"], mountOutputContinuation);
-  ctx.inject?.(["llm", "agentDefaultModel", "sessionController"], (scope) => {
+  ctx.inject?.(["llm", "agentDefaultModel", "sessionController", "settings", "credentials"], (scope) => {
     if (!ctx.webServer.getOrigin) {
       services.modelStatus = "unsupported";
       return;
@@ -276,12 +278,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       },
       services,
       account,
-      async (providers) => {
-        const current = scope.agentDefaultModel.currentSelection();
-        if (providers.includes(current.provider)) return;
-        const provider = providers[0];
-        if (provider !== undefined) await scope.sessionController.initializeDefaultModel(provider);
-      },
+      providers => initializeAccountModel(scope, providers),
     );
     void refreshModels().catch((error) => {
       services.modelStatus = "error";

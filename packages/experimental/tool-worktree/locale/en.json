@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Git worktrees",
-    "description": "Ask for work on a new branch, and the agent creates a separate Git worktree and continues there, leaving your current checkout as it is.",
-    "detail": "docs/DETAIL.md"
-  }
-}

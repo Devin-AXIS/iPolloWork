@@ -1,1 +1,0 @@
-- text: {{throughput}} tok/s Cache hit 98%

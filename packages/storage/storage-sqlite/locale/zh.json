@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "SQLite 存储",
-    "description": "为 Harness 存储服务提供 SQLite 键值存储后端。"
-  }
-}

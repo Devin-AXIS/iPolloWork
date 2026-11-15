@@ -1,5 +1,0 @@
-- insert:
-    - id: ptc-runtime
-      name: '@deepseek-ai/dsh-ptc-runtime-node'
-    - id: ptc-cancel-fixture
-      name: './cancel.mjs'

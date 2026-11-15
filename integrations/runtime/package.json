@@ -1,0 +1,19 @@
+{
+  "name": "@ipollo/dsh-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.9.0"
+  },
+  "scripts": {
+    "web": "dsh --profile web",
+    "headless": "dsh --profile headless",
+    "plugin": "dsh plugin",
+    "check:pin": "node check-pin.mjs"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-rc.3"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

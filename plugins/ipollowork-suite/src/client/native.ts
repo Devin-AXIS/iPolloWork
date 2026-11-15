@@ -6,8 +6,12 @@ interface SharingPreparation { readonly connected?:boolean; readonly error?:stri
 export interface SlotOptions<P> {
   name: string; locale?: string; id?: string; key?: string; order?: number; priority?: number; label?: () => string;
   inject?: () => Record<string, unknown>;
+  children?: Record<string, { kind: 'single'; scope: 'session' }>;
 }
 export interface ClientContext {
+  inject(dependencies: readonly ['remote.liveshareShares'], callback: (scope: {
+    remote: { liveshareShares: import('./sharing/owner-shares.ts').OwnerShares }
+  }) => void): unknown;
   configForms: import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForms;
   provide(name: 'ipolloConnections', value: import('../shared/connections.ts').ConnectionManager): void;
   provide(name: 'ipolloData', value: import('../shared/app-data.ts').IpolloData): void;
@@ -20,7 +24,7 @@ export interface ClientContext {
   locale: { getSnapshot(): { active?: string; locale?: string; language?: string } | string; subscribe(listener: () => void): () => void };
   remote: { $on(event: string, listener: () => void): () => void };
   on(name: string, listener: () => void): () => void;
-  on(name: 'liveshare/prepare-owner', listener: (signal: AbortSignal, next: () => Promise<SharingPreparation>) => Promise<SharingPreparation>): () => void;
+  on(name: 'ipollowork/prepare-share', listener: (signal: AbortSignal, next: () => Promise<SharingPreparation>) => Promise<SharingPreparation>): () => void;
   layout: { selectPanel(id: string): void };
   uiWorkspace: {
     openSession(sessionId: string): void;

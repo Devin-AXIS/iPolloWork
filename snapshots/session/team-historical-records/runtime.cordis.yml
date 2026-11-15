@@ -1,3 +1,0 @@
-- insert:
-    - id: team-historical-records-fixture
-      name: ../../../packages/team/agent-team/tests/historical-records-fixture.ts

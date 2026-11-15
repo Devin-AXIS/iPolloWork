@@ -1,4 +1,0 @@
-- text: Waiting for approval
-- group "Approval details": "Allow this operation with workspace-write permissions: Create the file requested by the user"
-- button "Reject"
-- button "Allow once"

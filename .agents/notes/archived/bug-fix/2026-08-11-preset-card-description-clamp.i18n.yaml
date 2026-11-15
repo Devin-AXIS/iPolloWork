@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write
-2026-08-11-preset-card-description-clamp.md: b9088b46184cde6f000fa39afbfe2d1145137b24
-2026-08-11-preset-card-description-clamp.zh.md: a7a3c4f26a55405715fe017ec3a7deb164432b0e

@@ -1,5 +1,0 @@
-# Snapshot-only durability-failure overlay. The child turn's ordinary flush
-# succeeds; the provider-owned final confirmation fails deterministically.
-- insert:
-    - id: subagent-durability-failure
-      name: '../../../packages/test-support/session-snapshot/tests/fixtures/subagent-durability-failure.ts'

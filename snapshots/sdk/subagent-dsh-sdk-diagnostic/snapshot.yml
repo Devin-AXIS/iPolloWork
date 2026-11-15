@@ -1,8 +1,0 @@
-version: 1
-scenario: subagent-dsh-sdk-diagnostic
-profile: sdk
-composition: sdk-dsh-sdk-diagnostic
-recording: live
-header:
-  class: sdk-dsh-sdk-diagnostic
-  pin: true

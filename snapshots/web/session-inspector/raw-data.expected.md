@@ -1,5 +1,0 @@
-- $:  Object: expanded
-- data:  Object: expanded
-- content:  Array(1): expanded
-- 0:  Object: expanded
-- source:  Object: expanded

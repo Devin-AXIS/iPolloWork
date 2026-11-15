@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Machine translation of reasoning",
-    "description": "Translates expanded Think rows into your chosen language as the agent writes them, and View original switches back.",
-    "detail": "docs/DETAIL.md"
-  }
-}

@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Conversation-following titles",
-    "description": "Writes a session's title from all of your messages and updates it when the main task changes, instead of only from the first message.",
-    "detail": "docs/DETAIL.md"
-  }
-}

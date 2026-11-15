@@ -1,9 +1,0 @@
-version: 1
-scenario: workflow-run
-profile: web
-composition: default
-recording: authored
-header:
-  class: default
-session:
-  source: ../../session/workflow-run/session.v4.jsonl

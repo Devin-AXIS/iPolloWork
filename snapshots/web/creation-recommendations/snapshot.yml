@@ -1,8 +1,0 @@
-version: 1
-scenario: creation-recommendations
-profile: web
-composition: web-creation-recommendations
-recording: authored
-header:
-  class: web-creation-recommendations
-  pin: true

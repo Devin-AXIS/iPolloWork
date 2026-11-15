@@ -856,10 +856,10 @@ export function mountEnterprise(
       CollaborationMark,
     ),
   );
-  ctx.slots.inject("liveshare.share.audience", () =>
+  ctx.slots.inject("ipollowork.share.audience", () =>
     ctx.slots.register(
       {
-        name: "liveshare.share.audience",
+        name: "ipollowork.share.audience",
         id: "ipollowork-recipients",
         inject: props,
       },

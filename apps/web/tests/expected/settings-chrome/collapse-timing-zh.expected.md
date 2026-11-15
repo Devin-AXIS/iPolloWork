@@ -1,3 +1,0 @@
-- menu:
-  - menuitem "回答结束后"
-  - menuitem "下次有新消息时"

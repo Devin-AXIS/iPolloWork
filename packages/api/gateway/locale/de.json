@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Remote-Call-Gateway",
-    "description": "Empfangen Sie den Schnittstellenaufruf des Clients und verteilen Sie ihn an den entsprechenden Dienst."
-  }
-}

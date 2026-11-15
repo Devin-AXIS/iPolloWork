@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "GitHub change requests",
-    "description": "Read GitHub change requests for the forge registry through the GitHub CLI on the host."
-  }
-}

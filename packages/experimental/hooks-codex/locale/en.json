@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Codex hooks",
-    "description": "Run hooks from Codex hooks.json at Harness interception points."
-  }
-}

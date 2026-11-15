@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Área restrita do processo SSH",
-    "description": "Crie comandos sandbox para processos POSIX remotos por meio do auxiliar SSH compartilhado."
-  }
-}

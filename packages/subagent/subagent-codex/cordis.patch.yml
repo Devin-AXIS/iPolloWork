@@ -1,9 +1,0 @@
-- insert:
-    - id: subagent-codex
-      name: '@deepseek-ai/dsh-subagent-codex'
-    - id: tool-subagent-codex
-      name: '@deepseek-ai/dsh-tool-subagent'
-      config:
-        provider: codex
-        toolName: subagent_codex
-        maxDepth: provider-managed

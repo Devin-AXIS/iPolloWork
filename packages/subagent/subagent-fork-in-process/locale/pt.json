@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Herdar back-end do agente filho do contexto",
-    "description": "Crie um agente filho usando um histórico da sessão pai."
-  }
-}

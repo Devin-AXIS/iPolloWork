@@ -1,7 +1,0 @@
-version: 1
-scenario: subagent-max-tokens-partial
-profile: headless
-composition: default
-recording: authored
-header:
-  class: default

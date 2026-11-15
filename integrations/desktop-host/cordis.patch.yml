@@ -1,0 +1,10 @@
+- id: ui-settings-account
+  disabled: true
+- id: ui-account-notifications
+  disabled: true
+- insert:
+    - id: ipollowork-application
+      name: '@deepseek-ai/cordis-plugin-include'
+      group: true
+      config:
+        path: application.yml

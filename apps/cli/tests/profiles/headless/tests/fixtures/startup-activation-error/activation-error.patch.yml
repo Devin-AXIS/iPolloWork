@@ -1,4 +1,0 @@
-# Unrelated activation failure over the shipped headless profile.
-- insert:
-    - id: activation-error
-      name: ./activation-error.mjs

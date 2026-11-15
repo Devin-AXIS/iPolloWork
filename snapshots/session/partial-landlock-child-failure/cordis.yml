@@ -1,9 +1,0 @@
-# Live counterpart for the runner-classification snapshot overlay. It replaces
-# only the sandbox provider; authored scenarios are skipped in record mode.
-- id: sandbox
-  name: '@deepseek-ai/dsh-sandbox-local'
-  disabled: true
-
-- insert:
-    - id: partial-landlock-sandbox
-      name: '../../../packages/test-support/session-snapshot/tests/fixtures/partial-landlock-sandbox.ts'

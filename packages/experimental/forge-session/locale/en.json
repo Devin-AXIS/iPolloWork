@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Session change requests",
-    "description": "Bind change requests to the Session that created, pushed, or tracked them, and watch their status."
-  }
-}

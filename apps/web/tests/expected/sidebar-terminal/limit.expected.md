@@ -1,1 +1,0 @@
-- alert: "Terminal error: The terminal limit has been reached. Close unused terminals and try again. Exited terminals also count toward the limit."

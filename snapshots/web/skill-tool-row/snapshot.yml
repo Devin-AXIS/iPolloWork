@@ -1,9 +1,0 @@
-version: 1
-scenario: skill-tool-row
-profile: web
-composition: default
-recording: authored
-header:
-  class: skill
-session:
-  source: ../../session/skill-load/session.v4.jsonl

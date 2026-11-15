@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Terminal-Steuerungsschnittstelle",
-    "description": "Bietet Clients die Möglichkeit, Sitzungsterminals zu erstellen, einzugeben, zu lesen und wiederherzustellen."
-  }
-}

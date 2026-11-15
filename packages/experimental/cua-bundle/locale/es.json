@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Uso de la computadora",
-    "description": "Controla aplicaciones en macOS y Windows. Si instalas DSH con npm en Windows, debes configurar el programa auxiliar por separado.",
-    "detail": "docs/DETAIL.md"
-  }
-}

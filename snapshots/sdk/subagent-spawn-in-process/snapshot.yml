@@ -1,7 +1,0 @@
-version: 1
-scenario: subagent-spawn-in-process
-profile: sdk
-composition: sdk-default
-recording: authored
-header:
-  class: sdk-default

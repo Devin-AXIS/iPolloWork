@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "SQLite ストレージ",
-    "description": "Harness のストレージサービスに SQLite のキーと値の保存バックエンドを提供します。"
-  }
-}

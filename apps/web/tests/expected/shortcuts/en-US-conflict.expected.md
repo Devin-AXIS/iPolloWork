@@ -1,1 +1,0 @@
-- alert: Already used by “Open keyboard shortcuts”

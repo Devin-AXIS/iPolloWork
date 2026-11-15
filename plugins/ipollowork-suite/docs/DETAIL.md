@@ -1,4 +1,4 @@
-# iPolloWork suite
+# iPolloWork
 
 Adds iPolloWork branding, a gradient composer, a curated plugin market, and an optional account connection. DSH continues to manage sessions, models, and installed plugins.
 

@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Computernutzung",
-    "description": "Apps unter macOS und Windows steuern. Bei der Installation über npm unter Windows muss das Hilfsprogramm separat eingerichtet werden.",
-    "detail": "docs/DETAIL.md"
-  }
-}

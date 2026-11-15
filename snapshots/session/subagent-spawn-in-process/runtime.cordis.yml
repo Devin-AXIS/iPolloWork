@@ -1,3 +1,0 @@
-- insert:
-    - id: subagent-spawn-settlement-order
-      name: './settlement-order.mjs'

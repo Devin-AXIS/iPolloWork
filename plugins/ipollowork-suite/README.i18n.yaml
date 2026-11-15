@@ -14,9 +14,12 @@
 /ipollowork-dsh-suite/configuration:
   en: 203a62ebc431abb6
   zh: 00d53714bdeba474
+/ipollowork-dsh-suite/official-integration:
+  en: 45e3522c987d63e3
+  zh: 5a9e1aa789b587f2
 /ipollowork-dsh-suite/account-behavior:
-  en: 6b6205ceae47a300
-  zh: 3aa0a5873e7ed9b7
+  en: d6d213449d437cdb
+  zh: 8792c9c4ef75d5f3
 /ipollowork-dsh-suite/limits:
   en: f76a3913345032b4
   zh: 18ae5b87b6b86629

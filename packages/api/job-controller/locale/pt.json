@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Interface de observação de tarefas em segundo plano",
-    "description": "Fornece continuamente o status e a saída de tarefas em segundo plano ao cliente."
-  }
-}

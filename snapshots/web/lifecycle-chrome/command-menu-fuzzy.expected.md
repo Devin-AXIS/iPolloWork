@@ -1,3 +1,0 @@
-- listbox "Trigger suggestions":
-  - text: Commands
-  - option "Compact Compact older conversation history" [selected]

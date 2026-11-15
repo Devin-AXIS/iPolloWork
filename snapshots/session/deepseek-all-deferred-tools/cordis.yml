@@ -1,3 +1,0 @@
-- insert:
-    - id: messages-all-deferred-tools-snapshot
-      name: '../../../packages/llm/llm-deepseek/tests/fixtures/all-deferred-tools.ts'

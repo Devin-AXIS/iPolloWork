@@ -1,5 +1,0 @@
-- group "New Session":
-  - button "Restore default"
-  - button "Remove"
-  - button "Press a shortcut"
-  - text: Already used by “Open reference menu”

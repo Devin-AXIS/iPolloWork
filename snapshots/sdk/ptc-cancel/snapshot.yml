@@ -1,7 +1,0 @@
-version: 1
-scenario: ptc-cancel
-profile: sdk
-composition: ptc
-recording: authored
-header:
-  class: ptc

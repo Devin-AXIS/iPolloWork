@@ -1,4 +1,0 @@
-# Keep late settlement notices from adding platform-dependent parent turns.
-- insert:
-    - id: await-subagents
-      name: '../../../packages/test-support/session-snapshot/tests/fixtures/subagent-settlement-barrier.ts'

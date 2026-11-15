@@ -1,1 +1,0 @@
-Original global instruction A.

@@ -1,2 +1,0 @@
-{"type":"session","id":"{{session:1}}","createdAt":17,"cwd":"/rec/authored-cwd","delegationDepth":0}
-{"type":"turn/end","data":{"error":"model exploded"}}

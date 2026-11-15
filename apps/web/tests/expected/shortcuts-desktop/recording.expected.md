@@ -1,4 +1,0 @@
-- group "New Session":
-  - button "Restore default"
-  - button "Remove"
-  - button "Press a shortcut"

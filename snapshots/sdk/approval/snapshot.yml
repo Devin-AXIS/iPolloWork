@@ -1,9 +1,0 @@
-version: 1
-scenario: approval
-profile: sdk
-composition: default
-recording: authored
-header:
-  class: default
-workspace:
-  final: true

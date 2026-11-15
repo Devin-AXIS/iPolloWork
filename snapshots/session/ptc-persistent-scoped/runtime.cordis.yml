@@ -1,5 +1,0 @@
-# Replays the ptc-persistent Session with the scoped REPL.
-- id: ptc-runtime
-  config:
-    executionMode: persistent-in-memory
-    replScoped: true

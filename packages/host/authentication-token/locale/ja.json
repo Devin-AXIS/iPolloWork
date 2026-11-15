@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Token 認証",
-    "description": "起動 Token をブラウザーのアクセス権と交換し、署名付き Cookie でリクエストを認証します。"
-  }
-}

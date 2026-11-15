@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Token-Authentifizierung",
-    "description": "Tauscht ein Start-Token gegen Browserzugriff ein und authentifiziert Anfragen mit signierten Cookies."
-  }
-}

@@ -1,9 +1,0 @@
-# Product headless profile patch for the keyless CLI snapshots.
-- id: agent-default-model
-  config:
-    provider: cli-mock
-    model: cli-mock
-
-- insert:
-    - id: cli-mock-llm
-      name: '../../../../../../../packages/test-support/loader-smoke/tests/fixtures/cli-mock-llm.ts'

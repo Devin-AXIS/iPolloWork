@@ -1,9 +1,0 @@
-version: 1
-scenario: message-actions
-profile: web
-composition: web-default
-recording: authored
-header:
-  class: web-default
-session:
-  source: ../seeded-history/session.v3.jsonl

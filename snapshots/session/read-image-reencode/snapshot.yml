@@ -1,7 +1,0 @@
-version: 1
-scenario: read-image-reencode
-profile: headless
-composition: image
-recording: authored
-header:
-  class: image

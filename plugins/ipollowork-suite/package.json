@@ -1,10 +1,10 @@
 {
   "name": "@ipollo/dsh-suite",
-  "version": "0.1.16",
+  "version": "0.1.27",
   "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
   "icon": "./assets/mark.svg",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN LICENSE",
   "engines": {
     "node": ">=24.9.0",
     "dsh": ">=0.2.2-rc.3 <0.2.3-0"
@@ -20,6 +20,7 @@
     "./agents": "./lib/host/agents.js",
     "./agent-runtime": "./lib/host/agent-runtime.js",
     "./im": "./lib/host/im.js",
+    "./onboarding": "./lib/host/onboarding.js",
     "./services": {
       "types": "./lib/services.d.ts"
     }
@@ -36,8 +37,13 @@
     "vendor/dsh-im/README.md",
     "catalog/index.json",
     "catalog/bundled-releases.json",
-    "catalog/packages/deepseek-idesign-1.0.0-beta.21-7eea1735ca17.tgz",
-    "catalog/packages/deepseek-ivideo-1.0.0-beta.21-9f509b3c4525.tgz"
+    "src/client/onboarding/LICENSE",
+    "src/client/sharing/LICENSE",
+    "catalog/packages/deepseek-idesign-1.0.0-beta.22-51416d694430.tgz",
+    "catalog/packages/deepseek-ivideo-1.0.0-beta.22-e5f044d93ee4.tgz",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSES/MIT-legacy.txt"
   ],
   "dsh": {
     "bundle": {
@@ -59,8 +65,7 @@
         "@deepseek-ai/dsh-api-workspace-controller",
         "@deepseek-ai/dsh-client-ui-context-menu",
         "@deepseek-ai/dsh-api-session-controller",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-settings-account"
+        "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
   },
@@ -89,14 +94,20 @@
     "@deepseek-ai/dsh-fs": "0.2.2-rc.3",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.3",
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-settings-account": "0.2.2-rc.3",
     "@deepseek-ai/dsh-error": "0.2.2-rc.3",
     "@deepseek-ai/dsh-experimental-liveshare": "0.2.2-rc.3",
     "@deepseek-ai/dsh-plugin-market-index": "0.2.2-rc.3",
     "@deepseek-ai/dsh-tool-subagent": "0.2.2-rc.3",
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
     "@deepseek-ai/schemastery": "3.19.0",
-    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-credentials": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-brand": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-typert-protocol": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-store": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-settings": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-plugin-manager": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-connection": "0.2.2-rc.3"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "0.2.2-rc.3",

@@ -1,8 +1,0 @@
-version: 1
-scenario: product-subagent-codex
-profile: headless
-composition: product-subagent-codex
-recording: authored
-header:
-  class: product-subagent-codex
-  pin: true

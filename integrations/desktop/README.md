@@ -1,0 +1,11 @@
+# iPolloWork desktop
+
+English | [中文](README.zh.md)
+
+This package owns iPolloWork's Electron shell, email sign-in, branding and distribution. It launches the official DSH profile through [the desktop host](../desktop-host/README.md). The Agent loop, tools, sessions and credentials remain official DSH services. Product account, onboarding, sharing and mandatory-plugin behavior live in [the suite](../../plugins/ipollowork-suite/README.md).
+
+DSH dependencies are built from the exact official source revision in [the runtime pin](../runtime/upstream.json), without changes under `packages/` or `apps/`. The npm release with the same version predates the source authentication API; do not mix its packages into the desktop. `Resources/dsh` contains ordinary physical Node dependencies, so DSH needs no product-specific module loader changes.
+
+From the repository root, run `npm run setup:build`, then run `node integrations/desktop/run.mjs package-target.ts mac-arm64 --dir --unsigned`. Build output lives in `.desktop-build/`. The package uses the verified official dependency cache; it is not a separate npm installation target. Signed distribution additionally requires the platform signing configuration.
+
+There is no old iPolloWork profile conversion or downgrade layer. Files and account credentials remain owned by the configured DSH home. The original DeepSeek Harness MIT license is retained in `LICENSE`; product changes are maintained here, independently from the official app tree.

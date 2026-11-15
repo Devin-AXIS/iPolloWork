@@ -1,6 +1,0 @@
-# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
-# side as of the last confirmed-consistent state. Both languages carry equal authority;
-# after editing either side, bring the other along and re-record with:
-#   pnpm run verify-translation-pairing --write
-2026-08-18-web-home-path-tilde.md: 108674740c804a42ec3b0491505186215a9d9fcd
-2026-08-18-web-home-path-tilde.zh.md: 1f742158f62b9b7fbb8eae8be35c13adc95f3a09

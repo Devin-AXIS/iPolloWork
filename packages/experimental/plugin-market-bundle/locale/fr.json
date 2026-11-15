@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Index de plugins personnalisés",
-    "description": "Ajoute à « Plugins » un onglet « Découvrez » où vous parcourez et installez des plugins provenant des index de plugins que vous ajoutez.",
-    "detail": "docs/DETAIL.md"
-  }
-}

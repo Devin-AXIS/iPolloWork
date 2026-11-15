@@ -1,5 +1,0 @@
-- dialog "Exporting Session":
-  - heading "Exporting Session" [level=2]
-  - button "Close"
-  - paragraph: "Session: open-app-menu-foreground Preparing a ZIP containing the selected Session, its sub-Sessions, and attachments."
-  - button "Close"

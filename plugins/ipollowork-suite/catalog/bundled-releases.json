@@ -3,15 +3,15 @@
   "plugins": [
     {
       "name": "deepseek-idesign",
-      "version": "1.0.0-beta.21",
-      "file": "deepseek-idesign-1.0.0-beta.21-7eea1735ca17.tgz",
-      "sha256": "7eea1735ca170b708ca673c6eb6b0518260c2c45442afba40e0823f53b2c8a0a"
+      "version": "1.0.0-beta.22",
+      "file": "deepseek-idesign-1.0.0-beta.22-51416d694430.tgz",
+      "sha256": "51416d694430e7cd094c11cef0ffc7e36c6b5f946399cde75b0324af4e59eff9"
     },
     {
       "name": "deepseek-ivideo",
-      "version": "1.0.0-beta.21",
-      "file": "deepseek-ivideo-1.0.0-beta.21-9f509b3c4525.tgz",
-      "sha256": "9f509b3c45254bcfcacaa75a2e617546e747854a3a21398c5b931cd8a76f9729"
+      "version": "1.0.0-beta.22",
+      "file": "deepseek-ivideo-1.0.0-beta.22-e5f044d93ee4.tgz",
+      "sha256": "e5f044d93ee420c8a7abb2dfd590be71c8a012bec15a60d38b32d69d45959186"
     }
   ]
 }

@@ -1,3 +1,0 @@
-- text: sk-01234***************************
-- button "Show secret"
-- text: is the key for this task.

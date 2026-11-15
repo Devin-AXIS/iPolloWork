@@ -1,9 +1,0 @@
-version: 1
-scenario: compaction-recovery
-profile: headless
-composition: compaction-recovery
-recording: authored
-header:
-  class: compaction-recovery
-  pin: true
-  changes: 1

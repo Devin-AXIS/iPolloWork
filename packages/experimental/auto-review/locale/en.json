@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Auto authorization review",
-    "description": "Adds an Auto review access mode: before each tool call, a model checks it against what you asked for, runs allowed calls at once, and holds denied calls for your approval.",
-    "detail": "docs/DETAIL.md"
-  }
-}

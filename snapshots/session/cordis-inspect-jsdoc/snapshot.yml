@@ -1,8 +1,0 @@
-version: 1
-scenario: cordis-inspect-jsdoc
-profile: headless
-composition: advanced
-recording: authored
-header:
-  class: advanced
-  pin: true

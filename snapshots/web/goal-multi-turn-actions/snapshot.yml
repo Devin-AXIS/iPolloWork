@@ -1,9 +1,0 @@
-version: 1
-scenario: goal-multi-turn-actions
-profile: web
-composition: web-default
-recording: live
-header:
-  class: web-default
-replay:
-  override: true

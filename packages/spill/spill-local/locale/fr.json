@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Stockage local des résultats longs",
-    "description": "Enregistrez les résultats de l'outil trop longs dans un fichier local spécifique à la session."
-  }
-}

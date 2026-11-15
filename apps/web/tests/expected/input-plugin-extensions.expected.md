@@ -1,5 +1,0 @@
-- textbox "Describe what you want to build, / commands, @ files or sessions":
-  - paragraph: Draft
-- button "Cancel activity"
-- button "Insert result"
-- button "Send message"

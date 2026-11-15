@@ -1,7 +1,0 @@
-version: 1
-scenario: handshake
-profile: acp
-composition: acp-default
-recording: authored
-header:
-  class: acp-default

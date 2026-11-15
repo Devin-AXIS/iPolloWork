@@ -1,1 +1,0 @@
-The replacement line is deliberately longer than the configured sixty-four byte diff-basis bound.

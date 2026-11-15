@@ -1,9 +1,0 @@
-version: 1
-scenario: fs-delete-recreate
-profile: headless
-composition: default
-recording: live
-header:
-  class: default
-workspace:
-  final: true

@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Bash-Sandbox-Ausführung",
-    "description": "Führen Sie Bash-Befehle innerhalb der aktuellen Sandbox-Berechtigungen aus."
-  }
-}

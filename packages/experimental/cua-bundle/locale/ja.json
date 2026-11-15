@@ -1,7 +1,0 @@
-{
-  "meta": {
-    "title": "Computer Use",
-    "description": "macOS と Windows のアプリを操作できます。Windows で npm から DSH をインストールした場合は、ヘルパーを別途設定してください。",
-    "detail": "docs/DETAIL.md"
-  }
-}

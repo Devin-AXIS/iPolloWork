@@ -49,7 +49,7 @@ test('the default market shows Design and Video first without installing or enab
   const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'zh', 1048576)
   assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
   for (const item of state.items.slice(0, 2)) {
-    assert.equal(item.version, '1.0.0-beta.21')
+    assert.equal(item.version, '1.0.0-beta.22')
     assert.equal(item.categoryTitle, '创作')
     assert.equal(item.compatible, true)
     assert.equal(item.installed, false)
@@ -65,7 +65,7 @@ test('a custom operator catalog keeps its declared source for the same package v
     const path = join(dir, 'index.json')
     await writeFile(path, await readFile('catalog/index.json'))
     const state = await readMarket(path, { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576)
-    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.21', 'deepseek-ivideo@1.0.0-beta.21'])
+    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.22', 'deepseek-ivideo@1.0.0-beta.22'])
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
@@ -86,12 +86,17 @@ test('bundled installation specs use a retained content-addressed cache when the
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
 
-test('shipped Studio bundles declare the authentication dependency used by editor assets', async () => {
+test('shipped Studio bundles select their host authentication API for editor assets', async () => {
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as { plugins: { name: string; file: string }[] }
   for (const release of releases.plugins) {
     const document = execFileSync('tar', ['-xOzf', join('catalog/packages', release.file), 'package/cordis.patch.yml'], { encoding: 'utf8' })
     const patch = yaml.load(document) as { insert: { name: string; inject?: string[] }[] }[]
     const row = patch.flatMap(item => item.insert).find(item => item.name === release.name)
-    assert(row?.inject?.includes('connection.authentication'))
+    assert(row)
+    assert(!row.inject?.includes('connection.authentication'))
+    const host = execFileSync('tar', ['-xOzf', join('catalog/packages', release.file), 'package/lib/index.js'], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 })
+    assert(host.includes('ConnectionAuthentication'))
+    assert(host.includes('connection.authentication'))
+    assert(host.includes('admit(req)'))
   }
 })

@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Berichterstattung über Produktnutzungsvorfälle",
-    "description": "Melden Sie bestimmte Produktnutzungsereignisse über OpenTelemetry an den konfigurierten Dienst."
-  }
-}

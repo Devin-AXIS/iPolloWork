@@ -1,9 +1,0 @@
-version: 1
-scenario: read-image-attachment-path
-profile: headless
-composition: image
-recording: authored
-header:
-  class: image
-replay:
-  override: true

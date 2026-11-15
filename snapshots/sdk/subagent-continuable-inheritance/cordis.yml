@@ -1,6 +1,0 @@
-# Policy-inheritance overlay: the root session is switched to read-only at
-# creation (the UI Access switch equivalent), so a continuable background
-# child must inherit that override instead of the deployment default.
-- insert:
-    - id: parent-sandbox-override
-      name: '../../../packages/test-support/session-snapshot/tests/fixtures/parent-sandbox-override.ts'

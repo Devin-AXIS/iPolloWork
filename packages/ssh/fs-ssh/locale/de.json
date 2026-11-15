@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "SSH-Dateisystem",
-    "description": "Greifen Sie über den gemeinsam genutzten POSIX-SSH-Helfer auf Remote-Dateien zu."
-  }
-}

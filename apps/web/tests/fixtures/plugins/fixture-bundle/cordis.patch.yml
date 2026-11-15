@@ -1,8 +1,0 @@
-# Web e2e fixture bundle with independently localized plugin exports.
-- insert:
-    - id: fixture-row
-      name: '@fixture/bundle'
-    - id: fixture-search
-      name: '@fixture/bundle/search'
-    - id: fixture-review
-      name: '@fixture/bundle/review'

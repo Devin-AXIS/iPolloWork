@@ -45,19 +45,19 @@ jobs:
         id: preflight
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node apps/desktop-publisher/src/preflight-desktop-publish.mjs
+        run: node integrations/publisher/src/preflight-desktop-publish.mjs
       - uses: pnpm/action-setup@v5.0.0
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: '24'
-      - run: pnpm install --frozen-lockfile
+      - run: npm run setup
       - name: Resolve original package and machine
         id: route
         env:
           GH_TOKEN: ${{ github.token }}
           DESKTOP_PUBLISH_RUNNERS: ${{ vars.DESKTOP_PUBLISH_RUNNERS }}
           DESKTOP_PACKAGE_ATTEMPT: ${{ steps.preflight.outputs.attempt }}
-        run: node --import tsx apps/desktop-publisher/src/resolve-desktop-publish-ci.ts
+        run: node --import tsx integrations/publisher/src/resolve-desktop-publish-ci.ts
 
   prepare:
     needs: route
@@ -90,21 +90,21 @@ jobs:
           node-version: '24'
       - name: Check local publication configuration before dependency installation
         working-directory: desktop-publisher
-        run: node apps/desktop-publisher/src/preflight-desktop-publish-local.mjs
-      - run: pnpm install --frozen-lockfile
+        run: node integrations/publisher/src/preflight-desktop-publish-local.mjs
+      - run: npm run setup
         working-directory: desktop-publisher
       - name: Resolve retained package and approval environment
         id: local
         working-directory: desktop-publisher
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node --import tsx apps/desktop-publisher/src/resolve-retained-desktop-publish-ci.ts
+        run: node --import tsx integrations/publisher/src/resolve-retained-desktop-publish-ci.ts
       - name: Verify local package without upload credentials
         id: check
         working-directory: desktop-publisher
         env:
           DESKTOP_PUBLISH_ROUTE: ${{ steps.local.outputs.route }}
-        run: node --import tsx apps/desktop/scripts/publish-desktop-ci.ts --check
+        run: node --import tsx integrations/desktop/scripts/publish-desktop-ci.ts --check
 
   publish:
     name: Approve ${{ needs.prepare.outputs.label }}
@@ -135,20 +135,20 @@ jobs:
           node-version: '24'
       - name: Check local publication configuration before dependency installation
         working-directory: desktop-publisher
-        run: node apps/desktop-publisher/src/preflight-desktop-publish-local.mjs
-      - run: pnpm install --frozen-lockfile
+        run: node integrations/publisher/src/preflight-desktop-publish-local.mjs
+      - run: npm run setup
         working-directory: desktop-publisher
       - name: Verify local package without upload credentials
         id: check
         working-directory: desktop-publisher
-        run: node --import tsx apps/desktop/scripts/publish-desktop-ci.ts --check
+        run: node --import tsx integrations/desktop/scripts/publish-desktop-ci.ts --check
       - name: Read machine GitHub App key
         if: needs.prepare.outputs.preset == 'production'
         id: key
         env:
           APP_KEY_FILE: ${{ steps.check.outputs.app-key-file }}
         working-directory: desktop-publisher
-        run: node apps/desktop/scripts/read-desktop-app-key.mjs
+        run: node integrations/desktop/scripts/read-desktop-app-key.mjs
       - name: Create short-lived tag token
         if: needs.prepare.outputs.preset == 'production'
         id: app
@@ -164,7 +164,7 @@ jobs:
         working-directory: desktop-publisher
         env:
           DESKTOP_TAG_TOKEN: ${{ steps.app.outputs.token }}
-        run: node --import tsx apps/desktop/scripts/publish-desktop-ci.ts --publish
+        run: node --import tsx integrations/desktop/scripts/publish-desktop-ci.ts --publish
       - name: Retain publication audit
         continue-on-error: true
         if: always() && steps.publish.outputs.record != ''
@@ -202,13 +202,13 @@ jobs:
           node-version: '24'
       - name: Check local publication configuration
         working-directory: website-publisher
-        run: node apps/desktop-publisher/src/preflight-desktop-publish-local.mjs
-      - run: pnpm install --frozen-lockfile
+        run: node integrations/publisher/src/preflight-desktop-publish-local.mjs
+      - run: npm run setup
         working-directory: website-publisher
       - name: Upload website installer
         id: website
         working-directory: website-publisher
-        run: node --import tsx apps/desktop-publisher/src/publish-website-ci.ts upload
+        run: node --import tsx integrations/publisher/src/publish-website-ci.ts upload
       - name: Archive website publication diagnostics
         if: always() && steps.website.outputs.record != ''
         continue-on-error: true
@@ -246,13 +246,13 @@ jobs:
           node-version: '24'
       - name: Check local publication configuration
         working-directory: website-publisher
-        run: node apps/desktop-publisher/src/preflight-desktop-publish-local.mjs
-      - run: pnpm install --frozen-lockfile
+        run: node integrations/publisher/src/preflight-desktop-publish-local.mjs
+      - run: npm run setup
         working-directory: website-publisher
       - name: Recover and observe website cache purge
         id: website
         working-directory: website-publisher
-        run: node --import tsx apps/desktop-publisher/src/publish-website-ci.ts purge
+        run: node --import tsx integrations/publisher/src/publish-website-ci.ts purge
       - name: Archive website publication diagnostics
         if: always() && steps.website.outputs.record != ''
         continue-on-error: true

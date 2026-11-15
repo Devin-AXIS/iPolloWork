@@ -1,3 +1,0 @@
-- disconnected Client attribute: disconnected
-- disconnected Console contexts: 1 (Host)
-- reconnected Client disconnected attributes: 0

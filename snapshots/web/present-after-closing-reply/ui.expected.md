@@ -1,2 +1,0 @@
-- button "Preview {{cwd}}/report.txt in sidebar"
-- text: report.txt Draft report

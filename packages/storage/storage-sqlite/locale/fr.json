@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "Stockage SQLite",
-    "description": "Stockez les données clé-valeur Harness dans SQLite."
-  }
-}

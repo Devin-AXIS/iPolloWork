@@ -1,3 +1,0 @@
-- button "思考" [expanded]
-- button "查看原文"
-- paragraph: 用户要求我回复一个单词。

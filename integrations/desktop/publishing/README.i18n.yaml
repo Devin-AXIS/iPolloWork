@@ -1,0 +1,37 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write integrations/desktop/publishing/README.md
+/:
+  en: 32f414f3e27d5afd
+  zh: e16c49177f708c47
+/desktop-publication:
+  en: af285f8835bd67f0
+  zh: 67447ee7a50e986d
+/desktop-publication/summary:
+  en: 722633597f74ace6
+  zh: 5303bcf5567a8511
+/desktop-publication/table-of-contents:
+  en: 3b68ec11fb832ed2
+  zh: 8812f87964583f1a
+/desktop-publication/publication-prerequisites:
+  en: 3d60d45494584c93
+  zh: 8305bdaa91a6b35d
+/desktop-publication/deployment-and-test-release-identity:
+  en: eed7c4ed0d4e2758
+  zh: 026fe6076e11018e
+/desktop-publication/publish-installers-and-update-feeds:
+  en: 9f2214015425bd33
+  zh: d49e6b5ef3f8843e
+/desktop-publication/fixed-installer-downloads:
+  en: d87c366e4d154df2
+  zh: 8a943954291828b9
+/desktop-publication/upload-credentials:
+  en: 47442fb912fa4d5d
+  zh: a21a0d67cd01724b
+/desktop-publication/upload-audit-and-recovery:
+  en: ec85f43ece09a5e3
+  zh: 2de5bf801c9c9e39
+/desktop-publication/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

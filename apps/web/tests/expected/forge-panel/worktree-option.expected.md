@@ -1,3 +1,0 @@
-- button "当前分支：main": main
-- checkbox "新建工作树"
-- text: 新建工作树

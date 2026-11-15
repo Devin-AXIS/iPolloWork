@@ -1,2 +1,0 @@
-mode=RELEASE
-level=info

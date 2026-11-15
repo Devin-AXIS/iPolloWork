@@ -1,9 +1,0 @@
-version: 1
-scenario: subagent-child-question-rejection
-profile: headless
-composition: child-question
-recording: authored
-header:
-  class: child-question
-  pin: true
-  systemPromptSource: text-turn

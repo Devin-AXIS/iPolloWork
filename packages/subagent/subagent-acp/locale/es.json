@@ -1,6 +1,0 @@
-{
-  "meta": {
-    "title": "backend del subagente ACP",
-    "description": "Ejecutar agentes externos en subprocesos a través de ACP."
-  }
-}
