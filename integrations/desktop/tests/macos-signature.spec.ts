@@ -59,10 +59,10 @@ describe('desktop macOS release signature', () => {
       'com.apple.security.cs.disable-library-validation', 'com.apple.security.device.audio-input']) {
       expect(entitlements).toContain(`<key>${key}</key>\n    <true/>`)
     }
-    expect(config.extraResources.map(resource => resource.to)).toEqual(['dsh', 'dsh/node_modules', 'runtime', 'icon.png'])
-    expect(config.extraResources[2]?.to).toBe('runtime')
-    expect(portablePath(config.extraResources[2]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/runtime')
-    const [dshFiles, dshNodeModules] = config.extraResources
+    expect(config.extraResources.map(resource => resource.to)).toEqual(['runtime', 'icon.png'])
+    expect(config.extraResources[0]?.to).toBe('runtime')
+    expect(portablePath(config.extraResources[0]?.from ?? '')).toContain('/.desktop-build/targets/mac-arm64/runtime')
+    const [dshFiles, dshNodeModules] = config.files.filter(file => typeof file !== 'string')
     if (!dshFiles || !dshNodeModules || typeof dshFiles === 'string' || typeof dshNodeModules === 'string') {
       throw new Error('desktop DSH resources must use electron-builder file mappings')
     }
@@ -81,7 +81,7 @@ describe('desktop macOS release signature', () => {
         identity: RELEASE_ENVIRONMENT.DSH_DESKTOP_MACOS_SIGNING_IDENTITY,
         forceCodeSigning: true,
         notarize: true,
-        signIgnore: ['/Contents/Resources/dsh(?:/|$)', '/Contents/Resources/runtime/primary-runtime(?:/|$)', '\\.pak$'],
+        signIgnore: ['/Contents/Resources/app\\.asar\\.unpacked/dsh(?:/|$)', '/Contents/Resources/runtime/primary-runtime(?:/|$)', '\\.pak$'],
       },
       dmg: {
         format: 'ULMO',

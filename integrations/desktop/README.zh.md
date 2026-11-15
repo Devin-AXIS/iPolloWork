@@ -6,7 +6,7 @@
 
 用户看到的都是 iPolloWork：菜单、关于面板、托盘、对话框、应用和托盘图标（白底黑色标志）、版权、链接协议名和 Windows 快捷方式。宿主启动期间，外壳送出的 DSH 启动页和网页以 iPolloWork 的标题、标志和名称替换 DSH 字标。打包后的应用包、可执行文件、辅助进程和 Windows 安装目录都以 iPolloWork 命名（`iPollo.app`、`iPollo.exe`），macOS 菜单栏和活动监视器也显示 iPolloWork。安装包和更新文件沿用 `iPollo-<版本>-<系统>-<架构>` 文件名，因为固定版本的 DSH 发布工具按这个名字查找文件。
 
-DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源码版本构建，不修改 `packages/` 或 `apps/`。同版本号的 npm 发布包早于源码中的认证 API，因此不能混入桌面版。`Resources/dsh` 保存普通的实体 Node 依赖，DSH 无需产品专用的模块加载修改。
+DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源码版本构建，不修改 `packages/` 或 `apps/`。同版本号的 npm 发布包早于源码中的认证 API，因此不能混入桌面版。沿用官方 ASAR 布局：JavaScript 和资源位于 `app.asar/dsh`，仅原生可执行文件及需要物理路径的资源放在归档外。CLI、Host 和运行验证使用同一布局。
 
 在仓库根目录执行 `npm run setup:build`，然后运行 `node integrations/desktop/run.mjs package-target.ts mac-arm64 --dir --unsigned`。输出位于 `.desktop-build/`。本包使用校验后的官方依赖缓存，不单独执行 npm 安装。正式签名发行还需配置对应平台的签名环境。
 

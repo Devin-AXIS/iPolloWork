@@ -28,7 +28,7 @@ function fixture() {
   mkdirSync(dirname(electron), { recursive: true })
   if (platform === 'win32') copyFileSync(process.execPath, electron)
   else symlinkSync(process.execPath, electron)
-  const entry = join(resources, 'dsh', 'node_modules', '@ipollo', 'desktop-host', 'lib', 'cli.js')
+  const entry = join(resources, 'app.asar', 'dsh', 'node_modules', '@ipollo', 'desktop-host', 'lib', 'cli.js')
   mkdirSync(dirname(entry), { recursive: true })
   writeFileSync(join(dirname(entry), 'package.json'), '{"type":"module"}\n')
   writeFileSync(entry, [
