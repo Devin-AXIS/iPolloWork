@@ -1,25 +1,97 @@
 # iPolloWork
 
-[English](README.md) | [中文](README.zh.md)
+English | [中文](README.zh.md)
 
-AI workspace built on the official DeepSeek Harness runtime. This repository maintains the iPolloWork plugins, account services, desktop shell and distribution. It does not vendor or modify the DSH Agent runtime.
+<p align="center">
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases/latest"><img src="https://img.shields.io/github/v/release/Devin-AXIS/iPolloWork?display_name=tag&amp;sort=semver" alt="Latest release" /></a>
+  <a href="https://github.com/Devin-AXIS/iPolloWork/releases"><img src="https://img.shields.io/github/downloads/Devin-AXIS/iPolloWork/total" alt="GitHub downloads" /></a>
+  <a href="https://github.com/Devin-AXIS/iPolloWork/stargazers"><img src="https://img.shields.io/github/stars/Devin-AXIS/iPolloWork?style=flat" alt="GitHub stars" /></a>
+  <a href="https://x.com/iPolloWork"><img src="https://img.shields.io/badge/X%20Global-%40iPolloWork-000000?logo=x&amp;logoColor=white" alt="Follow iPolloWork on X" /></a>
+  <a href="https://x.com/iPolloCN"><img src="https://img.shields.io/badge/X%20%E4%B8%AD%E6%96%87-%40iPolloCN-000000?logo=x&amp;logoColor=white" alt="Follow iPolloCN on X" /></a>
+  <a href="https://www.bestpractices.dev/projects/14127"><img src="https://www.bestpractices.dev/projects/14127/badge" alt="OpenSSF Best Practices" /></a>
+  <a href="https://www.cloudflare.com/startups/"><img src="https://img.shields.io/badge/Cloudflare-for%20Startups-F38020?logo=cloudflare&amp;logoColor=white" alt="Cloudflare for Startups" /></a>
+  <a href="https://github.com/opea-project"><img src="https://img.shields.io/badge/OPEA-Open%20Platform%20for%20Enterprise%20AI-ff7a00" alt="OPEA: Open Platform for Enterprise AI" /></a>
+</p>
 
-## Develop
+<p align="center">
+  <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/daily?language=TypeScript" alt="TypeScript repository daily trend | Trendshift" width="250" height="55" /></a>
+  <a href="https://trendshift.io/repositories/88012?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-88012"><img src="https://trendshift.io/api/badge/trendshift/repositories/88012/weekly?language=TypeScript" alt="TypeScript repository weekly trend | Trendshift" width="250" height="55" /></a>
+</p>
 
-Use Node.js 24.9 or newer and Git. Run `npm run setup:build` from a fresh checkout. Setup downloads the exact official source pinned in [upstream.json](integrations/runtime/upstream.json), verifies its SHA-256, installs the official lockfile, and builds the dependency. Source and generated resolution links are ignored by Git. Run `npm test` and `npm run check:upstream` to check the product/dependency separation.
+**An enterprise collaboration platform for people and AI agents, built on the open-source DeepSeek Harness.**
 
-The [suite](plugins/ipollowork-suite/README.md) installs as a native DSH bundle. Its brand, account, enterprise, marketplace and task features run inside the official client without a separate Agent engine. The [desktop shell](integrations/desktop/README.md) additionally owns OS branding, native sign-in and installers. The [account service](services/ipollowork/README.md) deploys independently.
+https://github.com/user-attachments/assets/201b561a-22ec-4c8e-a4e8-f34172cf0aa3
 
-To package macOS locally, run `npm run package:desktop:mac:arm64 -- --unsigned --dir`. Signing and publication use the existing dedicated workflows and machine settings. Runtime dependencies are included in the resulting application; the full upstream source repository is not.
+[Download the original demo](docs/assets/ipollowork-demo.mp4)
 
-## Official updates
+iPolloWork brings multi-agent teams, shared projects, plugins, Skills and editable work into one workspace. A main assistant coordinates specialists; people share context, follow progress and continue working together across code, documents, presentations, websites, design and video.
 
-Change the pinned revision, archive hash and declared release together after reviewing an upstream release. Never track `master` or `latest` implicitly. Setup refuses modified official source. Verify plugin behavior and the packaged application before adopting a newer dependency.
+The video above is the original iPolloWork demo. The current `main` branch uses the native DeepSeek Harness runtime; the earlier multi-engine edition remains on [`ipollowork-multi-engine`](https://github.com/Devin-AXIS/iPolloWork/tree/ipollowork-multi-engine).
 
-Earlier Git history still contains the former upstream checkout. The current product tree removes it; history has not been rewritten or force-pushed.
+<div align="center">
+  <h3>Join the official iPolloWork WeChat community</h3>
+  <p>Scan with WeChat for product updates and community discussions.</p>
+  <img src="./docs/assets/ipollowork-official-wechat-group.jpg" alt="QR code for the official iPolloWork WeChat community" width="220" />
+</div>
 
-The two distribution forms and plugin installation steps are documented in [delivery](integrations/delivery.md).
+## What makes it different
 
-## License and attribution
+- **People and agent teams** — use a main assistant, reusable specialists and native task delegation in the same workspace.
+- **Enterprise projects** — organize members and departments, grant project access, share files and project memory, and review submitted changes.
+- **Live collaboration** — share a native conversation, let authorized people view or participate, and continue independently through a fork.
+- **Plugins and Skills** — use the native plugin lifecycle and curated market, with integrated messaging and project-specific agent instructions.
+- **Editable creative work** — use Design and Video views for presentations, websites and visual production, then keep editing the result.
+- **Shared services and app data** — discover account-authorized AI capabilities over HTTP and give small apps a record store without their own database.
+
+<a id="run"></a>
+
+<a id="run-from-source"></a>
+
+## Start from source
+
+Use Node.js **24.15 or newer** and **pnpm 11**. Run these commands in a terminal on macOS or Linux:
+
+```sh
+git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git
+cd iPolloWork
+npm run setup:build
+npm run build
+node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$(pwd)/plugins/ipollowork-suite"
+node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts web
+```
+
+In Windows PowerShell, use the same commands but replace the plugin-install command with:
+
+```powershell
+node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$((Get-Location).Path)/plugins/ipollowork-suite"
+```
+
+Open the local address printed by the launcher. The suite adds iPolloWork's account, agents and plugin views to the native Web UI. Sign in for configured account services and organization features; local model providers keep their own credentials. Do not paste an account or provider key into a project page.
+
+The account service is deployed separately. Its [setup guide](services/ipollowork/README.md) covers PostgreSQL, account configuration and storage; [capability API documentation](services/ipollowork/docs/capabilities.md) covers external HTTP access. The suite defaults to `https://work.ipollo.net`; configure `accountOrigin` as described in the [suite guide](plugins/ipollowork-suite/README.md) for your own service.
+
+## Desktop and development
+
+The source Web UI runs on macOS, Windows and Linux. Native desktop development and installer packaging use the [Desktop guide](integrations/desktop/README.md) and [packaging guide](integrations/desktop/packaging/README.md). Published files on [GitHub Releases](https://github.com/Devin-AXIS/iPolloWork/releases) may belong to the earlier multi-engine edition; check the release description before installing.
+
+For ongoing development, see the [development guide](integrations/runtime/README.md), [integration overview](integrations/README.md) and [delivery guide](integrations/delivery.md). Agent instructions live in [AGENTS.md](AGENTS.md). DeepSeek Harness remains the execution runtime; this branch does not start a second agent engine.
+
+## Community and contributing
+
+Use [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues) for iPolloWork bugs and requests. Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes and [SECURITY.md](SECURITY.md) before running agent tasks. The upstream runtime is maintained by [DeepSeek](https://github.com/deepseek-ai/deepseek-harness).
+
+## Star History
+
+<p align="center">
+  <a href="https://www.star-history.com/?repos=Devin-AXIS%2FiPolloWork&amp;type=date&amp;legend=top-left">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-dark.svg" />
+      <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" />
+      <img alt="iPolloWork Star History" src="https://raw.githubusercontent.com/Devin-AXIS/iPolloWork/star-history/docs/star-history/star-history-light.svg" width="900" />
+    </picture>
+  </a>
+</p>
+
+## License
 
 Owned iPolloWork code uses the [iPolloWork Source Available License](LICENSE). This is source-available software, not an unrestricted MIT grant. Third-party code and previously granted licenses remain under their original terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Git history and original author attribution are retained when upstream files are removed from the current tree.
