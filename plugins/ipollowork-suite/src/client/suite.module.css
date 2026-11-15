@@ -144,17 +144,7 @@
 .agentSearch { margin-bottom: 24px; }.agentSearch input { width: min(100%, 360px); box-sizing: border-box; }
 .agentGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 20px; }
 .botCard { display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 24px; border: .5px solid var(--ipw-border); border-radius: 14px; background: var(--ipw-surface); }
-.coordinatorHost { container-type: inline-size; flex: none; margin: 4px 12px 8px; }
-.coordinatorEntry { color: var(--ipw-text); font: inherit; }
-.coordinatorRow { display: flex; align-items: center; border-radius: 8px; background: var(--ipw-wash); }
-.coordinatorRow button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; border: 0; padding: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-.coordinatorRow button:disabled { opacity: .5; cursor: wait; }
-.coordinatorRow button:focus-visible { outline: 2px solid var(--ipw-accent); outline-offset: -2px; border-radius: 8px; }
-.coordinatorOpen { flex: 1; min-width: 0; justify-content: flex-start !important; }.coordinatorOpen span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.coordinatorNew { flex: none; }
-.coordinatorError { color: var(--ipw-text, var(--dsw-alias-label-primary)); font-size: 12px; margin: 8px 0; }
 .coordinatorMode { color: var(--ipw-muted); font-size: 12px; padding: 4px 8px; }
-@container (max-width: 70px) { .coordinatorOpen span, .coordinatorNew { display: none !important; } }
 .botIdentity { display: flex; align-items: center; gap: 12px; min-width: 0; }.botIdentity h2 { margin: 0; overflow-wrap: anywhere; }
 .botAvatar { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: var(--ipw-wash); color: var(--ipw-accent); font-size: 20px; font-weight: 500; }
 .page .botDescription { margin: 0; color: var(--ipw-muted); font-size: 13px; line-height: 1.7; min-height: 44px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }

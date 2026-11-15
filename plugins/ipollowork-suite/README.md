@@ -86,7 +86,7 @@ Run `npm run check` for unit checks. For a native run, launch a disposable DSH p
 
 ## Integrated messaging
 
-The **Main assistant / 总助手** entry stays above the native conversation list. Clicking it continues the newest web main-assistant conversation; its plus button starts another, always using `ipollo-coordinator`. The Agents page contains saved specialists only. The web entry uses a dedicated native Workspace, configurable through `ipollowork-agents.config.coordinatorWorkspace` (default `$DSH_HOME/ipollowork/assistant`). Its history stays separate from IM connections.
+The sidebar workspace navigation uses the native workspace and conversation list without a separate Main assistant shortcut. Existing main-assistant conversations retain their preset and history; messaging connections continue to use `ipollo-coordinator`.
 
 Every new messaging connection starts native `ipollo-coordinator` sessions, including QR and automatic connections. It can work directly, use saved specialists through `ipollo_delegate`, or create task-specific temporary workers through `ipollo_dispatch`. Temporary workers use the native Standard preset and inherit the main assistant's model; saved specialists retain their own instructions, Skills, selected services and optional model. The IM request waits for the native task tree and returns the main assistant's collected answer.
 

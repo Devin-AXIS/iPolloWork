@@ -86,7 +86,7 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 
 ## 集成消息通道
 
-**Main assistant / 总助手** 入口固定在原生会话列表上方。点击继续最近一次网页总助手会话；加号新建会话，两者始终使用 `ipollo-coordinator`。Agents 页面仅包含已保存的专家。网页入口使用独立的原生 Workspace，通过 `ipollowork-agents.config.coordinatorWorkspace` 配置（默认 `$DSH_HOME/ipollowork/assistant`），历史与 IM 连接分开保存。
+左侧工作区导航使用原生工作区和会话列表，不再单独显示“总助手”快捷入口。已有总助手会话保留预设和历史；消息连接继续使用 `ipollo-coordinator`。
 
 每个新消息连接都会启动原生 `ipollo-coordinator` 会话，包括扫码和自动连接。总助手可以直接工作、通过 `ipollo_delegate` 使用保存的专家，或通过 `ipollo_dispatch` 创建任务专用的临时工作者。临时工作者使用原生 Standard 预设并继承总助手模型；保存的专家保留自己的指令、Skills、服务选择和可选模型。IM 请求等待原生任务树完成后返回总助手汇总的回答。
 
