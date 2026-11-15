@@ -28,7 +28,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   const current = ['catalog/index.json', 'catalog/bundled-releases.json']
   for (const release of releases.plugins) {
     const resource = release.name === 'deepseek-idesign' ? '@ipollo/dsh-design-resources' : '@ipollo/dsh-video-resources'
-    if (manifest.dependencies?.[resource] !== release.version) throw Error('Resource dependency must match the pinned Studio version')
+    if (manifest.dependencies?.[resource]) throw Error('Optional Studio resources must not be installed with the suite')
   }
   if (update) {
     manifest.files = [...manifest.files.filter(file => file !== 'catalog' && !file.startsWith('catalog/')), ...current]

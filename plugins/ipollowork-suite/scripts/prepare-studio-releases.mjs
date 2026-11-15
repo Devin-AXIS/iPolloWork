@@ -37,7 +37,7 @@ const manifest = JSON.parse(await readFile(path, 'utf8'));
 manifest.files = manifest.files.filter(file => !/^catalog\/packages\/deepseek-i(?:design|video)-/.test(file));
 for (const item of releases) {
   const resource = item.name === 'deepseek-idesign' ? '@ipollo/dsh-design-resources' : '@ipollo/dsh-video-resources';
-  manifest.dependencies[resource] = item.version;
+  delete manifest.dependencies[resource];
 }
 await writeFile(path, JSON.stringify(manifest, null, 2) + '\n');
 for (const { name, version, sha256 } of releases) console.log(name, version, sha256.slice(0, 12));

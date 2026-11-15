@@ -1,7 +1,6 @@
 /** Read a curated DSH format-1 index and join it with the native installation inventory. */
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseMarketIndex, marketInstallTarget } from '@deepseek-ai/dsh-plugin-market-index'
@@ -51,10 +50,8 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
       try { bytes = await readFile(file) }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        const resource = release.name === 'deepseek-idesign' ? '@ipollo/dsh-design-resources' : release.name === 'deepseek-ivideo' ? '@ipollo/dsh-video-resources' : undefined
-        if (!resource) throw error
-        file = createRequire(import.meta.url).resolve(`${resource}/${release.file}`)
-        bytes = await readFile(file)
+        targets.set(key, `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/${release.file}`)
+        continue
       }
       if (createHash('sha256').update(bytes).digest('hex') !== release.sha256) throw new Error('Bundled release checksum mismatch')
       let target = file
