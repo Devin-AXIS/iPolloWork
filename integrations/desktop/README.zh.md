@@ -15,3 +15,5 @@ DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源
 ## 产品版本
 
 当前产品发行版为 **iPollo 1.0**（安装包元数据为 `1.0.0`）。产品与桌面端清单使用相同版本；内置 DSH 运行时保留 `integrations/runtime/upstream.json` 中固定的版本。后续补丁版本依次使用 `1.0.1`、`1.0.2`，展示名称可写为 `1.0.01`、`1.0.02`。安装包元数据不得使用前导零，因为更新器要求标准语义化版本号。
+
+Windows x64 未签名安装包通过 `.github/workflows/ipollo-release-packages.yml` 在 GitHub 托管的 Windows 构建机生成；工作流先验证打包后的运行时，再上传到已有发行版。
