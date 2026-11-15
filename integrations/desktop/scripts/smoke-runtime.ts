@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
+import { load, dump } from 'js-yaml'
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
@@ -192,7 +193,9 @@ export function apply(ctx) {
     manifest.dependencies = { ...manifest.dependencies, [pluginName]: `file:${plugin}` }
     manifest.dsh.profile.bundles.push(pluginName)
     writeFileSync(join(profile, 'package.json'), JSON.stringify(manifest))
-    appendFileSync(join(profile, 'cordis.patch.yml'), '- id: webserver\n  config:\n    host: 127.0.0.1\n    port: 0\n')
+    const overlayPath = join(profile, 'cordis.patch.yml')
+    const overlay = load(readFileSync(overlayPath, 'utf8')) as object[]
+    writeFileSync(overlayPath, dump([...overlay, { id: 'webserver', config: { host: '127.0.0.1', port: 0 } }]))
     const ready = await Promise.race([host.start(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
