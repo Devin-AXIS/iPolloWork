@@ -26,4 +26,7 @@ export const DESKTOP_RUNTIME_PATCHES: Readonly<Record<string, DesktopRuntimePatc
 export const DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES: Readonly<Record<string, string>> = {
   // The provider declares ^1.3.0; its patch is qualified against 1.3.0.
   '@earendil-works/pi-ai@^1.3.0': '1.3.0',
+  'undici@^8.0.0': '8.12.4',
+  '@modelcontextprotocol/client': '2.4.0',
+  'fflate': '0.8.3',
 }

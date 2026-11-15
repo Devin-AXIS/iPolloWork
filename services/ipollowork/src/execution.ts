@@ -5,7 +5,7 @@ import type { App } from "./http.js";
 import type { Store, Row } from "./database.js";
 import type { Actor } from "./auth.js";
 import { Settings } from "./settings.js";
-import {
+import { projectAccess,
   audit,
   enterpriseAccess,
   isEnterpriseManager,
@@ -342,7 +342,8 @@ export class ExecutionService {
       "service",
     );
   }
-  async catalog(actor: Actor) {
+  async catalog(actor: Actor, projectId?:string) {
+    const project=projectId?await projectAccess(this.store,actor,projectId):undefined;
     const official = await Promise.all((await this.rows()).filter(row => row.enabled).map(async row => {
       const service = definition(row);
       const configured = Boolean((await this.settings.get("service-key/" + service.keyId)).key);
@@ -381,7 +382,7 @@ export class ExecutionService {
         )
       ).concat(
         await Promise.all(
-          (await this.enterpriseRows(actor)).map(async (row) => {
+          (await this.enterpriseRows(actor)).filter(row=>!project||row.enterprise_id===project.enterprise_id).map(async (row) => {
             const s = definition(row);
             return {
               id: s.id,
@@ -984,7 +985,7 @@ export class ExecutionService {
       );
     });
   }
-  async invoke(actor: Actor, id: string, raw: unknown): Promise<Response> {
+  async invoke(actor: Actor, id: string, raw: unknown, projectId?:string): Promise<Response> {
     const input = requestSchema.parse(raw),
       row = await this.store.one<ServiceRow>(
         "SELECT * FROM execution_services WHERE id=? AND enabled=1",
@@ -996,6 +997,10 @@ export class ExecutionService {
       "SELECT enterprise_id FROM enterprise_services WHERE service_id=?",
       id,
     );
+    if(projectId){
+      const project=await projectAccess(this.store,actor,projectId);
+      if(owner&&owner.enterprise_id!==project.enterprise_id)throw new ServiceError('CLOUD_MODEL_FORBIDDEN',403,'云端仅可使用官方或本项目企业的模型');
+    }
     if (owner)
       await requireUse(this.store, actor, owner.enterprise_id, "service", id);
     else if (!(await allowed(this.store, actor, s)))
@@ -1306,7 +1311,7 @@ export class ExecutionService {
 /** All writes are authenticated; only administrators configure upstreams or settle unknown calls. */
 export function mountExecution(app: App, service: ExecutionService) {
   app.get("/api/v1/services", async (c) =>
-    c.json(await service.catalog(c.get("actor"))),
+    c.json(await service.catalog(c.get("actor"),c.get("cloudGrant")?.projectId)),
   );
   app.get("/api/v1/services/usage", async (c) =>
     c.json(await service.history(c.get("actor"))),
@@ -1376,6 +1381,7 @@ export function mountExecution(app: App, service: ExecutionService) {
         c.get("actor"),
         c.req.param("id"),
         await c.req.json(),
+        c.get('cloudGrant')?.projectId,
       ),
   );
 }

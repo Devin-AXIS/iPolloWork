@@ -72,7 +72,7 @@ function ProviderItem({ provider, revision, locale, t, services, choose, changed
   }
   const state = failed ? 'error' : source.kind === 'official' ? source.service ? 'ready' : 'error' : configured ? 'ready' : 'missing'
   const line = failed ? t.unavailable : source.kind === 'official' ? source.service ? t.ready : t.officialGone : !status ? '…' : configured ? t.ownReady : t.needsKey
-  const showForm = source.kind === 'own' && status && (expanded || (initiallyExpanded && !configured))
+  const showForm = !services?.cloudOnly && source.kind === 'own' && status && (expanded || (initiallyExpanded && !configured))
   return <div className={css.provider} data-open={showForm || undefined}>
     <div className={css.providerHead}>
       <Monogram id={key} label={text(provider.title, locale)} size={30}/>
@@ -80,7 +80,7 @@ function ProviderItem({ provider, revision, locale, t, services, choose, changed
         <strong>{text(provider.title, locale)}</strong>
         <small><i data-state={state}/>{line}{source.kind === 'own' && configured && official && !showForm && <button type="button" className={css.inlineLink} onClick={() => setExpanded(true)}>{t.edit}</button>}{provider.plugins.length > 0 && <span className={css.providerPlugins}> · {provider.plugins.join(' · ')}</span>}</small>
       </span>
-      {failed ? <button type="button" className={css.quietButton} onClick={() => setRetry(value => value + 1)}>{t.retry}</button>
+      {services?.cloudOnly ? null : failed ? <button type="button" className={css.quietButton} onClick={() => setRetry(value => value + 1)}>{t.retry}</button>
         : (official || source.kind === 'official') ? <div className={css.sourceSwitch} role="group" aria-label={text(provider.title, locale)}>
           <button type="button" aria-pressed={source.kind === 'official'} disabled={busy || !official} onClick={() => void switchTo('official')}><IconSparkleRegular size={12}/>{t.official}</button>
           <button type="button" aria-pressed={source.kind === 'own'} disabled={busy} onClick={() => void switchTo('own')}><KeyGlyph size={12}/>{t.own}</button>

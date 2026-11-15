@@ -15,5 +15,8 @@
     "cos-nodejs-sdk-v5": "3.0.0",
     "tencentcloud-sdk-nodejs-teo": "4.1.330",
     "tsx": "^4.23.13"
+  },
+  "overrides": {
+    "uuid@<11.1.1": "11.1.1"
   }
 }

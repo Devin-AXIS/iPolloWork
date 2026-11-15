@@ -26,24 +26,25 @@ export interface ModelWebServer {
     handler(req: IncomingMessage, res: ServerResponse): Promise<void>;
   }): () => void;
 }
-async function* officialModelStream(stream: AsyncIterable<StreamChunk>): AsyncIterable<StreamChunk> {
+async function* officialModelStream(stream: AsyncIterable<StreamChunk>, cloudOnly=false): AsyncIterable<StreamChunk> {
   for await (const chunk of stream) {
     if (chunk.type === "finish" && chunk.reason.kind === "error"
       && chunk.reason.failure.message.includes("INSUFFICIENT_POINTS")) {
       yield { ...chunk, reason: { kind: "error", failure: {
         code: ACCOUNT_QUOTA_EXCEEDED_CODE,
-        message: "Insufficient iPolloWork points. Add points or switch to your own API key.",
+        message: cloudOnly ? "Insufficient iPolloWork points. Add points or select an authorized enterprise model." : "Insufficient iPolloWork points. Add points or switch to your own API key.",
       } } };
     } else yield chunk;
   }
 }
 class OfficialModelAdapter extends pi.PiAiAdapter {
+  cloudOnly=false;
   override stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    return officialModelStream(super.stream(options));
+    return officialModelStream(super.stream(options),this.cloudOnly);
   }
   override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
     const prepared = await super.prepareCall(provider, model, signal);
-    return { ...prepared, stream: options => officialModelStream(prepared.stream(options)) };
+    return { ...prepared, stream: options => officialModelStream(prepared.stream(options),this.cloudOnly) };
   }
 }
 /** Mount account channels without exposing the upstream key.
@@ -75,6 +76,7 @@ export function mountServiceModels(
       authContext: defaultProviderAuthContext(),
     },
   });
+  adapter.cloudOnly=account.cloudOnly;
   let registration: ReturnType<Context["llm"]["registerAdapter"]> | undefined;
   ctx.effect(() =>
     webServer.register({

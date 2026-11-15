@@ -19,3 +19,8 @@ The `app-data` runtime skill is the complete contract for the model: when to use
 ## Plugins
 
 The suite provides `ipolloData` on the Host and in the browser with one contract, `IpolloData` in `src/shared/app-data.ts`. A Host plugin injects it; a Client module lists `@ipollo/dsh-suite` in `dsh.client.inject` and injects it. `ctx.ipolloData.open(name, { organization })` creates or reopens the plugin app and returns `run(statement)` and `collection(name)`, whose `insert`, `get`, `find`, `all`, `count`, `aggregate`, `update`, `increment`, `upsert` and `delete` send the matching statements. A statement on an app that was deleted opens the app again and runs once more. Both services build the handle with `createDataApp`. The browser service calls the suite's same-origin routes and rejects with `AppDataError`, whose `code` is stable and whose message carries the service's explanation. Plugins hold no token or connection string.
+
+
+## Attachments
+
+Both Host and Client `ipolloData` handles expose `app.files.upload(name, bytes, {mime, public?})`, `app.files.download(id)` and `app.files.remove(id)`. `bytes` is a `Uint8Array`; files are limited to 24 MiB. Upload returns file metadata; store its `id` in a record. The Host returns a signed URL from `download`; the Client returns an authenticated same-origin download URL. Only managers may set `public:true`. Files stay in private OSS in production, while PostgreSQL holds ownership and metadata. Inline binary records are refused with `DATA_BINARY_INLINE`.

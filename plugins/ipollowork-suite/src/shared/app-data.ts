@@ -135,9 +135,16 @@ export interface DataCollection {
   upsert(id: string, values: Record<string, DataValue>, version?: number): Promise<DataRecord>
   delete(id: string, version?: number): Promise<void>
 }
+/** An attachment saved outside the record database. */
+export interface DataFile { id:string; name:string; mime:string; bytes:number; sha256:string }
 /** An opened app. `run` accepts any statement or `{batch}`; `collection` wraps the common operations. */
 export interface DataApp {
   readonly id: string
+  files: {
+    upload(name:string,bytes:Uint8Array,options?:{mime?:string;public?:boolean}):Promise<DataFile>
+    download(id:string):Promise<{url:string}>
+    remove(id:string):Promise<void>
+  }
   run(statement: DataStatement | { batch: DataStatement[] }): Promise<unknown>
   collection(name: string): DataCollection
 }
@@ -161,11 +168,12 @@ export interface IpolloData {
  * @param run - sends one statement or batch and resolves with the service's JSON result.
  * @returns the opened app.
  */
-export function createDataApp(id: string, run: (statement: DataStatement | { batch: DataStatement[] }) => Promise<Record<string, unknown>>): DataApp {
+export function createDataApp(id: string, run: (statement: DataStatement | { batch: DataStatement[] }) => Promise<Record<string, unknown>>, files?:DataApp['files']): DataApp {
   const item = (value: Record<string, unknown>) => value.item as DataRecord
   const versioned = (version: number | undefined) => (version === undefined ? {} : { version })
   return {
     id,
+    files: files??{upload:async()=>{throw new Error('Attachment transport is unavailable')},download:async()=>{throw new Error('Attachment transport is unavailable')},remove:async()=>{throw new Error('Attachment transport is unavailable')}},
     run,
     collection: name => ({
       insert: async values => item(await run({ insert: name, values })),

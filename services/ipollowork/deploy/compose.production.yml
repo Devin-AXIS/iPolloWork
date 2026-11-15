@@ -20,7 +20,7 @@ services:
   work:
     build:
       args:
-        NODE_IMAGE: ${NODE_IMAGE:-node:24.15.0-bookworm-slim}
+        NODE_IMAGE: ${NODE_IMAGE:-node:24.22.3-bookworm-slim}
     environment:
       TRUSTED_PROXY_IPS: ${PROXY_IP:-10.238.82.254}
     security_opt:

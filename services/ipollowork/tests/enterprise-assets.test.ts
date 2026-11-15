@@ -412,6 +412,10 @@ test("enterprise models use the enterprise key, follow grants, never charge poin
       ],
       audience: { all: false, departments: [dep], members: [] },
     });
+    const projectId=randomUUID();
+    await service.store.run("INSERT INTO projects(id,owner_id,enterprise_id,title,created_at,execution_mode) VALUES(?,?,?,?,?,'cloud')",projectId,owner.id,null,'Personal cloud',Date.now());
+    assert.equal((await gateway.catalog(owner,projectId)).items.filter(item=>item.enterprise).length,0);
+    await assert.rejects(gateway.invoke(owner,id,{requestId:randomUUID(),path:'/chat/completions',method:'POST',body:Buffer.from(JSON.stringify({model:'deepseek-chat',messages:[{role:'user',content:'hi'}]})).toString('base64')},projectId),{code:'CLOUD_MODEL_FORBIDDEN'});
     const catalog = async (actor: Actor) =>
       (await gateway.catalog(actor)).items.filter((item) => item.enterprise);
     assert.deepEqual(

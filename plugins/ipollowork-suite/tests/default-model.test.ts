@@ -36,3 +36,8 @@ test('no account route retains the default and unavailable routes fail without s
  const f=fixture();await initializeAccountModel(f.services,[]);assert.equal(f.reads,0);
  f.clearModels();await assert.rejects(initializeAccountModel(f.services,['ipollo-channel']),{code:'session/provider-models-unavailable',message:'provider "ipollo-channel" has no available models'});assert.equal(f.saves.length,0);
 });
+
+test('cloud defaults ignore personal key configuration and select an account model',async()=>{
+ const f=fixture();f.setConfigured(true);await initializeAccountModel(f.services,['ipollo-channel'],true);
+ assert.equal(f.saves[0]?.provider,'ipollo-channel');assert.deepEqual(f.refs,[]);
+});

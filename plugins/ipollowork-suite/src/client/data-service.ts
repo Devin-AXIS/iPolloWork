@@ -1,5 +1,5 @@
 /** The browser `ipolloData` service: the Host contract over the suite's same-origin routes, for plugin Client modules. */
-import { createDataApp, type DataStatement, type IpolloData } from '../shared/app-data.ts'
+import { createDataApp, type DataFile, type DataStatement, type IpolloData } from '../shared/app-data.ts'
 
 /** A rejected app data call; `code` is stable and the message explains how to correct the statement. */
 export class AppDataError extends Error {
@@ -43,6 +43,17 @@ export function createBrowserAppData(): IpolloData {
           id = await open()
           return post(`/${id}/run`, statement)
         }
+      }, {
+        upload:async(name,bytes,options={})=>{
+          const response=await fetch(`/ipollowork-suite/data/apps/${id}/files`,{method:'POST',credentials:'same-origin',headers:{'Content-Type':options.mime??'application/octet-stream','X-Data-File':encodeURIComponent(JSON.stringify({name,public:options.public??false}))},body:new Blob([new Uint8Array(bytes)])});
+          const value=await response.json();if(!response.ok)throw new AppDataError(value.error??'IPW_FILE_TRANSFER_FAILED',value.message??value.error);
+          return value as DataFile;
+        },
+        download:async fileId=>({url:`/ipollowork-suite/data/apps/${id}/files/${encodeURIComponent(fileId)}`}),
+        remove:async fileId=>{
+          const response=await fetch(`/ipollowork-suite/data/apps/${id}/files/${encodeURIComponent(fileId)}`,{method:'DELETE',credentials:'same-origin'});
+          if(!response.ok)throw new AppDataError('IPW_FILE_TRANSFER_FAILED','Could not delete attachment');
+        },
       })
     },
   }

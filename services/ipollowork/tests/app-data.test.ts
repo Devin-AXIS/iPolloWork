@@ -1,3 +1,4 @@
+import OSS from 'ali-oss';
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -522,7 +523,7 @@ test("visitors sign in with their iPollo account, keep their own records, and ap
   }
 });
 
-test("upgrading app data from schema 1 classifies public apps as sites and reaches schema 5", async () => {
+test("upgrading app data from schema 1 classifies public apps as sites and reaches schema 6", async () => {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? "postgresql://127.0.0.1:5432/ipollowork_test";
   const schema = "test_" + randomUUID().replace(/-/g, "");
   const admin = new Store({ databaseUrl, databasePoolSize: 1, databaseSchema: "public" });
@@ -538,7 +539,7 @@ test("upgrading app data from schema 1 classifies public apps as sites and reach
     }
     await migrateAppData(store);
     assert.deepEqual((await store.all("SELECT kind FROM data_apps ORDER BY kind")).map((r) => r.kind), ["plugin", "site"]);
-    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 5);
+    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 6);
     assert.equal((await store.one("SELECT suspended_at,origins FROM data_apps LIMIT 1"))?.origins, "[]");
     assert.equal((await store.one("SELECT strict FROM data_collections LIMIT 1"))?.strict, false);
     assert.equal((await store.one("SELECT pruned_seq FROM data_apps LIMIT 1"))?.pruned_seq, 0);
@@ -548,4 +549,66 @@ test("upgrading app data from schema 1 classifies public apps as sites and reach
     await admin.run(`DROP SCHEMA ${schema} CASCADE`);
     await admin.close();
   }
+});
+
+
+test("records reject inline binary content but preserve normal URLs and text",async()=>{
+ const {call,account,close}=await fixture();
+ try{
+  const owner=await account('binary@data.test');
+  const app=await call('/api/data/v1/apps',{token:owner.token,body:{name:'Media',kind:'site'}});
+  const path='/api/data/v1/apps/'+app.data.app.id+'/run';
+  for(const content of ['data:image/png;base64,AAAA','data:application/pdf;base64,AAAA','blob:https://example.test/file','iVBORw0KGgo'+'A'.repeat(64),{type:'Buffer',data:[1,2,3]}]){
+   const result=await call(path,{token:owner.token,body:{insert:'pictures',values:{content}}});
+   assert.equal(result.status,400);assert.equal(result.data.code,'DATA_BINARY_INLINE');
+  }
+  const result=await call(path,{token:owner.token,body:{insert:'pictures',values:{url:'https://bucket.oss-cn-hangzhou.aliyuncs.com/photo.png',text:'Normal metadata:value, text'}}});
+  assert.equal(result.status,200);
+ }finally{await close();}
+});
+
+test("app attachments use object storage, scope readers and retain no file bytes in PostgreSQL",async()=>{
+ const {service,call,account,close}=await fixture();
+ try{
+  const owner=await account('files@data.test');const other=await account('other-files@data.test');
+  const created=await call('/api/data/v1/apps',{token:owner.token,body:{name:'Files',kind:'site'}});
+  const id=created.data.app.id;const prefix='/api/data/v1/apps/'+id;
+  const payload=Buffer.from('file payload only in object storage');
+  const uploaded=await service.app.request('http://localhost:4785'+prefix+'/files',{method:'POST',headers:{Authorization:'Bearer '+owner.token,'Content-Type':'image/png','Content-Length':String(payload.length),'X-Data-File':JSON.stringify({name:'photo.png'})},body:payload});
+  assert.equal(uploaded.status,201);const file=await uploaded.json();
+  const stored=await service.store.one('SELECT * FROM app_data_files WHERE id=?',file.id);
+  assert(stored);assert(!JSON.stringify(stored).includes(payload.toString()));assert(String(stored.storage_key).startsWith('local/'));
+  const downloaded=await service.app.request('http://localhost:4785'+prefix+'/files/'+file.id,{headers:{Authorization:'Bearer '+owner.token}});
+  assert.equal(downloaded.status,200);assert.equal(await downloaded.text(),payload.toString());
+  assert.equal((await call(prefix+'/files/'+file.id,{token:other.token})).status,404);
+  const unknown=await call(prefix+'/files/'+file.id,{key:created.data.app.publicKey});assert.equal(unknown.status,403);
+  const removed=await call(prefix+'/files/'+file.id,{token:owner.token,method:'DELETE'});assert.equal(removed.status,200);
+  assert.equal((await call(prefix+'/files/'+file.id,{token:owner.token})).status,404);
+  const response=await service.app.request('http://localhost:4785'+prefix+'/files',{method:'POST',headers:{Authorization:'Bearer '+owner.token,'Content-Type':'image/png','Content-Length':String(payload.length),'X-Data-File':JSON.stringify({name:'another.png'})},body:payload});
+  const orphan=await response.json();assert.equal(response.status,201);
+  await call(prefix,{token:owner.token,method:'DELETE'});await service.appFiles!.cleanup();
+  assert.equal(await service.store.one('SELECT id FROM app_data_files WHERE id=?',orphan.id),undefined);
+
+ }finally{await close();}
+});
+
+
+test("configured app attachments stream to private OSS and retain only metadata",async t=>{
+ const {service,call,account,close}=await fixture();
+ const writes:{key:string;bytes:number;acl:unknown}[]=[];
+ t.mock.method(OSS.prototype,'put',async function(key:string,source:AsyncIterable<Uint8Array>,options:{headers:Record<string,string>}) {
+   let size=0;for await(const chunk of source)size+=chunk.byteLength;
+   writes.push({key,bytes:size,acl:options.headers['x-oss-object-acl']});return {name:key,res:{status:200}};
+ });
+ try{
+  await service.settings.set('oss',{region:'oss-cn-hangzhou',bucket:'fixture-bucket',accessKeyId:'fixture-id',accessKeySecret:'fixture-secret'});
+  const owner=await account('oss-files@data.test');
+  const app=await call('/api/data/v1/apps',{token:owner.token,body:{name:'OSS files',kind:'site'}});
+  const response=await service.app.request('http://localhost:4785/api/data/v1/apps/'+app.data.app.id+'/files',{method:'POST',headers:{Authorization:'Bearer '+owner.token,'Content-Type':'image/png','Content-Length':'3','X-Data-File':encodeURIComponent(JSON.stringify({name:'图片.png'}))},body:new Uint8Array([1,2,3])});
+  assert.equal(response.status,201);const file=await response.json();
+  assert.equal(writes.length,1);assert.equal(writes[0].acl,'private');assert.equal(writes[0].bytes,3);
+  const row=await service.store.one('SELECT storage_key FROM app_data_files WHERE id=?',file.id);assert(String(row?.storage_key).startsWith('oss/'));
+  const download=await call('/api/data/v1/apps/'+app.data.app.id+'/files/'+file.id,{token:owner.token});
+  assert.equal(download.status,200);assert(new URL(download.data.url).hostname==='fixture-bucket.oss-cn-hangzhou.aliyuncs.com');
+ }finally{await close();}
 });

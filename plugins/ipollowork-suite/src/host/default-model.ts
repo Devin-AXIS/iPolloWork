@@ -22,12 +22,12 @@ export interface DefaultModelServices {
  * @param providers - Ordered account providers registered by the suite.
  * @returns After the official default-model service persists a selection, or no change is needed.
  */
-export async function initializeAccountModel(services: DefaultModelServices, providers: readonly string[]): Promise<void> {
+export async function initializeAccountModel(services: DefaultModelServices, providers: readonly string[], cloudOnly = false): Promise<void> {
   if (providers.includes(services.agentDefaultModel.currentSelection().provider)) return;
   const provider = providers[0];
   if (provider === undefined) return;
   const namespaces = services.settings.describe({ redactSecrets: true });
-  for (const configurable of services.llm.listConfigurableProviders()) {
+  for (const configurable of cloudOnly ? [] : services.llm.listConfigurableProviders()) {
     if (configurable.provider === 'deepseek-account') continue;
     let value: unknown = namespaces.find(namespace => namespace.ns === configurable.settingsNs)?.value;
     for (const key of configurable.settingsPath) {

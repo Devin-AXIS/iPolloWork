@@ -75,6 +75,7 @@ export class Services implements ServiceCenter {
     private enabled = true,
   ) {}
   async choices(): Promise<Record<string, ServiceChoice>> {
+    if(this.account.cloudOnly)return {};
     const record = await this.credentials.readRecord(KEY);
     if (!record) return {};
     const value = record.payload;
@@ -84,6 +85,7 @@ export class Services implements ServiceCenter {
   }
   async choose(provider: string, raw: unknown) {
     const choice = choiceSchema.parse(raw);
+    if(this.account.cloudOnly&&choice.source==='own')throw new SuiteError('IPW_CLOUD_MODEL_FORBIDDEN',403);
     if (
       !/^[a-z][a-z0-9-]{0,79}$/.test(provider) ||
       !choice ||
@@ -129,6 +131,7 @@ export class Services implements ServiceCenter {
   }
   async state() {
     return {
+      cloudOnly:this.account.cloudOnly,
       catalog: await this.catalog(),
       choices: await this.choices(),
       models: { status: this.modelStatus, error: this.modelError },

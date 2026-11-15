@@ -201,3 +201,13 @@ for (const [provider, id] of [['deepseek', 'deepseek-v4-pro'], ['aliyun-bailian'
     assert.equal(request?.reasoning_effort, id === 'qwen3.7-plus' ? undefined : 'max');
   } finally { await ctx.fiber.dispose(); }
 });
+
+test('cloud source choices reject personal keys before storing credentials',async()=>{
+ const config=resolveConfig({accountOrigin:'https://account.test',cloudRuntimeTokenEnv:'TEST_CLOUD_TOKEN'});
+ let writes=0;const credentials:CredentialStore={readRecord:async()=>({kind:'grant',payload:{test:{source:'own'}}}),modifyRecord:async()=>{writes++;return {kind:'grant',payload:{}}},deleteRecord:async()=>{}};
+ const account=new AccountService(credentials,config,new AbortController().signal);
+ const services=new Services(account,credentials,new AbortController().signal);
+ assert.deepEqual(await services.choices(),{});
+ await assert.rejects(services.choose('deepseek',{source:'own'}),{code:'IPW_CLOUD_MODEL_FORBIDDEN'});
+ assert.equal(writes,0);
+});

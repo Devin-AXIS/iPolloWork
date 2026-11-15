@@ -20,7 +20,7 @@
 
 ## 部署
 
-1. 将本套件打包为 `ipollo-dsh-suite.tgz`，放入构建目录，用 `deploy/cloud/Dockerfile` 构建 `linux/amd64` 镜像。镜像安装官方 `@deepseek-ai/dsh@0.2.2-rc.3`、本套件及阿里云第二代模板要求的系统组件。发布不可变版本标签，在对应地域创建第二代模板并确认 ready。镜像构建、仓库拉取和模板启动仍需实际云上验证。
+1. 将本套件打包为 `ipollo-dsh-suite.tgz`，与 `deploy/cloud/runtime.package.json` 一起放入构建目录，用 `deploy/cloud/Dockerfile` 构建 `linux/amd64` 镜像。镜像安装官方 `@deepseek-ai/dsh@0.2.2-rc.3`、本套件及阿里云第二代模板要求的系统组件。发布不可变版本标签，在对应地域创建第二代模板并确认 ready。镜像构建、仓库拉取和模板启动仍需实际云上验证。
 2. 已有执行服务器通过官方插件管理器安装同一套件。环境变量配置 `ALIYUN_SANDBOX_API_KEY` 和至少 32 字符的随机 `IPOLLO_CLOUD_GATEWAY_KEY`。以 `deploy/cloud/server.patch.example.yml` 为模板配置，使用官方 `dsh --profile web --patch <server.patch.yml> --no-open` 启动。
 3. 通过 HTTPS 向账号服务提供 `/ipollowork-cloud-server/open`；同机可用回环代理。接口校验网关密钥。不要公开管理 profile 和其 owner token。
 4. 通过已认证管理员设置 API 配置 `cloud`：`enabled=true`、`gatewayOrigin`、`gatewayKey`，可选 `ttlSeconds`（1800）、`grantTtlSeconds`（86400）、`leaseGraceSeconds`（180）。两侧网关密钥必须一致。真实联调通过前保持关闭。当前可用状态表示已配置启用，不是阿里云健康探测结果。
@@ -33,3 +33,10 @@
 本地测试覆盖真实 PostgreSQL 迁移、重复创建、单写入租约、授权范围、撤销、续期、组件卸载和创建窗口。执行服务器测试使用提供方模拟接口，验证官方 profile 启动参数、挂载检查和回收；一次性真实官方 DSH profile 验证官方包注册、套件与启动组件加载、登录 Cookie 及权限撤销。上述测试不等于阿里云已经跑通。
 
 上线前仍需完成真实模板、受限 RAM/OSS 配置，并验证：云端官方 UI 终端与文件操作、关掉本地客户端后任务继续、空闲销毁后文件与会话恢复、权限撤销、并发打开；同时检查 OSS 上 DSH 状态文件的原子写入和锁行为，以及存储统计。完整配置详见[英文部署说明](cloud-projects.md)。
+
+
+## 云端模型与应用数据范围
+
+云端 profile 关闭本机个人 Key 的模型提供方，只允许套件账号通道执行模型请求。服务目录和实际调用均限制为官方服务，以及项目当前所属企业授权的服务；个人云端项目只使用官方服务。云端连接设置不提供“自己的 Key”选项，本地项目维持原有模型配置。
+
+云端运行令牌只能创建、读写及上传附件到当前项目绑定的应用。应用数据迁移 6 保存项目标识，输入参数不能把数据写到其他组织，其他项目及未绑定的个人应用不对该令牌开放。正常账号令牌保持已有授权范围。新增串联测试使用官方 Agent 循环、确定性模型输出及真实 PostgreSQL，分别验证本地和云端令牌，不等于真实阿里云联调。

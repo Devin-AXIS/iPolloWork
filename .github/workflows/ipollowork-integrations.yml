@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-node@v7.0.0
         with:
-          node-version: '24.15.0'
+          node-version: '24.22.3'
       - uses: pnpm/action-setup@v5.0.0
       - name: Build pinned official DSH dependency
         run: |
@@ -33,16 +33,17 @@ jobs:
           npm test
           npm run check:upstream
           npm run check:docs
+          npm run audit:dependencies
       - name: Check enterprise connector
         run: npm run check --prefix plugins/ipollo-enterprise
+      - name: Install account service dependencies
+        working-directory: services/ipollowork
+        run: npm ci --ignore-scripts --workspaces=false
       - name: Check and package suite
         working-directory: plugins/ipollowork-suite
         run: |
           npm run check --workspaces=false
           npm run pack:check --workspaces=false
-      - name: Install account service dependencies
-        working-directory: services/ipollowork
-        run: npm ci --ignore-scripts --workspaces=false
       - name: Check and build account services
         working-directory: services/ipollowork
         env:

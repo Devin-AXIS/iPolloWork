@@ -24,7 +24,7 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
   }
   if(req.url==='/api/auth/get-session'){res.end(JSON.stringify({user:{id:'fixture',name:'Fixture',email:'fixture@example.test'}}));return;}
   if(req.url==='/api/v1/me/summary'){res.end('{"points":{"balance":100},"enterprises":[]}');return;}
-  if(req.url==='/api/v1/services'){res.end('{"items":[]}');return;}
+  if(req.url==='/api/v1/services'){res.end(JSON.stringify({points:100,items:[{id:'team',title:'Enterprise model',provider:'deepseek',capabilities:['chat'],origin:'https://provider.test',basePath:'/v1',models:[{id:'cloud-model',name:'Cloud model',contextWindow:32768,maxTokens:2048}],routes:[],available:true,enterprise:{id:'enterprise',name:'Enterprise'}}]}));return;}
   res.statusCode=404;res.end('{}');
  });
  await new Promise(resolve=>account.listen(0,'127.0.0.1',resolve));
@@ -34,13 +34,16 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
  let child,logs='';
  try{
   execFileSync(process.execPath,[cli,'plugin','--profile','web','add','link:'+suite],{env,stdio:'pipe',timeout:10000});
+  const fixture=join(home,'model-catalog.mjs');
+  await writeFile(fixture,`export const inject=['webServer','sessionController'];export function apply(ctx){ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/test-model-catalog',handler:async(req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(await ctx.sessionController.modelCatalog()));}}));}`);
   const patch=join(home,'cloud.json');
   await writeFile(patch,JSON.stringify([
    {id:'webserver',config:{host:'127.0.0.1',port:0}},
    {id:'workspace-controller',config:{documentsDirectory:workspace}},
    {id:'ipollowork-suite',config:{accountOrigin,cloudRuntimeTokenEnv:'IPOLLO_CLOUD_RUNTIME_TOKEN'}},
    {id:'ipollowork-cloud-projects',disabled:true},
-   {insert:[{id:'cloud-bootstrap',name:'@ipollo/dsh-suite/cloud-bootstrap',config:{accountOrigin,workspace}}]},
+   ...['llm-pi-ai','llm-deepseek','llm-deepseek-account','deepseek-account'].map(id=>({id,disabled:true})),
+   {insert:[{id:'model-catalog',name:fixture},{id:'cloud-bootstrap',name:'@ipollo/dsh-suite/cloud-bootstrap',config:{accountOrigin,workspace}}]},
   ]));
   child=spawn(process.execPath,[cli,'--profile','web','--patch',patch,'--no-open'],{env,stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',data=>{logs+=data;});child.stderr.on('data',data=>{logs+=data;});
@@ -53,6 +56,13 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
   assert.equal((await fetch(new URL('/',url),{headers})).status,200);
   const availability=await fetch(new URL('/ipollowork-suite/cloud/availability',url),{headers});
   assert.equal(availability.status,200);assert.deepEqual(await availability.json(),{enabled:false});
+  let catalog;
+  for(let attempt=0;attempt<50;attempt++){
+   catalog=await (await fetch(new URL('/test-model-catalog',url),{headers})).json();
+   if(catalog.groups.length)break;await delay(50);
+  }
+  assert.deepEqual(catalog.groups.map(group=>group.id),['ipollo-team']);
+  assert.equal(catalog.groups[0].models[0].id,'cloud-model');
   assert(activity>0,'Cloud bootstrap must authorize actual HTTP requests');
   assert((await readFile(join(home,'storages/workspace.json'),'utf8')).includes(workspace));
   allowed=false;

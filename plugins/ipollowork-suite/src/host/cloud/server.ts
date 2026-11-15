@@ -101,7 +101,7 @@ export class CloudServer {
       const host=sandbox.getHost(this.settings.port);
       if(!/^[a-z0-9][a-z0-9.-]*(?::[0-9]+)?$/.test(host))throw new SuiteError('IPW_CLOUD_START_FAILED',503);
       const publicOrigin='https://'+host;
-      const patch=[{id:'webserver',config:{host:'127.0.0.1',port:this.settings.port}},{id:'workspace-controller',config:{documentsDirectory:'/mnt/project/workspace'}},{id:'connection',config:{trustedHosts:[host]}},{id:'ipollowork-suite',config:{accountOrigin:this.settings.accountOrigin,cloudRuntimeTokenEnv:'IPOLLO_CLOUD_RUNTIME_TOKEN'}},{id:'ipollowork-cloud-projects',disabled:true},{insert:[{id:'ipollo-cloud-bootstrap',name:'@ipollo/dsh-suite/cloud-bootstrap',config:{accountOrigin:this.settings.accountOrigin}}]}];
+      const patch=[{id:'webserver',config:{host:'127.0.0.1',port:this.settings.port}},{id:'workspace-controller',config:{documentsDirectory:'/mnt/project/workspace'}},{id:'connection',config:{trustedHosts:[host]}},{id:'ipollowork-suite',config:{accountOrigin:this.settings.accountOrigin,cloudRuntimeTokenEnv:'IPOLLO_CLOUD_RUNTIME_TOKEN'}},{id:'ipollowork-cloud-projects',disabled:true},...['llm-pi-ai','llm-deepseek','llm-deepseek-account','deepseek-account'].map(id=>({id,disabled:true})),{insert:[{id:'ipollo-cloud-bootstrap',name:'@ipollo/dsh-suite/cloud-bootstrap',config:{accountOrigin:this.settings.accountOrigin}}]}];
       // Bind one concrete sandbox address, as required by the official DSH web server.
       const launched=await sandbox.commands.run("hostname -I | awk '{print $1}'",{timeoutMs:10000});
       const address=launched.stdout.trim();if(launched.exitCode!==0||isIP(address)===0)throw new SuiteError('IPW_CLOUD_START_FAILED',503);

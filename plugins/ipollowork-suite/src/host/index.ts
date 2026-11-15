@@ -304,7 +304,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       },
       services,
       account,
-      providers => initializeAccountModel(scope, providers),
+      providers => initializeAccountModel(scope, providers, account.cloudOnly),
     );
     void refreshModels().catch((error) => {
       services.modelStatus = "error";
@@ -684,6 +684,19 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 config.maxArtifactBytes,
               );
               return;
+            }
+            const dataFile=/^\/data\/apps\/([0-9a-f-]{36})\/files(?:\/([0-9a-f-]{36}))?$/.exec(path);
+            if(dataFile) {
+              if(!config.account||!appDataEnabled)throw new SuiteError('IPW_APP_DATA_DISABLED',404);
+              const base='/api/data/v1/apps/'+dataFile[1]+'/files';
+              if(request.method==='POST'&&!dataFile[2]) {
+                const bytes=Number(request.headers['content-length']);
+                if(!Number.isSafeInteger(bytes)||bytes<1||bytes>24*1024*1024)throw new SuiteError('IPW_REQUEST_TOO_LARGE',413);
+                json(response,201,await account.uploadAppFile(dataFile[1]!,String(request.headers['x-data-file']??'{}'),String(request.headers['content-type']??'application/octet-stream'),bytes,uploadBody(request),lifetime.signal));return;
+              }
+              if(request.method==='GET'&&dataFile[2]){await relayDownload(await account.transfer(base+'/'+dataFile[2]),response,config.maxArtifactBytes);return;}
+              if(request.method==='DELETE'&&dataFile[2]){await account.request(base+'/'+dataFile[2],undefined,'DELETE');json(response,200,{deleted:true});return;}
+              throw new SuiteError('IPW_NOT_FOUND',404);
             }
             if (path === "/data/apps" || path.startsWith("/data/apps/")) {
               if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);

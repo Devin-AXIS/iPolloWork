@@ -55,6 +55,7 @@ function userOf(value: unknown): AccountUser {
   };
 }
 export class AccountService {
+  get cloudOnly():boolean {return Boolean(this.config.cloudRuntimeTokenEnv)}
   private revision = 0;
   get generation() {
     return this.revision;
@@ -207,6 +208,10 @@ export class AccountService {
       body,
       signal,
     );
+  }
+  /** Stream app media to account-owned object storage without sending credentials to the client. */
+  async uploadAppFile(id:string,metadata:string,mime:string,bytes:number,body:ReadableStream<Uint8Array>,signal:AbortSignal):Promise<unknown> {
+    return this.uploadFile('/api/data/v1/apps/'+encodeURIComponent(id)+'/files','POST',{'x-data-file':metadata,'Content-Type':mime,'Content-Length':String(bytes)},body,signal);
   }
   private async uploadFile(
     path: string,

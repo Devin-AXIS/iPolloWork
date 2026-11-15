@@ -19,7 +19,8 @@
     "package:desktop:win:x64": "node integrations/desktop/run.mjs package-target.ts win-x64",
     "check:docs": "node integrations/tooling/check-docs.mjs",
     "package:plugin": "node integrations/tooling/package-plugin.mjs",
-    "check:desktop": "node integrations/desktop/run.mjs package-target.ts mac-arm64 --check --unsigned"
+    "check:desktop": "node integrations/desktop/run.mjs package-target.ts mac-arm64 --check --unsigned",
+    "audit:dependencies": "node integrations/tooling/audit.mjs"
   },
   "license": "SEE LICENSE IN LICENSE"
 }

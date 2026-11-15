@@ -3,6 +3,7 @@ import type { Duplex } from 'node:stream';
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-host-webserver';
 import type {} from '@deepseek-ai/dsh-agent';
+import type {} from '@deepseek-ai/dsh-llm';
 import type {} from '@deepseek-ai/dsh-api-session-controller';
 import type {} from '@deepseek-ai/dsh-workspace';
 import { resolveConfig } from '../config.ts';
@@ -10,7 +11,7 @@ import { z } from 'zod';
 import schema from '@deepseek-ai/schemastery';
 import { SuiteError } from '../errors.ts';
 export const name='ipollowork-cloud-bootstrap';
-export const inject=['webServer','agents','sessionController','workspaceRegistry'];
+export const inject=['webServer','agents','sessionController','workspaceRegistry','llm'];
 export const Config=schema.object({accountOrigin:schema.string().required(),workspace:schema.string(),heartbeatMs:schema.number(),authorizationTimeoutMs:schema.number()});
 const settingsSchema=z.object({accountOrigin:z.url(),workspace:z.string().startsWith('/').default('/mnt/project/workspace'),heartbeatMs:z.number().int().min(1000).max(60000).default(15000),authorizationTimeoutMs:z.number().int().min(1000).max(60000).default(15000)}).strict();
 export async function apply(ctx:Context,config:z.input<typeof settingsSchema>):Promise<void> {
@@ -48,6 +49,10 @@ export async function apply(ctx:Context,config:z.input<typeof settingsSchema>):P
     const closed=()=>detach();
     sockets.set(socket,detach);socket.on('data',activity);socket.once('close',closed);
     await next();
+  });
+  ctx.on('llm/stream',async function*(options,next){
+    if(!options.provider.startsWith('ipollo-'))throw new SuiteError('IPW_CLOUD_MODEL_FORBIDDEN',403);
+    yield* next();
   });
   ctx.on('agent/pre-step',async(_event,next)=>{
     if(!await authorize(true))throw new SuiteError('IPW_CLOUD_ACCESS_REVOKED',403);

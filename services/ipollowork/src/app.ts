@@ -1,3 +1,4 @@
+import { AppDataFiles } from './app-data-files.js';
 import { CloudProjects, cloudGrantAllows, mountCloudProjects } from './cloud-projects.js';
 import { ExecutionService, mountExecution } from "./execution.js";
 import { Capabilities, mountCapabilities } from "./capabilities.js";
@@ -77,6 +78,7 @@ export async function createService(config: Config) {
     const settings = new Settings(store, config.secret);
     const cloud = new CloudProjects(store, settings, config);
     const storage = new Storage(store, settings, config);
+    const appFiles=appData?new AppDataFiles(store,appData,storage,config.storageCleanupIntervalMs):undefined;
     const app: App = new Hono();
     const relay = new LiveshareRelay(store, config);
     const accountHeaders = secureHeaders({
@@ -253,9 +255,13 @@ export async function createService(config: Config) {
         ),
       }),
     );
-    app.get("/api/v1/me/orgs", async (c) =>
-      c.json({ items: (await summary(c.get("actor").id)).enterprises }),
-    );
+    app.get("/api/v1/me/orgs", async c=>{
+      const items=(await summary(c.get('actor').id)).enterprises;
+      const grant=c.get('cloudGrant');
+      if(!grant)return c.json({items});
+      const project=await store.one('SELECT enterprise_id FROM projects WHERE id=?',grant.projectId);
+      return c.json({items:items.filter(item=>item.id===project?.enterprise_id)});
+    });
     app.get("/api/v1/admin/overview", async (c) => {
       requireAdmin(c.get("actor"));
       return c.json({
@@ -400,7 +406,7 @@ export async function createService(config: Config) {
     mountResources(app, store, storage, config);
     mountStorage(app, store, storage);
     mountLiveshare(app, relay, auth);
-    mountAppData(app, appData, config.appData, auth, store);
+    mountAppData(app, appData, config.appData, auth, store, appFiles, cloud);
     app.notFound((c) => c.json({ error: "接口不存在" }, 404));
     app.get("/api/*", (c) => c.json({ error: "接口不存在" }, 404));
     const webRoot = fileURLToPath(
@@ -412,6 +418,7 @@ export async function createService(config: Config) {
     app.use("/assets/*", serveStatic({ root: webRoot }));
     app.get("/mark.svg", serveStatic({ root: webRoot, path: "mark.svg" }));
     app.get("*", serveStatic({ root: webRoot, path: "index.html" }));
+    appFiles?.start();
     storage.start();
     appData?.start();
     return {
@@ -422,7 +429,9 @@ export async function createService(config: Config) {
       storage,
       relay,
       appData,
+      appFiles,
       close: async () => {
+        await appFiles?.close();
         await storage.close();
         await relay.close();
         await appData?.close();

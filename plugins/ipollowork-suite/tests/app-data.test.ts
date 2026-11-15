@@ -191,3 +191,22 @@ test('a name keeps its app between calls, and a deleted app is opened again', as
   assert.deepEqual(await tool.execute({ app: 'Reading list', kind: 'plugin', statement: { count: 'books' } }, exec), { count: 1 }, 'a read finds the app by name again')
   assert.equal(calls.filter(call => call.method === 'POST' && call.path === '/api/data/v1/apps').length, 2, 'the read created nothing')
 })
+
+
+test('the Host attachment API streams bytes and keeps the account token outside records',async()=>{
+ const bytes=new Uint8Array([1,2,3]);let uploaded=false;
+ const account=new AccountService({readRecord:async()=>({kind:'grant',payload:{version:1,origin:'https://account.test',token:'secret'}}),modifyRecord:async()=>undefined,deleteRecord:async()=>{}},resolveConfig({accountOrigin:'https://account.test'}),new AbortController().signal,async(url,init)=>{
+  const path=new URL(String(url)).pathname;
+  if(path.endsWith('/files')){
+   uploaded=true;assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer secret');
+   assert.deepEqual(new Uint8Array(await new Response(init?.body).arrayBuffer()),bytes);
+   assert.equal(JSON.parse(decodeURIComponent(new Headers(init?.headers).get('x-data-file')!)).name,'图片.png');
+   return Response.json({id:APP,name:'图片.png',mime:'image/png',bytes:3,sha256:'hash'});
+  }
+  if(path.endsWith('/files/'+APP))return Response.json(init?.method==='DELETE'?{deleted:true}:{url:'https://bucket.oss.test/image?temporary=1'});
+  return Response.json({app:detail});
+ });
+ const app=await new AppDataService(account).open('Media');
+ const file=await app.files.upload('图片.png',bytes,{mime:'image/png'});assert(uploaded);assert.equal(file.id,APP);
+ assert.equal((await app.files.download(file.id)).url,'https://bucket.oss.test/image?temporary=1');await app.files.remove(file.id);
+});

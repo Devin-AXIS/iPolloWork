@@ -4,6 +4,7 @@ import type { OfficialService, ServiceCatalog, ServiceChoice } from '../shared/s
 import { request } from './api.ts'
 
 export type ServiceState = {
+  cloudOnly?: boolean
   catalog: ServiceCatalog
   choices: Record<string, ServiceChoice>
   models?: { status: string }
@@ -47,6 +48,7 @@ export function useServiceState() {
 export function resolveSource(state: ServiceState | undefined, provider: string, ownConfigured: boolean): { source: Source; official: OfficialService | undefined } {
   const services = state?.catalog.items.filter(item => item.provider === provider) ?? []
   const official = services.find(item => item.available)
+  if(state?.cloudOnly)return {source:{kind:'official',service:official},official}
   const choice = state?.choices[provider]
   if (choice?.source === 'official') {
     const chosen = services.find(item => item.id === choice.serviceId)

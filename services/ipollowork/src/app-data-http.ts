@@ -1,3 +1,5 @@
+import type { CloudProjects } from './cloud-projects.js';
+import type { AppDataFiles } from './app-data-files.js';
 /**
  * App data HTTP routes under `/api/data/v1`. Any site may call them: signed-in callers send a bearer token, published
  * code sends an app's public key in `X-Data-Key`. Cookies are ignored, so the routes cannot act on an ambient session.
@@ -42,23 +44,23 @@ const updateInput = z
  * @param auth - Better Auth, used to resolve bearer tokens.
  * @param accounts - the account database, which records the operator's actions.
  */
-export function mountAppData(app: App, data: AppData | undefined, limits: AppDataConfig | undefined, auth: Auth, accounts: Store): void {
+export function mountAppData(app: App, data: AppData | undefined, limits: AppDataConfig | undefined, auth: Auth, accounts: Store, files?: AppDataFiles, cloud?:CloudProjects): void {
   app.use(
     "/api/data/v1/*",
     cors({
       origin: "*",
       allowMethods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-      allowHeaders: ["Content-Type", "Authorization", "X-Data-Key"],
+      allowHeaders: ["Content-Type", "Authorization", "X-Data-Key", "X-Data-File"],
       maxAge: 600,
     }),
   );
   if (limits)
     app.use(
       "/api/data/v1/*",
-      bodyLimit({
-        maxSize: appDataBodyLimit(limits),
+      (c,next) => bodyLimit({
+        maxSize:/\/files$/.test(c.req.path)?24*1024*1024:appDataBodyLimit(limits),
         onError: (c) => c.json({ error: "请求内容太大", code: "DATA_REQUEST_TOO_LARGE" }, 413),
-      }),
+      })(c,next),
     );
   const ready = (): AppData => {
     if (!data) throw new ServiceError("APP_DATA_NOT_CONFIGURED", 503, "应用数据库尚未配置");
@@ -68,6 +70,12 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
     c.header("Cache-Control", "no-store");
     const authorization = c.req.header("authorization");
     const key = c.req.header("x-data-key");
+    if(authorization?.startsWith('Bearer ipwc.')){
+      if(!cloud)throw new ServiceError('CLOUD_GRANT_SCOPE',403);
+      const {actor,grant}=await cloud.authenticate(authorization.slice(7));
+      if(grant.kind!=='runtime')throw new ServiceError('CLOUD_GRANT_SCOPE',403);
+      return {kind:'member',actor,projectId:grant.projectId};
+    }
     // A visitor signed in to one app sends that app's key with the token the sign-in returned.
     if (key && authorization?.startsWith("Bearer ipd_"))
       return { kind: "anonymous", key, ip: c.req.header("x-ipollo-peer-ip") ?? "", token: authorization.slice(7) };
@@ -127,12 +135,12 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
   });
   app.get("/api/data/v1/apps", async (c) => {
     const who = await member(c);
-    return c.json(await ready().apps(who.actor));
+    return c.json(await ready().apps(who.actor,who.projectId));
   });
   app.post("/api/data/v1/apps", async (c) => {
     const who = await member(c);
     const input = createInput.parse(await c.req.json());
-    const result = await ready().ensure(who.actor, input);
+    const result = await ready().ensure(who.actor, {...input,...(who.projectId?{projectId:who.projectId}:{})});
     return c.json(result, result.created ? 201 : 200);
   });
   app.get("/api/data/v1/apps/:app", async (c) =>
@@ -146,6 +154,20 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
   app.delete("/api/data/v1/apps/:app", async (c) => {
     await ready().remove(await member(c), c.req.param("app"));
     return c.json({ deleted: true });
+  });
+  app.post('/api/data/v1/apps/:app/files',async c=>{
+    ready();if(!files)throw new ServiceError('APP_DATA_NOT_CONFIGURED',503);
+    const who=await caller(c);
+    const info=JSON.parse(decodeURIComponent(c.req.header('x-data-file')??'{}'));
+    return c.json(await files.upload(who,c.req.param('app'),info,c.req.raw.body,Number(c.req.header('content-length')),c.req.header('content-type')??'application/octet-stream'),201);
+  });
+  app.get('/api/data/v1/apps/:app/files/:file',async c=>{
+    ready();if(!files)throw new ServiceError('APP_DATA_NOT_CONFIGURED',503);
+    return files.download(await caller(c),c.req.param('app'),c.req.param('file'));
+  });
+  app.delete('/api/data/v1/apps/:app/files/:file',async c=>{
+    ready();if(!files)throw new ServiceError('APP_DATA_NOT_CONFIGURED',503);
+    await files.remove(await caller(c),c.req.param('app'),c.req.param('file'));return c.json({deleted:true});
   });
   app.post("/api/data/v1/apps/:app/run", async (c) => {
     const who = await caller(c);

@@ -20,7 +20,7 @@ The execution server renews active environments and stops an idle one after `idl
 
 ## Operator setup
 
-1. Pack this suite and build `deploy/cloud/Dockerfile` with `--platform linux/amd64`. Place the package at `ipollo-dsh-suite.tgz` in the build context. The image installs official `@deepseek-ai/dsh@0.2.2-rc.3`, the suite and system components required by Alibaba generation-2 templates. Publish an immutable image tag and create a ready generation-2 template in the intended region. Image build, registry access and Alibaba template readiness require cloud validation.
+1. Pack this suite and build `deploy/cloud/Dockerfile` with `--platform linux/amd64`. Place the package at `ipollo-dsh-suite.tgz` and copy `runtime.package.json` from this deployment directory into the build context. The image installs official `@deepseek-ai/dsh@0.2.2-rc.3`, the suite and system components required by Alibaba generation-2 templates. Publish an immutable image tag and create a ready generation-2 template in the intended region. Image build, registry access and Alibaba template readiness require cloud validation.
 2. On the existing execution server install the same suite through the official DSH plugin manager. Set `ALIYUN_SANDBOX_API_KEY` and a randomly generated `IPOLLO_CLOUD_GATEWAY_KEY` of at least 32 characters in its process environment. Launch only through `dsh --profile web --patch <server.patch.yml> --no-open`, using `deploy/cloud/server.patch.example.yml` as the operator template.
 3. Expose `/ipollowork-cloud-server/open` to the account service through HTTPS, or a loopback proxy on the same machine. The endpoint requires the gateway key. Do not expose the management profile or its owner token publicly.
 4. Set account-service `cloud` settings through the authenticated admin settings API: `enabled=true`, `gatewayOrigin`, `gatewayKey`; optionally `ttlSeconds` (1800), `grantTtlSeconds` (86400) and `leaseGraceSeconds` (180). The key must match the execution server. Keep this feature disabled until the live smoke below passes. Availability reports configured enablement, not a cloud-provider health probe.
@@ -35,3 +35,10 @@ Local checks cover actual PostgreSQL migrations, creation retries, project-limit
 Before production: build and verify the image, provision the template and restricted RAM/OSS access, open a real cloud project, run terminal and file operations through its official DSH UI, close the local client during a long task, reopen after idle destruction and verify persisted files/session, then test permission revocation and concurrent opens. Validate OSS atomic file/locking behavior for DSH state and storage accounting. No production deployment or live cloud smoke is implied by local checks.
 
 Sources: [Alibaba custom images](https://www.alibabacloud.com/help/en/agent-sandbox/build-and-manage-custom-templates-with-code), [dynamic OSS mounts](https://www.alibabacloud.com/help/en/agent-sandbox/mount-oss-dynamically-1).
+
+
+## Cloud model and application scope
+
+Cloud profiles disable native personal-key provider entries and accept streaming calls only through suite account providers. The service catalog and invocation route restrict enterprise channels to the project's current enterprise; personal projects use official channels only. Cloud connection rows cannot select Own key. Local profiles retain their existing model configuration.
+
+The runtime grant can create, query and upload attachments only within applications linked to its project. App-data schema 6 records that project identity. An input organization cannot override the grant, and applications from other projects or the account's unbound personal apps are inaccessible through it. Ordinary account tokens keep their existing authorized access. The official Agent loop-to-database regression uses deterministic model output and real PostgreSQL for both local and cloud grants; it does not claim live Alibaba validation.

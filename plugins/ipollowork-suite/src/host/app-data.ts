@@ -130,7 +130,7 @@ export class AppDataService implements IpolloData {
    */
   async find(name: string, organization?: string, signal?: AbortSignal): Promise<{ app: DataAppList['items'][number] | undefined; others: DataAppList['items'] }> {
     const enterpriseId = organization ? await this.organization(organization, signal) : undefined
-    const owned = (await this.apps(signal)).items.filter(app => (enterpriseId ? app.owner.id === enterpriseId : app.owner.kind === 'user'))
+    const owned = (await this.apps(signal)).items.filter(app => (enterpriseId ? app.owner.id === enterpriseId : this.account.cloudOnly || app.owner.kind === 'user'))
     const wanted = name.trim().toLowerCase()
     const app = owned.find(item => item.name.trim().toLowerCase() === wanted)
     if (app) this.remember(name, organization, app.id)
@@ -147,6 +147,14 @@ export class AppDataService implements IpolloData {
         id = await this.id(input)
         return this.run(id, statement)
       }
+    }, {
+      upload:async(name,bytes,options={})=>{
+        if(bytes.byteLength>24*1024*1024)throw new SuiteError('IPW_REQUEST_TOO_LARGE',413);
+        const stream=new ReadableStream<Uint8Array>({start(controller){controller.enqueue(bytes);controller.close()}});
+        return z.object({id:z.uuid(),name:z.string(),mime:z.string(),bytes:z.number(),sha256:z.string()}).parse(await this.account.uploadAppFile(id,encodeURIComponent(JSON.stringify({name,public:options.public??false})),options.mime??'application/octet-stream',bytes.byteLength,stream,new AbortController().signal));
+      },
+      download:async fileId=>z.object({url:z.url()}).parse(await this.account.request(`${BASE}/${id}/files/${encodeURIComponent(fileId)}`)),
+      remove:async fileId=>{await this.account.request(`${BASE}/${id}/files/${encodeURIComponent(fileId)}`,undefined,'DELETE')},
     })
   }
   private async organization(value: string, signal?: AbortSignal): Promise<string> {
@@ -300,6 +308,7 @@ The signed-in iPolloWork account's hosted record store for websites, apps, mini 
 
 - Name the app after the site or plugin and keep the name; \`kind\` is \`site\` or \`plugin\`.
 - Create collections first with \`define\` and \`"strict":true\`, declaring every field, so a misspelled field is rejected. \`"remove":["typo"]\` deletes a field.
+- Images and files belong in object storage. Use \`app.files.upload(name, bytes, { mime })\` and store the returned \`id\`. Download through \`app.files.download(id)\`; remove through \`app.files.remove(id)\`. Do not put Base64 or data URLs in records.
 - Store dates as ISO text (\`2026-11-15\`). Use \`aggregate\` for totals and \`fields\` to keep reads small. \`find\` returns at most 100 records per page.
 - Use \`upsert\` with a fixed id such as \`settings\` for single documents.
 

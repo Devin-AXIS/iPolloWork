@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Actor } from "./auth.js";
 import type { AppDataConfig } from "./config.js";
 import type { Row, Store } from "./database.js";
+import { projectAccess } from './domain.js';
 import { ServiceError } from "./errors.js";
 
 /** Format limits; capacity limits are deployment settings in `AppDataConfig`. */
@@ -205,11 +206,15 @@ function storable(input: unknown): void {
     );
   const text = (value: string) => {
     if (value.includes("\u0000") || LONE_SURROGATE.test(value)) throw refuse();
+    if (/(?:^|[\s"'(=])data:[^,\s]*[,;]|^blob:|(?:iVBORw0KGgo|\/9j\/|R0lGODlh|UklGR)[A-Za-z0-9+/=]{16,}/i.test(value))
+      throw new ServiceError('DATA_BINARY_INLINE',400,'图片和文件请先上传附件，记录仅保存文件 ID 或 OSS 地址');
   };
   while (pending.length) {
     const [value, depth] = pending.pop()!;
     if (typeof value === "string") text(value);
     if (!value || typeof value !== "object") continue;
+    if (!Array.isArray(value) && 'type' in value && value.type==='Buffer')
+      throw new ServiceError('DATA_BINARY_INLINE',400,'二进制文件请先上传附件，记录仅保存文件引用');
     if (depth >= MAX_DEPTH) throw refuse();
     for (const [key, child] of Object.entries(value)) {
       text(key);
@@ -234,7 +239,7 @@ const invalid = () =>
 
 /** Who is calling: a signed-in account, or an anonymous visitor presenting an app's public key. */
 export type DataCaller =
-  | { kind: "member"; actor: Actor }
+  | { kind: "member"; actor: Actor; projectId?:string }
   | { kind: "anonymous"; key: string; ip: string; token?: string | undefined };
 /**
  * Account callers manage or write. Key callers are anonymous, a signed-in visitor (`user`), or a visitor the app
@@ -257,6 +262,7 @@ type AppRow = Row & {
   slug: string;
   name: string;
   workspace: string;
+  project_id:string|null;
   public_key: string;
   created_by: string;
   suspended_at: number | null;
@@ -446,7 +452,7 @@ export async function migrateAppData(store: Store): Promise<void> {
       (await store.one("SELECT COALESCE(MAX(version),0) AS version FROM app_data_schema"))
         ?.version,
     );
-    if (current > 5)
+    if (current > 6)
       throw new Error("This app data database requires a newer iPolloWork service");
     if (current < 1) {
       await store.run(
@@ -482,6 +488,12 @@ export async function migrateAppData(store: Store): Promise<void> {
       ])
         await store.run(sql);
       await store.run("INSERT INTO app_data_schema(version) VALUES(5)");
+    }
+    if(current<6){
+      await store.run('ALTER TABLE data_apps ADD COLUMN project_id TEXT');
+      await store.run('DROP INDEX data_apps_slug');
+      await store.run("CREATE UNIQUE INDEX data_apps_slug ON data_apps(owner_kind,owner_id,slug,COALESCE(project_id,'')) WHERE deleted_at IS NULL");
+      await store.run('INSERT INTO app_data_schema(version) VALUES(6)');
     }
   });
 }
@@ -523,7 +535,7 @@ export class AppData {
    * @param actor - the signed-in account.
    * @returns apps, most recently changed first, and every organization the caller belongs to, including those without apps.
    */
-  async apps(actor: Actor): Promise<{ items: AppSummary[]; organizations: { id: string; name: string }[] }> {
+  async apps(actor: Actor, projectId?:string): Promise<{ items: AppSummary[]; organizations: { id: string; name: string }[] }> {
     const orgs = await this.organizations(actor);
     const rows = await this.data.all<
       AppRow & { collections: number; is_public: boolean }
@@ -532,8 +544,9 @@ export class AppData {
         (SELECT COUNT(*) FROM data_collections c WHERE c.app_id=a.id AND c.dropped_at IS NULL) AS collections,
         EXISTS(SELECT 1 FROM data_collections c WHERE c.app_id=a.id AND c.dropped_at IS NULL AND (c.public_read OR c.public_create OR c.user_read OR c.user_create OR c.user_own)) AS is_public
        FROM data_apps a
-       WHERE a.deleted_at IS NULL AND ((a.owner_kind='user' AND a.owner_id=?) OR (a.owner_kind='enterprise' AND a.owner_id IN (SELECT jsonb_array_elements_text(?::jsonb))))
+       WHERE a.deleted_at IS NULL AND (?::text IS NULL OR a.project_id=?) AND ((a.owner_kind='user' AND a.owner_id=?) OR (a.owner_kind='enterprise' AND a.owner_id IN (SELECT jsonb_array_elements_text(?::jsonb))))
        ORDER BY a.updated_at DESC LIMIT 2000`,
+      projectId??null,projectId??null,
       actor.id,
       JSON.stringify([...orgs.keys()]),
     );
@@ -560,8 +573,13 @@ export class AppData {
    */
   async ensure(
     actor: Actor,
-    input: { name: string; kind: AppKind; slug?: string | undefined; enterpriseId?: string | undefined; workspace?: string | undefined },
+    input: { name: string; kind: AppKind; slug?: string | undefined; enterpriseId?: string | undefined; workspace?: string | undefined; projectId?:string },
   ): Promise<{ app: AppDetail; created: boolean }> {
+    const project=input.projectId?await projectAccess(this.accounts,actor,input.projectId):undefined;
+    if(project){
+      if(input.enterpriseId && input.enterpriseId!==project.enterprise_id)throw new ServiceError('CLOUD_GRANT_SCOPE',403);
+      input={...input,enterpriseId:project.enterprise_id??undefined};
+    }
     const owner = input.enterpriseId
       ? { kind: "enterprise" as const, id: input.enterpriseId }
       : { kind: "user" as const, id: actor.id };
@@ -578,10 +596,11 @@ export class AppData {
         owner.kind + ":" + owner.id,
       );
       const existing = await this.data.one<AppRow>(
-        "SELECT * FROM data_apps WHERE owner_kind=? AND owner_id=? AND slug=? AND deleted_at IS NULL",
+        "SELECT * FROM data_apps WHERE owner_kind=? AND owner_id=? AND slug=? AND project_id IS NOT DISTINCT FROM ?::text AND deleted_at IS NULL",
         owner.kind,
         owner.id,
         slug,
+        input.projectId??null,
       );
       if (existing) return { id: existing.id, created: false };
       const count = Number(
@@ -602,7 +621,7 @@ export class AppData {
       const id = randomUUID(),
         at = Date.now();
       await this.data.run(
-        "INSERT INTO data_apps(id,kind,owner_kind,owner_id,slug,name,workspace,public_key,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO data_apps(id,kind,owner_kind,owner_id,slug,name,workspace,public_key,created_by,created_at,updated_at,project_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         id,
         input.kind,
         owner.kind,
@@ -614,11 +633,12 @@ export class AppData {
         actor.id,
         at,
         at,
+        input.projectId??null,
       );
       return { id, created: true };
     });
     return {
-      app: await this.detail({ kind: "member", actor }, result.id),
+      app: await this.detail({ kind: "member", actor,projectId:input.projectId }, result.id),
       created: result.created,
     };
   }
@@ -692,6 +712,18 @@ export class AppData {
       if (next) next();
       else if (--state.running === 0) this.owners.delete(key);
     }
+  }
+
+  /** Authorize attachment operations without exposing app or account credentials to the storage layer. */
+  async fileAccess(caller:DataCaller,id:string,mode:'read'|'write') {
+    const access=await this.access(caller,id);
+    if(access.app.suspended_at)throw suspended();
+    const manager=access.level==='manage'||access.level==='admin';
+    const userId=caller.kind==='member'?caller.actor.id:access.user?.id;
+    if(mode==='write'&&caller.kind==='anonymous'&&!manager&&!await this.data.one('SELECT 1 FROM data_collections WHERE app_id=? AND dropped_at IS NULL AND (user_create OR user_own)',id))throw forbidden();
+    if(mode==='write'&&!userId)throw new ServiceError('SIGN_IN_REQUIRED',401,'上传附件需要登录');
+    if(mode==='write')await this.rate(id,'files:'+userId,this.limits.anonymousCreatesPerMinute);
+    return {userId:userId??'',manager,organizationId:access.app.owner_kind==='enterprise'?access.app.owner_id:null};
   }
 
   /**
@@ -1391,6 +1423,7 @@ export class AppData {
       ? await this.data.one<AppRow>("SELECT * FROM data_apps WHERE id=? AND deleted_at IS NULL", id)
       : undefined;
     if (!app) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
+    if(caller.kind==='member'&&caller.projectId&&caller.projectId!==app.project_id)throw new ServiceError('DATA_APP_NOT_FOUND',404,'应用不属于当前项目');
     if (caller.kind === "anonymous") {
       if (caller.key !== app.public_key)
         throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
@@ -1416,6 +1449,7 @@ export class AppData {
       return { app, level: role === "admin" ? "admin" : "user", caller, ownerName: "", user: { id: userId, name: user.name, role } };
     }
     const actor = caller.actor;
+    if(app.project_id)await projectAccess(this.accounts,actor,app.project_id);
     if (app.owner_kind === "user") {
       if (app.owner_id !== actor.id)
         throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");

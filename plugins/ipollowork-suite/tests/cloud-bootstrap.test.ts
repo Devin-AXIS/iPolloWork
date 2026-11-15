@@ -16,6 +16,7 @@ test('cloud bootstrap closes retained sockets and drains authorization on unload
  try{
   ctx.provide('webServer',{});
   ctx.provide('agents',{list:()=>[]});
+  ctx.provide('llm',{});
   ctx.provide('sessionController',{});
   ctx.provide('workspaceRegistry',{create:async()=>({id:'workspace',sessionIds:['session']})});
   const fiber=ctx.plugin(bootstrap,{accountOrigin:`http://127.0.0.1:${address.port}`});
@@ -24,6 +25,9 @@ test('cloud bootstrap closes retained sockets and drains authorization on unload
   const socket=new PassThrough();sockets.push(socket);
   await ctx.waterfall('webserver/upgrade',{} as never,socket,Buffer.alloc(0),undefined,async()=>{});
   assert.equal(socket.listenerCount('data'),1);
+  const stream=ctx.waterfall('llm/stream',{provider:'personal-key'} as never,async function*(){});
+  await assert.rejects(async()=>{for await(const _chunk of stream){}},{code:'IPW_CLOUD_MODEL_FORBIDDEN'});
+
   await fiber.dispose();
   assert.equal(socket.destroyed,true);
   assert.equal(socket.listenerCount('data'),0);

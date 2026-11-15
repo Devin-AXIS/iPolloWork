@@ -112,7 +112,7 @@ export class CloudProjects {
 export function cloudGrantAllows(grant:Grant,path:string,method:string):boolean {
   if(grant.kind==='launch') return method==='POST' && ['/api/v1/cloud-runtime/claim','/api/v1/cloud-runtime/inspect'].includes(path);
   if(grant.kind==='manager') return (method==='GET' && path==='/api/v1/cloud-runtime/status') || (method==='POST' && ['/api/v1/cloud-runtime/release','/api/v1/cloud-runtime/renew'].includes(path));
-  if(method==='GET' && [ '/api/v1/cloud-runtime/status','/api/v1/services','/api/v1/me/summary','/api/v1/projects',`/api/v1/projects/${grant.projectId}/runtime`].includes(path))return true;
+  if(method==='GET' && [ '/api/v1/cloud-runtime/status','/api/v1/services','/api/v1/me/summary','/api/v1/me/orgs','/api/v1/projects',`/api/v1/projects/${grant.projectId}/runtime`].includes(path))return true;
   if(method==='POST' && path==='/api/v1/cloud-runtime/activity')return true;
   return method==='POST' && /^\/api\/v1\/services\/[^/]+\/invoke$/.test(path);
 }
