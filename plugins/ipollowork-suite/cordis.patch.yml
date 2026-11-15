@@ -14,3 +14,6 @@
       name: '@ipollo/dsh-suite/agents'
     - id: ipollowork-im
       name: '@ipollo/dsh-suite/im'
+    - id: ipollowork-aliyun-sandbox
+      name: '@ipollo/dsh-suite/aliyun-sandbox'
+      disabled: true

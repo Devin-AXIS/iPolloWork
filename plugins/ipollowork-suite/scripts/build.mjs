@@ -1,8 +1,9 @@
 import { build } from 'esbuild'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { larkSdkHandshakePatch } from '../vendor/dsh-im/plugin-src/host/lark-sdk-handshake-patch.mjs'
 
 await mkdir('lib', { recursive: true })
+await rm('lib/host/sandbox', { recursive: true, force: true })
 await writeFile('lib/services.d.ts', await readFile('src/shared/services.ts', 'utf8'))
 await writeFile('lib/connections.d.ts', await readFile('src/shared/connections.ts', 'utf8'))
 // Only declared runtime packages stay external. DSH maps every package name in a bundle's dependency closure to one
@@ -11,7 +12,7 @@ await writeFile('lib/connections.d.ts', await readFile('src/shared/connections.t
 const manifest = JSON.parse(await readFile('package.json', 'utf8'))
 const runtimePackages = Object.keys({ ...manifest.dependencies, ...manifest.optionalDependencies, ...manifest.peerDependencies })
 const external = runtimePackages.flatMap(name => [name, `${name}/*`])
-await build({ entryPoints: ['src/host/index.ts', 'src/host/agents.ts', 'src/host/agent-runtime.ts', 'src/host/coordinator-runtime.ts', 'src/host/onboarding.ts'], outdir: 'lib/host', bundle: true, platform: 'node', format: 'esm', external: ['@deepseek-ai/*', ...external], target: 'node24', sourcemap: true })
+await build({ entryPoints: ['src/host/index.ts', 'src/host/agents.ts', 'src/host/agent-runtime.ts', 'src/host/coordinator-runtime.ts', 'src/host/onboarding.ts', 'src/host/sandbox/aliyun/index.ts'], outdir: 'lib/host', bundle: true, platform: 'node', format: 'esm', external: ['@deepseek-ai/*', ...external], target: 'node24', sourcemap: true })
 await build({
   entryPoints: ['src/host/im.ts'], outfile: 'lib/host/im.js', bundle: true, platform: 'node', format: 'esm', target: 'node24',
   mainFields: ['module', 'main'], plugins: [larkSdkHandshakePatch],

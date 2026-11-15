@@ -1,0 +1,67 @@
+[
+  {
+    "name": "sandbox_exec",
+    "description": "Run a shell command in this session’s isolated cloud sandbox. Files persist until release or server expiry.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "command": {
+          "type": "string",
+          "description": "Shell command. Use sandbox paths; the configured working directory applies to each call."
+        }
+      },
+      "required": [
+        "command"
+      ]
+    }
+  },
+  {
+    "name": "sandbox_read_file",
+    "description": "Read a bounded UTF-8 range from a file inside this session’s cloud sandbox.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute sandbox file path."
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Zero-based byte offset; defaults to 0."
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  },
+  {
+    "name": "sandbox_write_file",
+    "description": "Create or overwrite a UTF-8 file inside this session’s cloud sandbox. Parent directories must exist.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Absolute sandbox file path."
+        },
+        "text": {
+          "type": "string",
+          "description": "Complete new UTF-8 contents."
+        }
+      },
+      "required": [
+        "path",
+        "text"
+      ]
+    }
+  },
+  {
+    "name": "sandbox_release",
+    "description": "Delete this session’s temporary sandbox and its files.",
+    "parameters": {
+      "type": "object",
+      "properties": {}
+    }
+  }
+]

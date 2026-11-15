@@ -19,6 +19,7 @@ test('activation preserves the official plugin manager and its Remote definition
   assert(!inserted.some(entry => /plugin-manager/.test(entry.name)));
   assert.deepEqual(inserted.filter(entry => entry.name.startsWith('@ipollo/')).map(entry => entry.id), [
     'ipollowork-onboarding', 'ipollowork-suite', 'ipollowork-agents', 'ipollowork-im',
+    'ipollowork-aliyun-sandbox',
   ]);
 });
 
@@ -27,4 +28,18 @@ test('the plugin title is iPolloWork in every packaged locale', async () => {
     const data = JSON.parse(await readFile(new URL(`../locale/${locale}.json`, import.meta.url), 'utf8'));
     assert.equal(data.meta.title, 'iPolloWork');
   }
+});
+
+test('only Alibaba Sandbox is shipped as an optional bundle component', async () => {
+  const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const patch = load(await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8'));
+  const rows = patch.flatMap(entry => entry.insert ?? []).filter(entry => entry.id.includes('sandbox'));
+  assert.equal(rows.length, 1);
+  assert.equal(manifest.exports["./opensandbox"], undefined);
+  assert.equal(manifest.dependencies["@alibaba-group/opensandbox"], undefined);
+  for (const row of rows) {
+    assert.equal(row.disabled, true);
+    assert.equal(typeof manifest.exports[row.name.replace('@ipollo/dsh-suite/', './')], 'string');
+  }
+  assert(!Object.values(manifest.dependencies).some(value => value.startsWith('file:')));
 });
