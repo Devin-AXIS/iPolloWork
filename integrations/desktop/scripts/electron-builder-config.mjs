@@ -111,20 +111,20 @@ export function createElectronBuilderConfig(
   const packaged = resolveDesktopBuildCommit(env)
   return {
     appId,
-    protocols: [{ name: 'iPolloWork', schemes: ['dsh'] }],
+    protocols: [{ name: 'iPollo', schemes: ['dsh'] }],
     extraMetadata: {
-      productName: 'iPolloWork',
+      productName: 'iPollo',
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
       ...buildVersion === productVersion ? {} : { version: buildVersion },
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
-    productName: 'iPolloWork',
+    productName: 'iPollo',
     // The default copyright uses author.name; this line names the product shown to users instead.
-    copyright: `Copyright © ${new Date().getFullYear()} iPolloWork`,
+    copyright: `Copyright © ${new Date().getFullYear()} iPollo`,
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
-    artifactName: `deepseek-harness-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
+    artifactName: `iPollo-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
     directories: { output: output.directory },
     asar: true,
     electronDist: buildPaths.electron,
@@ -174,9 +174,9 @@ export function createElectronBuilderConfig(
       category: 'public.app-category.developer-tools',
       // macOS matches the application locale against this bundle, not Electron Framework resources.
       extendInfo: {
-        CFBundleDisplayName: 'iPolloWork',
+        CFBundleDisplayName: 'iPollo',
         CFBundleLocalizations: ['en', 'zh_CN', 'ja', 'es', 'fr', 'de', 'ru', 'pt'],
-        NSMicrophoneUsageDescription: 'iPolloWork uses your microphone to transcribe speech into message drafts.',
+        NSMicrophoneUsageDescription: 'iPollo uses your microphone to transcribe speech into message drafts.',
       },
       // Ad-hoc signing keeps the modified Electron executable runnable without a Developer ID.
       identity: unsigned ? '-' : macOSSigning?.signingIdentity,
@@ -266,8 +266,8 @@ export function createElectronBuilderConfig(
     },
     nsis: {
       // Shortcuts and the installed-programs list show the product name; file and directory names keep productName.
-      shortcutName: 'iPolloWork',
-      uninstallDisplayName: 'iPolloWork',
+      shortcutName: 'iPollo',
+      uninstallDisplayName: 'iPollo',
       installerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
       uninstallerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
       include: fileURLToPath(new URL('./installer.nsh', import.meta.url)),

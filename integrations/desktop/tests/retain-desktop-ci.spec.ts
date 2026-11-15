@@ -23,10 +23,10 @@ async function retainedFixture(target: 'win-x64' | 'mac-x64' | 'mac-arm64', qual
   await mkdir(join(config, 'presets'), { recursive: true })
   await writeFile(join(appRoot, 'package.json'), '{"version":"1.0.0"}')
   await writeFile(join(config, 'presets/test.env'), `DSH_DESKTOP_AUTO_UPDATE_ENV=test\nDOWNLOAD_TEST_RELEASE_ID=${'a'.repeat(32)}\n`)
-  const names = debug ? (target === 'win-x64' ? [`deepseek-harness-1.0.0-win-x64-${qualification}.exe`]
-    : [`deepseek-harness-1.0.0-${target}-${qualification}.dmg`, `deepseek-harness-1.0.0-${target}-${qualification}.zip`]) : target === 'win-x64'
-    ? ['deepseek-harness-1.0.0-win-x64.exe', 'deepseek-harness-1.0.0-win-x64.exe.blockmap', 'win-x64-release.json', 'nightly.yml']
-    : [`deepseek-harness-1.0.0-${target}.dmg`, `deepseek-harness-1.0.0-${target}.zip`, `deepseek-harness-1.0.0-${target}.zip.blockmap`, `${target}-release.json`, 'nightly-mac.yml']
+  const names = debug ? (target === 'win-x64' ? [`iPollo-1.0.0-win-x64-${qualification}.exe`]
+    : [`iPollo-1.0.0-${target}-${qualification}.dmg`, `iPollo-1.0.0-${target}-${qualification}.zip`]) : target === 'win-x64'
+    ? ['iPollo-1.0.0-win-x64.exe', 'iPollo-1.0.0-win-x64.exe.blockmap', 'win-x64-release.json', 'nightly.yml']
+    : [`iPollo-1.0.0-${target}.dmg`, `iPollo-1.0.0-${target}.zip`, `iPollo-1.0.0-${target}.zip.blockmap`, `${target}-release.json`, 'nightly-mac.yml']
   await Promise.all(names.map(name => writeFile(join(artifacts, name), `fixture ${name}`)))
   const env = {
     DSH_DESKTOP_RELEASES_DIR: '', DSH_PACKAGING_CONFIG_DIR: config, DSH_PACKAGING_PRESET: 'test', DSH_DESKTOP_TARGET_PLATFORM: target === 'win-x64' ? 'win32' : 'darwin',

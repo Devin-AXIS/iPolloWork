@@ -10,7 +10,7 @@ if (process.env.DSH_TEST_PACKAGING_FAIL === '1') process.exitCode = 2
 else {
   const directory = join(run.root, version, 'installer')
   await mkdir(directory, { recursive: true })
-  const filename = `deepseek-harness-${version}-win-x64.exe`
+  const filename = `iPollo-${version}-win-x64.exe`
   const bytes = Buffer.from('inert test bytes, not an installer')
   await writeFile(join(directory, filename), bytes)
   await writeFile(join(directory, `${filename}.blockmap`), 'inert test map')

@@ -24,7 +24,7 @@ it.each(['mac-arm64', 'win-x64'] as const)('preflights a complete retained %s bu
       bucket: 'fixture-1250000000', origin: 'https://EXAMPLE.com:443/', credentialsFile: join(root, 'absent-credentials.json'),
     }))
     const commit = 'b'.repeat(40)
-    const base = `deepseek-harness-1.0.0-${target}`
+    const base = `iPollo-1.0.0-${target}`
     const extension = target === 'win-x64' ? 'exe' : 'zip'
     const bytes = 'fixture installer bytes'
     await writeFile(join(artifacts, `${base}.${extension}`), bytes)

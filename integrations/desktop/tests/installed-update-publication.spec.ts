@@ -52,7 +52,7 @@ async function fixture(body: (context: {
     for (const version of run.versions) {
       const directory = join(run.root, version, 'installer')
       await mkdir(directory, { recursive: true })
-      const name = `deepseek-harness-${version}-win-x64.exe`
+      const name = `iPollo-${version}-win-x64.exe`
       const bytes = Buffer.from(`inert installer ${version}`)
       await writeFile(join(directory, name), bytes)
       await writeFile(join(directory, `${name}.blockmap`), 'inert map')

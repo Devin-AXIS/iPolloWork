@@ -52,7 +52,7 @@ export async function planInstalledUpdateDistribution(manifest: string, version:
     throw new Error('installed update: feed must describe exactly the selected version and installer')
   }
   const info = record(metadata.files[0])
-  const filename = `deepseek-harness-${version}-win-x64.exe`
+  const filename = `iPollo-${version}-win-x64.exe`
   if (info.url !== filename || (metadata.path !== undefined && metadata.path !== filename)) {
     throw new Error('installed update: feed filename must identify the selected local Windows installer')
   }

@@ -10,7 +10,7 @@
 | 升级通道 | <code>stable</code> |
 | 更新灰度比例 | 全量（未设置） |
 | 平台 | <code>win-x64</code> |
-| 下载地址预览 | <a href="https&#58;//download.example.com/dsh-desk/bin/win-x64/stable/deepseek-harness-1.0.0-win-x64.exe">https&#58;//download.example.com/dsh-desk/bin/win-x64/stable/deepseek-harness-1.0.0-win-x64.exe</a><br>发布后的目标地址，审批前不保证可下载。 |
+| 下载地址预览 | <a href="https&#58;//download.example.com/dsh-desk/bin/win-x64/stable/iPollo-1.0.0-win-x64.exe">https&#58;//download.example.com/dsh-desk/bin/win-x64/stable/iPollo-1.0.0-win-x64.exe</a><br>发布后的目标地址，审批前不保证可下载。 |
 | 升级 YAML | <a href="https&#58;//download.example.com/dsh-desk/feeds/win-x64/stable.yml">https&#58;//download.example.com/dsh-desk/feeds/win-x64/stable.yml</a><br>本次发布将更新此文件；审批前可能不存在或仍指向旧版本。 |
 | 打包来源 | <a href="https&#58;//github.com/owner/repo/actions/runs/20/attempts/3">查看打包运行 #20 · 第 3 次尝试</a><br>源码：<code>dsh-v1.0.0 @ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</code><br>打包机器：<code>windows-publisher</code> |
 | 签名与公证 | EXE 签名校验通过 |
@@ -35,7 +35,7 @@ COS 存储桶：<code>production-1234567890</code>
 
 | 文件 | 大小 | SHA-256 |
 | --- | --- | --- |
-| <a href="https&#58;//download.example.com/dsh-desk/bin/win-x64/stable/deepseek-harness-1.0.0-win-x64.exe">deepseek-harness-1.0.0-win-x64.exe</a> | 15 字节 | <code>e34210a6de4f653edf588301431c3d69a633638cbf587345cc50a7fed9f38f4c</code> |
+| <a href="https&#58;//download.example.com/dsh-desk/bin/win-x64/stable/iPollo-1.0.0-win-x64.exe">iPollo-1.0.0-win-x64.exe</a> | 15 字节 | <code>e34210a6de4f653edf588301431c3d69a633638cbf587345cc50a7fed9f38f4c</code> |
 | <a href="https&#58;//download.example.com/dsh-desk/feeds/win-x64/stable.yml">stable.yml</a> | 15 字节 | <code>8850e6075dda0080c526269a4de29848c32c2a65e3d81f4a64ed8ce53d4b47c1</code> |
 
 </details>

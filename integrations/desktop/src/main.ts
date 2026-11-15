@@ -73,7 +73,7 @@ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 
-app.setName('iPolloWork')
+app.setName('iPollo')
 const productData = join(app.getPath('appData'), 'iPolloWork Desktop')
 mkdirSync(productData, { recursive: true })
 app.setPath('userData', productData)
@@ -1165,7 +1165,7 @@ async function main(): Promise<void> {
   const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
     : join(process.resourcesPath, 'icon.png')
   app.setAboutPanelOptions({
-    applicationName: 'iPolloWork',
+    applicationName: 'iPollo',
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
