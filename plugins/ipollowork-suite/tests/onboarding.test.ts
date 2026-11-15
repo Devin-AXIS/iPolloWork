@@ -36,7 +36,7 @@ function fixture(progress: Partial<OnboardingSettings> = {}, credit?: boolean) {
   return { controller, settings, chat, account, developer }
 }
 
-test('first-run choices use DSH settings and keep the same office preferences', async () => {
+test('office onboarding keeps compact chat without hiding the full preset list', async () => {
   const f = fixture()
   try {
     assert.equal(f.controller.state.getSnapshot().visible, true)
@@ -45,7 +45,7 @@ test('first-run choices use DSH settings and keep the same office preferences', 
     assert.deepEqual(f.chat.value.getSnapshot().value, { transcriptView: 'compact', performanceUsage: 'compact' })
     assert.equal(f.settings.value.getSnapshot().value?.step, 'done')
     assert.equal(f.controller.state.getSnapshot().visible, false)
-    assert.deepEqual(f.developer, [false])
+    assert.deepEqual(f.developer, [true])
   } finally { f.controller.dispose() }
 })
 
@@ -61,5 +61,13 @@ test('credit state and retry do not depend on the official account implementatio
     assert.equal(f.settings.value.getSnapshot().value?.step, 'purpose')
     f.controller.dispose()
     assert.equal(await f.controller.update({ step: 'process' }), false)
+  } finally { f.controller.dispose() }
+})
+
+test('skipping onboarding retains all built-in preset choices', async () => {
+  const f = fixture({ step: 'purpose' })
+  try {
+    assert.equal(await f.controller.complete('skipped'), true)
+    assert.deepEqual(f.developer, [true])
   } finally { f.controller.dispose() }
 })

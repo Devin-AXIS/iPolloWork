@@ -174,3 +174,5 @@ Cloud projects: [setup, lifecycle and validation limits](docs/cloud-projects.md)
 Optional resource archives can be prepared with `npm run pack:resources`, but they are not suite dependencies. The default installation downloads only the selected plugin.
 
 The dedicated iPollo desktop package omits both Studio archives and their resource dependencies. Its market lists pinned GitHub archive URLs without reading or downloading them; DSH downloads and installs the selected plugin only after the user chooses Install.
+
+Office onboarding and skipping setup retain the full agent preset list. Compact chat changes transcript and usage presentation without disabling coding view. Existing installations can enable coding view in Settings to restore PTC and Minimal modes.

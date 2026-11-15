@@ -36,7 +36,7 @@ export const OnboardingSettingsFields = {
   process: z.union(['compact', 'standard', 'detailed', z.const(null)]),
   completion: z.union(['completed', 'skipped', 'api-key', z.const(null)]),
   usage: z.union(['compact', 'detailed']).default('compact'),
-  developerTools: z.boolean().default(false),
+  developerTools: z.boolean().default(true),
 }
 
 /** Validated defaults for a fresh installation. */

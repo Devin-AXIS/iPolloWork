@@ -8,7 +8,7 @@ import type { AccountSnapshot } from './account.ts'
 import type { DesktopOnboardingState, OnboardingChange } from './onboarding-contract.ts'
 
 function freshProgress(): OnboardingProgress {
-  return { version: 1, step: 'welcome', purpose: null, process: null, completion: null, usage: 'compact', developerTools: false }
+  return { version: 1, step: 'welcome', purpose: null, process: null, completion: null, usage: 'compact', developerTools: true }
 }
 
 /** Host-backed progress; completing writes active preferences before the durable done marker. */
@@ -119,7 +119,7 @@ export class DesktopOnboardingController {
     return this.save({
       ...current, step: 'done', completion: reason,
       process: office ? 'compact' : reason === 'skipped' ? 'standard' : current.process,
-      usage: development ? 'detailed' : 'compact', developerTools: development,
+      usage: development ? 'detailed' : 'compact', developerTools: true,
     }, true)
   }
 
