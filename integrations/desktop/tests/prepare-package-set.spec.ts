@@ -84,6 +84,18 @@ describe('desktop package-set selection', () => {
     ])
   })
 
+  it('leaves optional Studio plugins out of the desktop installation', () => {
+    const available = new Map<string, PackedDesktopPackage>([
+      ['@deepseek-ai/dsh', packed('@deepseek-ai/dsh')],
+      ['@ipollo/desktop-host', packed('@ipollo/desktop-host', { dependencies: { '@ipollo/dsh-suite': '1.0.0' } })],
+      ['@ipollo/dsh-suite', packed('@ipollo/dsh-suite')],
+      ['deepseek-idesign', packed('deepseek-idesign')],
+      ['deepseek-ivideo', packed('deepseek-ivideo')],
+    ])
+    expect(selectDesktopPackageClosure(available, { platform: 'darwin', arch: 'arm64' }, ['@ipollo/dsh-suite'])
+      .map(entry => entry.manifest.name)).toEqual(['@deepseek-ai/dsh', '@ipollo/desktop-host', '@ipollo/dsh-suite'])
+  })
+
   it('requires Desktop Host, public CLI and application composition files', () => {
     const files = DESKTOP_HOST_RUNTIME_FILES.map(file => `package/${file}`)
     expect(() => {

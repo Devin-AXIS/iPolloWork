@@ -47,8 +47,6 @@
     "LICENSE",
     "THIRD_PARTY_NOTICES.md",
     "LICENSES/MIT-legacy.txt",
-    "catalog/packages/deepseek-idesign-1.0.0-beta.27-8582ffc54e8c.tgz",
-    "catalog/packages/deepseek-ivideo-1.0.0-beta.22-e5f044d93ee4.tgz",
     "deploy/cloud"
   ],
   "dsh": {
@@ -84,7 +82,8 @@
     "pack:check": "npm pack --dry-run",
     "smoke": "node scripts/smoke.mjs",
     "test:im-upstream": "node --import tsx --test vendor/dsh-im/test/artifact-delivery.test.mjs vendor/dsh-im/test/image-input.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-registry.test.mjs vendor/dsh-im/test/channels/feishu/slash-command-panel.test.mjs",
-    "link:workspace": "node scripts/link-workspace.mjs"
+    "link:workspace": "node scripts/link-workspace.mjs",
+    "pack:resources": "node scripts/package-resources.mjs"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "1.3.0",
@@ -94,7 +93,9 @@
     "undici": "7.30.2",
     "zod": "^4.6.7",
     "qrcode": "1.5.4",
-    "e2b": "2.31.0"
+    "e2b": "2.31.0",
+    "@ipollo/dsh-design-resources": "1.0.0-beta.27",
+    "@ipollo/dsh-video-resources": "1.0.0-beta.22"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.1.0",

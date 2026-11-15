@@ -19,3 +19,5 @@ The current product release is **iPollo 1.0** (`1.0.0` in installer metadata). P
 Unsigned Windows x64 builds run on GitHub-hosted Windows through `.github/workflows/ipollo-release-packages.yml`. The workflow validates the packaged runtime before attaching the installer to an existing release.
 
 Signed iPollo releases set `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` and `DSH_DESKTOP_UPDATE_CHANNEL=stable`. The packaged updater must never point to the upstream DSH download service. Both Mac architectures share a feed containing their separate ZIP entries.
+
+Design and Video are optional market installs. Desktop packages only the suite and the official runtime closure; it excludes Studio packages, their archive dependencies and bundled installer archives. The dedicated desktop market downloads the pinned Studio releases from GitHub only when the user installs them.

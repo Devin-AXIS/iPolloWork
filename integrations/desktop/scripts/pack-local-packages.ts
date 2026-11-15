@@ -1,10 +1,10 @@
 /** Stage local-branded DSH packages for unsigned Desktop builds without a publication record. */
 
-import { resolve } from 'node:path'
+import { resolve, join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { x, c } from 'tar'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, readFileSync } from 'node:fs'
-import { createHash } from 'node:crypto'
-import { z } from 'zod'
 import { parseArgs } from 'node:util'
 import {
   readClientBuildRecord,
@@ -28,19 +28,22 @@ async function main(): Promise<void> {
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'integrations/desktop-host'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
-  const catalog = resolve(root, 'plugins/ipollowork-suite/catalog')
-  const releases = z.object({ format: z.literal(1), plugins: z.array(z.object({
-    name: z.enum(['deepseek-idesign', 'deepseek-ivideo']),
-    file: z.string().regex(/^[a-z0-9][a-z0-9.-]+\.tgz$/u),
-    sha256: z.string().regex(/^[a-f0-9]{64}$/u),
-  })) }).parse(JSON.parse(readFileSync(resolve(catalog, 'bundled-releases.json'), 'utf8')))
-  for (const release of releases.plugins) {
-    const path = resolve(catalog, 'packages', release.file)
-    if (createHash('sha256').update(readFileSync(path)).digest('hex') !== release.sha256) {
-      throw new Error(`desktop local pack: checksum mismatch for ${release.name}`)
+  // Desktop installs Studio through the market; its base suite must not pull archive dependencies.
+  const suiteName = JSON.parse(readFileSync(resolve(root, 'plugins/ipollowork-suite/package.json'), 'utf8'))
+  const suiteArchive = resolve(destination, `ipollo-dsh-suite-${suiteName.version}.tgz`)
+  const staging = mkdtempSync(join(tmpdir(), 'ipollo-desktop-suite-'))
+  try {
+    await x({ file: suiteArchive, cwd: staging })
+    const manifestPath = join(staging, 'package/package.json')
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+    for (const name of ['@ipollo/dsh-design-resources', '@ipollo/dsh-video-resources', 'deepseek-idesign', 'deepseek-ivideo']) {
+      delete manifest.dependencies?.[name]
+      delete manifest.optionalDependencies?.[name]
     }
-    copyFileSync(path, resolve(destination, release.file))
-  }
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
+    rmSync(join(staging, 'package/catalog/packages'), { recursive: true, force: true })
+    await c({ gzip: true, file: suiteArchive, cwd: staging }, ['package'])
+  } finally { rmSync(staging, { recursive: true, force: true }) }
   console.log(`desktop local pack: ${String(packed.length)} tarball(s) in ${destination}`)
 }
 

@@ -100,3 +100,28 @@ test('shipped Studio bundles select their host authentication API for editor ass
     assert(host.includes('admit(req)'))
   }
 })
+
+// npm delivery keeps the verified archives in pinned resource dependencies.
+test('npm resource dependencies preserve archive installation without source tarballs', async () => {
+  const { rename } = await import('node:fs/promises')
+  const directory = await mkdtemp(join(tmpdir(), 'ipw-npm-market-'))
+  const original = resolve('catalog/packages')
+  const hidden = resolve('catalog/packages.resource-test')
+  await rename(original, hidden)
+  try {
+    const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, directory)
+    assert.equal(state.items[0]?.version, '1.0.0-beta.27')
+    assert.equal(state.items[1]?.version, '1.0.0-beta.22')
+    for (const item of state.items.slice(0, 2)) assert((await readFile(item.spec.slice(5))).byteLength > 0)
+  } finally { await rename(hidden, original); await rm(directory, { recursive: true, force: true }) }
+})
+
+
+test('dedicated desktop lists Studio download targets without preloading archives', async () => {
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, undefined, true)
+  for (const item of state.items.slice(0, 2)) {
+    assert.equal(item.installed, false)
+    assert(item.spec.startsWith('https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/'))
+    assert(item.spec.endsWith('.tgz'))
+  }
+})

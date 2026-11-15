@@ -434,6 +434,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                   url.searchParams.get("language") === "zh" ? "zh" : "en",
                   config.maxResponseBytes,
                   join(ctx.profileContext.home, "cache", "ipollowork-market"),
+                  config.dedicatedDesktop,
                 ),
               );
               return;

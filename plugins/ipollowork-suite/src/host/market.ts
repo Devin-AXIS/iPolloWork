@@ -1,6 +1,7 @@
 /** Read a curated DSH format-1 index and join it with the native installation inventory. */
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
+import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseMarketIndex, marketInstallTarget } from '@deepseek-ai/dsh-plugin-market-index'
@@ -32,7 +33,7 @@ const bundledReleaseSchema = z.object({
 }).strict()
 
 /** Resolve verified, suite-carried releases only for the suite's default catalog. */
-async function bundledInstallTargets(catalogPath: string, cacheDirectory?: string): Promise<ReadonlyMap<string, string>> {
+async function bundledInstallTargets(catalogPath: string, cacheDirectory?: string, downloadOnDemand = false): Promise<ReadonlyMap<string, string>> {
   const defaultCatalog = fileURLToPath(new URL('../../catalog/index.json', import.meta.url))
   if (resolve(catalogPath) !== defaultCatalog) return new Map()
   try {
@@ -41,8 +42,20 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
     for (const release of releases.plugins) {
       const key = `${release.name}@${release.version}`
       if (targets.has(key)) throw new Error('Duplicate bundled release')
-      const file = fileURLToPath(new URL(`../../catalog/packages/${release.file}`, import.meta.url))
-      const bytes = await readFile(file)
+      if (downloadOnDemand) {
+        targets.set(key, `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/${release.file}`)
+        continue
+      }
+      let file = fileURLToPath(new URL(`../../catalog/packages/${release.file}`, import.meta.url))
+      let bytes: Buffer
+      try { bytes = await readFile(file) }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        const resource = release.name === 'deepseek-idesign' ? '@ipollo/dsh-design-resources' : release.name === 'deepseek-ivideo' ? '@ipollo/dsh-video-resources' : undefined
+        if (!resource) throw error
+        file = createRequire(import.meta.url).resolve(`${resource}/${release.file}`)
+        bytes = await readFile(file)
+      }
       if (createHash('sha256').update(bytes).digest('hex') !== release.sha256) throw new Error('Bundled release checksum mismatch')
       let target = file
       if (cacheDirectory) {
@@ -66,13 +79,13 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
 }
 
 /** Each request re-reads the operator's catalog. No copied installation state is persisted. */
-export async function readMarket(path: string, manager: NativePluginManager, runtimeVersion: string, language: string, maxBytes: number, cacheDirectory?: string): Promise<MarketState> {
+export async function readMarket(path: string, manager: NativePluginManager, runtimeVersion: string, language: string, maxBytes: number, cacheDirectory?: string, downloadOnDemand = false): Promise<MarketState> {
   const content = await readFile(path)
   if (content.byteLength > maxBytes) throw new SuiteError('IPW_CATALOG_TOO_LARGE', 500)
   let index
   try { index = parseMarketIndex(JSON.parse(content.toString('utf8')), 'https://catalog.ipollowork.invalid/index.json') }
   catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 500, { cause }) }
-  const bundled = await bundledInstallTargets(path, cacheDirectory)
+  const bundled = await bundledInstallTargets(path, cacheDirectory, downloadOnDemand)
   const installed = new Map((await manager.listBundles()).map(bundle => [bundle.name, bundle]))
   return {
     title: localized(index.title, language), runtimeVersion,

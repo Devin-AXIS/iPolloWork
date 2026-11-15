@@ -19,3 +19,5 @@ DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源
 Windows x64 未签名安装包通过 `.github/workflows/ipollo-release-packages.yml` 在 GitHub 托管的 Windows 构建机生成；工作流先验证打包后的运行时，再上传到已有发行版。
 
 iPollo 签名发行设置 `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` 和 `DSH_DESKTOP_UPDATE_CHANNEL=stable`。安装包中的更新器不得指向上游 DSH 下载服务；两个 Mac 架构共用包含各自 ZIP 条目的更新清单。
+
+Design 和 Video 由用户在插件市场按需安装。桌面主包仅包含套件和官方运行时依赖，不预装创作插件、不携带其安装压缩包或资源包依赖。专用桌面的插件市场仅在用户安装时从 GitHub 下载固定版本。

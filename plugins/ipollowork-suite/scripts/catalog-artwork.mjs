@@ -25,7 +25,11 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   await catalogArtwork('catalog/index.json', 'catalog/bundled-releases.json', update)
   const manifest = JSON.parse(await readFile('package.json', 'utf8'))
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8'))
-  const current = ['catalog/index.json', 'catalog/bundled-releases.json', ...releases.plugins.map(item => 'catalog/packages/' + item.file)]
+  const current = ['catalog/index.json', 'catalog/bundled-releases.json']
+  for (const release of releases.plugins) {
+    const resource = release.name === 'deepseek-idesign' ? '@ipollo/dsh-design-resources' : '@ipollo/dsh-video-resources'
+    if (manifest.dependencies?.[resource] !== release.version) throw Error('Resource dependency must match the pinned Studio version')
+  }
   if (update) {
     manifest.files = [...manifest.files.filter(file => file !== 'catalog' && !file.startsWith('catalog/')), ...current]
     await writeFile('package.json', JSON.stringify(manifest, null, 2) + '\n')
