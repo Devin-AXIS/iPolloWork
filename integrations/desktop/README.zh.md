@@ -20,7 +20,7 @@ Windows x64 未签名安装包通过 `.github/workflows/ipollo-release-packages.
 
 iPollo 签名发行设置 `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` 和 `DSH_DESKTOP_UPDATE_CHANNEL=stable`。安装包中的更新器不得指向上游 DSH 下载服务；两个 Mac 架构共用包含各自 ZIP 条目的更新清单。
 
-Design 和 Video 由用户在插件市场按需安装。桌面主包仅包含套件和官方运行时依赖，不预装创作插件、不携带其安装压缩包或资源包依赖。专用桌面的插件市场仅在用户安装时从 GitHub 下载固定版本。
+Design 和 Video 由用户在插件市场按需安装。桌面主包仅包含套件和官方运行时依赖，不预装创作插件、不携带其安装压缩包或资源包依赖。专用桌面的插件市场仅在用户安装时从 GitHub 下载固定版本。设计和视频插件各自在自己的仓库构建、发版；客户端发行流程不得构建或发布它们的插件安装包。
 
 macOS 打包前执行 `node integrations/desktop/run.mjs prepare-cua-helper.ts`，在固定上游源码目录外编译两个架构的官方电脑操作辅助程序并签名、公证；缺失辅助程序时禁止打包。桌面启动时，仅当独立目录缺少模型文件，才从共享 `~/.dsh` 缓存复用 SHA-256 校验通过的 SenseVoice 模型；不会覆盖已有模型。
 
