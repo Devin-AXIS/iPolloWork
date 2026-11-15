@@ -11,3 +11,7 @@ DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源
 在仓库根目录执行 `npm run setup:build`，然后运行 `node integrations/desktop/run.mjs package-target.ts mac-arm64 --dir --unsigned`。输出位于 `.desktop-build/`。本包使用校验后的官方依赖缓存，不单独执行 npm 安装。正式签名发行还需配置对应平台的签名环境。
 
 不提供旧版 iPolloWork profile 转换或降级层。文件和账户凭据仍由配置的 DSH home 管理。`LICENSE` 保留原 DeepSeek Harness MIT 许可证；产品修改独立维护于本目录，不进入官方应用源码树。
+
+## 产品版本
+
+当前产品发行版为 **iPolloWork 1.0**（安装包元数据为 `1.0.0`）。产品与桌面端清单使用相同版本；内置 DSH 运行时保留 `integrations/runtime/upstream.json` 中固定的版本。后续补丁版本依次使用 `1.0.1`、`1.0.2`，展示名称可写为 `1.0.01`、`1.0.02`。安装包元数据不得使用前导零，因为更新器要求标准语义化版本号。

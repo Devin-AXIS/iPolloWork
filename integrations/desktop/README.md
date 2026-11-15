@@ -11,3 +11,7 @@ DSH dependencies are built from the exact official source revision in [the runti
 From the repository root, run `npm run setup:build`, then run `node integrations/desktop/run.mjs package-target.ts mac-arm64 --dir --unsigned`. Build output lives in `.desktop-build/`. The package uses the verified official dependency cache; it is not a separate npm installation target. Signed distribution additionally requires the platform signing configuration.
 
 There is no old iPolloWork profile conversion or downgrade layer. Files and account credentials remain owned by the configured DSH home. The original DeepSeek Harness MIT license is retained in `LICENSE`; product changes are maintained here, independently from the official app tree.
+
+## Product versions
+
+The current product release is **iPolloWork 1.0** (`1.0.0` in installer metadata). Product and desktop manifests share this version; the bundled DSH runtime retains the version in `integrations/runtime/upstream.json`. Future patch releases use `1.0.1`, `1.0.2`, and so on; display labels may use `1.0.01`, `1.0.02`. Never put leading zeroes into installer metadata, because the updater requires semantic versions.

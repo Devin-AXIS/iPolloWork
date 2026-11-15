@@ -54,11 +54,7 @@ function manifestVersion(path: string, subject: string): string {
 }
 
 function desktopRelease(): DesktopRelease {
-  const version = manifestVersion(join(APP_ROOT, 'package.json'), 'desktop package')
-  const dshVersion = manifestVersion(resolve(APP_ROOT, '..', '..', '.upstream', 'dsh', 'package.json'), 'root dsh package')
-  if (version !== dshVersion) {
-    throw new Error(`desktop runtime: Electron ${version} must bind the same version of @deepseek-ai/dsh, found ${dshVersion}`)
-  }
+  const version = manifestVersion(resolve(APP_ROOT, '..', '..', '.upstream', 'dsh', 'package.json'), 'pinned dsh runtime')
   const runtime = JSON.parse(readFileSync(join(RUNTIME_ROOT, 'versions.json'), 'utf8')) as Record<string, unknown>
   return parseDesktopRelease({
     schemaVersion: 1,
