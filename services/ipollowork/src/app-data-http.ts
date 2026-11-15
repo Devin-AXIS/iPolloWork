@@ -11,6 +11,8 @@ import type { Auth } from "./auth.js";
 import type { AppDataConfig } from "./config.js";
 import { appDataBodyLimit, type AppData, type DataCaller } from "./app-data.js";
 import { ServiceError } from "./errors.js";
+import { audit, requireAdmin } from "./domain.js";
+import type { Store } from "./database.js";
 
 const createInput = z
   .object({
@@ -38,8 +40,9 @@ const updateInput = z
  * @param data - the app data owner, absent when `APP_DATA_DATABASE_URL` is unset.
  * @param limits - app data limits, used for the request body bound.
  * @param auth - Better Auth, used to resolve bearer tokens.
+ * @param accounts - the account database, which records the operator's actions.
  */
-export function mountAppData(app: App, data: AppData | undefined, limits: AppDataConfig | undefined, auth: Auth): void {
+export function mountAppData(app: App, data: AppData | undefined, limits: AppDataConfig | undefined, auth: Auth, accounts: Store): void {
   app.use(
     "/api/data/v1/*",
     cors({
@@ -64,6 +67,10 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
   const caller = async (c: Context): Promise<DataCaller> => {
     c.header("Cache-Control", "no-store");
     const authorization = c.req.header("authorization");
+    const key = c.req.header("x-data-key");
+    // A visitor signed in to one app sends that app's key with the token the sign-in returned.
+    if (key && authorization?.startsWith("Bearer ipd_"))
+      return { kind: "anonymous", key, ip: c.req.header("x-ipollo-peer-ip") ?? "", token: authorization.slice(7) };
     if (authorization?.startsWith("Bearer ")) {
       const session = await auth.api.getSession({ headers: new Headers({ authorization }) });
       if (!session || session.user.banned) throw new ServiceError("SIGN_IN_REQUIRED", 401, "登录已失效，请重新登录");
@@ -78,7 +85,6 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
         },
       };
     }
-    const key = c.req.header("x-data-key");
     if (key) return { kind: "anonymous", key, ip: c.req.header("x-ipollo-peer-ip") ?? "" };
     throw new ServiceError("SIGN_IN_REQUIRED", 401, "需要登录令牌或应用的公开 key");
   };
@@ -87,6 +93,38 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
     if (result.kind !== "member") throw new ServiceError("SIGN_IN_REQUIRED", 401, "需要登录令牌");
     return result;
   };
+  // Session routes below `/api/v1` carry the service's own page session and origin check.
+  const signin = z.object({ app: z.string().max(100), key: z.string().max(100), return: z.url().max(2000) }).strict();
+  app.get("/api/v1/data-signin", async (c) =>
+    c.json(await ready().signin(c.get("actor"), signin.parse({ app: c.req.query("app"), key: c.req.query("key"), return: c.req.query("return") }), false)),
+  );
+  app.post("/api/v1/data-signin", async (c) => c.json(await ready().signin(c.get("actor"), signin.parse(await c.req.json()), true)));
+  app.get("/api/v1/admin/data-apps", async (c) => {
+    requireAdmin(c.get("actor"));
+    return c.json(
+      await ready().overview({
+        q: z.string().trim().max(100).default("").parse(c.req.query("q")),
+        sort: z.enum(["bytes", "updated"]).default("bytes").parse(c.req.query("sort")),
+        offset: z.coerce.number().int().min(0).default(0).parse(c.req.query("offset")),
+        limit: z.coerce.number().int().min(1).max(100).default(50).parse(c.req.query("limit")),
+      }),
+    );
+  });
+  app.post("/api/v1/admin/data-apps/:app/suspend", async (c) => {
+    const actor = c.get("actor");
+    requireAdmin(actor);
+    const input = z.object({ suspended: z.boolean() }).strict().parse(await c.req.json());
+    await ready().suspend(c.req.param("app"), input.suspended);
+    await audit(accounts, actor, input.suspended ? "data-app.suspend" : "data-app.resume", c.req.param("app"));
+    return c.json({ ok: true });
+  });
+  app.delete("/api/v1/admin/data-apps/:app", async (c) => {
+    const actor = c.get("actor");
+    requireAdmin(actor);
+    await ready().discard(c.req.param("app"));
+    await audit(accounts, actor, "data-app.delete", c.req.param("app"));
+    return c.json({ ok: true });
+  });
   app.get("/api/data/v1/apps", async (c) => {
     const who = await member(c);
     return c.json(await ready().apps(who.actor));

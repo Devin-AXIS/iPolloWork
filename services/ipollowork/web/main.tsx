@@ -21,6 +21,7 @@ import {
   Eye,
   EyeOff,
   Zap,
+  Database,
 } from "lucide-react";
 import {
   api,
@@ -52,6 +53,7 @@ import {
 import "./style.css";
 import { Services } from "./services.js";
 import { StorageQuota } from "./storage.js";
+import { Connect, DataApps } from "./data-apps.js";
 
 function Auth({ done }: { done: () => void }) {
   const [register, setRegister] = useState(false),
@@ -225,6 +227,7 @@ const navigation = [
   { id: "resources", title: "资源", icon: Library },
   { id: "plans", title: "套餐", icon: CreditCard },
   { id: "orders", title: "订单", icon: Receipt },
+  { id: "data-apps", title: "应用数据", icon: Database, admin: true },
   { id: "settings", title: "设置", icon: Settings, admin: true },
 ];
 function Overview({ user, go }: { user: User; go: (page: string) => void }) {
@@ -432,6 +435,7 @@ function App() {
       </main>
     );
   if (!session.data?.user) return <Auth done={session.reload} />;
+  if (location.pathname === "/connect") return <Connect name={session.data.user.name} />;
   const user = session.data.user,
     nav = navigation.filter((n) => !n.admin || user.role === "admin"),
     selected = nav.find((n) => n.id === page) ?? nav[0];
@@ -576,6 +580,8 @@ function App() {
             <Orders user={user} />
           ) : selected.id === "services" ? (
             <Services user={user} />
+          ) : selected.id === "data-apps" ? (
+            <DataApps />
           ) : (
             <SettingsPage />
           )}

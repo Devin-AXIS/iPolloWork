@@ -583,6 +583,15 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .dataRowText strong { font-size:13.5px;font-weight:500;letter-spacing:-.005em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .dataRowText small { font-size:11.5px;color:var(--g-faint);font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .dataRowKind { flex-shrink:0;font-size:11.5px;color:var(--g-faint); }
+.dataRowKind[data-warn] { color:var(--g-warn); }
+.dataNotice { margin:0 0 12px;padding:9px 12px;border-radius:10px;font-size:12.5px;color:var(--g-warn);background:color-mix(in srgb,var(--g-warn) 10%,transparent); }
+.dataAdminForm { display:flex;gap:8px;margin:4px 0 12px; }
+.dataAdminForm input { flex:1;min-width:0;height:34px;box-sizing:border-box;border:0;border-radius:9px;padding:0 12px;font:inherit;font-size:13px;color:inherit;background:var(--ipw-muted-surface, var(--dsw-alias-bg-base));outline:none; }
+.dataAdminList { display:flex;flex-direction:column;gap:2px;margin:0;padding:0;list-style:none; }
+.dataAdminList li { display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:44px; }
+.dataAdminList span { display:flex;flex-direction:column;min-width:0; }
+.dataAdminList strong { font-size:13px;font-weight:500; }
+.dataAdminList small { font-size:11.5px;opacity:.6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .dataFaint { color:var(--g-faint);font-size:12px; }
 .dataHead { display:flex;align-items:center;gap:10px;min-width:0;margin:0 0 14px; }
 .dataHeadTitle { flex:1;min-width:0; }

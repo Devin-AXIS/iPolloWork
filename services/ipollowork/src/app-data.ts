@@ -3,7 +3,7 @@
  * read and written only through JSON statements; callers never see SQL. Personal apps belong to one user and organization
  * apps to their members. A public key admits anonymous reads or creates only on collections that opt in.
  */
-import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import type { Actor } from "./auth.js";
@@ -21,6 +21,9 @@ const MAX_CHANGES = 500;
 const PURGE_CHUNK = 2000;
 const MAX_DEPTH = 16;
 const MAX_WAITING = 100;
+const MAX_ROLES = 200;
+/** A visitor's sign-in lasts this long; replacing the app's public key ends every sign-in at once. */
+const VISITOR_MS = 30 * 86_400_000;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const PRUNE_INTERVAL_MS = 3_600_000;
 /** Largest request body: a full insert of maximum-size records plus statement overhead. */
@@ -148,6 +151,7 @@ const statements = {
       define: collection,
       fields: z.record(fieldName, fieldTypes).optional(),
       public: z.array(z.enum(["read", "create"])).max(2).optional(),
+      users: z.array(z.enum(["read", "create", "own"])).max(3).optional(),
       unique: z.array(fieldName).min(1).max(3).nullable().optional(),
       strict: z.boolean().optional(),
       remove: z.array(fieldName).min(1).max(20).optional(),
@@ -155,6 +159,12 @@ const statements = {
     .strict(),
   drop: z.object({ drop: collection }).strict(),
   info: z.object({ info: z.literal(true) }).strict(),
+  me: z.object({ me: z.literal(true) }).strict(),
+  grant: z
+    .object({ grant: z.string().regex(/^[a-z][a-z0-9_]{0,23}$/, "角色名使用小写字母、数字和下划线"), email: z.email().max(200) })
+    .strict(),
+  revoke: z.object({ revoke: z.email().max(200) }).strict(),
+  origins: z.object({ origins: z.array(z.url().max(200)).max(10) }).strict(),
 };
 type Operation = keyof typeof statements;
 /** One statement; exactly one operation key names the operation. */
@@ -215,14 +225,24 @@ const invalid = () =>
   new ServiceError(
     "DATA_STATEMENT_INVALID",
     400,
-    "每条语句需要且只能有一个操作：insert、get、find、count、aggregate、update、upsert、delete、define、drop、info；多条语句放在 batch 中",
+    "每条语句需要且只能有一个操作：insert、get、find、count、aggregate、update、upsert、delete、define、drop、info、me、grant、revoke、origins；多条语句放在 batch 中",
   );
 
 /** Who is calling: a signed-in account, or an anonymous visitor presenting an app's public key. */
 export type DataCaller =
   | { kind: "member"; actor: Actor }
-  | { kind: "anonymous"; key: string; ip: string };
-type Level = "manage" | "write" | "anonymous";
+  | { kind: "anonymous"; key: string; ip: string; token?: string | undefined };
+/**
+ * Account callers manage or write. Key callers are anonymous, a signed-in visitor (`user`), or a visitor the app
+ * made an administrator (`admin`), who may change every record but not the collections.
+ */
+type Level = "manage" | "write" | "admin" | "user" | "anonymous";
+/** A signed-in visitor; `role` is "user" unless the app granted another one. */
+export interface AppUser {
+  id: string;
+  name: string;
+  role: string;
+}
 /** What an app serves: a DSH plugin, or a site, app or mini program that visitors open. */
 export type AppKind = "plugin" | "site";
 type AppRow = Row & {
@@ -235,6 +255,8 @@ type AppRow = Row & {
   workspace: string;
   public_key: string;
   created_by: string;
+  suspended_at: number | null;
+  origins: string;
   pruned_seq: number;
   records: number;
   bytes: number;
@@ -247,6 +269,9 @@ type CollectionRow = Row & {
   fields: string;
   public_read: boolean;
   public_create: boolean;
+  user_read: boolean;
+  user_create: boolean;
+  user_own: boolean;
   unique_fields: string | null;
   strict: boolean;
   records: number;
@@ -258,6 +283,11 @@ interface Collection {
   fields: [string, FieldType][];
   publicRead: boolean;
   publicCreate: boolean;
+  userRead: boolean;
+  userCreate: boolean;
+  userOwn: boolean;
+  /** Set when the caller may read only the records this user created. */
+  author?: string;
   unique: string[] | null;
   /** Writes may use only declared fields. */
   strict: boolean;
@@ -289,6 +319,8 @@ export interface AppSummary {
   workspace: string;
   owner: { kind: "user" | "enterprise"; id: string; name: string };
   public: boolean;
+  /** The platform operator stopped the app; statements are refused until it is resumed. */
+  suspended: boolean;
   collections: number;
   records: number;
   bytes: number;
@@ -301,6 +333,12 @@ export interface AppDetail extends AppSummary {
   endpoint: string;
   publicKey: string;
   limits: { records: number; bytes: number; recordBytes: number };
+  /** Where a page sends visitors to sign in with their iPollo account; the page appends `&return=<its URL>`. */
+  signin: string;
+  /** Origins, besides the service's own and local development hosts, that sign-in may return to. */
+  origins: string[];
+  /** Visitors the app granted a role. */
+  roles: { id: string; name: string; email: string; role: string }[];
   collectionList: CollectionInfo[];
 }
 /** A collection's declared fields, public access and size. */
@@ -308,6 +346,8 @@ export interface CollectionInfo {
   name: string;
   fields: Record<string, FieldType>;
   public: ("read" | "create")[];
+  /** What signed-in visitors may do: read every record, create, or read and change the records they created. */
+  users: ("read" | "create" | "own")[];
   unique: string[] | null;
   strict: boolean;
   records: number;
@@ -322,6 +362,7 @@ interface Access {
   level: Level;
   caller: DataCaller;
   ownerName: string;
+  user?: AppUser;
 }
 
 const label: Record<FieldType, string> = {
@@ -354,6 +395,9 @@ const collectionOf = (row: CollectionRow): Collection => ({
   fields: JSON.parse(row.fields) as [string, FieldType][],
   publicRead: row.public_read,
   publicCreate: row.public_create,
+  userRead: row.user_read,
+  userCreate: row.user_create,
+  userOwn: row.user_own,
   unique: row.unique_fields ? (JSON.parse(row.unique_fields) as string[]) : null,
   strict: row.strict,
   records: row.records,
@@ -365,6 +409,11 @@ const infoOf = (c: Collection): CollectionInfo => ({
   public: [
     ...(c.publicRead ? (["read"] as const) : []),
     ...(c.publicCreate ? (["create"] as const) : []),
+  ],
+  users: [
+    ...(c.userRead ? (["read"] as const) : []),
+    ...(c.userCreate ? (["create"] as const) : []),
+    ...(c.userOwn ? (["own"] as const) : []),
   ],
   unique: c.unique,
   strict: c.strict,
@@ -393,7 +442,7 @@ export async function migrateAppData(store: Store): Promise<void> {
       (await store.one("SELECT COALESCE(MAX(version),0) AS version FROM app_data_schema"))
         ?.version,
     );
-    if (current > 4)
+    if (current > 5)
       throw new Error("This app data database requires a newer iPolloWork service");
     if (current < 1) {
       await store.run(
@@ -417,6 +466,19 @@ export async function migrateAppData(store: Store): Promise<void> {
       await store.run("ALTER TABLE data_collections ADD COLUMN strict BOOLEAN NOT NULL DEFAULT false");
       await store.run("INSERT INTO app_data_schema(version) VALUES(4)");
     }
+    if (current < 5) {
+      for (const sql of [
+        "ALTER TABLE data_apps ADD COLUMN suspended_at BIGINT",
+        "ALTER TABLE data_apps ADD COLUMN origins TEXT NOT NULL DEFAULT '[]'",
+        "ALTER TABLE data_collections ADD COLUMN user_read BOOLEAN NOT NULL DEFAULT false",
+        "ALTER TABLE data_collections ADD COLUMN user_create BOOLEAN NOT NULL DEFAULT false",
+        "ALTER TABLE data_collections ADD COLUMN user_own BOOLEAN NOT NULL DEFAULT false",
+        "CREATE TABLE data_app_roles(app_id TEXT NOT NULL REFERENCES data_apps(id) ON DELETE CASCADE,user_id TEXT NOT NULL,role TEXT NOT NULL,created_at BIGINT NOT NULL,PRIMARY KEY(app_id,user_id))",
+        "CREATE INDEX data_records_author ON data_records(collection_id,created_by) WHERE deleted_at IS NULL AND created_by IS NOT NULL",
+      ])
+        await store.run(sql);
+      await store.run("INSERT INTO app_data_schema(version) VALUES(5)");
+    }
   });
 }
 
@@ -434,6 +496,8 @@ export class AppData {
     private readonly accounts: Store,
     private readonly limits: AppDataConfig,
     private readonly origin: string,
+    /** Signs visitor sign-ins, and the publication origin that sign-in may always return to. */
+    private readonly identity: { secret: string; publicationOrigin?: string | undefined },
   ) {}
 
   /** Resume purges interrupted by a restart, and remove expired tombstones every hour. */
@@ -462,7 +526,7 @@ export class AppData {
     >(
       `SELECT a.*,
         (SELECT COUNT(*) FROM data_collections c WHERE c.app_id=a.id AND c.dropped_at IS NULL) AS collections,
-        EXISTS(SELECT 1 FROM data_collections c WHERE c.app_id=a.id AND c.dropped_at IS NULL AND (c.public_read OR c.public_create)) AS is_public
+        EXISTS(SELECT 1 FROM data_collections c WHERE c.app_id=a.id AND c.dropped_at IS NULL AND (c.public_read OR c.public_create OR c.user_read OR c.user_create OR c.user_own)) AS is_public
        FROM data_apps a
        WHERE a.deleted_at IS NULL AND ((a.owner_kind='user' AND a.owner_id=?) OR (a.owner_kind='enterprise' AND a.owner_id IN (SELECT jsonb_array_elements_text(?::jsonb))))
        ORDER BY a.updated_at DESC LIMIT 2000`,
@@ -497,7 +561,7 @@ export class AppData {
     const owner = input.enterpriseId
       ? { kind: "enterprise" as const, id: input.enterpriseId }
       : { kind: "user" as const, id: actor.id };
-    if (owner.kind === "enterprise" && !(await this.membership(actor, owner.id)))
+    if (owner.kind === "enterprise" && !(await this.membership(actor.id, actor.role === "admin", owner.id)))
       throw new ServiceError("ENTERPRISE_FORBIDDEN", 403, "没有组织访问权限");
     // Names without ASCII letters map to a stable hash, so the same name always reopens the same app.
     const slug =
@@ -563,8 +627,7 @@ export class AppData {
    */
   async detail(caller: DataCaller, id: string): Promise<AppDetail> {
     const access = await this.access(caller, id);
-    if (access.level === "anonymous")
-      throw new ServiceError("SIGN_IN_REQUIRED", 401, "请先登录");
+    if (caller.kind !== "member") throw new ServiceError("SIGN_IN_REQUIRED", 401, "请先登录");
     return this.describe(access);
   }
 
@@ -637,14 +700,15 @@ export class AppData {
   async run(caller: DataCaller, id: string, input: unknown): Promise<unknown> {
     const statement = parseStatement(input);
     const access = await this.access(caller, id);
+    if (access.app.suspended_at) throw suspended();
     if (caller.kind === "anonymous") {
       if ("batch" in statement || ("insert" in statement && Array.isArray(statement.values)))
         throw new ServiceError("DATA_FORBIDDEN", 403, "公开 key 每次只能写入一条记录");
-      const creating = "insert" in statement;
+      const writing = ["insert", "update", "upsert", "delete"].some((op) => op in statement);
       await this.rate(
         access.app.id,
-        (creating ? "create:" : "read:") + visitor(caller.ip),
-        creating ? this.limits.anonymousCreatesPerMinute : this.limits.anonymousPerMinute,
+        (writing ? "create:" : "read:") + (access.user ? "user:" + access.user.id : visitor(caller.ip)),
+        writing ? this.limits.anonymousCreatesPerMinute : this.limits.anonymousPerMinute,
       );
       const running = this.anonymous.get(access.app.id) ?? 0;
       if (running >= this.limits.anonymousConcurrency)
@@ -688,8 +752,8 @@ export class AppData {
    */
   async changes(caller: DataCaller, id: string, after: number, limit = MAX_CHANGES) {
     const access = await this.access(caller, id);
-    if (access.level === "anonymous")
-      throw new ServiceError("SIGN_IN_REQUIRED", 401, "同步需要登录");
+    if (caller.kind !== "member") throw new ServiceError("SIGN_IN_REQUIRED", 401, "同步需要登录");
+    if (access.app.suspended_at) throw suspended();
     const appId = access.app.id;
     const size = Math.min(Math.max(1, limit), MAX_CHANGES);
     const boundary = (
@@ -727,19 +791,49 @@ export class AppData {
   }
 
   private async execute(access: Access, statement: Statement, commit: Commit): Promise<unknown> {
+    const keyed = access.caller.kind !== "member";
     if ("info" in statement) {
-      if (access.level === "anonymous") throw forbidden();
+      if (keyed) throw forbidden();
       return { app: await this.describe(access) };
+    }
+    if ("me" in statement) {
+      const actor = access.caller.kind === "member" ? access.caller.actor : undefined;
+      return { user: access.user ?? (actor ? { id: actor.id, name: actor.name, role: "admin" } : null) };
+    }
+    if ("grant" in statement || "revoke" in statement || "origins" in statement) {
+      if (access.level !== "manage")
+        throw new ServiceError("DATA_FORBIDDEN", 403, "只有应用管理者可以设置角色和登录来源");
+      if ("origins" in statement) {
+        const origins = [...new Set(statement.origins.map((url) => new URL(url).origin))];
+        await this.data.run("UPDATE data_apps SET origins=?,updated_at=? WHERE id=?", JSON.stringify(origins), Date.now(), access.app.id);
+        return { origins };
+      }
+      const email = "grant" in statement ? statement.email : statement.revoke;
+      const user = await this.accounts.one<{ id: string }>('SELECT id FROM "user" WHERE lower(email)=lower(?)', email);
+      if (!user)
+        throw new ServiceError("DATA_USER_NOT_FOUND", 404, `没有使用 ${email} 的 iPollo 账号，请对方先注册`);
+      if ("grant" in statement) {
+        const count = Number((await this.data.one("SELECT COUNT(*) AS n FROM data_app_roles WHERE app_id=?", access.app.id))?.n);
+        if (count >= MAX_ROLES) throw new ServiceError("DATA_ROLE_LIMIT", 409, `每个应用最多给 ${MAX_ROLES} 位用户设置角色`);
+        await this.data.run(
+          "INSERT INTO data_app_roles(app_id,user_id,role,created_at) VALUES(?,?,?,?) ON CONFLICT(app_id,user_id) DO UPDATE SET role=excluded.role",
+          access.app.id,
+          user.id,
+          statement.grant,
+          Date.now(),
+        );
+      } else await this.data.run("DELETE FROM data_app_roles WHERE app_id=? AND user_id=?", access.app.id, user.id);
+      return { roles: await this.roles(access.app.id) };
     }
     if ("get" in statement) {
       const c = await this.readable(access, statement.get);
       if (!c) throw await this.missing(access.app.id, statement.get);
-      const row = await this.data.one<RecordRow>(
-        "SELECT id,data::text AS data,version,created_at,updated_at FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
+      const row = await this.data.one<RecordRow & { created_by: string | null }>(
+        "SELECT id,data::text AS data,version,created_by,created_at,updated_at FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
         c.id,
         statement.id,
       );
-      if (!row) throw notFound(c.name, statement.id);
+      if (!row || (c.author && row.created_by !== c.author)) throw notFound(c.name, statement.id);
       const item = recordOf(row);
       if (!statement.fields) return { item };
       const keep = new Set([...SYSTEM, ...chosen(c, statement.fields)]);
@@ -768,7 +862,11 @@ export class AppData {
       );
       return { count: Number(row?.n ?? 0) };
     }
-    if (access.level === "anonymous" && !("insert" in statement)) throw forbidden();
+    if (keyed) {
+      if ("define" in statement || "drop" in statement) throw forbidden();
+      if ("upsert" in statement && access.level !== "admin") throw forbidden();
+      if (("update" in statement || "delete" in statement) && access.level === "anonymous") throw forbidden();
+    }
     if (("define" in statement || "drop" in statement) && access.level !== "manage")
       throw new ServiceError("DATA_FORBIDDEN", 403, "只有应用管理者可以定义或删除集合");
     return this.data.transaction(async () => {
@@ -920,7 +1018,7 @@ export class AppData {
     let bytes = 0;
     for (const input of list) {
       const { id: given, ...rest } = input;
-      if (given !== undefined && access.level === "anonymous")
+      if (given !== undefined && (access.level === "anonymous" || access.level === "user"))
         throw new ServiceError("DATA_FORBIDDEN", 403, "公开 key 不能指定记录 id，id 由服务生成");
       if (given !== undefined && !recordId.safeParse(given).success)
         throw new ServiceError("DATA_RECORD_ID_INVALID", 400, "id 使用字母、数字、下划线或短横线，最长 64 个字符；不填由服务生成");
@@ -944,7 +1042,7 @@ export class AppData {
           seq,
           size,
           uniqueKey(c.unique, fields),
-          access.caller.kind === "member" ? access.caller.actor.id : null,
+          author(access),
           at,
           at,
         );
@@ -959,14 +1057,14 @@ export class AppData {
   }
 
   private async change(access: Access, s: Extract<Statement, { update: string }>, seq: number) {
-    const c = await this.collection(access.app.id, s.update);
-    if (!c) throw await this.missing(access.app.id, s.update);
-    const row = await this.data.one<RecordRow & { bytes: number }>(
-      "SELECT id,data::text AS data,version,bytes,created_at,updated_at FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
+    const c = await this.changeable(access, s.update);
+    const row = await this.data.one<RecordRow & { bytes: number; created_by: string | null }>(
+      "SELECT id,data::text AS data,version,bytes,created_by,created_at,updated_at FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
       c.id,
       s.id,
     );
     if (!row) throw notFound(c.name, s.id);
+    owns(access, c, row.created_by);
     if (s.version !== undefined && s.version !== row.version) throw conflict();
     const merged = { ...(JSON.parse(row.data) as Record<string, Value>), ...s.set };
     for (const [k, v] of Object.entries(s.set ?? {})) if (v === null) delete merged[k];
@@ -1025,7 +1123,7 @@ export class AppData {
         await this.data.run(
           "INSERT INTO data_records(collection_id,app_id,id,data,version,seq,bytes,unique_key,created_by,created_at,updated_at) VALUES(?,?,?,?::jsonb,1,?,?,?,?,?,?)",
           c.id, access.app.id, s.id, JSON.stringify(fields), seq, size, uniqueKey(c.unique, fields),
-          access.caller.kind === "member" ? access.caller.actor.id : null, at, at,
+          author(access), at, at,
         );
     } catch (error) {
       throw duplicate(error, c);
@@ -1035,14 +1133,14 @@ export class AppData {
   }
 
   private async erase(access: Access, s: Extract<Statement, { delete: string }>, seq: number) {
-    const c = await this.collection(access.app.id, s.delete);
-    if (!c) throw await this.missing(access.app.id, s.delete);
-    const row = await this.data.one<{ version: number; bytes: number }>(
-      "SELECT version,bytes FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
+    const c = await this.changeable(access, s.delete);
+    const row = await this.data.one<{ version: number; bytes: number; created_by: string | null }>(
+      "SELECT version,bytes,created_by FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NULL",
       c.id,
       s.id,
     );
     if (!row) throw notFound(c.name, s.id);
+    owns(access, c, row.created_by);
     if (s.version !== undefined && s.version !== row.version) throw conflict();
     const at = Date.now();
     await this.data.run(
@@ -1100,10 +1198,13 @@ export class AppData {
       );
     }
     await this.data.run(
-      "UPDATE data_collections SET fields=?,public_read=?,public_create=?,unique_fields=?,strict=? WHERE id=?",
+      "UPDATE data_collections SET fields=?,public_read=?,public_create=?,user_read=?,user_create=?,user_own=?,unique_fields=?,strict=? WHERE id=?",
       JSON.stringify(kept),
       s.public ? s.public.includes("read") : c.publicRead,
       s.public ? s.public.includes("create") : c.publicCreate,
+      s.users ? s.users.includes("read") : c.userRead,
+      s.users ? s.users.includes("create") : c.userCreate,
+      s.users ? s.users.includes("own") : c.userOwn,
       unique ? JSON.stringify(unique) : null,
       s.strict ?? c.strict,
       c.id,
@@ -1138,7 +1239,7 @@ export class AppData {
       if (current && current[1] !== type)
         throw new ServiceError("DATA_FIELD_TYPE", 400, `字段 ${name} 是${label[current[1]]}，不能写入${label[type]}`);
       if (!current) {
-        if (access.level === "anonymous")
+        if (access.caller.kind !== "member")
           throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 不接受字段 ${name}`);
         if (c.strict)
           throw new ServiceError(
@@ -1240,18 +1341,36 @@ export class AppData {
     );
     return (await this.collection(appId, name))!;
   }
+  /** The collection a caller may read. Key callers learn nothing about collections they cannot read. */
   private async readable(access: Access, name: string): Promise<Collection | undefined> {
     const c = await this.collection(access.app.id, name);
-    if (access.level === "anonymous" && !c?.publicRead) throw forbidden();
-    return c;
-  }
-  private async writable(access: Access, name: string): Promise<Collection> {
-    const c = await this.collection(access.app.id, name);
-    if (access.level === "anonymous") {
-      if (!c?.publicCreate) throw forbidden();
+    const level = access.level;
+    if (level === "manage" || level === "write") return c;
+    if (!c) throw forbidden();
+    if (level === "admin" || c.publicRead || (level === "user" && c.userRead)) return c;
+    if (level === "user" && c.userOwn) {
+      c.author = access.user!.id;
       return c;
     }
-    return c ?? this.create(access.app.id, name);
+    throw forbidden();
+  }
+  /** The collection a caller may create records in; only account callers create collections. */
+  private async writable(access: Access, name: string): Promise<Collection> {
+    const c = await this.collection(access.app.id, name);
+    const level = access.level;
+    if (level === "manage" || level === "write") return c ?? this.create(access.app.id, name);
+    if (c && (level === "admin" || c.publicCreate || (level === "user" && c.userCreate))) return c;
+    throw forbidden();
+  }
+  /** The collection whose existing records a caller may try to change; `owns` then checks the record. */
+  private async changeable(access: Access, name: string): Promise<Collection> {
+    const c = await this.collection(access.app.id, name);
+    if (access.caller.kind === "member") {
+      if (!c) throw await this.missing(access.app.id, name);
+      return c;
+    }
+    if (c && (access.level === "admin" || (access.level === "user" && c.userOwn))) return c;
+    throw forbidden();
   }
 
   private async access(caller: DataCaller, id: string): Promise<Access> {
@@ -1268,7 +1387,17 @@ export class AppData {
         !(await this.accounts.one('SELECT 1 FROM "user" WHERE id=? AND banned IS NOT TRUE', app.owner_id))
       )
         throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
-      return { app, level: "anonymous", caller, ownerName: "" };
+      if (!caller.token) return { app, level: "anonymous", caller, ownerName: "" };
+      const userId = this.verify(app, caller.token);
+      const user = await this.accounts.one<{ name: string }>('SELECT name FROM "user" WHERE id=? AND banned IS NOT TRUE', userId);
+      if (!user) throw expired();
+      // The app's own managers are its administrators without a grant.
+      const manages =
+        app.owner_kind === "user" ? app.owner_id === userId : (await this.membership(userId, false, app.owner_id))?.manager === true;
+      const role = manages
+        ? "admin"
+        : ((await this.data.one<{ role: string }>("SELECT role FROM data_app_roles WHERE app_id=? AND user_id=?", app.id, userId))?.role ?? "user");
+      return { app, level: role === "admin" ? "admin" : "user", caller, ownerName: "", user: { id: userId, name: user.name, role } };
     }
     const actor = caller.actor;
     if (app.owner_kind === "user") {
@@ -1276,7 +1405,7 @@ export class AppData {
         throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
       return { app, level: "manage", caller, ownerName: actor.name };
     }
-    const member = await this.membership(actor, app.owner_id);
+    const member = await this.membership(actor.id, actor.role === "admin", app.owner_id);
     if (!member) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
     return {
       app,
@@ -1291,17 +1420,152 @@ export class AppData {
       throw new ServiceError("DATA_FORBIDDEN", 403, "只有应用创建者或组织管理员可以管理应用");
     return access;
   }
-  private async membership(actor: Actor, enterpriseId: string) {
+  private async membership(userId: string, operator: boolean, enterpriseId: string) {
     const row = await this.accounts.one<{ role: string; name: string }>(
       "SELECT m.role,e.name FROM members m JOIN enterprises e ON e.id=m.enterprise_id WHERE m.enterprise_id=? AND m.user_id=?",
       enterpriseId,
-      actor.id,
+      userId,
     );
-    if (!row && actor.role !== "admin") return undefined;
+    if (!row && !operator) return undefined;
     return {
       name: row?.name ?? "",
-      manager: actor.role === "admin" || row?.role === "owner" || row?.role === "admin",
+      manager: operator || row?.role === "owner" || row?.role === "admin",
     };
+  }
+
+  private sign(app: AppRow, body: string): Buffer {
+    return createHmac("sha256", this.identity.secret).update(`${app.id}\n${app.public_key}\n${body}`).digest();
+  }
+  /** @returns the user id a visitor token was issued to for this app; expired or foreign tokens are refused. */
+  private verify(app: AppRow, token: string): string {
+    const match = /^ipd_([A-Za-z0-9_-]{1,400})\.([A-Za-z0-9_-]{43})$/.exec(token);
+    if (!match) throw expired();
+    const given = Buffer.from(match[2]!, "base64url");
+    const wanted = this.sign(app, match[1]!);
+    if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) throw expired();
+    const claim = z
+      .object({ u: z.string().min(1), e: z.number() })
+      .safeParse(JSON.parse(Buffer.from(match[1]!, "base64url").toString()));
+    if (!claim.success || claim.data.e < Date.now()) throw expired();
+    return claim.data.u;
+  }
+  /**
+   * Describe, and on `confirm` complete, a visitor's sign-in to an app with their iPollo account.
+   * @param actor - the account signed in to the service.
+   * @param input - the app id, its public key and the page URL to return to.
+   * @param confirm - whether the account agreed; without it nothing is issued.
+   * @returns the app name and return origin to show, and after confirmation the return URL carrying the token.
+   */
+  async signin(actor: Actor, input: { app: string; key: string; return: string }, confirm: boolean) {
+    const access = await this.access({ kind: "anonymous", key: input.key, ip: "" }, input.app);
+    if (access.app.suspended_at) throw suspended();
+    const target = new URL(input.return);
+    const local = ["localhost", "127.0.0.1", "[::1]"].includes(target.hostname);
+    const allowed = [this.origin, this.identity.publicationOrigin, ...(JSON.parse(access.app.origins) as string[])];
+    if (!/^https?:$/.test(target.protocol) || !(local || allowed.includes(target.origin)))
+      throw new ServiceError(
+        "DATA_ORIGIN_NOT_ALLOWED",
+        403,
+        `「${access.app.name}」还没有允许从 ${target.origin} 登录；应用管理者需要先把这个网址加入登录来源`,
+      );
+    if (!confirm) return { name: access.app.name, origin: target.origin };
+    const body = Buffer.from(JSON.stringify({ u: actor.id, e: Date.now() + VISITOR_MS })).toString("base64url");
+    target.hash = "ipollo_token=ipd_" + body + "." + this.sign(access.app, body).toString("base64url");
+    return { name: access.app.name, origin: target.origin, url: target.toString() };
+  }
+  private async roles(appId: string) {
+    const rows = await this.data.all<{ user_id: string; role: string }>(
+      "SELECT user_id,role FROM data_app_roles WHERE app_id=? ORDER BY created_at",
+      appId,
+    );
+    const users = new Map(
+      (
+        await this.accounts.all<{ id: string; name: string; email: string }>(
+          'SELECT id,name,email FROM "user" WHERE id IN (SELECT jsonb_array_elements_text(?::jsonb))',
+          JSON.stringify(rows.map((row) => row.user_id)),
+        )
+      ).map((user) => [user.id, user]),
+    );
+    return rows.map((row) => ({
+      id: row.user_id,
+      name: users.get(row.user_id)?.name ?? "",
+      email: users.get(row.user_id)?.email ?? "",
+      role: row.role,
+    }));
+  }
+
+  /**
+   * Every app of the deployment for the platform operator, with owners resolved from the account database.
+   * @param input - a name or owner search, the order, and the page.
+   * @returns one page of apps and the deployment's totals; `stored` is what the records table occupies on disk.
+   */
+  async overview(input: { q: string; sort: "bytes" | "updated"; offset: number; limit: number }) {
+    const params: Parameter[] = [];
+    let filter = "";
+    if (input.q) {
+      const owners = [
+        ...(await this.accounts.all<{ id: string }>(
+          'SELECT id FROM "user" WHERE strpos(lower(name),lower(?))>0 OR strpos(lower(email),lower(?))>0 LIMIT 200',
+          input.q,
+          input.q,
+        )),
+        ...(await this.accounts.all<{ id: string }>("SELECT id FROM enterprises WHERE strpos(lower(name),lower(?))>0 LIMIT 200", input.q)),
+      ].map((row) => row.id);
+      filter = " AND (strpos(lower(a.name),lower(?))>0 OR a.owner_id IN (SELECT jsonb_array_elements_text(?::jsonb)))";
+      params.push(input.q, JSON.stringify(owners));
+    }
+    const rows = await this.data.all<AppRow & { collections: number; is_public: boolean }>(
+      `SELECT a.*,
+        (SELECT COUNT(*) FROM data_collections c WHERE c.app_id=a.id AND c.dropped_at IS NULL) AS collections,
+        EXISTS(SELECT 1 FROM data_collections c WHERE c.app_id=a.id AND c.dropped_at IS NULL AND (c.public_read OR c.public_create OR c.user_read OR c.user_create OR c.user_own)) AS is_public
+       FROM data_apps a WHERE a.deleted_at IS NULL${filter}
+       ORDER BY ${input.sort === "bytes" ? "a.bytes DESC" : "a.updated_at DESC"},a.id LIMIT ? OFFSET ?`,
+      ...params,
+      input.limit,
+      input.offset,
+    );
+    const ids = (kind: string) => JSON.stringify(rows.filter((row) => row.owner_kind === kind).map((row) => row.owner_id));
+    const owners = new Map<string, string>();
+    for (const user of await this.accounts.all<{ id: string; name: string; email: string }>(
+      'SELECT id,name,email FROM "user" WHERE id IN (SELECT jsonb_array_elements_text(?::jsonb))',
+      ids("user"),
+    ))
+      owners.set(user.id, `${user.name} · ${user.email}`);
+    for (const org of await this.accounts.all<{ id: string; name: string }>(
+      "SELECT id,name FROM enterprises WHERE id IN (SELECT jsonb_array_elements_text(?::jsonb))",
+      ids("enterprise"),
+    ))
+      owners.set(org.id, org.name);
+    const totals = await this.data.one<{ apps: number; records: number; bytes: number; stored: number }>(
+      `SELECT COUNT(*) AS apps,COALESCE(SUM(records),0) AS records,COALESCE(SUM(bytes),0) AS bytes,
+        pg_total_relation_size('data_records')::bigint AS stored FROM data_apps WHERE deleted_at IS NULL`,
+    );
+    return {
+      items: rows.map((row) => this.summary(row, owners.get(row.owner_id) ?? "", true, Number(row.collections), row.is_public)),
+      totals: { apps: Number(totals?.apps), records: Number(totals?.records), bytes: Number(totals?.bytes), stored: Number(totals?.stored) },
+    };
+  }
+  /**
+   * Stop or resume an app on the operator's decision; a suspended app refuses every statement but stays listed.
+   * @param id - the app id.
+   * @param suspended - whether the app is stopped.
+   */
+  async suspend(id: string, suspended: boolean): Promise<void> {
+    const result = await this.data.run(
+      "UPDATE data_apps SET suspended_at=? WHERE id=? AND deleted_at IS NULL",
+      suspended ? Date.now() : null,
+      id,
+    );
+    if (!result.changes) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在");
+  }
+  /**
+   * Delete any app on the operator's decision; its records are purged in the background.
+   * @param id - the app id.
+   */
+  async discard(id: string): Promise<void> {
+    const result = await this.data.run("UPDATE data_apps SET deleted_at=? WHERE id=? AND deleted_at IS NULL", Date.now(), id);
+    if (!result.changes) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在");
+    this.schedulePurge();
   }
   private async organizations(actor: Actor) {
     const rows = await this.accounts.all<{ id: string; name: string; role: string }>(
@@ -1324,10 +1588,13 @@ export class AppData {
         access.ownerName,
         access.level === "manage",
         collections.length,
-        collections.some((c) => c.publicRead || c.publicCreate),
+        collections.some((c) => c.publicRead || c.publicCreate || c.userRead || c.userCreate || c.userOwn),
       ),
       endpoint: `${this.origin}/api/data/v1/apps/${fresh.id}/run`,
       publicKey: fresh.public_key,
+      signin: `${this.origin}/connect?app=${fresh.id}&key=${fresh.public_key}`,
+      origins: JSON.parse(fresh.origins) as string[],
+      roles: await this.roles(fresh.id),
       limits: {
         records: this.limits.maxRecordsPerApp,
         bytes: this.limits.maxBytesPerApp,
@@ -1345,6 +1612,7 @@ export class AppData {
       workspace: row.workspace,
       owner: { kind: row.owner_kind, id: row.owner_id, name: ownerName },
       public: isPublic,
+      suspended: row.suspended_at !== null,
       collections,
       records: row.records,
       bytes: row.bytes,
@@ -1482,6 +1750,10 @@ function sortKey(field: string, c: Collection): Key {
 function conditions(c: Collection, filter: Record<string, z.infer<typeof condition>> | undefined, params: Parameter[]): string[] {
   const types = new Map(c.fields);
   const out: string[] = [];
+  if (c.author) {
+    out.push("created_by=?");
+    params.push(c.author);
+  }
   for (const [field, raw] of Object.entries(filter ?? {})) {
     const system = field === "createdAt" || field === "updatedAt" || field === "id" ? systemKeys[field]! : undefined;
     const type: FieldType | undefined = system ? (field === "id" ? "text" : "number") : types.get(field);
@@ -1578,7 +1850,16 @@ const fieldList = (c: Collection) =>
     ? "已有字段：" + c.fields.map(([name, type]) => `${name}（${label[type]}）`).join("、")
     : "还没有字段") + "；系统字段 id、createdAt、updatedAt 也可使用";
 const conflict = () => new ServiceError("DATA_VERSION_CONFLICT", 409, "记录已被修改，请重新读取后再改");
-const forbidden = () => new ServiceError("DATA_FORBIDDEN", 403, "公开 key 不能执行这个操作");
+const forbidden = () => new ServiceError("DATA_FORBIDDEN", 403, "当前访问身份不能执行这个操作");
+const suspended = () => new ServiceError("DATA_APP_SUSPENDED", 403, "应用已被平台暂停，请联系平台管理员");
+const expired = () => new ServiceError("DATA_SIGNIN_EXPIRED", 401, "登录已失效，请重新登录");
+/** Who a new record belongs to: the account, the signed-in visitor, or nobody for an anonymous visitor. */
+const author = (access: Access): string | null =>
+  access.caller.kind === "member" ? access.caller.actor.id : (access.user?.id ?? null);
+/** A signed-in visitor changes only records they created; administrators and account callers change any. */
+function owns(access: Access, c: Collection, createdBy: string | null): void {
+  if (access.level === "user" && !(c.userOwn && createdBy === access.user?.id)) throw forbidden();
+}
 const reserved = (name: string) =>
   new ServiceError("DATA_FIELD_RESERVED", 400, `${name} 是系统字段，不能写入`);
 const tooManyFields = () =>

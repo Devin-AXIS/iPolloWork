@@ -172,6 +172,9 @@ export function RecordTable({ appId, info, t, changed }: { appId: string; info: 
           {format(t.records, { count: total })} · {format(t.fields, { count: fields.length })}
           {info.public.includes('create') && <> · {t.publicCreate}</>}
           {info.public.includes('read') && <> · {t.publicRead}</>}
+          {info.users.includes('read') && <> · {t.usersRead}</>}
+          {info.users.includes('create') && <> · {t.usersCreate}</>}
+          {info.users.includes('own') && <> · {t.usersOwn}</>}
         </span>
         <span className={css.dataPager}>
           {format(t.pageOf, { page: page + 1, pages })}

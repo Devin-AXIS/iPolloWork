@@ -14,15 +14,16 @@ const BASE = '/api/data/v1/apps'
 const kinds = z.enum(['plugin', 'site'])
 const owner = z.object({ kind: z.enum(['user', 'enterprise']), id: z.string(), name: z.string() })
 const summary = z.object({
-  id: z.uuid(), kind: kinds, name: z.string(), slug: z.string(), workspace: z.string(), owner, public: z.boolean(),
+  id: z.uuid(), kind: kinds, name: z.string(), slug: z.string(), workspace: z.string(), owner, public: z.boolean(), suspended: z.boolean().default(false),
   collections: z.number(), records: z.number(), bytes: z.number(), canManage: z.boolean(), createdAt: z.number(), updatedAt: z.number(),
 })
 const detail = summary.extend({
-  endpoint: z.string(), publicKey: z.string(),
+  endpoint: z.string(), publicKey: z.string(), signin: z.string().default(''), origins: z.array(z.string()).default([]),
+  roles: z.array(z.object({ id: z.string(), name: z.string(), email: z.string(), role: z.string() })).default([]),
   limits: z.object({ records: z.number(), bytes: z.number(), recordBytes: z.number() }),
   collectionList: z.array(z.object({
     name: z.string(), fields: z.record(z.string(), z.enum(['text', 'number', 'boolean', 'json'])),
-    public: z.array(z.enum(['read', 'create'])), unique: z.array(z.string()).nullable(), strict: z.boolean().default(false), records: z.number(), bytes: z.number(),
+    public: z.array(z.enum(['read', 'create'])), users: z.array(z.enum(['read', 'create', 'own'])).default([]), unique: z.array(z.string()).nullable(), strict: z.boolean().default(false), records: z.number(), bytes: z.number(),
   })),
 })
 const result = z.record(z.string(), z.json())
@@ -196,7 +197,7 @@ async function signedIn<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-const READS = new Set(['get', 'find', 'count', 'aggregate', 'info'])
+const READS = new Set(['get', 'find', 'count', 'aggregate', 'info', 'me'])
 /** Whether a statement or batch only reads; reads never create an app. */
 function reads(statement: Record<string, unknown>): boolean {
   const list = Array.isArray(statement.batch) ? (statement.batch as Record<string, unknown>[]) : [statement]
@@ -231,7 +232,9 @@ export function appDataTool(
       '{"upsert":"settings","id":"profile","values":{…}} (creates the record or replaces all of its fields);',
       '{"delete":"bookings","id":"…"};',
       '{"define":"bookings","fields":{"name":"text","slot":"number"},"public":["create"],"unique":["date","slot"]} ("read" lets anyone holding the public key read, "create" lets them submit one record at a time; visitors write only declared fields; unique needs an empty collection; "strict":true makes every write use only declared fields, so a misspelled field is rejected; "remove":["typo"] deletes a field and its values);',
-      '{"drop":"bookings"}; {"info":true} lists collections, fields, the endpoint and the public key;',
+      'define also takes "users":["read","create","own"] for visitors signed in with their iPollo account: read every record, create one, or read and change the records they created (see the skill for the sign-in code);',
+      '{"grant":"admin","email":"a@b.c"} makes that account an administrator of the app, who may change every record from the page; other role names are labels the page reads with {"me":true}; {"revoke":"a@b.c"} removes the role; {"origins":["https://example.com"]} allows sign-in from a page on its own domain;',
+      '{"drop":"bookings"}; {"info":true} lists collections, fields, roles, the endpoint, the public key and the sign-in address;',
       '{"batch":[…]} runs up to 20 statements atomically.',
       'Where operators: =, !=, >, >=, <, <=, in, contains (text); null matches a missing field. Records also carry id, version, createdAt and updatedAt.',
       'Errors name the existing collections and fields so the statement can be corrected.',
@@ -324,14 +327,15 @@ Before writing plugin code you may create the collections with \`app_data\` (\`k
 ## Website, app or mini program
 
 1. With \`app_data\` (\`kind: "site"\`), run \`define\` for every collection the page writes. Declare its fields and only the public access visitors need: \`"public":["create"]\` for forms such as bookings or sign-ups, \`"public":["read"]\` for content the page lists. Collections without \`public\` stay private to the owner.
-2. Run \`{"info":true}\` and copy \`endpoint\` and \`publicKey\` into the page code.
+2. Run \`{"info":true}\` and copy \`endpoint\`, \`publicKey\` and, when visitors sign in, \`signin\` into the page code.
 
 \`\`\`js
-const DATA = { endpoint: '<endpoint>', key: '<publicKey>' }
+const DATA = { endpoint: '<endpoint>', key: '<publicKey>', signin: '<signin>' }
+const token = () => localStorage.getItem('ipollo_token')
 async function data(statement) {
   const response = await fetch(DATA.endpoint, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Data-Key': DATA.key },
+    headers: { 'Content-Type': 'application/json', 'X-Data-Key': DATA.key, ...(token() ? { Authorization: 'Bearer ' + token() } : {}) },
     body: JSON.stringify(statement),
   })
   const body = await response.json()
@@ -341,6 +345,23 @@ async function data(statement) {
 await data({ insert: 'bookings', values: { name, date, slot } })
 const { items } = await data({ find: 'menu', sort: 'price' })
 \`\`\`
+
+### Visitors who sign in
+
+A page can have members, personal data and staff: visitors sign in with their iPollo account, and the page never handles passwords.
+
+- \`define\` takes \`"users"\`: \`"read"\` lets signed-in visitors read every record, \`"create"\` lets them add one, \`"own"\` lets them read, update and delete the records they created; with \`"own"\` and no \`"read"\` each visitor sees only their own. Comments: \`"public":["read"],"users":["create","own"]\`. Private per-user data such as orders or profiles: \`"users":["create","own"]\`.
+- Sign in by sending the visitor to \`DATA.signin + '&return=' + encodeURIComponent(location.href)\`. They return with \`#ipollo_token=…\`:
+
+\`\`\`js
+const got = location.hash.match(/ipollo_token=([^&]+)/)
+if (got) { localStorage.setItem('ipollo_token', got[1]); history.replaceState(null, '', location.pathname + location.search) }
+const { user } = await data({ me: true }) // null, or { id, name, role }
+\`\`\`
+
+- On a 401 remove the token and offer sign-in again. Signing out is removing the token.
+- Roles: \`role\` is \`user\` unless granted. With \`app_data\`, \`{"grant":"admin","email":"a@b.c"}\` makes an account an administrator, who reads and changes every record of the app from the page (not its collections); the app's owner always is one. Other names such as \`staff\` are labels for the page's own logic. The owner can also manage administrators on the Data page.
+- A page on its own domain must be allowed once: \`{"origins":["https://example.com"]}\`. Pages published by iPollo and localhost need nothing.
 
 Every visitor can see the public key. It reads or creates only in collections whose \`public\` allows it, writes one record per request and is rate-limited per visitor. Visitors cannot update or delete, so keep private data out of publicly readable collections. A \`unique\` collection rejects a second record with the same values, which suits booked time slots. The owner reviews records with \`app_data\` or the Data page.
 `,

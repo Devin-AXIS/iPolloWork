@@ -412,7 +412,108 @@ test("apps summarize, narrow and count records without reading them all, and kee
   }
 });
 
-test("upgrading app data from schema 1 classifies public apps as sites and reaches schema 4", async () => {
+test("visitors sign in with their iPollo account, keep their own records, and app administrators manage every record", async () => {
+  const { service, call, account, close } = await fixture();
+  const home = "http://localhost:4785";
+  try {
+    const owner = await account("owner@club.test");
+    const ann = await account("ann@club.test");
+    const bo = await account("bo@club.test");
+    const app = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Club", kind: "site" } })).data.app;
+    const path = `/api/data/v1/apps/${app.id}/run`;
+    const run = (body: unknown) => call(path, { token: owner.token, body });
+    assert.equal(
+      (await run({
+        batch: [
+          { define: "posts", fields: { title: "text" }, users: ["read", "create", "own"] },
+          { define: "profiles", fields: { bio: "text" }, users: ["create", "own"] },
+          { define: "staff_notes", fields: { note: "text" } },
+        ],
+      })).status,
+      200,
+    );
+    assert.match((await run({ info: true })).data.app.signin, new RegExp(`^${home}/connect\\?app=${app.id}&key=pk_`));
+    const enter = async (who: { token: string }, back = "http://localhost:3000/club?tab=1") => {
+      const body = { app: app.id, key: app.publicKey, return: back };
+      const shown = await call(`/api/v1/data-signin?app=${app.id}&key=${app.publicKey}&return=${encodeURIComponent(back)}`, { token: who.token });
+      assert.deepEqual(shown.data, { name: "Club", origin: new URL(back).origin }, "the consent step issues nothing");
+      const done = await call("/api/v1/data-signin", { token: who.token, origin: home, body });
+      return new URL(done.data.url as string).hash.replace("#ipollo_token=", "");
+    };
+    const refused = await call("/api/v1/data-signin", { token: ann.token, origin: home, body: { app: app.id, key: app.publicKey, return: "https://elsewhere.example/" } });
+    assert.deepEqual([refused.status, refused.data.code], [403, "DATA_ORIGIN_NOT_ALLOWED"]);
+    assert.deepEqual((await run({ origins: ["https://club.example/any/path"] })).data, { origins: ["https://club.example"] });
+    assert.match(await enter(ann, "https://club.example/welcome"), /^ipd_/);
+
+    const as = (token: string) => (body: unknown) => call(path, { key: app.publicKey, token, body });
+    const annDoes = as(await enter(ann));
+    const boDoes = as(await enter(bo));
+    const guest = (body: unknown) => call(path, { key: app.publicKey, body });
+    assert.deepEqual((await annDoes({ me: true })).data, { user: { id: ann.id, name: "ann", role: "user" } });
+    assert.deepEqual((await guest({ me: true })).data, { user: null });
+
+    const post = (await annDoes({ insert: "posts", values: { title: "Hello" } })).data.item;
+    const profile = (await annDoes({ insert: "profiles", values: { bio: "Runner" } })).data.item;
+    await boDoes({ insert: "profiles", values: { bio: "Climber" } });
+    assert.deepEqual((await annDoes({ find: "profiles" })).data.items.map((p: Json) => p.bio), ["Runner"], "own-only tables show each visitor their records");
+    assert.deepEqual((await annDoes({ aggregate: "profiles" })).data.items, [{ count: 1 }]);
+    assert.equal((await boDoes({ get: "profiles", id: profile.id })).status, 404);
+    assert.equal((await boDoes({ find: "posts" })).data.items.length, 1, "signed-in visitors read the shared table");
+    assert.equal((await guest({ find: "posts" })).status, 403, "the table is not public");
+    assert.equal((await boDoes({ update: "posts", id: post.id, set: { title: "Mine now" } })).status, 403);
+    assert.equal((await boDoes({ delete: "posts", id: post.id })).status, 403);
+    assert.equal((await annDoes({ update: "posts", id: post.id, set: { title: "Hello again" } })).data.item.title, "Hello again");
+    assert.equal((await annDoes({ find: "staff_notes" })).status, 403);
+    assert.equal((await annDoes({ insert: "staff_notes", values: { note: "x" } })).status, 403);
+    assert.equal((await annDoes({ insert: "posts", values: { title: "t", extra: 1 } })).data.code, "DATA_FIELD_UNKNOWN");
+    assert.equal((await annDoes({ insert: "posts", values: { id: "fixed", title: "t" } })).status, 403);
+    assert.equal((await annDoes({ upsert: "posts", id: "fixed", values: { title: "t" } })).status, 403);
+    assert.equal((await annDoes({ define: "posts", users: [] })).status, 403);
+    assert.equal((await annDoes({ grant: "admin", email: "ann@club.test" })).status, 403);
+
+    const granted = await run({ grant: "admin", email: "BO@club.test" });
+    assert.deepEqual(granted.data.roles, [{ id: bo.id, name: "bo", email: "bo@club.test", role: "admin" }]);
+    assert.equal((await boDoes({ me: true })).data.user.role, "admin");
+    assert.equal((await boDoes({ update: "posts", id: post.id, set: { title: "Edited by staff" } })).status, 200);
+    assert.equal((await boDoes({ insert: "staff_notes", values: { note: "seen" } })).status, 200);
+    assert.equal((await boDoes({ find: "profiles" })).data.items.length, 2, "an administrator reads every record");
+    assert.equal((await boDoes({ define: "posts", users: [] })).status, 403, "administrators change records, not tables");
+    assert.equal((await boDoes({ info: true })).status, 403);
+    assert.equal((await run({ grant: "vip", email: "bo@club.test" })).data.roles[0].role, "vip");
+    assert.equal((await boDoes({ me: true })).data.user.role, "vip");
+    assert.equal((await boDoes({ find: "staff_notes" })).status, 403, "other roles are labels for the page's own logic");
+    assert.deepEqual((await run({ revoke: "bo@club.test" })).data.roles, []);
+    assert.equal((await run({ grant: "admin", email: "nobody@club.test" })).data.code, "DATA_USER_NOT_FOUND");
+    assert.equal((await as(await enter(owner))({ me: true })).data.user.role, "admin", "the owner administers the app without a grant");
+
+    const annToken = await enter(ann);
+    assert.equal((await as(annToken.slice(0, -2) + "xx")({ me: true })).data.code, "DATA_SIGNIN_EXPIRED");
+    const other = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Other", kind: "site" } })).data.app;
+    assert.equal((await call(`/api/data/v1/apps/${other.id}/run`, { key: other.publicKey, token: annToken, body: { me: true } })).status, 401, "a sign-in is valid for one app");
+
+    await service.store.run('UPDATE "user" SET role=? WHERE id=?', "admin", bo.id);
+    assert.equal((await call("/api/v1/admin/data-apps", { token: ann.token })).status, 403);
+    const listed = await call("/api/v1/admin/data-apps?q=owner%40club", { token: bo.token });
+    assert.deepEqual(listed.data.items.map((item: Json) => [item.name, item.owner.name, item.suspended]).sort(), [["Club", "owner · owner@club.test", false], ["Other", "owner · owner@club.test", false]]);
+    assert.equal(listed.data.totals.apps, 2);
+    assert.ok(listed.data.totals.stored > 0);
+    assert.equal((await call("/api/v1/admin/data-apps?q=zzz", { token: bo.token })).data.items.length, 0);
+    assert.equal((await call(`/api/v1/admin/data-apps/${app.id}/suspend`, { token: bo.token, origin: home, body: { suspended: true } })).status, 200);
+    assert.deepEqual([(await run({ count: "posts" })).data.code, (await annDoes({ find: "posts" })).data.code], ["DATA_APP_SUSPENDED", "DATA_APP_SUSPENDED"]);
+    assert.equal((await call<{ items: Json[] }>("/api/data/v1/apps", { token: owner.token })).data.items.find((item) => item.id === app.id)?.suspended, true);
+    await call(`/api/v1/admin/data-apps/${app.id}/suspend`, { token: bo.token, origin: home, body: { suspended: false } });
+    assert.equal((await annDoes({ find: "posts" })).status, 200);
+
+    const rotated = await call<{ app: Json }>(`/api/data/v1/apps/${app.id}`, { method: "PATCH", token: owner.token, body: { rotateKey: true } });
+    assert.equal((await call(path, { key: rotated.data.app.publicKey, token: annToken, body: { me: true } })).status, 401, "replacing the key signs every visitor out");
+    assert.equal((await call(`/api/v1/admin/data-apps/${app.id}`, { method: "DELETE", token: bo.token, origin: home })).status, 200);
+    assert.equal((await run({ count: "posts" })).status, 404);
+  } finally {
+    await close();
+  }
+});
+
+test("upgrading app data from schema 1 classifies public apps as sites and reaches schema 5", async () => {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? "postgresql://127.0.0.1:5432/ipollowork_test";
   const schema = "test_" + randomUUID().replace(/-/g, "");
   const admin = new Store({ databaseUrl, databasePoolSize: 1, databaseSchema: "public" });
@@ -428,7 +529,8 @@ test("upgrading app data from schema 1 classifies public apps as sites and reach
     }
     await migrateAppData(store);
     assert.deepEqual((await store.all("SELECT kind FROM data_apps ORDER BY kind")).map((r) => r.kind), ["plugin", "site"]);
-    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 4);
+    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 5);
+    assert.equal((await store.one("SELECT suspended_at,origins FROM data_apps LIMIT 1"))?.origins, "[]");
     assert.equal((await store.one("SELECT strict FROM data_collections LIMIT 1"))?.strict, false);
     assert.equal((await store.one("SELECT pruned_seq FROM data_apps LIMIT 1"))?.pruned_seq, 0);
     assert.equal((await store.all("SELECT bucket FROM data_rate")).length, 0, "the rate key is a named bucket");

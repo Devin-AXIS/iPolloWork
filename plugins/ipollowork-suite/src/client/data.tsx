@@ -144,7 +144,7 @@ function DataPanel(props: Props) {
                   <strong>{app.name}</strong>
                   <small>{format(t.records, { count: app.records })} · {new Date(app.createdAt).toLocaleDateString()}</small>
                 </span>
-                <span className={css.dataRowKind}>{app.kind === 'site' ? t.publicApp : t.plugin}</span>
+                <span className={css.dataRowKind} data-warn={app.suspended ? '' : undefined}>{app.suspended ? t.suspended : app.kind === 'site' ? t.publicApp : t.plugin}</span>
               </button>
             ))}
           </div>
@@ -178,6 +178,7 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
   const [connecting, setConnecting] = useState(false)
   const [menu, setMenu] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  const [granting, setGranting] = useState(false)
   const live = useRef(true)
   const load = () =>
     request<{ app: DataAppDetail }>(`/data/apps/${summary.id}`)
@@ -212,17 +213,19 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
         {app?.canManage && (
           <Menu open={menu} portal align="end" onClose={() => setMenu(false)}
             anchor={<button type="button" className={css.iconGhost} aria-label={t.more} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(value => !value)}><IconEllipsisOutlineRegular size={16} /></button>}
-            items={[{ id: 'delete', label: t.deleteApp, danger: true }]}
-            onSelect={() => { setMenu(false); setConfirming(true) }} />
+            items={[{ id: 'admins', label: t.admins }, { id: 'delete', label: t.deleteApp, danger: true }]}
+            onSelect={id => { setMenu(false); if (id === 'admins') setGranting(true); else setConfirming(true) }} />
         )}
       </header>
       {app && connecting && (
         <div className={css.dataKeys}>
           <CopyRow label={t.endpoint} value={app.endpoint} t={t} />
           <CopyRow label={t.publicKey} value={app.publicKey} t={t} />
+          {app.signin && <CopyRow label={t.signinUrl} value={app.signin} t={t} />}
           <p>{t.publicHint}</p>
         </div>
       )}
+      {app?.suspended && <p className={css.dataNotice} role="status">{t.suspendedHint}</p>}
       {failed ? <EmptyState title={t.loadFailed} /> : !app ? <ListSkeleton rows={5} /> : !info ? (
         <EmptyState title={t.noCollections} hint={t.noCollectionsHint} />
       ) : (
@@ -239,7 +242,42 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
         </>
       )}
       {confirming && app && <DeleteDialog app={app} t={t} close={() => setConfirming(false)} deleted={deleted} />}
+      {granting && app && <AdminsDialog app={app} t={t} close={() => setGranting(false)} changed={() => void load()} />}
     </>
+  )
+}
+
+/** Grant or remove the app's administrators by iPollo account email. */
+function AdminsDialog({ app, t, close, changed }: { app: DataAppDetail; t: DataLabels; close(): void; changed(): void }) {
+  const [roles, setRoles] = useState(app.roles)
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false), [error, setError] = useState('')
+  const send = (statement: unknown) => {
+    setBusy(true)
+    setError('')
+    request<{ roles: DataAppDetail['roles'] }>(`/data/apps/${app.id}/run`, { method: 'POST', body: JSON.stringify(statement) })
+      .then(value => { setRoles(value.roles); setEmail(''); changed() })
+      .catch(cause => setError(cause instanceof Error ? cause.message : t.loadFailed))
+      .finally(() => setBusy(false))
+  }
+  return (
+    <Modal open title={t.admins} description={t.adminsHint} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!busy) close() }}>
+      <form className={css.dataAdminForm} onSubmit={event => { event.preventDefault(); send({ grant: 'admin', email: email.trim() }) }}>
+        <input type="email" required placeholder={t.adminEmail} aria-label={t.adminEmail} value={email} disabled={busy} onChange={event => setEmail(event.target.value)} />
+        <Button variant="primary" type="submit" disabled={busy}>{t.addAdmin}</Button>
+      </form>
+      {error && <p className={css.dataError} role="alert">{error}</p>}
+      {roles.length === 0 ? <p className={css.dataFaint}>{t.noAdmins}</p> : (
+        <ul className={css.dataAdminList}>
+          {roles.map(role => (
+            <li key={role.id}>
+              <span><strong>{role.name || role.email}</strong><small>{role.email} · {role.role}</small></span>
+              <button type="button" className={css.dataLink} data-danger disabled={busy} onClick={() => send({ revoke: role.email })}>{t.removeAdmin}</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   )
 }
 

@@ -20,6 +20,8 @@ export interface DataAppSummary {
   owner: { kind: 'user' | 'enterprise'; id: string; name: string }
   /** Whether any collection admits anonymous reads or creates through the public key. */
   public: boolean
+  /** The platform operator stopped the app; statements are refused until it is resumed. */
+  suspended: boolean
   collections: number
   records: number
   bytes: number
@@ -37,6 +39,8 @@ export interface DataCollectionInfo {
   name: string
   fields: Record<string, DataFieldType>
   public: ('read' | 'create')[]
+  /** What visitors signed in with an iPollo account may do; `own` covers the records they created. */
+  users: ('read' | 'create' | 'own')[]
   unique: string[] | null
   /** Writes may use only declared fields. */
   strict: boolean
@@ -48,6 +52,12 @@ export interface DataAppDetail extends DataAppSummary {
   endpoint: string
   publicKey: string
   limits: { records: number; bytes: number; recordBytes: number }
+  /** Where a page sends visitors to sign in; the page appends `&return=<its URL>`. */
+  signin: string
+  /** Origins, besides iPollo-published pages and local development hosts, that sign-in may return to. */
+  origins: string[]
+  /** Visitors the app granted a role; `admin` may change every record. */
+  roles: { id: string; name: string; email: string; role: string }[]
   collectionList: DataCollectionInfo[]
 }
 
@@ -98,9 +108,13 @@ export type DataStatement =
   | { update: string; id: string; set?: Record<string, DataValue>; inc?: Record<string, number>; version?: number }
   | { upsert: string; id: string; values: Record<string, DataValue>; version?: number }
   | { delete: string; id: string; version?: number }
-  | { define: string; fields?: Record<string, DataFieldType>; public?: ('read' | 'create')[]; unique?: string[] | null; strict?: boolean; remove?: string[] }
+  | { define: string; fields?: Record<string, DataFieldType>; public?: ('read' | 'create')[]; users?: ('read' | 'create' | 'own')[]; unique?: string[] | null; strict?: boolean; remove?: string[] }
   | { drop: string }
   | { info: true }
+  | { me: true }
+  | { grant: string; email: string }
+  | { revoke: string }
+  | { origins: string[] }
 
 /** Typed access to one collection of an opened app. */
 export interface DataCollection {

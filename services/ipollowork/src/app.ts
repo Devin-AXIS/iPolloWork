@@ -69,7 +69,7 @@ export async function createService(config: Config) {
     if (dataStore) await migrateAppData(dataStore);
     const appData =
       dataStore && config.appData
-        ? new AppData(dataStore, store, config.appData, config.origin)
+        ? new AppData(dataStore, store, config.appData, config.origin, { secret: config.secret, publicationOrigin: config.publicationOrigin })
         : undefined;
     const settings = new Settings(store, config.secret);
     const storage = new Storage(store, settings, config);
@@ -382,7 +382,7 @@ export async function createService(config: Config) {
     mountResources(app, store, storage, config);
     mountStorage(app, store, storage);
     mountLiveshare(app, relay, auth);
-    mountAppData(app, appData, config.appData, auth);
+    mountAppData(app, appData, config.appData, auth, store);
     app.notFound((c) => c.json({ error: "接口不存在" }, 404));
     app.get("/api/*", (c) => c.json({ error: "接口不存在" }, 404));
     const webRoot = fileURLToPath(
