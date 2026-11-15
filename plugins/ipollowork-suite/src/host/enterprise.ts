@@ -265,6 +265,7 @@ export class EnterpriseService {
       enterprises,
       work: list.parse(workRows).items.map(projectWork),
       sharedProjects: list.parse(projectRows).items.map((r) => ({
+        executionMode: r.execution_mode === "cloud" ? "cloud" : "local",
         id: string(r.id),
         title: string(r.title),
         enterpriseId: nullableString(r.enterprise_id),

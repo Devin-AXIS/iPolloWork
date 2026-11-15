@@ -1,6 +1,6 @@
 # Alibaba Sandbox plugin
 
-The iPolloWork bundle ships the optional Cordis plugin `@ipollo/dsh-suite/aliyun-sandbox`. It reuses the earlier Alibaba Agent Sandbox adapter and its execution lifecycle. DSH owns all Agent execution, tool dispatch and Session recording. This module does not launch a second Agent or modify official DSH source. OpenSandbox is deferred and is not exported, installed as an SDK dependency, or included in this package's output.
+The iPolloWork bundle ships the optional execution-tool Cordis plugin `@ipollo/dsh-suite/aliyun-sandbox`. It reuses the earlier Alibaba Agent Sandbox adapter and its execution lifecycle. DSH owns all Agent execution, tool dispatch and Session recording. This module does not launch a second Agent or modify official DSH source. OpenSandbox is deferred and is not exported, installed as an SDK dependency, or included in this package's output.
 
 The component is disabled in `cordis.patch.yml`. Installing iPolloWork does not make a sandbox request. Configure it in an isolated cloud Agent preset, or enable it on a dedicated cloud Host. Local projects keep their existing native tools and configuration. The plugin follows DSH's read-only policy and refuses sandbox operations in that mode. Its cloud filesystem does not enforce DSH's local `workspace-write` path restrictions: isolation is provided by the remote sandbox and authorized mount.
 
@@ -29,7 +29,7 @@ Without a project binding, files are temporary; `releaseAfterTurn: true` deletes
 
 The template must provide `mountpoint`. Mount failure stops execution and releases the sandbox. The RAM role must permit only the intended storage access. Validate real RAM permissions and storage behavior before production use; a mount configuration alone does not establish tenant isolation.
 
-The current PostgreSQL service does not yet implement the project-volume endpoint or cloud-project launch. This change therefore does not enable the local/cloud project picker. Sharing one client UI does not move execution: a cloud project needs an authenticated server-side official DSH Host, persistent project storage, and remote session access. With those connected, Web and mobile clients can use the same cloud project without a user's computer staying online. The old SQLite service and local child-process launcher are not included. PTY UI, browser routing, cross-Host writer leases and durable background recovery remain outside this adapter.
+The account service now supports project-volume authorization and cloud-project launch. The optional cloud-project component starts the full official DSH profile inside Alibaba Sandbox, so the ordinary DSH terminal and filesystem operate in the cloud. It does not route local native tools through the `sandbox_*` tool adapter. See [cloud projects](cloud-projects.md) for configuration, ownership, verification and current limitations. The legacy SQLite service and local child-process launcher remain excluded.
 
 ## Verification
 

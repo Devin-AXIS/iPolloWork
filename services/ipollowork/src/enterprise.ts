@@ -1,3 +1,4 @@
+import type { CloudProjects } from './cloud-projects.js';
 import { projectListings } from "./project-space.js";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
@@ -21,7 +22,7 @@ const email = z.email().transform((v) => v.toLowerCase());
 const hash = (v: string) => createHash("sha256").update(v).digest("hex");
 
 /** Enterprise identity is an association on projects, not another workspace runtime. */
-export function mountEnterprise(app: App, store: Store, config: Config) {
+export function mountEnterprise(app: App, store: Store, config: Config, cloud?: CloudProjects) {
   app.get("/api/v1/enterprises", async (c) => {
     const actor = c.get("actor");
     const items =
@@ -271,7 +272,8 @@ export function mountEnterprise(app: App, store: Store, config: Config) {
       enterprise = c.req.query("enterpriseId");
     if (enterprise) await enterpriseAccess(store, actor, enterprise);
     const items = await projectListings(store, actor, enterprise);
-    return c.json({ items });
+    const grant=c.get("cloudGrant");
+    return c.json({ items:grant?items.filter(item=>item.id===grant.projectId):items });
   });
   app.post("/api/v1/projects", async (c) => {
     const input = z
@@ -279,13 +281,28 @@ export function mountEnterprise(app: App, store: Store, config: Config) {
         title: name,
         enterpriseId: z.string().nullable().default(null),
         nativeId: z.string().max(200).nullable().default(null),
+        executionMode: z.enum(["local","cloud"]).default("local"),
+        creationKey: z.uuid().optional(),
       })
       .parse(await c.req.json());
     const actor = c.get("actor"),
       id = uid();
+    if(input.executionMode==='cloud') {
+      if(!cloud)throw new ServiceError('CLOUD_DISABLED',503);
+      await cloud.requireAvailable();
+      if(input.nativeId)throw new ServiceError('CLOUD_NATIVE_ID_FORBIDDEN',400);
+    }
     return await store.transaction(async () => {
       if (input.enterpriseId)
         await enterpriseAccess(store, actor, input.enterpriseId);
+      if(input.creationKey) {
+        await store.run('SELECT pg_advisory_xact_lock(hashtextextended(?,0))',actor.id+input.creationKey);
+        const existing=await store.one('SELECT * FROM projects WHERE owner_id=? AND creation_key=?',actor.id,input.creationKey);
+        if(existing){
+          if(existing.title!==input.title || existing.enterprise_id!==input.enterpriseId || existing.execution_mode!==input.executionMode || existing.native_id!==input.nativeId)throw new ServiceError('PROJECT_CREATION_CONFLICT',409);
+          return c.json({id:existing.id,...input});
+        }
+      }
       const previous = input.nativeId
         ? await store.one(
             "SELECT * FROM projects WHERE owner_id=? AND native_id=?",
@@ -303,13 +320,15 @@ export function mountEnterprise(app: App, store: Store, config: Config) {
         return c.json({ id: previous.id, ...input });
       }
       await store.run(
-        "INSERT INTO projects(id,owner_id,enterprise_id,title,native_id,created_at) VALUES(?,?,?,?,?,?)",
+        "INSERT INTO projects(id,owner_id,enterprise_id,title,native_id,created_at,execution_mode,creation_key) VALUES(?,?,?,?,?,?,?,?)",
         id,
         actor.id,
         input.enterpriseId,
         input.title,
         input.nativeId,
         now(),
+        input.executionMode,
+        input.creationKey ?? null,
       );
       return c.json({ id, ...input }, 201);
     });

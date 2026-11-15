@@ -1,6 +1,6 @@
 # 阿里云沙箱插件
 
-iPolloWork 本次仅包含可选 Cordis 插件 `@ipollo/dsh-suite/aliyun-sandbox`，复用已有的阿里云 Agent Sandbox 适配器及执行生命周期。DSH 负责智能体执行、工具调度和会话记录，不新增智能体或修改官方源码。OpenSandbox 暂缓交付，不导出其入口、不安装其 SDK，也不包含旧构建文件。
+iPolloWork 包含可选执行工具 Cordis 插件 `@ipollo/dsh-suite/aliyun-sandbox`，复用已有的阿里云 Agent Sandbox 适配器及执行生命周期。DSH 负责智能体执行、工具调度和会话记录，不新增智能体或修改官方源码。OpenSandbox 暂缓交付，不导出其入口、不安装其 SDK，也不包含旧构建文件。
 
 组件在 `cordis.patch.yml` 中默认关闭，安装 iPolloWork 不会创建云资源。云端 Agent 预设或专用云端 Host 可启用该组件；本地项目继续使用原有工具和配置。只读会话会拒绝沙箱操作。远端文件系统的隔离由沙箱和挂载权限保证，不等同于 DSH 本地 `workspace-write` 路径限制。
 
@@ -18,7 +18,7 @@ iPolloWork 本次仅包含可选 Cordis 插件 `@ipollo/dsh-suite/aliyun-sandbox
 
 阿里云将获授权的项目标识映射到 OSS 的 `/ipollowork/<volume-identity>/`，挂载到 `/mnt/project`。模板必须提供 `mountpoint`；挂载验证失败会释放沙箱并中止任务。生产使用前仍需验证 RAM 权限与真实存储行为，不能仅凭挂载配置宣称租户隔离。
 
-当前 PostgreSQL 服务尚未提供项目卷授权和云端项目启动接口，因此本次没有开放创建项目时的本地／云端选择。共用 UI 不代表执行自动转移：云端项目还需连接服务器上的官方 DSH Host、持久化项目存储和远程会话访问。接通后，Web 与移动端可使用同一云端项目，无需用户电脑在线。旧 SQLite 服务和本机子进程启动器不合入；PTY 界面、浏览器路由、跨 Host 写入租约与后台任务恢复也不在当前适配器范围内。
+当前 PostgreSQL 服务已增加项目卷授权与云端启动接口。可选云端项目组件在阿里云沙箱中启动完整官方 DSH profile，因此普通 DSH 终端与文件工具在云端执行，不通过 `sandbox_*` 工具替换本地工具。配置、资源归属、验证范围和限制见[云端项目](cloud-projects.zh.md)。旧 SQLite 服务和本机子进程启动器不合入。
 
 ## 验证
 

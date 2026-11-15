@@ -31,6 +31,7 @@ import {
   useTask,
   type Call,
 } from "./enterprise-ui.tsx";
+import { request } from "./api.ts";
 import { projectCopy } from "./project-copy.ts";
 import {
   ProjectFiles,
@@ -60,11 +61,13 @@ export function ProjectsTab({
   view: ViewProps;
 }) {
   const { catalog, controller, t, actions } = view;
+  const task=useTask(t);const copy=projectCopy(view.language);
   const projects = catalog.sharedProjects.filter(
     (p) => p.enterpriseId === enterpriseId,
   );
   return (
     <div className={css.enterpriseStack}>
+      <FormError message={task.error}/>
       <Section
         title={t.teamProjects}
         actions={
@@ -86,7 +89,10 @@ export function ProjectsTab({
                 title={p.title}
                 onOpen={() => controller.push({ kind: "project", id: p.id })}
                 actions={
-                  catalog.projects.find((local) => local.cloudId === p.id) ? (
+                  p.executionMode==='cloud' ? <Button variant="ghost" size="sm" disabled={task.busy} onClick={()=>void task.run(async()=>{
+                    const result=await request<{url:string}>('/cloud/projects',{method:'POST',body:JSON.stringify({projectId:p.id})});
+                    const target=new URL(result.url);if(target.protocol!=='https:')throw new Error('IPW_INVALID_RESPONSE');window.location.assign(target.href);
+                  })}>{copy.openCloud}</Button> : catalog.projects.find((local) => local.cloudId === p.id) ? (
                     <Button
                       variant="ghost"
                       size="sm"

@@ -26,6 +26,7 @@ test("organization creation has no personal ownership option; the global dialog 
   const module = { exports: {} };
   runInNewContext(bundle.outputFiles[0].text, {
     module,
+    crypto,
     exports: module.exports,
     require: (name) =>
       name === "@deepseek-ai/dsh-client-ui-primitives"

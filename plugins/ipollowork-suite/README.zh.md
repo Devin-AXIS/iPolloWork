@@ -159,3 +159,5 @@ Design 发布会按工作区和文件复用原公开地址。新版本完整上�
 ## 沙箱插件
 
 阿里云 Agent Sandbox 作为可独立配置、默认关闭的插件组件打包，使用官方 DSH 工具与生命周期接口。[配置方式、持久化前提与验证范围](docs/sandbox-plugins.zh.md)。
+
+云端项目：[配置、生命周期与验证范围](docs/cloud-projects.zh.md)。

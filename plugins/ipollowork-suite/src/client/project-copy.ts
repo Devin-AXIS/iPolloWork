@@ -1,5 +1,7 @@
 /** Copy owned by the project collaboration surface. */
 const en = {
+  location:"Run in", localMode:"This computer", cloud:"Cloud", name:"Project name", cloudHint:"Runs in the cloud. Files are saved automatically.", openCloud:"Open cloud project", cloudDisabled:"Cloud execution is turned off",
+
   files: "Files",
   memory: "Project memory",
   changes: "Changes",
@@ -92,6 +94,8 @@ const en = {
   useLatest: "Use latest version",
 };
 const zh: typeof en = {
+  location:"运行位置", localMode:"本地电脑", cloud:"云端", name:"项目名称", cloudHint:"在云端运行，文件自动保存", openCloud:"打开云端项目", cloudDisabled:"云端执行已关闭",
+
   files: "文件",
   memory: "项目记忆",
   changes: "改动",

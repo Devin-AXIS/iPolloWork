@@ -78,3 +78,5 @@ Schema 7 reconciles membership data and parallel execution from either schema-6 
 [Capability HTTP API](docs/capabilities.md) describes typed discovery, invocation, asynchronous results and application access keys over the same gateway.
 
 Published Design pages keep one public URL per owner, native workspace and entry path. Updates stage a complete file set privately, then switch the live revision atomically. An incomplete update leaves the previous page available. Schema 8 adds publication identity and revision links without new tables. A unique older publication is adopted on the first update; ambiguous older duplicates require selecting a publication before updating.
+
+Cloud/local project creation and the optional Alibaba execution server are described in [cloud projects](../../plugins/ipollowork-suite/docs/cloud-projects.md). Migration 10 adds project execution location and a single-writer lease; cloud execution is disabled until configured.

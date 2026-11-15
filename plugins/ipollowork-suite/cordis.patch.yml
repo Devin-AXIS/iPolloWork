@@ -19,3 +19,6 @@
     - id: ipollowork-aliyun-sandbox
       name: '@ipollo/dsh-suite/aliyun-sandbox'
       disabled: true
+    - id: ipollowork-cloud-projects
+      name: '@ipollo/dsh-suite/cloud'
+      disabled: true

@@ -60,6 +60,9 @@ const en = {
   modelId: "Model ID",
   addModel: "Add model",
   endpointRoutes: "API routes",
+  cloudDisabled: "Cloud execution is disabled or unavailable",
+  cloudFailed: "Could not start the cloud project; please try again",
+  cloudBusy: "This project is already running for another member",
   analyticsTab: "Analytics",
   analyticsHint: "Enterprise-owned services only. Personal services and local execution are excluded. Calls are service requests, not AI conversations or user tasks; job polls are excluded. Department membership is recorded when a call starts. Historical unattributed calls are excluded.",
   analyticsCoverage: "Token usage reported for {measured} of {tasks} calls",
@@ -444,6 +447,9 @@ const zh: typeof en = {
   modelId: "模型 ID",
   addModel: "添加模型",
   endpointRoutes: "接口路径",
+  cloudDisabled: "云端执行已关闭或暂不可用",
+  cloudFailed: "云端项目启动失败，请重试",
+  cloudBusy: "这个项目正在由其他成员运行，请稍后重试",
   analyticsTab: "数据分析",
   analyticsHint: "仅统计企业所属服务；不含个人服务和本地执行。部门按调用发起时归属记录，历史未标记企业的调用不计入。任务数按服务请求计数，不代表 AI 会话或用户任务；异步轮询不重复计数。",
   analyticsCoverage: "{tasks} 次调用中，{measured} 次已采集 Token 用量",
@@ -770,6 +776,9 @@ export function format(
   );
 }
 export function enterpriseError(code: string, t: EnterpriseLabels): string {
+  if(['IPW_CLOUD_DISABLED','CLOUD_DISABLED'].includes(code))return t.cloudDisabled;
+  if(['IPW_CLOUD_START_FAILED','CLOUD_START_FAILED'].includes(code))return t.cloudFailed;
+  if(code==='CLOUD_PROJECT_BUSY')return t.cloudBusy;
   if (["IPW_SIGN_IN_REQUIRED", "SIGN_IN_REQUIRED"].includes(code))
     return t.signInRequired;
   if (

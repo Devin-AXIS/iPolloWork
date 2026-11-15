@@ -46,8 +46,23 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
   const t = props.useEnterpriseLabels((v) => v),
     state = props.useEnterpriseState((v) => v);
   const c = projectCopy(
-    t.title === "组织空间" || t.title === "企业空间" ? "zh" : "en",
+    t.personal === "个人" ? "zh" : "en",
   );
+  const [cloudEnabled,setCloudEnabled]=useState(false);
+  const [mode,setMode]=useState<'local'|'cloud'>('local');
+  const [cloudName,setCloudName]=useState('');
+  const creationKey=useRef('');
+  useEffect(()=>{
+    if(!props.open)return;
+    const abort=new AbortController();
+    const refresh=()=>void request<{enabled:boolean}>('/cloud/availability',{signal:abort.signal}).then(value=>{
+      if(!abort.signal.aborted){setCloudEnabled(value.enabled);if(!value.enabled)setMode('local');}
+    },()=>{if(!abort.signal.aborted){setCloudEnabled(false);setMode('local');}});
+    refresh();
+    window.addEventListener('focus',refresh);
+    const timer=window.setInterval(refresh,5000);
+    return ()=>{abort.abort();window.removeEventListener('focus',refresh);window.clearInterval(timer);};
+  },[props.open]);
   const [shareWith, setShareWith] = useState(""),
     [shareRole, setShareRole] = useState<"view" | "participate">("participate");
   const [path, setPath] = useState(""),
@@ -73,6 +88,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
     if (props.open) {
       void props.refreshEnterprises();
       setPath("");
+      setMode("local");setCloudName("");creationKey.current=crypto.randomUUID();
       setEnterpriseId(props.organizationId ?? "");
       setError("");
       setBusy(false);
@@ -135,7 +151,19 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (disabled || !path.trim() || invalidPath) return;
+    if(disabled)return;
+    if(mode==='cloud') {
+      if(!cloudEnabled||!cloudName.trim()||!state.signedIn)return;
+      setBusy(true);setError('');
+      void request<{url:string}>('/cloud/projects',{method:'POST',body:JSON.stringify({title:cloudName.trim(),enterpriseId:targetOrganization||null,creationKey:creationKey.current,
+        ...(targetOrganization?{access:{mode:shareWith==='all'?'enterprise':'selected',grants:shareWith&&shareWith!=='all'?[{kind:shareWith.startsWith('d:')?'department':'member',subjectId:shareWith.slice(2),role:shareRole}]:[]}}:{})})}).then(result=>{
+        if(!alive.current)return;
+        const target=new URL(result.url);if(target.protocol!=='https:')throw new Error('IPW_INVALID_RESPONSE');
+        window.location.assign(target.href);
+      }).catch(error=>{if(alive.current)setError(projectCreationError(error,t));}).finally(()=>{if(alive.current)setBusy(false);});
+      return;
+    }
+    if(!path.trim()||invalidPath)return;
     setBusy(true);
     setError("");
     void props
@@ -187,6 +215,9 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
       }}
     >
       <form className={css.enterpriseForm} onSubmit={submit}>
+        {cloudEnabled && <label className={css.enterpriseField}><span>{c.location}</span><select value={mode} disabled={disabled} onChange={event=>setMode(event.target.value==='cloud'?'cloud':'local')}><option value="local">{c.localMode}</option><option value="cloud">{c.cloud}</option></select></label>}
+        {mode==='cloud' ? <label className={css.enterpriseField}><span>{c.name}</span><input required value={cloudName} maxLength={120} disabled={disabled} onChange={event=>setCloudName(event.target.value)}/></label> : <>
+
         <label className={css.enterpriseField}>
           <span>{t.projectDirectory}</span>
           <div className={css.enterprisePath}>
@@ -333,6 +364,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
             </button>
           </section>
         )}
+        </>}
         <label className={css.enterpriseField}>
           <span>{t.choose}</span>
           {props.organizationId ? (
@@ -421,7 +453,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
           </div>
         )}
         {!state.signedIn && <p className={css.muted}>{t.signIn}</p>}
-        <p className={css.muted}>{t.createProjectHint}</p>
+        <p className={css.muted}>{mode==='cloud'?c.cloudHint:t.createProjectHint}</p>
         {error && (
           <p className={css.error} role="alert">
             {error}
@@ -438,7 +470,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
           </button>
           <button
             className={css.primary}
-            disabled={disabled || !path.trim() || invalidPath}
+            disabled={disabled || (mode==='cloud' ? !cloudEnabled || !cloudName.trim() || !state.signedIn : !path.trim() || invalidPath)}
           >
             {disabled ? t.loading : t.createProject}
           </button>

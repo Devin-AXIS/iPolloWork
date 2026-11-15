@@ -166,3 +166,5 @@ Design publication uses a stable workspace-and-file identity. Repeated publishin
 ## Sandbox plugins
 
 Alibaba Agent Sandbox ships as an optional, disabled-by-default plugin component. It uses the official DSH tool and lifecycle APIs. See [configuration, persistence requirements and verification limits](docs/sandbox-plugins.md).
+
+Cloud projects: [setup, lifecycle and validation limits](docs/cloud-projects.md).

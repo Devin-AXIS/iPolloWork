@@ -1,3 +1,4 @@
+import { CloudProjects, cloudGrantAllows, mountCloudProjects } from './cloud-projects.js';
 import { ExecutionService, mountExecution } from "./execution.js";
 import { Capabilities, mountCapabilities } from "./capabilities.js";
 import { authenticateCapabilityKey, mountAccessKeys } from "./access-keys.js";
@@ -33,6 +34,7 @@ import { mountEnterpriseAnalytics } from "./enterprise-analytics.js";
 import { mountAppData } from "./app-data-http.js";
 
 export const settingFields: Record<string, readonly string[]> = {
+  cloud: ["enabled", "gatewayOrigin", "gatewayKey", "ttlSeconds", "grantTtlSeconds", "leaseGraceSeconds"],
   stripe: ["secretKey", "webhookSecret"],
   alipay: ["appId", "sellerId", "privateKey", "publicKey", "sandbox"],
   wechat: ["appId", "merchantId", "merchantSerial", "privateKey", "apiV3Key", "platformKeyId", "platformPublicKey"],
@@ -48,6 +50,7 @@ export const settingFields: Record<string, readonly string[]> = {
   ],
 };
 const secrets = new Set([
+  "gatewayKey",
   "secretKey",
   "webhookSecret",
   "accessKeyId",
@@ -72,6 +75,7 @@ export async function createService(config: Config) {
         ? new AppData(dataStore, store, config.appData, config.origin, { secret: config.secret, publicationOrigin: config.publicationOrigin })
         : undefined;
     const settings = new Settings(store, config.secret);
+    const cloud = new CloudProjects(store, settings, config);
     const storage = new Storage(store, settings, config);
     const app: App = new Hono();
     const relay = new LiveshareRelay(store, config);
@@ -163,6 +167,13 @@ export async function createService(config: Config) {
       }),
     );
     app.on(["GET", "POST"], "/api/auth/*", async (c) => {
+      const token=c.req.header('authorization')?.replace(/^Bearer /,'');
+      if(token?.startsWith('ipwc.')){
+        if(c.req.method!=='GET'||c.req.path!=='/api/auth/get-session')throw new ServiceError('CLOUD_GRANT_SCOPE',403);
+        const {actor,grant}=await cloud.authenticate(token);
+        if(grant.kind!=='runtime')throw new ServiceError('CLOUD_GRANT_SCOPE',403);
+        return c.json({user:actor});
+      }
       // Native Work sends JSON credentials without cookies or a browser Origin.
       // Cookie-bearing and explicit cross-origin requests still use Better Auth's checks.
       if (
@@ -189,6 +200,12 @@ export async function createService(config: Config) {
         origin !== config.origin
       )
         throw new ServiceError("ORIGIN_FORBIDDEN", 403);
+      const cloudToken=c.req.header('authorization')?.replace(/^Bearer /,'');
+      if (cloudToken?.startsWith('ipwc.')) {
+        const {actor,grant}=await cloud.authenticate(cloudToken);
+        if(!cloudGrantAllows(grant,c.req.path,c.req.method))throw new ServiceError('CLOUD_GRANT_SCOPE',403);
+        c.set('actor',actor);c.set('cloudGrant',grant);await next();return;
+      }
       const keyActor = await authenticateCapabilityKey(auth, store, c.req.raw.headers, c.req.path, c.req.method);
       if (keyActor) {
         c.set("actor", keyActor);
@@ -372,7 +389,8 @@ export async function createService(config: Config) {
     mountCapabilities(app, new Capabilities(execution, store));
     mountAccessKeys(app, auth);
     mountEnterpriseAssets(app, store, storage, config);
-    mountEnterprise(app, store, config);
+    mountEnterprise(app, store, config, cloud);
+    mountCloudProjects(app, cloud);
     mountEnterpriseAnalytics(app, store);
     mountProjectSpace(app, store, storage, config);
     mountProjectArchive(app, store, storage, config);

@@ -1,3 +1,5 @@
+import type {} from './cloud/index.ts';
+import { z as cloudSchema } from 'zod';
 import { mountEnterpriseActivity } from "./enterprise-activity.ts";
 /** One native Cordis plugin owns the suite's HTTP routes and domain services. */
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -80,6 +82,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
   provide?(name: "ipolloData", value: IpolloData): void;
+  get?(name: "ipolloCloud"): unknown;
   get?(name: "liveshareShares"): NativeSharing | undefined;
   on(
     event: "agent/pre-step",
@@ -354,6 +357,21 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             }
             const url = new URL(request.url ?? "/", "http://localhost");
             const path = url.pathname.slice(API.length);
+            if(path==='/cloud/availability' && request.method==='GET') {
+              const active=Boolean(ctx.get?.('ipolloCloud'));
+              json(response,200,active?await account.request('/api/v1/cloud-projects/availability'):{enabled:false});return;
+            }
+            if(path==='/cloud/projects' && request.method==='POST') {
+              if(!ctx.get?.('ipolloCloud'))throw new SuiteError('IPW_CLOUD_DISABLED',409);
+              const data=cloudSchema.object({projectId:cloudSchema.uuid().optional(),title:cloudSchema.string().trim().min(1).max(120).optional(),enterpriseId:cloudSchema.string().nullable().optional(),creationKey:cloudSchema.uuid().optional(),access:cloudSchema.json().optional()}).strict().parse(await body(request));
+              const created=data.projectId?{id:data.projectId}:cloudSchema.object({id:cloudSchema.uuid()}).parse(await account.request('/api/v1/projects',{title:data.title,enterpriseId:data.enterpriseId??null,creationKey:data.creationKey,executionMode:'cloud'}));
+              if(data.access && !data.projectId)await account.request('/api/v1/projects/'+created.id+'/access',data.access,'PUT');
+              const result=cloudSchema.object({url:cloudSchema.url()}).parse(await account.openCloudProject(created.id));
+              if(!ctx.get?.('ipolloCloud'))throw new SuiteError('IPW_CLOUD_DISABLED',409);
+              const target=new URL(result.url);
+              if(target.protocol!=='https:'||target.username||target.password)throw new SuiteError('IPW_INVALID_RESPONSE',502);
+              json(response,200,{projectId:created.id,url:target.href});return;
+            }
             if (request.method === "GET" && path === "/assets/client.css") {
               const css = await readFile(
                 new URL("../client.css", import.meta.url),

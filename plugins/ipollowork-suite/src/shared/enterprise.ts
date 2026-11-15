@@ -105,6 +105,7 @@ export interface ProjectUpdate {
   createdAt: number;
 }
 export interface SharedProject {
+  executionMode?: "local" | "cloud";
   id: string;
   title: string;
   enterpriseId: string | null;

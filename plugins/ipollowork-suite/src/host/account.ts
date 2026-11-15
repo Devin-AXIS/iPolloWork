@@ -71,6 +71,7 @@ export class AccountService {
     body?: unknown,
     method?: string,
     signal?: AbortSignal,
+    timeoutMs = this.config.requestTimeoutMs,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -85,7 +86,7 @@ export class AccountService {
         signal: AbortSignal.any([
           this.signal,
           ...(signal ? [signal] : []),
-          AbortSignal.timeout(this.config.requestTimeoutMs),
+          AbortSignal.timeout(timeoutMs),
         ]),
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
@@ -141,6 +142,14 @@ export class AccountService {
     const grant = await this.grant();
     if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
     return this.send(path, grant.token, body, method, signal);
+  }
+  /** Cloud startup is bounded independently from ordinary account reads. */
+  async openCloudProject(projectId: string): Promise<unknown> {
+    const generation=this.revision, grant=await this.grant();
+    if(!grant)throw new SuiteError('IPW_SIGN_IN_REQUIRED',401);
+    const result=await this.send('/api/v1/projects/'+encodeURIComponent(projectId)+'/cloud/open',grant.token,{},'POST',undefined,this.config.uploadTimeoutMs);
+    if(generation!==this.revision)throw new SuiteError('IPW_ACCOUNT_CHANGED',409);
+    return result;
   }
   /** Call a capability with the operation lifetime and keep the account token inside the Host.
    * @param path Allowlisted capability or receipt URL path.
@@ -299,6 +308,11 @@ export class AccountService {
     return response;
   }
   private async grant(): Promise<Grant | undefined> {
+    if(this.config.cloudRuntimeTokenEnv){
+      const token=process.env[this.config.cloudRuntimeTokenEnv];
+      if(!token)throw new SuiteError('IPW_SIGN_IN_REQUIRED',401);
+      return {version:1,origin:this.config.accountOrigin,token};
+    }
     const record = await this.credentials.readRecord(KEY);
     if (!record) return undefined;
     const value = record.payload;

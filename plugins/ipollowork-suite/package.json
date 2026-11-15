@@ -25,7 +25,10 @@
     "./services": {
       "types": "./lib/services.d.ts"
     },
-    "./aliyun-sandbox": "./lib/host/sandbox/aliyun/index.js"
+    "./aliyun-sandbox": "./lib/host/sandbox/aliyun/index.js",
+    "./cloud": "./lib/host/cloud/index.js",
+    "./cloud-server": "./lib/host/cloud/server.js",
+    "./cloud-bootstrap": "./lib/host/cloud/bootstrap.js"
   },
   "files": [
     "lib",
@@ -45,7 +48,8 @@
     "THIRD_PARTY_NOTICES.md",
     "LICENSES/MIT-legacy.txt",
     "catalog/packages/deepseek-idesign-1.0.0-beta.27-8582ffc54e8c.tgz",
-    "catalog/packages/deepseek-ivideo-1.0.0-beta.22-e5f044d93ee4.tgz"
+    "catalog/packages/deepseek-ivideo-1.0.0-beta.22-e5f044d93ee4.tgz",
+    "deploy/cloud"
   ],
   "dsh": {
     "bundle": {
@@ -116,7 +120,8 @@
     "@deepseek-ai/dsh-client-ui-slots": "0.2.2-rc.3",
     "@deepseek-ai/dsh-client-ui-conversation": "0.2.2-rc.3",
     "@deepseek-ai/dsh-client-product-analytics": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.3"
   },
   "devDependencies": {
     "@deepseek-ai/dsh-agent": "0.2.2-rc.3",

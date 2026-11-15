@@ -109,6 +109,9 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
       status: "anonymous",
       origin: "https://work.ipollo.net",
     });
+    const availability=await fetch(base+'/cloud/availability',{headers:{Cookie:'owner=test'}});
+    assert.deepEqual(await availability.json(),{enabled:false});
+    assert.equal((await fetch(base+'/cloud/projects',{method:'POST',headers:{Cookie:'owner=test','Content-Type':'application/json'},body:'{}'})).status,409);
     assert.equal((await fetch(base + "/membership")).status, 401);
     assert.equal((await fetch(base + "/membership", { headers: { Cookie: "owner=test" } })).status, 401);
     assert(guard);
