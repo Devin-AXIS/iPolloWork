@@ -17,7 +17,7 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 /** Run a child to completion, preserving its failure status. */
 export function run(command, args, options = {}) {
   return new Promise((accept, reject) => {
-    const child = spawn(command, args, { cwd: root, stdio: 'inherit', ...options })
+    const child = spawn(command, args, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' && /\.cmd$/i.test(command), ...options })
     child.once('error', reject)
     child.once('exit', (code, signal) => code === 0 ? accept() : reject(new Error(`${command} failed (${signal ?? code})`)))
   })
