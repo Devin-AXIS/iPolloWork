@@ -166,3 +166,13 @@ it.each([
     expect(omitted === undefined).toBe(candidate === engine)
   }
 })
+
+it('keeps ONNX binaries only for the selected platform, including nested installations', () => {
+  const target = { platform: 'darwin' as const, arch: 'arm64' }
+  for (const prefix of ['', '@huggingface/transformers/node_modules/']) {
+    expect(desktopRuntimeFileExclusion(`${prefix}onnxruntime-node/bin/napi-v6/darwin/arm64/onnxruntime_binding.node`, target, 'darwin-arm64')).toBeUndefined()
+    for (const other of ['darwin/x64', 'linux/arm64', 'linux/x64', 'win32/x64', 'win32/arm64']) {
+      expect(desktopRuntimeFileExclusion(`${prefix}onnxruntime-node/bin/napi-v6/${other}/library`, target, 'darwin-arm64')).toBe('ONNX other platform')
+    }
+  }
+})

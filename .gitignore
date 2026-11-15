@@ -67,3 +67,7 @@ native/system/test/bin/
 /vitest.shared.ts
 /integrations/desktop-host/application.yml
 /integrations/desktop-host/assets/mark.svg
+
+# Local product desktop signing configuration.
+/integrations/desktop/.env.macos
+/integrations/desktop/.env.windows
