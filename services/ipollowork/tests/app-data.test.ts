@@ -294,6 +294,11 @@ test("refused input answers 400, storage stays bounded and a stale sync cursor i
     const forged = Buffer.from(JSON.stringify(["abc", "x"])).toString("base64url");
     assert.equal((await run({ find: "notes", after: forged })).data.code, "DATA_CURSOR_INVALID");
     assert.equal((await run({ find: "notes", where: { createdAt: { ">": 1.5 } } })).data.code, "DATA_FILTER_TYPE");
+    assert.equal((await run({ insert: "notes", values: { id: "b", text: "Green tea", cups: 12 } })).status, 200);
+    assert.deepEqual((await run({ find: "notes", search: "TEA" })).data.items.map((n: Json) => n.id), ["b"], "search ignores letter case");
+    assert.equal((await run({ count: "notes", search: "12" })).data.count, 1, "search reads number fields as text");
+    assert.equal((await run({ count: "notes", search: "nothing" })).data.count, 0);
+    assert.equal((await run({ delete: "notes", id: "b" })).status, 200);
     const paged = await run({ find: "notes", limit: 1 });
     assert.equal(paged.data.next, null, "the default listing pages by created time and id");
 

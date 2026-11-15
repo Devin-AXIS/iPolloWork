@@ -53,9 +53,10 @@ export interface DataAppDetail extends DataAppSummary {
 export type DataCondition =
   | string | number | boolean | null
   | { '='?: string | number | boolean; '!='?: string | number | boolean; '>'?: string | number; '>='?: string | number; '<'?: string | number; '<='?: string | number; in?: (string | number | boolean)[]; contains?: string }
-/** Query options for `find`; `sort` names a field, prefixed by `-` for descending order. */
+/** Query options for `find`; `sort` names a field, prefixed by `-` for descending order, and `search` keeps records whose id or any text or number field contains the term. */
 export interface DataQuery {
   where?: Record<string, DataCondition>
+  search?: string
   sort?: string
   limit?: number
   after?: string
@@ -65,7 +66,7 @@ export type DataStatement =
   | { insert: string; values: Record<string, DataValue> | Record<string, DataValue>[] }
   | { get: string; id: string }
   | ({ find: string } & DataQuery)
-  | { count: string; where?: Record<string, DataCondition> }
+  | { count: string; where?: Record<string, DataCondition>; search?: string }
   | { update: string; id: string; set: Record<string, DataValue>; version?: number }
   | { upsert: string; id: string; values: Record<string, DataValue>; version?: number }
   | { delete: string; id: string; version?: number }

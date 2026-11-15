@@ -1,9 +1,9 @@
 /**
  * The Data page. Apps are compact rows grouped by owner, personal or one organization, and filtered by plugin or public app;
- * an opened app is its records: one tab per collection over a read-only, sortable table. Connection details and
- * deletion stay behind header controls.
+ * an opened app is its records: one tab per collection over the record grid of `data-records.tsx`. Connection details
+ * and deletion stay behind header controls.
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   IconChevronLeftOutlineRegular,
@@ -17,7 +17,7 @@ import {
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
-import type { DataAppDetail, DataAppList, DataAppSummary, DataFieldType, DataRecord, DataValue } from '../shared/app-data.ts'
+import type { DataAppDetail, DataAppList, DataAppSummary } from '../shared/app-data.ts'
 import type { ClientContext } from './native.ts'
 import type { AccountController, AccountSnapshot } from './account-controller.ts'
 import { request } from './api.ts'
@@ -25,12 +25,11 @@ import { format } from './enterprise-locale.ts'
 import { EmptyState, ListSkeleton } from './enterprise-ui.tsx'
 import { Monogram } from './glyphs.tsx'
 import { dataCopy, dataLabels, type DataLabels } from './data-locale.ts'
+import { RecordTable } from './data-records.tsx'
 import css from './suite.module.css'
 
 const PANEL = 'ipollowork-data'
-const PAGE = 50
 const PERSONAL = ':personal'
-const GLYPH: Record<DataFieldType, string> = { text: 'Aa', number: '#', boolean: '◐', json: '{}' }
 type Filter = 'all' | 'plugin' | 'public'
 
 interface Props {
@@ -81,7 +80,7 @@ function DataPanel(props: Props) {
 
   if (open)
     return (
-      <section className={css.page + ' ' + css.enterprisePage + ' ' + css.dataPage} data-ipw-data>
+      <section className={css.page + ' ' + css.enterprisePage + ' ' + css.dataPage} data-ipw-data data-wide>
         <AppDetail
           summary={open}
           ownerName={tabs.find(tab => tab.id === ownerKey(open))?.name ?? open.owner.name}
@@ -170,69 +169,30 @@ function DataPanel(props: Props) {
   )
 }
 
-const DEFAULT_SORT = '-createdAt'
-
 function AppDetail({ summary, ownerName, t, back, deleted }: {
   summary: DataAppSummary; ownerName: string; t: DataLabels; back(): void; deleted(): void
 }) {
   const [app, setApp] = useState<DataAppDetail | null>(null)
   const [failed, setFailed] = useState(false)
-  const [view, setView] = useState({ collection: '', sort: DEFAULT_SORT })
-  const [rows, setRows] = useState<DataRecord[] | null>(null)
-  const [next, setNext] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [peek, setPeek] = useState<string | null>(null)
+  const [collection, setCollection] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [menu, setMenu] = useState(false)
   const [confirming, setConfirming] = useState(false)
-  // Only the latest first page may replace the rows; a slower earlier answer is dropped.
-  const turn = useRef(0)
-  useEffect(() => {
-    let live = true
+  const live = useRef(true)
+  const load = () =>
     request<{ app: DataAppDetail }>(`/data/apps/${summary.id}`)
       .then(value => {
-        if (!live) return
+        if (!live.current) return
         setApp(value.app)
-        setView({ collection: value.app.collectionList[0]?.name ?? '', sort: DEFAULT_SORT })
+        setCollection(current => (value.app.collectionList.some(c => c.name === current) ? current : value.app.collectionList[0]?.name ?? ''))
       })
-      .catch(() => { if (live) setFailed(true) })
-    return () => { live = false }
-  }, [summary.id])
-  const page = async (after: string | null) => {
-    const mine = after ? turn.current : ++turn.current
-    const value = await request<{ items: DataRecord[]; next: string | null }>(`/data/apps/${summary.id}/run`, {
-      method: 'POST',
-      body: JSON.stringify({ find: view.collection, sort: view.sort, limit: PAGE, ...(after ? { after } : {}) }),
-    })
-    if (mine !== turn.current) return
-    setRows(current => (after && current ? [...current, ...value.items] : value.items))
-    setNext(value.next)
-  }
+      .catch(() => { if (live.current) setFailed(true) })
   useEffect(() => {
-    setRows(null)
-    setNext(null)
-    setPeek(null)
-    if (view.collection) void page(null).catch(() => setFailed(true))
-  }, [view])
-  const info = app?.collectionList.find(c => c.name === view.collection)
-  const fields = info ? Object.entries(info.fields) : []
-  const sortBy = (field: string) => setView(current => ({
-    ...current,
-    sort: current.sort === field ? '-' + field : current.sort === '-' + field ? field : (field === 'createdAt' ? '-' : '') + field,
-  }))
-  const heading = (field: string, label: string, type?: DataFieldType) => {
-    const direction = view.sort === field ? 'ascending' : view.sort === '-' + field ? 'descending' : undefined
-    return (
-      <th key={field} aria-sort={direction} data-type={type}>
-        <button type="button" className={css.dataSort} title={format(t.sortBy, { name: label })} onClick={() => sortBy(field)}>
-          {type && <span className={css.dataGlyph}>{GLYPH[type]}</span>}
-          {label}
-          <i aria-hidden>{direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : ''}</i>
-        </button>
-      </th>
-    )
-  }
-  const toggle = (id: string) => setPeek(current => (current === id ? null : id))
+    live.current = true
+    void load()
+    return () => { live.current = false }
+  }, [summary.id])
+  const info = app?.collectionList.find(c => c.name === collection)
   const kind = app?.kind ?? summary.kind
   return (
     <>
@@ -269,70 +229,13 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
         <>
           <div className={css.lineTabs + ' ' + css.dataTabs} role="tablist" aria-label={t.tablesLabel}>
             {app.collectionList.map(c => (
-              <button key={c.name} type="button" role="tab" aria-selected={c.name === view.collection}
-                onClick={() => setView({ collection: c.name, sort: DEFAULT_SORT })}>
+              <button key={c.name} type="button" role="tab" aria-selected={c.name === collection} onClick={() => setCollection(c.name)}>
                 {c.name}
                 <small className={css.dataTabCount}>{c.records}</small>
               </button>
             ))}
           </div>
-          <div className={css.dataTableWrap}>
-            <table className={css.dataTable}>
-              <thead>
-                <tr>
-                  {fields.map(([name, type]) => (type === 'json'
-                    ? <th key={name}><span className={css.dataGlyph}>{GLYPH[type]}</span>{name}</th>
-                    : heading(name, name, type)))}
-                  {heading('createdAt', t.createdAt)}
-                </tr>
-              </thead>
-              <tbody>
-                {(rows ?? []).map(row => (
-                  <Fragment key={row.id}>
-                    <tr tabIndex={0} aria-expanded={peek === row.id} onClick={() => toggle(row.id)}
-                      onKeyDown={event => {
-                        if (event.key !== 'Enter' && event.key !== ' ') return
-                        event.preventDefault()
-                        toggle(row.id)
-                      }}>
-                      {fields.map(([name, type]) => (
-                        <td key={name} data-type={type}>{cell(row[name], type, t)}</td>
-                      ))}
-                      <td className={css.dataFaint}>{new Date(row.createdAt).toLocaleString()}</td>
-                    </tr>
-                    {peek === row.id && (
-                      <tr className={css.dataPeek}>
-                        <td colSpan={fields.length + 1}>
-                          <dl>
-                            {fields.map(([name, type]) => (
-                              <div key={name}><dt>{name}</dt><dd>{full(row[name], type, t)}</dd></div>
-                            ))}
-                            <div><dt>id</dt><dd><code>{row.id}</code></dd></div>
-                            <div><dt>{t.updatedAt}</dt><dd>{new Date(row.updatedAt).toLocaleString()} · v{row.version}</dd></div>
-                          </dl>
-                        </td>
-                      </tr>
-                    )}
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-            {rows === null && <ListSkeleton rows={3} />}
-            {rows?.length === 0 && <p className={css.dataEmptyRows}>{t.noRecords}</p>}
-          </div>
-          <footer className={css.dataFoot}>
-            <span>
-              {format(t.records, { count: info.records })} · {format(t.fields, { count: fields.length })}
-              {info.public.includes('create') && <> · {t.publicCreate}</>}
-              {info.public.includes('read') && <> · {t.publicRead}</>}
-            </span>
-            {next && (
-              <Button variant="outline" disabled={busy} onClick={() => {
-                setBusy(true)
-                void page(next).catch(() => setFailed(true)).finally(() => setBusy(false))
-              }}>{t.loadMore}</Button>
-            )}
-          </footer>
+          <RecordTable key={info.name} appId={app.id} info={info} t={t} changed={() => void load()} />
         </>
       )}
       {confirming && app && <DeleteDialog app={app} t={t} close={() => setConfirming(false)} deleted={deleted} />}
@@ -340,19 +243,6 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
   )
 }
 
-/** A whole value for the opened record: long text wraps and JSON is indented. */
-function full(value: DataValue | undefined, type: DataFieldType, t: DataLabels) {
-  if (type === 'json' && value !== undefined && value !== null) return <pre>{JSON.stringify(value, null, 2)}</pre>
-  return cell(value, type, t)
-}
-
-function cell(value: DataValue | undefined, type: DataFieldType, t: DataLabels) {
-  if (value === undefined || value === null) return <span className={css.dataFaint}>—</span>
-  if (type === 'boolean') return value ? t.yes : t.no
-  if (type === 'number' && typeof value === 'number') return value.toLocaleString()
-  if (type === 'json') return <code>{JSON.stringify(value)}</code>
-  return String(value)
-}
 function CopyRow({ label, value, t }: { label: string; value: string; t: DataLabels }) {
   const [copied, setCopied] = useState(false)
   return (

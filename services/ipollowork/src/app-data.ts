@@ -84,6 +84,7 @@ const where = z
 const recordId = z
   .string()
   .regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/, "id 使用字母、数字、下划线或短横线，最长 64 个字符");
+const search = z.string().trim().min(1).max(200);
 const appId = z.uuid();
 const version = z.number().int().positive();
 const fieldTypes = z.enum(["text", "number", "boolean", "json"]);
@@ -99,6 +100,7 @@ const statements = {
     .object({
       find: collection,
       where: where.optional(),
+      search: search.optional(),
       sort: z
         .string()
         .regex(/^-?[A-Za-z_][A-Za-z0-9_]{0,39}$/)
@@ -107,7 +109,7 @@ const statements = {
       after: z.string().max(4000).optional(),
     })
     .strict(),
-  count: z.object({ count: collection, where: where.optional() }).strict(),
+  count: z.object({ count: collection, where: where.optional(), search: search.optional() }).strict(),
   update: z
     .object({ update: collection, id: recordId, set: values, version: version.optional() })
     .strict(),
@@ -714,6 +716,7 @@ export class AppData {
       if (!c) return { count: 0 };
       const params: Parameter[] = [c.id];
       const filters = conditions(c, statement.where, params);
+      if (statement.search) filters.push(searching(c, statement.search, params));
       const row = await this.data.one(
         "SELECT COUNT(*) AS n FROM data_records WHERE collection_id=? AND deleted_at IS NULL" +
           filters.map((f) => " AND " + f).join(""),
@@ -751,6 +754,7 @@ export class AppData {
     const key = sortKey(field, c);
     const params: Parameter[] = [c.id];
     const filters = conditions(c, s.where, params);
+    if (s.search) filters.push(searching(c, s.search, params));
     if (s.after) {
       let cursor: [Scalar | null, string];
       try {
@@ -1394,6 +1398,17 @@ function conditions(c: Collection, filter: Record<string, z.infer<typeof conditi
     }
   }
   return out;
+}
+/** One predicate matching records whose id, or any text or number field, contains `term` without regard to letter case. */
+function searching(c: Collection, term: string, params: Parameter[]): string {
+  const parts = ["strpos(lower(id), lower(?)) > 0"];
+  params.push(term);
+  for (const [field, type] of c.fields) {
+    if (type !== "text" && type !== "number") continue;
+    parts.push(`strpos(lower(data->>'${field}'), lower(?)) > 0`);
+    params.push(term);
+  }
+  return "(" + parts.join(" OR ") + ")";
 }
 function uniqueKey(unique: string[] | null, fields: Record<string, Value>): string | null {
   if (!unique) return null;

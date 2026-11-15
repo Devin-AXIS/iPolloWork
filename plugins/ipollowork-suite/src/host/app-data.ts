@@ -168,7 +168,7 @@ export function appDataTool(
       'An app is created by its first write and holds collections of JSON records; reads of an unknown app list the existing apps instead; each field\'s type (text, number, boolean or json) is fixed by its first value. Record ids are short keys such as "profile" or generated UUIDs.',
       'Statements:',
       '{"insert":"bookings","values":{"name":"Ann","slot":10}} (values may be an array of up to 100 records);',
-      '{"find":"bookings","where":{"slot":{">=":9},"status":"open"},"sort":"-createdAt","limit":20,"after":"<next from the previous page>"};',
+      '{"find":"bookings","where":{"slot":{">=":9},"status":"open"},"search":"ann","sort":"-createdAt","limit":20,"after":"<next from the previous page>"} (search matches the id and any text or number field, ignoring case);',
       '{"get":"bookings","id":"…"}; {"count":"bookings","where":{…}};',
       '{"update":"bookings","id":"…","set":{"status":"done"},"version":2} (merges fields; null removes one; version rejects a stale write);',
       '{"upsert":"settings","id":"profile","values":{…}} (creates the record or replaces all of its fields);',

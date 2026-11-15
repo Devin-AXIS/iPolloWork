@@ -5,6 +5,7 @@ import { resolveConfig } from '../src/host/config.ts'
 import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from '../src/host/app-data.ts'
 import { AppDataRejection } from '../src/host/errors.ts'
 import { createBrowserAppData, AppDataError } from '../src/client/data-service.ts'
+import { whereOf } from '../src/client/data-query.ts'
 
 const APP = '6f1c2a40-1111-4c2d-9a8b-000000000001'
 const detail = {
@@ -137,4 +138,17 @@ test('plugin Client modules open apps through the browser service with the Host 
   assert.deepEqual(sent[1], { url: `/ipollowork-suite/data/apps/${APP}/run`, body: { upsert: 'plans', id: 'today', values: { plan: 'legs' } } })
   await assert.rejects(app.collection('workouts').update('w1', { kg: 3 }), (error: unknown) =>
     error instanceof AppDataError && error.code === 'DATA_FIELD_UNKNOWN' && error.message.includes('已有字段'))
+})
+
+test('Data page filter rules become one where object', () => {
+  const fields: [string, 'text' | 'number' | 'boolean' | 'json'][] = [['name', 'text'], ['slot', 'number'], ['paid', 'boolean'], ['extra', 'json']]
+  assert.deepEqual(whereOf([
+    { field: 'name', op: 'contains', value: 'an' },
+    { field: 'slot', op: '>=', value: '9' },
+    { field: 'slot', op: '<', value: '12' },
+    { field: 'paid', op: '=', value: 'false' },
+    { field: 'extra', op: 'empty', value: '' },
+  ], fields), { name: { contains: 'an' }, slot: { '>=': 9, '<': 12 }, paid: { '=': false }, extra: null })
+  assert.equal(whereOf([{ field: 'slot', op: '=', value: 'nine' }, { field: 'name', op: '=', value: '' }, { field: 'gone', op: '=', value: 'x' }], fields), undefined,
+    'a rule without a usable value or a known field is skipped')
 })
