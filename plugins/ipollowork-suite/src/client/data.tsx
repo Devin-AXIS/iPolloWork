@@ -49,6 +49,7 @@ function DataPanel(props: Props) {
   const signedIn = props.useAccount(s => s.account?.status === 'signed-in')
   const [list, setList] = useState<DataAppList | null>(null)
   const [failed, setFailed] = useState(false)
+  const [disabled, setDisabled] = useState(false)
   const [owner, setOwner] = useState(PERSONAL)
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
@@ -57,8 +58,11 @@ function DataPanel(props: Props) {
     setFailed(false)
     try {
       setList(await request<DataAppList>('/data/apps'))
-    } catch (_error) {
-      setFailed(true)
+      setDisabled(false)
+    } catch (error) {
+      // The app data entry was switched off after this page loaded.
+      if (error instanceof Error && error.message === 'IPW_APP_DATA_DISABLED') setDisabled(true)
+      else setFailed(true)
     }
   }
   useEffect(() => {
@@ -101,6 +105,7 @@ function DataPanel(props: Props) {
         <Button variant="primary" onClick={() => props.openAccountSettings()}>{t.signInAction}</Button>
       </EmptyState>
     )
+  else if (disabled) body = <EmptyState title={t.disabled} hint={t.disabledHint} />
   else if (failed)
     body = (
       <EmptyState title={t.loadFailed}>

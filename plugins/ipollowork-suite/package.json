@@ -20,6 +20,7 @@
     "./agents": "./lib/host/agents.js",
     "./agent-runtime": "./lib/host/agent-runtime.js",
     "./im": "./lib/host/im.js",
+    "./app-data": "./lib/host/app-data-plugin.js",
     "./onboarding": "./lib/host/onboarding.js",
     "./services": {
       "types": "./lib/services.d.ts"

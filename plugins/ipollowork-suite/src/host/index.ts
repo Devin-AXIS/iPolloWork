@@ -74,7 +74,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   fs: ArchiveContext["fs"];
   logger: ArchiveContext["logger"];
   inject?(
-    names: ["skills"],
+    names: ["skills"] | ["skills", "ipolloAppDataFeature"],
     callback: (scope: EnterpriseSkillScope) => void,
   ): unknown;
   inject?(names: string[], callback: (scope: Context) => void): unknown;
@@ -261,9 +261,19 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   if (config.account && config.enterpriseUsageReporting)
     ctx.inject?.(["tools"], scope => mountEnterpriseActivity(scope, account, config.accountOrigin, config.enterpriseUsageQueueLimit));
   const appData = new AppDataService(account);
+  // App data is the optional `ipollowork-app-data` entry of this bundle; the service, tool, skill and routes follow it.
+  let appDataEnabled = false;
   if (config.account) {
-    ctx.provide?.("ipolloData", appData);
-    ctx.inject?.(["tools", "sandboxPolicy"], (scope) =>
+    ctx.inject?.(["ipolloAppDataFeature"], (scope) => {
+      scope.effect(() => {
+        appDataEnabled = true;
+        return () => {
+          appDataEnabled = false;
+        };
+      }, "ipollowork-suite: app data switch");
+      scope.provide("ipolloData", appData);
+    });
+    ctx.inject?.(["ipolloAppDataFeature", "tools", "sandboxPolicy"], (scope) =>
       scope.effect(
         () =>
           scope.tools.register(
@@ -305,12 +315,14 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   ctx.inject?.(["skills"], (scope) => {
     refreshSkills = mountEnterpriseSkills(scope, account);
     void refreshSkills().catch(() => {});
-    if (config.account)
+  });
+  if (config.account)
+    ctx.inject?.(["skills", "ipolloAppDataFeature"], (scope) =>
       scope.effect(
         () => scope.skills.register({ ...APP_DATA_SKILL, source: "runtime" }),
         "ipollowork-suite: app data skill",
-      );
-  });
+      ),
+    );
   const enterprise = new EnterpriseService(account, ctx, config.accountOrigin);
   const archive = config.account && config.automaticOutputArchive
     ? new ProjectArchive(
@@ -374,6 +386,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 theme: config.theme,
                 market: config.market,
                 account: config.account,
+                appData: config.account && appDataEnabled,
                 dedicatedDesktop: config.dedicatedDesktop,
               });
               return;
@@ -656,6 +669,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             }
             if (path === "/data/apps" || path.startsWith("/data/apps/")) {
               if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);
+              if (!appDataEnabled) throw new SuiteError("IPW_APP_DATA_DISABLED", 404);
               json(
                 response,
                 200,

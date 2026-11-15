@@ -19,7 +19,7 @@ test('activation preserves the official plugin manager and its Remote definition
   assert(!inserted.some(entry => /plugin-manager/.test(entry.name)));
   assert.deepEqual(inserted.filter(entry => entry.name.startsWith('@ipollo/')).map(entry => entry.id), [
     'ipollowork-onboarding', 'ipollowork-suite', 'ipollowork-agents', 'ipollowork-im',
-    'ipollowork-aliyun-sandbox',
+    'ipollowork-app-data', 'ipollowork-aliyun-sandbox',
   ]);
 });
 

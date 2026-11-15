@@ -25,7 +25,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   ctx.effect(() => () => lifetime.abort(), 'ipollowork-suite: client requests')
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/ipollowork-suite/assets/client.css'
   ctx.effect(() => { document.head.append(link); return () => link.remove() }, 'ipollowork-suite: stylesheet')
-  const info = await request<SuiteInfo & { theme: boolean; market: boolean; account: boolean; dedicatedDesktop?: boolean }>('/info', { signal: lifetime.signal })
+  const info = await request<SuiteInfo & { theme: boolean; market: boolean; account: boolean; appData?: boolean; dedicatedDesktop?: boolean }>('/info', { signal: lifetime.signal })
   if (lifetime.signal.aborted) return
   const labels = labelSource(ctx)
   mountOutputContinuationPresentation(ctx)
@@ -77,8 +77,11 @@ export async function apply(ctx: ClientContext): Promise<void> {
     const { mountSharing } = await import('./sharing/mount.ts')
     mountSharing(ctx, prepareShare)
     mountEnterprise(ctx, account)
-    mountData(ctx, account)
-    ctx.provide('ipolloData', createBrowserAppData())
+    // App data follows its own entry of the bundle; a change takes effect when the page reloads.
+    if (info.appData) {
+      mountData(ctx, account)
+      ctx.provide('ipolloData', createBrowserAppData())
+    }
     ctx.effect(() => () => account.dispose(), 'ipollowork-suite: account state')
     const props = () => ({ origin: info.accountOrigin, refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })
     if (info.dedicatedDesktop) {

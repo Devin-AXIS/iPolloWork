@@ -220,31 +220,22 @@ export function appDataTool(
   return defineTool({
     name: 'app_data',
     description: [
-      'Keep records for a website, app, mini program or DSH plugin without running a database. Read the app-data skill before writing code that uses it.',
-      'An app is created by its first write and holds collections of JSON records; reads of an unknown app list the existing apps instead; each field\'s type (text, number, boolean or json) is fixed by its first value. Store dates as ISO text such as "2026-11-15" so they sort, filter and group. Record ids are short keys such as "profile" or generated UUIDs.',
-      'Statements:',
-      '{"insert":"bookings","values":{"name":"Ann","slot":10}} (values may be an array of up to 100 records);',
-      '{"find":"bookings","where":{"slot":{">=":9},"status":"open"},"search":"ann","sort":"-createdAt","limit":20,"after":"<next from the previous page>"} (search matches the id and any text or number field, ignoring case);',
-      'find returns one page: 20 records by default, at most 100; "next" in the result is the "after" of the following page.',
-      '"fields":["name","slot"] on find or get returns only those fields; use it to keep results small.',
-      '{"get":"bookings","id":"…"}; {"count":"bookings","where":{…}};',
-      '{"aggregate":"orders","where":{…},"group":"day","sum":["total"],"avg":["total"],"min":["total"],"max":["total"],"sort":"-count","limit":50} returns {"items":[{"key":"2026-11-15","count":3,"sum":{"total":96}}]}; without group it returns one row of totals. Use it for totals, rankings and charts instead of reading every record;',
-      '{"update":"bookings","id":"…","set":{"status":"done"},"version":2} (merges fields; null removes one; version rejects a stale write); {"update":"items","id":"…","inc":{"stock":-1}} adds to a number atomically;',
-      '{"upsert":"settings","id":"profile","values":{…}} (creates the record or replaces all of its fields);',
-      '{"delete":"bookings","id":"…"};',
-      '{"define":"bookings","fields":{"name":"text","slot":"number"},"public":["create"],"unique":["date","slot"]} ("read" lets anyone holding the public key read, "create" lets them submit one record at a time; visitors write only declared fields; unique needs an empty collection; "strict":true makes every write use only declared fields, so a misspelled field is rejected; "remove":["typo"] deletes a field and its values);',
-      'define also takes "users":["read","create","own"] for visitors signed in with their iPollo account: read every record, create one, or read and change the records they created (see the skill for the sign-in code);',
-      '{"grant":"admin","email":"a@b.c"} makes that account an administrator of the app, who may change every record from the page; other role names are labels the page reads with {"me":true}; {"revoke":"a@b.c"} removes the role; {"origins":["https://example.com"]} allows sign-in from a page on its own domain;',
-      '{"drop":"bookings"}; {"info":true} lists collections, fields, roles, the endpoint, the public key and the sign-in address;',
-      '{"preview":"user"} or {"preview":"admin"} returns a two-hour visitor token for testing the page signed in, as an ordinary visitor or as an administrator;',
-      '{"batch":[…]} runs up to 20 statements atomically.',
-      'Where operators: =, !=, >, >=, <, <=, in, contains (text); null matches a missing field. Records also carry id, version, createdAt and updatedAt.',
-      'Errors name the existing collections and fields so the statement can be corrected.',
+      'Hosted records for a website, app, mini program or DSH plugin, with no database to run. Load the app-data skill before writing page or plugin code that uses them.',
+      'The first define, insert or upsert creates the app; reads never do. A field\'s type (text, number, boolean, json) is fixed by its first value; store dates as ISO text such as "2026-11-15".',
+      'Statements, one per call, or {"batch":[…]} of up to 20 that commit together:',
+      '{"insert":"c","values":{…} or [up to 100]}',
+      '{"find":"c","where":{"f":"v","n":{">=":1}},"search":"text","fields":["f"],"sort":"-n","limit":20,"after":"<next>"} returns {items,next}; at most 100 per page.',
+      '{"get":"c","id":"…"}; {"count":"c","where":{…}}',
+      '{"aggregate":"c","where":{…},"group":"day","sum":["total"],"avg":[…],"min":[…],"max":[…],"sort":"-count"} returns {items:[{key,count,sum:{total}}]}; use it for totals and rankings instead of reading every record.',
+      '{"update":"c","id":"…","set":{…},"inc":{"stock":-1},"version":2} (set merges, null removes a field); {"upsert":"c","id":"profile","values":{…}}; {"delete":"c","id":"…"}',
+      '{"define":"c","fields":{"f":"text"},"public":["read","create"],"users":["read","create","own"],"unique":["date","slot"],"strict":true,"remove":["typo"]}: public is for anyone holding the page key, users for visitors signed in with iPollo, own for the records each visitor created; strict rejects undeclared fields. {"drop":"c"}',
+      '{"info":true} returns collections, fields, endpoint, public key and sign-in address. Roles, sign-in and testing a signed-in page use grant, revoke, origins, me and preview, described in the skill.',
+      'Where operators: =, !=, >, >=, <, <=, in, contains; null matches a missing field. Records carry id, version, createdAt and updatedAt. Errors name the existing collections and fields.',
     ].join(' '),
     parameters: {
-      app: { type: 'string', required: true, description: 'App name, usually the website, app or plugin name. The same name reopens the same app; a plugin\'s code opens it with this name.' },
-      kind: { type: 'string', enum: ['plugin', 'site'], required: true, description: '"plugin" when a DSH plugin uses the records; "site" when a website, app or mini program that visitors open uses them. Recorded only when the app is created.' },
-      organization: { type: 'string', description: 'Organization name or id when the records belong to an organization. Omit for a personal app.' },
+      app: { type: 'string', required: true, description: 'The website, app or plugin name; the same name reopens the same app.' },
+      kind: { type: 'string', enum: ['plugin', 'site'], required: true, description: '"plugin" for a DSH plugin; "site" for a page visitors open. Recorded when the app is created.' },
+      organization: { type: 'string', description: 'Organization name or id for an organization app; omit for a personal one.' },
       statement: { type: 'object', additionalProperties: true, required: true, description: 'One statement, or {"batch":[…]}.' },
     },
     output: {
@@ -305,38 +296,36 @@ export const APP_DATA_SKILL = {
   description: 'Save and query records for a website, app, mini program or DSH plugin without a database: the app_data tool, page code with a public key, and the ipolloData service in plugin Host and Client code.',
   content: `# App data
 
-Use app data when a website, app, mini program or DSH plugin must keep records and the user supplied no database. It is the signed-in iPolloWork account's hosted store. Systems needing joins, server logic or payments need their own back end.
+The signed-in iPolloWork account's hosted record store for websites, apps, mini programs and DSH plugins that need to save data and have no database. Systems needing joins, server logic or payments need their own back end. Statements are listed by the \`app_data\` tool; page code and plugins send the same ones.
 
-Every caller uses the same JSON statements listed by the \`app_data\` tool. Field types (text, number, boolean, json) are fixed by first use; store dates as ISO text (\`2026-11-15\`) so they sort and group. Ask the service for totals with \`aggregate\` and pass \`fields\` to \`find\` instead of loading whole collections. Once the collections are right, run \`define\` with \`"strict":true\` so a misspelled field is rejected; \`"remove":["typo"]\` deletes a mistaken field. Ids are short keys such as \`profile\` or generated UUIDs. Errors name the existing collections and fields.
+- Name the app after the site or plugin and keep the name; \`kind\` is \`site\` or \`plugin\`.
+- Create collections first with \`define\` and \`"strict":true\`, declaring every field, so a misspelled field is rejected. \`"remove":["typo"]\` deletes a field.
+- Store dates as ISO text (\`2026-11-15\`). Use \`aggregate\` for totals and \`fields\` to keep reads small. \`find\` returns at most 100 records per page.
+- Use \`upsert\` with a fixed id such as \`settings\` for single documents.
 
 ## DSH plugin
 
-Pick the plugin's display name as the app name and keep it. The suite provides the \`ipolloData\` service with the same contract on the Host and in the browser.
-
-Client module (\`client.js\`): add \`"@ipollo/dsh-suite"\` to \`dsh.client.inject\` in \`package.json\` so the suite loads first, then inject the service:
+The suite provides \`ipolloData\` on the Host and in the browser with one contract. It is not listed by service inspection; use it as written here. In \`package.json\` add \`"@ipollo/dsh-suite"\` to \`dsh.client.inject\`.
 
 \`\`\`js
+// client.js (Host half: export const inject = ['ipolloData'] and the same calls)
 return {
   inject: ['slots', 'ipolloData'],
   apply(ctx) {
-    const workouts = async () => (await ctx.ipolloData.open('Fitness coach')).collection('workouts')
-    // In a component or handler:
-    // await (await workouts()).insert({ exercise: 'squat', reps: 12, day: '2026-11-15' })
-    // const { items } = await (await workouts()).find({ where: { day: '2026-11-15' }, sort: '-createdAt' })
+    const books = async () => (await ctx.ipolloData.open('Reading notes')).collection('books')
+    // in a handler:
+    // await (await books()).insert({ title, rating: 4, finishedOn: '2026-11-15' })
+    // const { items, next } = await (await books()).find({ sort: '-finishedOn', fields: ['title', 'rating'] })
   },
 }
 \`\`\`
 
-Host half (\`index.js\`): \`export const inject = ['ipolloData']\` and call \`ctx.ipolloData.open(name)\` the same way.
-
-\`open(name, { organization })\` returns \`{ id, run(statement), collection(name) }\`. A collection has \`insert(values)\`, \`get(id)\`, \`find({ where, search, fields, sort, limit, after })\` returning one page \`{ items, next }\` of 20 records by default and at most 100, \`all({ where, search, fields, sort })\` returning every matching record up to 1,000, \`count(where)\`, \`aggregate({ where, group, sum, avg, min, max, sort, limit })\` returning rows like \`{ key, count, sum: { reps: 36 } }\`, \`update(id, set, version?)\`, \`increment(id, { stock: -1 })\`, \`upsert(id, values, version?)\` and \`delete(id, version?)\`. Use \`upsert\` with a fixed id for single documents such as settings or today's plan. \`ipolloData\` is not listed by service inspection, so do not look it up there; use it as written here. Calls use the signed-in account and need no key; signed out, they reject with \`IPW_SIGN_IN_REQUIRED\`, so show a sign-in hint instead of failing silently. Open inside handlers, not at load. Rejections carry \`code\` and a message that explains the fix.
-
-Before writing plugin code you may create the collections with \`app_data\` (\`kind: "plugin"\`, the same app name) and inspect them with \`{"info":true}\`.
+A collection has \`insert\`, \`get\`, \`find({ where, search, fields, sort, limit, after })\`, \`all({ where, search, fields, sort })\` (every match up to 1,000), \`count(where)\`, \`aggregate({ where, group, sum, avg, min, max })\` returning rows like \`{ key, count, avg: { rating: 4.2 } }\`, \`update(id, set, version?)\`, \`increment(id, { stock: -1 })\`, \`upsert(id, values)\` and \`delete(id)\`. Open inside handlers, not at load. Signed out, calls reject with code \`IPW_SIGN_IN_REQUIRED\`: show a sign-in hint.
 
 ## Website, app or mini program
 
-1. With \`app_data\` (\`kind: "site"\`), run \`define\` for every collection the page writes. Declare its fields and only the public access visitors need: \`"public":["create"]\` for forms such as bookings or sign-ups, \`"public":["read"]\` for content the page lists. Collections without \`public\` stay private to the owner.
-2. Run \`{"info":true}\` and copy \`endpoint\`, \`publicKey\` and, when visitors sign in, \`signin\` into the page code.
+1. \`define\` each collection with the access visitors need: \`"public":["read"]\` for content the page lists, \`"public":["create"]\` for forms, nothing for private data.
+2. Copy \`endpoint\`, \`publicKey\` and \`signin\` from \`{"info":true}\` into the page.
 
 \`\`\`js
 const DATA = { endpoint: '<endpoint>', key: '<publicKey>', signin: '<signin>' }
@@ -351,32 +340,27 @@ async function data(statement) {
   if (!response.ok) throw Object.assign(new Error(body.error), { code: body.code, status: response.status })
   return body
 }
-await data({ insert: 'bookings', values: { name, date, slot } })
-const { items } = await data({ find: 'menu', sort: 'price' })
 \`\`\`
+
+Handle \`DATA_DUPLICATE\` (409, a \`unique\` value such as a booked slot is taken), \`DATA_RATE_LIMITED\` (429), \`DATA_SIGNIN_EXPIRED\` (401: remove the token, offer sign-in), \`DATA_FORBIDDEN\` (403) and \`DATA_APP_SUSPENDED\` (403). Any other code is a mistake in the statement; \`error\` says what to fix.
+
+The public key is visible to everyone. It reads or creates only where \`public\` allows, one record per request, rate-limited, and never updates or deletes, so keep private data out of publicly readable collections.
 
 ### Visitors who sign in
 
-A page can have members, personal data and staff: visitors sign in with their iPollo account, and the page never handles passwords.
+Visitors sign in with their iPollo account; the page never handles passwords.
 
-- \`define\` takes \`"users"\`: \`"read"\` lets signed-in visitors read every record, \`"create"\` lets them add one, \`"own"\` lets them read, update and delete the records they created; with \`"own"\` and no \`"read"\` each visitor sees only their own. Comments: \`"public":["read"],"users":["create","own"]\`. Private per-user data such as orders or profiles: \`"users":["create","own"]\`.
-- Sign in by sending the visitor to \`DATA.signin + '&return=' + encodeURIComponent(location.href)\`. They return with \`#ipollo_token=…\`:
+- \`"users"\` on \`define\`: \`read\` every record, \`create\` one, \`own\` to read, update and delete their own. \`"users":["create","own"]\` gives each visitor private records such as orders; comments are \`"public":["read"],"users":["create","own"]\`.
+- Sign in: \`location.href = DATA.signin + '&return=' + encodeURIComponent(location.href)\`. On return:
 
 \`\`\`js
 const got = location.hash.match(/ipollo_token=([^&]+)/)
 if (got) { localStorage.setItem('ipollo_token', got[1]); history.replaceState(null, '', location.pathname + location.search) }
-const { user } = await data({ me: true }) // null, or { id, name, role }
+const { user } = await data({ me: true }) // null or { id, name, role }
 \`\`\`
 
-- On a 401 remove the token and offer sign-in again. Signing out is removing the token.
-- Roles: \`role\` is \`user\` unless granted. With \`app_data\`, \`{"grant":"admin","email":"a@b.c"}\` makes an account an administrator, who reads and changes every record of the app from the page (not its collections); the app's owner always is one. Other names such as \`staff\` are labels for the page's own logic. The owner can also manage administrators on the Data page.
-- A page on its own domain must be allowed once: \`{"origins":["https://example.com"]}\`. Pages published by iPollo and localhost need nothing.
-
-- A record a signed-in visitor creates belongs to them, also in a collection that allows public create.
-- To test the signed-in page yourself, run \`{"preview":"user"}\` or \`{"preview":"admin"}\` with \`app_data\` and open the page with \`#ipollo_token=<token>\`; the token is yours and lasts two hours.
-
-A rejected call answers \`{ "error": "<explanation>", "code": "<CODE>" }\`. Handle these in page code: \`DATA_DUPLICATE\` (409, a \`unique\` value such as a booked slot is taken), \`DATA_RATE_LIMITED\` (429, try again shortly), \`DATA_SIGNIN_EXPIRED\` (401, sign in again), \`DATA_FORBIDDEN\` (403, this visitor may not do that), \`DATA_APP_SUSPENDED\` (403, the service is paused). Anything else is a mistake in the statement; its \`error\` text says what to fix.
-
-Every visitor can see the public key. It reads or creates only in collections whose \`public\` allows it, writes one record per request and is rate-limited per visitor. Visitors cannot update or delete, so keep private data out of publicly readable collections. A \`unique\` collection rejects a second record with the same values, which suits booked time slots. The owner reviews records with \`app_data\` or the Data page.
+- Signing out removes the token. Roles: \`role\` is \`user\` unless granted; \`{"grant":"admin","email":"a@b.c"}\` lets that account change every record from the page, \`{"revoke":"a@b.c"}\` removes it, and other role names are labels for the page's own logic. The owner is always \`admin\`.
+- A page on its own domain needs \`{"origins":["https://example.com"]}\` once; iPollo-published pages and localhost need nothing.
+- To test signed in, run \`{"preview":"user"}\` or \`{"preview":"admin"}\` and open the page with \`#ipollo_token=<token>\` (two hours).
 `,
 } as const

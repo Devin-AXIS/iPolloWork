@@ -92,6 +92,8 @@ const en = {
   yes: 'Yes',
   no: 'No',
   loadFailed: 'Couldn’t load app data.',
+  disabled: 'App data is switched off',
+  disabledHint: 'Enable the ipollowork-app-data entry of iPolloWork in Plugins, then reload the page.',
   retry: 'Retry',
 }
 const zh: typeof en = {
@@ -184,6 +186,8 @@ const zh: typeof en = {
   yes: '是',
   no: '否',
   loadFailed: '应用数据加载失败。',
+  disabled: '应用数据已关闭',
+  disabledHint: '在“插件”里启用 iPolloWork 的 ipollowork-app-data 后刷新页面。',
   retry: '重试',
 }
 export type DataLabels = typeof en
