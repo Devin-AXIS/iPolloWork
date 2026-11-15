@@ -4,6 +4,7 @@ execFileSync(process.execPath, ["node_modules/typescript/bin/tsc", "-p", "tsconf
 copyFileSync("src/schema-postgres.sql", "dist/server/schema-postgres.sql");
 copyFileSync("src/app-data-schema.sql", "dist/server/app-data-schema.sql");
 copyFileSync("src/app-data-migration-002.sql", "dist/server/app-data-migration-002.sql");
+copyFileSync("src/app-data-migration-003.sql", "dist/server/app-data-migration-003.sql");
 for (const version of [2, 3, 4, 5, 6, 7]) { const name = `migration-pg-${String(version).padStart(3,"0")}.sql`; copyFileSync(`src/${name}`, `dist/server/${name}`); }
 for (let version = 2; version <= 8; version++) {
   const name = `migration-${String(version).padStart(3, "0")}.sql`;

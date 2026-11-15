@@ -1,17 +1,19 @@
 /**
- * The Data page. App cards are grouped by owner, personal or one organization, and filtered by plugin or public app;
- * an opened app lists its collections beside a read-only record table.
+ * The Data page. Apps are compact rows grouped by owner, personal or one organization, and filtered by plugin or public app;
+ * an opened app is its records: one tab per collection over a read-only, sortable table. Connection details and
+ * deletion stay behind header controls.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Button,
   IconChevronLeftOutlineRegular,
   IconCopyOutlineRegular,
   IconDatabaseOutlineRegular,
-  IconFolderOpenOutlineRegular,
+  IconEllipsisOutlineRegular,
+  IconLinkOutlineRegular,
   IconRefreshOutlineRegular,
   IconSearchOutlineRegular,
-  IconTrashOutlineRegular,
+  Menu,
   Modal,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
@@ -135,22 +137,15 @@ function DataPanel(props: Props) {
         {visible.length === 0 ? (
           owned.length ? <EmptyState title={t.noMatch} /> : <EmptyState title={t.empty} hint={t.emptyHint} />
         ) : (
-          <div className={css.dataGrid}>
+          <div className={css.dataList}>
             {visible.map(app => (
-              <button key={app.id} type="button" className={css.dataCard} onClick={() => setOpen(app)}>
-                <span className={css.dataCardTop}>
-                  <Monogram id={app.id} label={app.name} size={34} />
-                  <span className={css.chip} data-static data-tone={app.kind === 'site' ? 'strong' : undefined}>{app.kind === 'site' ? t.publicApp : t.plugin}</span>
+              <button key={app.id} type="button" className={css.dataRow} title={format(t.createdIn, { name: origin(app, t) })} onClick={() => setOpen(app)}>
+                <Monogram id={app.id} label={app.name} size={30} />
+                <span className={css.dataRowText}>
+                  <strong>{app.name}</strong>
+                  <small>{format(t.records, { count: app.records })} · {new Date(app.createdAt).toLocaleDateString()}</small>
                 </span>
-                <strong>{app.name}</strong>
-                <span className={css.dataOrigin}>
-                  <IconFolderOpenOutlineRegular size={12} />
-                  <span>{format(t.createdIn, { name: origin(app, t) })}</span>
-                </span>
-                <span className={css.dataCardFoot}>
-                  <span>{format(t.tables, { count: app.collections })} · {format(t.records, { count: app.records })}</span>
-                  <span>{new Date(app.updatedAt).toLocaleDateString()}</span>
-                </span>
+                <span className={css.dataRowKind}>{app.kind === 'site' ? t.publicApp : t.plugin}</span>
               </button>
             ))}
           </div>
@@ -175,144 +170,180 @@ function DataPanel(props: Props) {
   )
 }
 
+const DEFAULT_SORT = '-createdAt'
+
 function AppDetail({ summary, ownerName, t, back, deleted }: {
   summary: DataAppSummary; ownerName: string; t: DataLabels; back(): void; deleted(): void
 }) {
   const [app, setApp] = useState<DataAppDetail | null>(null)
   const [failed, setFailed] = useState(false)
-  const [collection, setCollection] = useState('')
+  const [view, setView] = useState({ collection: '', sort: DEFAULT_SORT })
   const [rows, setRows] = useState<DataRecord[] | null>(null)
   const [next, setNext] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [peek, setPeek] = useState<string | null>(null)
+  const [connecting, setConnecting] = useState(false)
+  const [menu, setMenu] = useState(false)
   const [confirming, setConfirming] = useState(false)
+  // Only the latest first page may replace the rows; a slower earlier answer is dropped.
+  const turn = useRef(0)
   useEffect(() => {
     let live = true
     request<{ app: DataAppDetail }>(`/data/apps/${summary.id}`)
       .then(value => {
         if (!live) return
         setApp(value.app)
-        setCollection(value.app.collectionList[0]?.name ?? '')
+        setView({ collection: value.app.collectionList[0]?.name ?? '', sort: DEFAULT_SORT })
       })
       .catch(() => { if (live) setFailed(true) })
     return () => { live = false }
   }, [summary.id])
   const page = async (after: string | null) => {
+    const mine = after ? turn.current : ++turn.current
     const value = await request<{ items: DataRecord[]; next: string | null }>(`/data/apps/${summary.id}/run`, {
       method: 'POST',
-      body: JSON.stringify({ find: collection, limit: PAGE, ...(after ? { after } : {}) }),
+      body: JSON.stringify({ find: view.collection, sort: view.sort, limit: PAGE, ...(after ? { after } : {}) }),
     })
+    if (mine !== turn.current) return
     setRows(current => (after && current ? [...current, ...value.items] : value.items))
     setNext(value.next)
   }
   useEffect(() => {
     setRows(null)
     setNext(null)
-    if (collection) void page(null).catch(() => setFailed(true))
-  }, [collection])
-  const info = app?.collectionList.find(c => c.name === collection)
+    setPeek(null)
+    if (view.collection) void page(null).catch(() => setFailed(true))
+  }, [view])
+  const info = app?.collectionList.find(c => c.name === view.collection)
   const fields = info ? Object.entries(info.fields) : []
+  const sortBy = (field: string) => setView(current => ({
+    ...current,
+    sort: current.sort === field ? '-' + field : current.sort === '-' + field ? field : (field === 'createdAt' ? '-' : '') + field,
+  }))
+  const heading = (field: string, label: string, type?: DataFieldType) => {
+    const direction = view.sort === field ? 'ascending' : view.sort === '-' + field ? 'descending' : undefined
+    return (
+      <th key={field} aria-sort={direction} data-type={type}>
+        <button type="button" className={css.dataSort} title={format(t.sortBy, { name: label })} onClick={() => sortBy(field)}>
+          {type && <span className={css.dataGlyph}>{GLYPH[type]}</span>}
+          {label}
+          <i aria-hidden>{direction === 'ascending' ? '↑' : direction === 'descending' ? '↓' : ''}</i>
+        </button>
+      </th>
+    )
+  }
+  const toggle = (id: string) => setPeek(current => (current === id ? null : id))
+  const kind = app?.kind ?? summary.kind
   return (
     <>
-      <nav className={css.dataCrumbs} aria-label={t.title}>
-        <button type="button" onClick={back}><IconChevronLeftOutlineRegular size={14} />{t.title}</button>
-        <span aria-hidden>/</span>
-        <span>{ownerName}</span>
-        <span aria-hidden>/</span>
-        <strong>{summary.name}</strong>
-      </nav>
-      {failed ? <EmptyState title={t.loadFailed} /> : !app ? <ListSkeleton rows={5} /> : (
-        <div className={css.dataDetail}>
-          <aside className={css.dataSide}>
-            <div className={css.dataSideHead}>
-              <Monogram id={app.id} label={app.name} size={40} />
-              <strong>{app.name}</strong>
-              <span className={css.dataChips}>
-                <span className={css.chip} data-static>{ownerName}</span>
-                <span className={css.chip} data-static data-tone={app.kind === 'site' ? 'strong' : undefined}>{app.kind === 'site' ? t.publicApp : t.plugin}</span>
-              </span>
-              <span className={css.dataOrigin}>
-                <IconFolderOpenOutlineRegular size={12} />
-                <span>{format(t.createdIn, { name: origin(app, t) })}</span>
-              </span>
-              <span className={css.dataFaint}>{format(t.records, { count: app.records })} · {size(app.bytes)}</span>
-            </div>
-            <div className={css.dataSideLabel}>{t.tablesLabel}</div>
-            {app.collectionList.length === 0 && <p className={css.dataFaint}>{t.noCollections}</p>}
+      <header className={css.dataHead}>
+        <button type="button" className={css.iconGhost} aria-label={t.back} title={t.back} onClick={back}>
+          <IconChevronLeftOutlineRegular size={16} />
+        </button>
+        <div className={css.dataHeadTitle}>
+          <h1>{summary.name}</h1>
+          <p>{ownerName} · {kind === 'site' ? t.publicApp : t.plugin} · {format(t.createdIn, { name: origin(app ?? summary, t) })}</p>
+        </div>
+        {app && (kind === 'site' || app.public) && (
+          <button type="button" className={css.chip} aria-expanded={connecting} onClick={() => setConnecting(value => !value)}>
+            <IconLinkOutlineRegular size={12} />{t.connect}
+          </button>
+        )}
+        {app?.canManage && (
+          <Menu open={menu} portal align="end" onClose={() => setMenu(false)}
+            anchor={<button type="button" className={css.iconGhost} aria-label={t.more} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(value => !value)}><IconEllipsisOutlineRegular size={16} /></button>}
+            items={[{ id: 'delete', label: t.deleteApp, danger: true }]}
+            onSelect={() => { setMenu(false); setConfirming(true) }} />
+        )}
+      </header>
+      {app && connecting && (
+        <div className={css.dataKeys}>
+          <CopyRow label={t.endpoint} value={app.endpoint} t={t} />
+          <CopyRow label={t.publicKey} value={app.publicKey} t={t} />
+          <p>{t.publicHint}</p>
+        </div>
+      )}
+      {failed ? <EmptyState title={t.loadFailed} /> : !app ? <ListSkeleton rows={5} /> : !info ? (
+        <EmptyState title={t.noCollections} hint={t.noCollectionsHint} />
+      ) : (
+        <>
+          <div className={css.lineTabs + ' ' + css.dataTabs} role="tablist" aria-label={t.tablesLabel}>
             {app.collectionList.map(c => (
-              <button key={c.name} type="button" className={css.departmentItem} aria-current={c.name === collection ? 'true' : undefined}
-                onClick={() => setCollection(c.name)}>
-                <IconDatabaseOutlineRegular size={14} />
-                <span>{c.name}</span>
-                {c.public.length > 0 && <i className={css.dataPublicDot} title={c.public.map(p => (p === 'read' ? t.publicRead : t.publicCreate)).join(' · ')} />}
-                <small>{c.records}</small>
+              <button key={c.name} type="button" role="tab" aria-selected={c.name === view.collection}
+                onClick={() => setView({ collection: c.name, sort: DEFAULT_SORT })}>
+                {c.name}
+                <small className={css.dataTabCount}>{c.records}</small>
               </button>
             ))}
-            {app.canManage && (
-              <button type="button" className={css.dataDanger} onClick={() => setConfirming(true)}>
-                <IconTrashOutlineRegular size={13} />{t.deleteApp}
-              </button>
-            )}
-          </aside>
-          <div className={css.dataMain}>
-            {(app.kind === 'site' || app.public) && (
-              <div className={css.dataKeys}>
-                <CopyRow label={t.endpoint} value={app.endpoint} t={t} />
-                <CopyRow label={t.publicKey} value={app.publicKey} t={t} />
-                <p>{t.publicHint}</p>
-              </div>
-            )}
-            {info ? (
-              <>
-                <header className={css.dataTableHead}>
-                  <h2>{info.name}</h2>
-                  {info.public.includes('create') && <span className={css.dataTabTag}>{t.publicCreate}</span>}
-                  {info.public.includes('read') && <span className={css.dataTabTag}>{t.publicRead}</span>}
-                  <span className={css.dataFaint}>{format(t.records, { count: info.records })} · {format(t.fields, { count: fields.length })}</span>
-                </header>
-                <div className={css.dataTableWrap}>
-                  <table className={css.dataTable}>
-                    <thead>
-                      <tr>
-                        <th className={css.dataIndex} />
-                        {fields.map(([name, type]) => (
-                          <th key={name}><span className={css.dataGlyph}>{GLYPH[type]}</span>{name}</th>
-                        ))}
-                        <th>{t.createdAt}</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(rows ?? []).map((row, index) => (
-                        <tr key={row.id}>
-                          <td className={css.dataIndex}>{index + 1}</td>
-                          {fields.map(([name, type]) => (
-                            <td key={name} data-type={type} title={cellTitle(row[name])}>{cell(row[name], type, t)}</td>
-                          ))}
-                          <td className={css.dataFaint}>{new Date(row.createdAt).toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {rows === null && <ListSkeleton rows={3} />}
-                  {rows?.length === 0 && <p className={css.dataEmptyRows}>{t.noRecords}</p>}
-                </div>
-                {next && (
-                  <div className={css.dataFooter}>
-                    <Button variant="outline" disabled={busy} onClick={() => {
-                      setBusy(true)
-                      void page(next).catch(() => setFailed(true)).finally(() => setBusy(false))
-                    }}>{t.loadMore}</Button>
-                  </div>
-                )}
-              </>
-            ) : (
-              <EmptyState title={t.noCollections} hint={t.noCollectionsHint} />
-            )}
           </div>
-        </div>
+          <div className={css.dataTableWrap}>
+            <table className={css.dataTable}>
+              <thead>
+                <tr>
+                  {fields.map(([name, type]) => (type === 'json'
+                    ? <th key={name}><span className={css.dataGlyph}>{GLYPH[type]}</span>{name}</th>
+                    : heading(name, name, type)))}
+                  {heading('createdAt', t.createdAt)}
+                </tr>
+              </thead>
+              <tbody>
+                {(rows ?? []).map(row => (
+                  <Fragment key={row.id}>
+                    <tr tabIndex={0} aria-expanded={peek === row.id} onClick={() => toggle(row.id)}
+                      onKeyDown={event => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        event.preventDefault()
+                        toggle(row.id)
+                      }}>
+                      {fields.map(([name, type]) => (
+                        <td key={name} data-type={type}>{cell(row[name], type, t)}</td>
+                      ))}
+                      <td className={css.dataFaint}>{new Date(row.createdAt).toLocaleString()}</td>
+                    </tr>
+                    {peek === row.id && (
+                      <tr className={css.dataPeek}>
+                        <td colSpan={fields.length + 1}>
+                          <dl>
+                            {fields.map(([name, type]) => (
+                              <div key={name}><dt>{name}</dt><dd>{full(row[name], type, t)}</dd></div>
+                            ))}
+                            <div><dt>id</dt><dd><code>{row.id}</code></dd></div>
+                            <div><dt>{t.updatedAt}</dt><dd>{new Date(row.updatedAt).toLocaleString()} · v{row.version}</dd></div>
+                          </dl>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+            {rows === null && <ListSkeleton rows={3} />}
+            {rows?.length === 0 && <p className={css.dataEmptyRows}>{t.noRecords}</p>}
+          </div>
+          <footer className={css.dataFoot}>
+            <span>
+              {format(t.records, { count: info.records })} · {format(t.fields, { count: fields.length })}
+              {info.public.includes('create') && <> · {t.publicCreate}</>}
+              {info.public.includes('read') && <> · {t.publicRead}</>}
+            </span>
+            {next && (
+              <Button variant="outline" disabled={busy} onClick={() => {
+                setBusy(true)
+                void page(next).catch(() => setFailed(true)).finally(() => setBusy(false))
+              }}>{t.loadMore}</Button>
+            )}
+          </footer>
+        </>
       )}
       {confirming && app && <DeleteDialog app={app} t={t} close={() => setConfirming(false)} deleted={deleted} />}
     </>
   )
+}
+
+/** A whole value for the opened record: long text wraps and JSON is indented. */
+function full(value: DataValue | undefined, type: DataFieldType, t: DataLabels) {
+  if (type === 'json' && value !== undefined && value !== null) return <pre>{JSON.stringify(value, null, 2)}</pre>
+  return cell(value, type, t)
 }
 
 function cell(value: DataValue | undefined, type: DataFieldType, t: DataLabels) {
@@ -322,9 +353,6 @@ function cell(value: DataValue | undefined, type: DataFieldType, t: DataLabels) 
   if (type === 'json') return <code>{JSON.stringify(value)}</code>
   return String(value)
 }
-const cellTitle = (value: DataValue | undefined) =>
-  value === undefined || value === null ? undefined : typeof value === 'object' ? JSON.stringify(value) : String(value)
-
 function CopyRow({ label, value, t }: { label: string; value: string; t: DataLabels }) {
   const [copied, setCopied] = useState(false)
   return (

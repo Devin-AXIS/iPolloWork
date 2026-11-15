@@ -19,6 +19,10 @@ const MAX_BATCH = 20;
 const MAX_PAGE = 100;
 const MAX_CHANGES = 500;
 const PURGE_CHUNK = 2000;
+const MAX_DEPTH = 16;
+const MAX_WAITING = 100;
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const PRUNE_INTERVAL_MS = 3_600_000;
 /** Largest request body: a full insert of maximum-size records plus statement overhead. */
 export const appDataBodyLimit = (limits: AppDataConfig) =>
   limits.maxRecordBytes * MAX_INSERT + 65536;
@@ -50,9 +54,11 @@ const json: z.ZodType<Value> = z.lazy(() =>
 const collection = z
   .string()
   .regex(COLLECTION, "集合名使用小写字母、数字和下划线，以字母开头，最长 40 个字符");
+/** `__proto__` is refused because assigning it would change an object's prototype instead of storing a field. */
+const validField = (name: string) => FIELD.test(name) && name !== "__proto__";
 const fieldName = z
   .string()
-  .regex(FIELD, "字段名使用字母、数字和下划线，最长 40 个字符");
+  .refine(validField, "字段名使用字母、数字和下划线，最长 40 个字符");
 const values = z.record(z.string(), json);
 const scalar = z.union([z.string(), z.number().finite(), z.boolean()]);
 const condition = z.union([
@@ -73,7 +79,7 @@ const condition = z.union([
     .refine((value) => Object.keys(value).length > 0, "条件不能为空"),
 ]);
 const where = z
-  .record(z.string(), condition)
+  .record(fieldName, condition)
   .refine((value) => Object.keys(value).length <= 10, "最多 10 个筛选字段");
 const recordId = z
   .string()
@@ -146,9 +152,33 @@ export function parseStatement(input: unknown): Statement | { batch: Statement[]
   }
   return single(input);
 }
+/** Refuse text PostgreSQL cannot store and nesting deep enough to exhaust the stack, before validation walks the value. */
+function storable(input: unknown): void {
+  const pending: [unknown, number][] = [[input, 0]];
+  const refuse = () =>
+    new ServiceError(
+      "DATA_VALUE_INVALID",
+      400,
+      `文本不能包含空字符或不完整的 Unicode 字符，JSON 最多嵌套 ${MAX_DEPTH} 层`,
+    );
+  const text = (value: string) => {
+    if (value.includes("\u0000") || LONE_SURROGATE.test(value)) throw refuse();
+  };
+  while (pending.length) {
+    const [value, depth] = pending.pop()!;
+    if (typeof value === "string") text(value);
+    if (!value || typeof value !== "object") continue;
+    if (depth >= MAX_DEPTH) throw refuse();
+    for (const [key, child] of Object.entries(value)) {
+      text(key);
+      pending.push([child, depth + 1]);
+    }
+  }
+}
 function single(input: unknown): Statement {
   if (!input || typeof input !== "object" || Array.isArray(input))
     throw invalid();
+  storable(input);
   const found = operations.filter((key) => key in input);
   if (found.length !== 1) throw invalid();
   return statements[found[0]!].parse(input) as Statement;
@@ -177,6 +207,7 @@ type AppRow = Row & {
   workspace: string;
   public_key: string;
   created_by: string;
+  pruned_seq: number;
   records: number;
   bytes: number;
   created_at: number;
@@ -249,6 +280,10 @@ export interface CollectionInfo {
   unique: string[] | null;
   records: number;
   bytes: number;
+}
+/** One write transaction; its statements share the sequence number allocated by the first write. */
+interface Commit {
+  seq?: number;
 }
 interface Access {
   app: AppRow;
@@ -324,7 +359,7 @@ export async function migrateAppData(store: Store): Promise<void> {
       (await store.one("SELECT COALESCE(MAX(version),0) AS version FROM app_data_schema"))
         ?.version,
     );
-    if (current > 2)
+    if (current > 3)
       throw new Error("This app data database requires a newer iPolloWork service");
     if (current < 1) {
       await store.run(
@@ -338,6 +373,12 @@ export async function migrateAppData(store: Store): Promise<void> {
       );
       await store.run("INSERT INTO app_data_schema(version) VALUES(2)");
     }
+    if (current < 3) {
+      await store.run(
+        await readFile(new URL("./app-data-migration-003.sql", import.meta.url), "utf8"),
+      );
+      await store.run("INSERT INTO app_data_schema(version) VALUES(3)");
+    }
   });
 }
 
@@ -345,6 +386,11 @@ export async function migrateAppData(store: Store): Promise<void> {
 export class AppData {
   private purging: Promise<void> = Promise.resolve();
   private closed = false;
+  private pruneTimer: NodeJS.Timeout | undefined;
+  /** In-flight anonymous statements per app; visitors of one public app cannot take all of its owner's slots. */
+  private readonly anonymous = new Map<string, number>();
+  /** Running and waiting statements per owner; one owner cannot occupy the pool every owner shares. */
+  private readonly owners = new Map<string, { running: number; waiting: (() => void)[] }>();
   constructor(
     readonly data: Store,
     private readonly accounts: Store,
@@ -352,13 +398,16 @@ export class AppData {
     private readonly origin: string,
   ) {}
 
-  /** Resume purges interrupted by a restart. */
+  /** Resume purges interrupted by a restart, and remove expired tombstones every hour. */
   start(): void {
     this.schedulePurge();
+    this.pruneTimer = setInterval(() => this.schedulePurge(), PRUNE_INTERVAL_MS);
+    this.pruneTimer.unref();
   }
   /** Stop purging after the current chunk and close the app data pool. */
   async close(): Promise<void> {
     this.closed = true;
+    clearInterval(this.pruneTimer);
     await this.purging;
     await this.data.close();
   }
@@ -520,6 +569,26 @@ export class AppData {
     this.schedulePurge();
   }
 
+  /** Run `work` in one of the owner's slots, waiting for a free one; a full queue is refused instead of growing. */
+  private async slot<T>(app: AppRow, work: () => Promise<T>): Promise<T> {
+    const key = app.owner_kind + ":" + app.owner_id;
+    const state = this.owners.get(key) ?? { running: 0, waiting: [] };
+    this.owners.set(key, state);
+    if (state.running >= this.limits.ownerConcurrency) {
+      if (state.waiting.length >= MAX_WAITING)
+        throw new ServiceError("DATA_RATE_LIMITED", 429, "同时进行的请求太多，请稍后再试");
+      // The finishing statement hands its slot over, so `running` already counts this one.
+      await new Promise<void>((resolve) => state.waiting.push(resolve));
+    } else state.running++;
+    try {
+      return await work();
+    } finally {
+      const next = state.waiting.shift();
+      if (next) next();
+      else if (--state.running === 0) this.owners.delete(key);
+    }
+  }
+
   /**
    * Run one statement, or a batch atomically. Anonymous callers run single statements within their rate limit.
    * @param caller - the signed-in member or anonymous key holder.
@@ -531,21 +600,40 @@ export class AppData {
     const statement = parseStatement(input);
     const access = await this.access(caller, id);
     if (caller.kind === "anonymous") {
-      await this.rate(access.app.id, caller.ip);
       if ("batch" in statement || ("insert" in statement && Array.isArray(statement.values)))
         throw new ServiceError("DATA_FORBIDDEN", 403, "公开 key 每次只能写入一条记录");
+      const creating = "insert" in statement;
+      await this.rate(
+        access.app.id,
+        (creating ? "create:" : "read:") + visitor(caller.ip),
+        creating ? this.limits.anonymousCreatesPerMinute : this.limits.anonymousPerMinute,
+      );
+      const running = this.anonymous.get(access.app.id) ?? 0;
+      if (running >= this.limits.anonymousConcurrency)
+        throw new ServiceError("DATA_RATE_LIMITED", 429, "访问人数较多，请稍后再试");
+      this.anonymous.set(access.app.id, running + 1);
+      try {
+        return await this.slot(access.app, () => this.execute(access, statement, {}));
+      } finally {
+        const left = (this.anonymous.get(access.app.id) ?? 1) - 1;
+        if (left > 0) this.anonymous.set(access.app.id, left);
+        else this.anonymous.delete(access.app.id);
+      }
     }
     const list = "batch" in statement ? statement.batch : [statement];
-    const result =
+    // A batch is one commit: its writes share one sequence number, so the change feed never splits it.
+    const commit: Commit = {};
+    const result = await this.slot(access.app, async () =>
       "batch" in statement
         ? {
             results: await this.data.transaction(async () => {
               const results: unknown[] = [];
-              for (const item of statement.batch) results.push(await this.execute(access, item));
+              for (const item of statement.batch) results.push(await this.execute(access, item, commit));
               return results;
             }),
           }
-        : await this.execute(access, statement);
+        : this.execute(access, statement, commit),
+    );
     // A dropped collection is purged only after its transaction commits.
     if (list.some((item) => "drop" in item)) this.schedulePurge();
     return result;
@@ -557,7 +645,8 @@ export class AppData {
    * @param id - the app id.
    * @param after - the `next` value of the previous call, 0 at first.
    * @param limit - maximum changes; one commit is never split.
-   * @returns changes, the next cursor, whether more remain and the current collection names.
+   * @returns changes, the next cursor, whether more remain, the current collection names, and `reset` when deletions
+   * older than the cursor were already removed, so the caller must reload every record.
    */
   async changes(caller: DataCaller, id: string, after: number, limit = MAX_CHANGES) {
     const access = await this.access(caller, id);
@@ -592,13 +681,14 @@ export class AppData {
           ? { collection: row.collection, record: recordOf(row) }
           : { collection: row.collection, id: row.id, deleted: true },
       ),
-      next: rows.length ? rows[rows.length - 1]!.seq : after,
+      next: boundary ?? (rows.length ? rows[rows.length - 1]!.seq : after),
       more,
+      reset: after > 0 && after < access.app.pruned_seq,
       collections: collections.map((c) => c.name),
     };
   }
 
-  private async execute(access: Access, statement: Statement): Promise<unknown> {
+  private async execute(access: Access, statement: Statement, commit: Commit): Promise<unknown> {
     if ("info" in statement) {
       if (access.level === "anonymous") throw forbidden();
       return { app: await this.describe(access) };
@@ -635,16 +725,20 @@ export class AppData {
     if (("define" in statement || "drop" in statement) && access.level !== "manage")
       throw new ServiceError("DATA_FORBIDDEN", 403, "只有应用管理者可以定义或删除集合");
     return this.data.transaction(async () => {
-      const app = await this.data.one<{ seq: number }>(
-        "UPDATE data_apps SET seq=seq+1,updated_at=? WHERE id=? AND deleted_at IS NULL RETURNING seq",
-        Date.now(),
-        access.app.id,
-      );
-      if (!app) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
-      if ("insert" in statement) return this.insert(access, statement, app.seq);
-      if ("update" in statement) return this.change(access, statement, app.seq);
-      if ("upsert" in statement) return this.upsert(access, statement, app.seq);
-      if ("delete" in statement) return this.erase(access, statement, app.seq);
+      if (commit.seq === undefined) {
+        const app = await this.data.one<{ seq: number }>(
+          "UPDATE data_apps SET seq=seq+1,updated_at=? WHERE id=? AND deleted_at IS NULL RETURNING seq",
+          Date.now(),
+          access.app.id,
+        );
+        if (!app) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
+        commit.seq = app.seq;
+      }
+      const seq = commit.seq;
+      if ("insert" in statement) return this.insert(access, statement, seq);
+      if ("update" in statement) return this.change(access, statement, seq);
+      if ("upsert" in statement) return this.upsert(access, statement, seq);
+      if ("delete" in statement) return this.erase(access, statement, seq);
       if ("define" in statement) return this.define(access, statement);
       return this.drop(access, statement.drop);
     });
@@ -664,13 +758,22 @@ export class AppData {
       } catch (error) {
         throw new ServiceError("DATA_CURSOR_INVALID", 400, "after 不是有效的翻页游标", { cause: error });
       }
-      if (!Array.isArray(cursor) || cursor.length !== 2 || typeof cursor[1] !== "string")
-        throw new ServiceError("DATA_CURSOR_INVALID", 400, "after 不是有效的翻页游标");
-      const [value, id] = cursor;
+      const [value, id] = Array.isArray(cursor) && cursor.length === 2 ? cursor : [undefined, undefined];
+      const expected = key.cast === "text" ? "string" : key.cast === "boolean" ? "boolean" : "number";
+      if (
+        typeof id !== "string" ||
+        id.length > 64 ||
+        (value !== null && typeof value !== expected) ||
+        (key.cast === "bigint" && !Number.isSafeInteger(value))
+      )
+        throw new ServiceError("DATA_CURSOR_INVALID", 400, "after 不是有效的翻页游标，请使用上一页返回的 next，并保持相同的 sort");
       const cmp = desc ? "<" : ">";
       if (value === null) {
         filters.push(`(${key.sql} IS NULL AND id ${cmp} ?)`);
         params.push(id);
+      } else if (key.system) {
+        filters.push(`(${key.sql},id) ${cmp} (?::${key.cast},?)`);
+        params.push(value, id);
       } else {
         filters.push(
           `(${key.sql} ${cmp} ?::${key.cast} OR (${key.sql} = ?::${key.cast} AND id ${cmp} ?) OR ${key.sql} IS NULL)`,
@@ -683,7 +786,8 @@ export class AppData {
     const rows = await this.data.all<RecordRow>(
       "SELECT id,data::text AS data,version,created_at,updated_at FROM data_records WHERE collection_id=? AND deleted_at IS NULL" +
         filters.map((f) => " AND " + f).join("") +
-        ` ORDER BY ${key.sql} ${desc ? "DESC" : "ASC"} NULLS LAST, id ${desc ? "DESC" : "ASC"} LIMIT ?`,
+        // System columns are never null; without NULLS LAST the default listing reads `data_records_created` in order.
+        ` ORDER BY ${key.sql} ${desc ? "DESC" : "ASC"}${key.system ? "" : " NULLS LAST"}, id ${desc ? "DESC" : "ASC"} LIMIT ?`,
       ...params,
     );
     const items = rows.slice(0, limit).map(recordOf);
@@ -706,11 +810,20 @@ export class AppData {
     let bytes = 0;
     for (const input of list) {
       const { id: given, ...rest } = input;
+      if (given !== undefined && access.level === "anonymous")
+        throw new ServiceError("DATA_FORBIDDEN", 403, "公开 key 不能指定记录 id，id 由服务生成");
       if (given !== undefined && !recordId.safeParse(given).success)
         throw new ServiceError("DATA_RECORD_ID_INVALID", 400, "id 使用字母、数字、下划线或短横线，最长 64 个字符；不填由服务生成");
       const fields = this.accept(access, c, rest);
       const size = this.size(fields);
       const id = (given as string | undefined) ?? randomUUID();
+      // A deleted record keeps its id as a tombstone; a new record with that id replaces it.
+      if (given !== undefined)
+        await this.data.run(
+          "DELETE FROM data_records WHERE collection_id=? AND id=? AND deleted_at IS NOT NULL",
+          c.id,
+          id,
+        );
       try {
         await this.data.run(
           "INSERT INTO data_records(collection_id,app_id,id,data,version,seq,bytes,unique_key,created_by,created_at,updated_at) VALUES(?,?,?,?::jsonb,1,?,?,?,?,?,?)",
@@ -883,7 +996,7 @@ export class AppData {
     let added = false;
     for (const [name, value] of Object.entries(input)) {
       if (SYSTEM.has(name)) throw reserved(name);
-      if (!FIELD.test(name))
+      if (!validField(name))
         throw new ServiceError("DATA_FIELD_INVALID", 400, `字段名 ${name} 无效：使用字母、数字和下划线，最长 40 个字符`);
       const type = typeOf(value);
       if (!type) continue;
@@ -892,7 +1005,7 @@ export class AppData {
         throw new ServiceError("DATA_FIELD_TYPE", 400, `字段 ${name} 是${label[current[1]]}，不能写入${label[type]}`);
       if (!current) {
         if (access.level === "anonymous")
-          throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${name}；${fieldList(c)}`);
+          throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 不接受字段 ${name}`);
         c.fields.push([name, type]);
         added = true;
       }
@@ -930,11 +1043,25 @@ export class AppData {
       bytes,
       access.app.id,
     );
+    // Only growth is refused, so an app over a lowered limit can still delete and shrink.
+    if (records <= 0 && bytes <= 0) return;
     if (app && (app.records > this.limits.maxRecordsPerApp || app.bytes > this.limits.maxBytesPerApp))
       throw new ServiceError(
         "DATA_QUOTA_EXCEEDED",
         413,
         `应用最多 ${this.limits.maxRecordsPerApp} 条记录、${Math.floor(this.limits.maxBytesPerApp / 1048576)} MB 数据`,
+      );
+    // Other apps of the owner commit concurrently, so the total may overshoot by their in-flight writes.
+    const total = await this.data.one<{ bytes: number }>(
+      "SELECT COALESCE(SUM(bytes),0) AS bytes FROM data_apps WHERE owner_kind=? AND owner_id=? AND deleted_at IS NULL",
+      access.app.owner_kind,
+      access.app.owner_id,
+    );
+    if (Number(total?.bytes ?? 0) > this.limits.maxBytesPerOwner)
+      throw new ServiceError(
+        "DATA_QUOTA_EXCEEDED",
+        413,
+        `所有应用合计最多 ${Math.floor(this.limits.maxBytesPerOwner / 1048576)} MB 数据，请删除不用的应用或记录`,
       );
   }
 
@@ -994,6 +1121,12 @@ export class AppData {
     if (!app) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
     if (caller.kind === "anonymous") {
       if (caller.key !== app.public_key)
+        throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
+      // A banned or removed owner's published pages stop reading and collecting records.
+      if (
+        app.owner_kind === "user" &&
+        !(await this.accounts.one('SELECT 1 FROM "user" WHERE id=? AND banned IS NOT TRUE', app.owner_id))
+      )
         throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
       return { app, level: "anonymous", caller, ownerName: "" };
     }
@@ -1081,17 +1214,17 @@ export class AppData {
     };
   }
 
-  private async rate(appId: string, ip: string) {
+  private async rate(appId: string, bucket: string, limit: number) {
     const minute = Math.floor(Date.now() / 60000);
     const row = await this.data.one<{ count: number }>(
-      "INSERT INTO data_rate(app_id,ip,minute,count) VALUES(?,?,?,1) ON CONFLICT(app_id,ip,minute) DO UPDATE SET count=data_rate.count+1 RETURNING count",
+      "INSERT INTO data_rate(app_id,bucket,minute,count) VALUES(?,?,?,1) ON CONFLICT(app_id,bucket,minute) DO UPDATE SET count=data_rate.count+1 RETURNING count",
       appId,
-      ip,
+      bucket,
       minute,
     );
     if (row?.count === 1)
       await this.data.run("DELETE FROM data_rate WHERE app_id=? AND minute<?", appId, minute - 1);
-    if ((row?.count ?? 0) > this.limits.anonymousPerMinute)
+    if ((row?.count ?? 0) > limit)
       throw new ServiceError("DATA_RATE_LIMITED", 429, "请求太频繁，请稍后再试");
   }
 
@@ -1116,10 +1249,41 @@ export class AppData {
       const c = await this.data.one<{ id: string }>(
         "SELECT id FROM data_collections WHERE dropped_at IS NOT NULL ORDER BY dropped_at LIMIT 1",
       );
-      if (!c) return;
-      if (await this.chunk("collection_id", c.id)) continue;
-      await this.data.run("DELETE FROM data_collections WHERE id=?", c.id);
+      if (c) {
+        if (await this.chunk("collection_id", c.id)) continue;
+        await this.data.run("DELETE FROM data_collections WHERE id=?", c.id);
+        continue;
+      }
+      if (await this.prune()) continue;
+      await this.data.run("DELETE FROM data_rate WHERE minute<?", Math.floor(Date.now() / 60000) - 1);
+      return;
     }
+  }
+  /**
+   * Remove one chunk of tombstones older than the retention period. The app row is locked first, as writers do, and
+   * records the newest removed sequence so `changes` can tell a stale cursor to reload.
+   */
+  private async prune(): Promise<boolean> {
+    const before = Date.now() - this.limits.tombstoneDays * 86_400_000;
+    const old = await this.data.one<{ app_id: string }>(
+      "SELECT app_id FROM data_records WHERE deleted_at IS NOT NULL AND deleted_at<? LIMIT 1",
+      before,
+    );
+    if (!old) return false;
+    await this.data.transaction(async () => {
+      await this.data.run("SELECT 1 FROM data_apps WHERE id=? FOR UPDATE", old.app_id);
+      const gone = await this.data.one<{ seq: number | null }>(
+        `WITH gone AS (DELETE FROM data_records WHERE ctid = ANY(ARRAY(
+           SELECT ctid FROM data_records WHERE app_id=? AND deleted_at IS NOT NULL AND deleted_at<? LIMIT ?)) RETURNING seq)
+         SELECT MAX(seq) AS seq FROM gone`,
+        old.app_id,
+        before,
+        PURGE_CHUNK,
+      );
+      if (gone?.seq != null)
+        await this.data.run("UPDATE data_apps SET pruned_seq=GREATEST(pruned_seq,?) WHERE id=?", gone.seq, old.app_id);
+    });
+    return true;
   }
   /** Delete one bounded chunk; returns whether rows were deleted. */
   private async chunk(column: "app_id" | "collection_id", id: string): Promise<boolean> {
@@ -1136,16 +1300,22 @@ export class AppData {
   }
 }
 
+/** A visitor's rate bucket: the IPv4 address, or the /64 network of an IPv6 address, which one visitor can rotate within. */
+function visitor(ip: string): string {
+  return ip.includes(":") ? ip.split(":").slice(0, 4).join(":") : ip;
+}
 type Parameter = string | number | boolean | null;
 interface Key {
   sql: string;
   cast: string;
+  /** A record column that always has a value, as opposed to a field inside `data`. */
+  system?: true;
   value: (record: DataRecord) => Scalar | null;
 }
 const systemKeys: Record<string, Key> = {
-  createdAt: { sql: "created_at", cast: "bigint", value: (r) => r.createdAt },
-  updatedAt: { sql: "updated_at", cast: "bigint", value: (r) => r.updatedAt },
-  id: { sql: "id", cast: "text", value: (r) => r.id },
+  createdAt: { sql: "created_at", cast: "bigint", system: true, value: (r) => r.createdAt },
+  updatedAt: { sql: "updated_at", cast: "bigint", system: true, value: (r) => r.updatedAt },
+  id: { sql: "id", cast: "text", system: true, value: (r) => r.id },
 };
 function fieldSql(field: string, type: FieldType): { sql: string; cast: string } {
   if (type === "number") return { sql: `(data->>'${field}')::numeric`, cast: "numeric" };
@@ -1153,7 +1323,7 @@ function fieldSql(field: string, type: FieldType): { sql: string; cast: string }
   return { sql: `(data->>'${field}') COLLATE "C"`, cast: "text" };
 }
 function sortKey(field: string, c: Collection): Key {
-  const system = systemKeys[field];
+  const system = Object.hasOwn(systemKeys, field) ? systemKeys[field] : undefined;
   if (system) return system;
   const type = new Map(c.fields).get(field);
   if (!type) throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `不能按未知字段 ${field} 排序；${fieldList(c)}`);
@@ -1188,6 +1358,8 @@ function conditions(c: Collection, filter: Record<string, z.infer<typeof conditi
     const check = (value: Scalar) => {
       if (typeOf(value) !== type)
         throw new ServiceError("DATA_FILTER_TYPE", 400, `字段 ${field} 是${label[type]}，条件值类型不符`);
+      if (system?.cast === "bigint" && !Number.isSafeInteger(value))
+        throw new ServiceError("DATA_FILTER_TYPE", 400, `${field} 是毫秒时间戳，条件值需要是整数`);
     };
     for (const [op, value] of Object.entries(ops) as [string, Scalar | Scalar[]][]) {
       if (op === "in") {
@@ -1226,7 +1398,10 @@ function conditions(c: Collection, filter: Record<string, z.infer<typeof conditi
 function uniqueKey(unique: string[] | null, fields: Record<string, Value>): string | null {
   if (!unique) return null;
   const values = unique.map((f) => fields[f]);
-  return values.some((v) => v === undefined || v === null) ? null : JSON.stringify(values);
+  if (values.some((v) => v === undefined || v === null)) return null;
+  const key = JSON.stringify(values);
+  // Long values are hashed to stay inside the index row limit; a JSON array never starts with "sha256:".
+  return key.length > 512 ? "sha256:" + createHash("sha256").update(key).digest("hex") : key;
 }
 function duplicate(error: unknown, c: Collection): unknown {
   if (error && typeof error === "object" && "code" in error && error.code === "23505") {

@@ -162,7 +162,7 @@ test("a personal app stores records through JSON statements and syncs changes", 
 });
 
 test("a public key reads and creates only where a collection opts in, within the rate limit", async () => {
-  const { call, account, close } = await fixture({ APP_DATA_ANONYMOUS_PER_MINUTE: "5" });
+  const { service, call, account, close } = await fixture({ APP_DATA_ANONYMOUS_PER_MINUTE: "5", APP_DATA_ANONYMOUS_CREATES_PER_MINUTE: "3" });
   try {
     const owner = await account("site@data.test");
     const app = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Studio site", kind: "site" } })).data.app;
@@ -191,18 +191,26 @@ test("a public key reads and creates only where a collection opts in, within the
       "DATA_FIELD_UNKNOWN",
       "visitors cannot add fields",
     );
-    assert.equal((await run({ find: "menu" }, visitor)).status, 200);
-    assert.equal((await run({ find: "menu" }, visitor)).status, 429, "the sixth call in a minute is limited");
+    for (let i = 0; i < 3; i++) assert.equal((await run({ find: "menu" }, visitor)).status, 200);
+    assert.equal((await run({ find: "menu" }, visitor)).status, 429, "the sixth read in a minute is limited");
+    assert.equal((await run({ insert: "bookings", values: { name: "Di", date: "2026-12-02", slot: 9 } }, visitor)).status, 200, "creates have their own limit");
+    assert.equal((await run({ insert: "bookings", values: { name: "Ed", date: "2026-12-03", slot: 9 } }, visitor)).status, 429, "the fourth create in a minute is limited");
+    const chosen = await run({ insert: "bookings", values: { id: "settings", name: "Fy" } }, { key: visitor.key, ip: "203.0.113.15" });
+    assert.deepEqual([chosen.status, chosen.data.code], [403, "DATA_FORBIDDEN"], "visitors cannot choose record ids");
     assert.equal((await run({ find: "menu" }, { key: "pk_wrong", ip: "203.0.113.12" })).status, 404);
     assert.equal((await run({ info: true }, { key: visitor.key, ip: "203.0.113.13" })).status, 403);
     const preflight = await call(`/api/data/v1/apps/${app.id}/run`, { method: "OPTIONS", origin: "https://studio.example" });
     assert.equal(preflight.status, 204);
     assert.equal(preflight.headers.get("access-control-allow-origin"), "*");
     const owned = await run({ find: "bookings" });
-    assert.deepEqual(owned.data.items.map((b: Json) => b.name), ["Ann"], "the owner reads every booking");
+    assert.deepEqual(owned.data.items.map((b: Json) => b.name).sort(), ["Ann", "Di"], "the owner reads every booking");
     const rotated = await call<{ app: Json }>(`/api/data/v1/apps/${app.id}`, { method: "PATCH", token: owner.token, body: { rotateKey: true } });
     assert.notEqual(rotated.data.app.publicKey, app.publicKey);
     assert.equal((await run({ find: "menu" }, { key: visitor.key, ip: "203.0.113.14" })).status, 404, "a rotated key stops working");
+    const current = { key: rotated.data.app.publicKey as string, ip: "203.0.113.16" };
+    assert.equal((await run({ find: "menu" }, current)).status, 200);
+    await service.store.run('UPDATE "user" SET banned=true WHERE id=?', owner.id);
+    assert.equal((await run({ find: "menu" }, current)).status, 404, "a banned owner's public key stops working");
   } finally {
     await close();
   }
@@ -264,7 +272,67 @@ test("app data reports a missing database instead of falling back to the account
   }
 });
 
-test("upgrading app data to schema 2 classifies apps with public collections as sites", async () => {
+test("refused input answers 400, storage stays bounded and a stale sync cursor is told to reload", async () => {
+  const { service, call, account, close } = await fixture({ APP_DATA_MAX_BYTES_PER_OWNER: "2048", APP_DATA_OWNER_CONCURRENCY: "1" });
+  try {
+    const owner = await account("limits@data.test");
+    const create = async (name: string) =>
+      (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name, kind: "plugin" } })).data.app.id as string;
+    const app = await create("Limits");
+    const run = (body: unknown, id = app) => call(`/api/data/v1/apps/${id}/run`, { token: owner.token, body });
+    const changes = (after: number, limit = 500) =>
+      call(`/api/data/v1/apps/${app}/changes?after=${after}&limit=${limit}`, { token: owner.token });
+    let deep: unknown = 1;
+    for (let i = 0; i < 20; i++) deep = [deep];
+    for (const values of [{ text: "a\u0000b" }, { text: "\ud800" }, { deep }])
+      assert.deepEqual(
+        [(await run({ insert: "notes", values })).status, (await run({ insert: "notes", values })).data.code],
+        [400, "DATA_VALUE_INVALID"],
+      );
+    assert.equal((await run({ insert: "notes", values: { id: "a", text: "one" } })).status, 200);
+    assert.equal((await run({ find: "notes", sort: "constructor" })).data.code, "DATA_FIELD_UNKNOWN");
+    const forged = Buffer.from(JSON.stringify(["abc", "x"])).toString("base64url");
+    assert.equal((await run({ find: "notes", after: forged })).data.code, "DATA_CURSOR_INVALID");
+    assert.equal((await run({ find: "notes", where: { createdAt: { ">": 1.5 } } })).data.code, "DATA_FILTER_TYPE");
+    const paged = await run({ find: "notes", limit: 1 });
+    assert.equal(paged.data.next, null, "the default listing pages by created time and id");
+
+    const parallel = await Promise.all([1, 2, 3, 4, 5].map((n) => run({ insert: "notes", values: { text: "p" + n } })));
+    assert.deepEqual(parallel.map((r) => r.status), [200, 200, 200, 200, 200], "statements beyond the owner's slots wait");
+    const second = await run({ find: "notes", limit: 4, after: (await run({ find: "notes", limit: 4 })).data.next });
+    assert.equal(second.data.items.length, 2, "the cursor continues the default listing");
+
+    const stale = (await changes(0)).data.next as number;
+    assert.equal((await run({ batch: [{ insert: "notes", values: { text: "x" } }, { insert: "notes", values: { text: "y" } }] })).status, 200);
+    assert.equal((await changes(stale, 1)).data.items.length, 2, "a batch is one commit in the change feed");
+
+    assert.equal((await run({ delete: "notes", id: "a" })).status, 200);
+    const again = await run({ insert: "notes", values: { id: "a", text: "two" } });
+    assert.deepEqual([again.status, again.data.item?.version], [200, 1], "a deleted id can be used again");
+    assert.equal((await run({ delete: "notes", id: "a" })).status, 200);
+    await service.appData!.data.run("UPDATE data_records SET deleted_at=1 WHERE deleted_at IS NOT NULL");
+    await run({ define: "scratch" });
+    await run({ drop: "scratch" });
+    await service.appData!.settled();
+    assert.equal(
+      Number((await service.appData!.data.one("SELECT COUNT(*) AS n FROM data_records WHERE deleted_at IS NOT NULL"))?.n),
+      0,
+      "expired tombstones are removed",
+    );
+    assert.equal((await changes(stale)).data.reset, true, "a cursor older than removed deletions must reload");
+    assert.equal((await changes(0)).data.reset, false);
+
+    const other = await create("Second");
+    assert.equal((await run({ insert: "blobs", values: { text: "z".repeat(1200) } }, other)).status, 200);
+    const over = await run({ insert: "blobs", values: { text: "z".repeat(1200) } }, other);
+    assert.deepEqual([over.status, over.data.code], [413, "DATA_QUOTA_EXCEEDED"], "all of an owner's apps share one byte limit");
+    assert.equal((await run({ count: "blobs" }, other)).data.count, 1, "the refused write left nothing");
+  } finally {
+    await close();
+  }
+});
+
+test("upgrading app data from schema 1 classifies public apps as sites and reaches schema 3", async () => {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? "postgresql://127.0.0.1:5432/ipollowork_test";
   const schema = "test_" + randomUUID().replace(/-/g, "");
   const admin = new Store({ databaseUrl, databasePoolSize: 1, databaseSchema: "public" });
@@ -280,7 +348,9 @@ test("upgrading app data to schema 2 classifies apps with public collections as 
     }
     await migrateAppData(store);
     assert.deepEqual((await store.all("SELECT kind FROM data_apps ORDER BY kind")).map((r) => r.kind), ["plugin", "site"]);
-    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 2);
+    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 3);
+    assert.equal((await store.one("SELECT pruned_seq FROM data_apps LIMIT 1"))?.pruned_seq, 0);
+    assert.equal((await store.all("SELECT bucket FROM data_rate")).length, 0, "the rate key is a named bucket");
   } finally {
     await store.close();
     await admin.run(`DROP SCHEMA ${schema} CASCADE`);

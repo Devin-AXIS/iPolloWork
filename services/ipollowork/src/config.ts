@@ -68,7 +68,12 @@ const environment = z.object({
   APP_DATA_MAX_RECORDS_PER_APP: z.coerce.number().int().min(1).default(100_000),
   APP_DATA_MAX_BYTES_PER_APP: z.coerce.number().int().min(1024).default(67_108_864),
   APP_DATA_MAX_APPS_PER_OWNER: z.coerce.number().int().min(1).default(1000),
+  APP_DATA_MAX_BYTES_PER_OWNER: z.coerce.number().int().min(1024).default(1_073_741_824),
+  APP_DATA_OWNER_CONCURRENCY: z.coerce.number().int().min(1).default(8),
   APP_DATA_ANONYMOUS_PER_MINUTE: z.coerce.number().int().min(1).default(120),
+  APP_DATA_ANONYMOUS_CREATES_PER_MINUTE: z.coerce.number().int().min(1).default(20),
+  APP_DATA_ANONYMOUS_CONCURRENCY: z.coerce.number().int().min(1).default(4),
+  APP_DATA_TOMBSTONE_DAYS: z.coerce.number().int().min(1).max(3650).default(30),
 });
 /** App data lives in its own PostgreSQL database; absent `databaseUrl` leaves the API unavailable. */
 export interface AppDataConfig {
@@ -80,7 +85,12 @@ export interface AppDataConfig {
   maxRecordsPerApp: number;
   maxBytesPerApp: number;
   maxAppsPerOwner: number;
+  maxBytesPerOwner: number;
+  ownerConcurrency: number;
   anonymousPerMinute: number;
+  anonymousCreatesPerMinute: number;
+  anonymousConcurrency: number;
+  tombstoneDays: number;
 }
 export interface Config {
   host: string;
@@ -214,7 +224,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
           maxRecordsPerApp: value.APP_DATA_MAX_RECORDS_PER_APP,
           maxBytesPerApp: value.APP_DATA_MAX_BYTES_PER_APP,
           maxAppsPerOwner: value.APP_DATA_MAX_APPS_PER_OWNER,
+          maxBytesPerOwner: value.APP_DATA_MAX_BYTES_PER_OWNER,
+          ownerConcurrency: value.APP_DATA_OWNER_CONCURRENCY,
           anonymousPerMinute: value.APP_DATA_ANONYMOUS_PER_MINUTE,
+          anonymousCreatesPerMinute: value.APP_DATA_ANONYMOUS_CREATES_PER_MINUTE,
+          anonymousConcurrency: value.APP_DATA_ANONYMOUS_CONCURRENCY,
+          tombstoneDays: value.APP_DATA_TOMBSTONE_DAYS,
         }
       : undefined,
   };
