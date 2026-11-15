@@ -1,5 +1,5 @@
 /** Compile and stage the pinned Windows helper without changing upstream source. */
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -21,7 +21,8 @@ export async function stageWindowsCuaHelper(archive: string, root: string): Prom
   execFileSync('dotnet', ['publish', join(source, 'entry/CuaWindows.csproj'), '--configuration', 'Release',
     '--runtime', 'win-x64', '--self-contained', 'true', '--output', output, '-p:EnableWindowsTargeting=true'], { stdio: 'inherit' })
   if (!existsSync(join(output, 'dsh-cua-windows.exe'))) throw new Error('Windows Computer Use helper was not produced')
-  execFileSync(join(output, 'dsh-cua-windows.exe'), ['--help'], { stdio: 'pipe' })
+  const probe = spawnSync(join(output, 'dsh-cua-windows.exe'), [], { encoding: 'utf8', timeout: 15_000 })
+  if (probe.error || !probe.stderr.includes('INVALID_ARGUMENT')) throw new Error('Windows Computer Use helper did not reach argument validation', { cause: probe.error })
   const temporary = mkdtempSync(join(tmpdir(), 'ipollo-windows-cua-'))
   try {
     await x({ file: archive, cwd: temporary })
