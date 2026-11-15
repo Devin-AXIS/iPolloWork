@@ -4,7 +4,6 @@ import type { AgentDefinition, AgentAccount, AgentInput, AgentSkill } from './ag
 import type { AgentContext, AgentRef, NativeEntry, NativeFiber, PresetDefinition, Project } from './agent-native.ts'
 import type { AgentModelCatalog } from '../shared/agents.ts'
 /** Agent module of the existing iPolloWork suite. DSH owns execution, credentials, storage, and preset lifetimes. */
-import { fileURLToPath } from 'node:url'
 import yaml from 'js-yaml'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import * as SubagentTool from '@deepseek-ai/dsh-tool-subagent'
@@ -19,7 +18,7 @@ import * as NativeConnection from '@deepseek-ai/dsh-client-connection'
 export const name = 'ipollowork-agents'
 export const inject = ['webServer', 'connection', ...('ConnectionAuthentication' in NativeConnection ? ['connection.authentication'] : []), 'credentials', 'storageDomain', 'workspaceRegistry', 'agentPresets', 'sessionController', 'skills', 'tools', 'systemPrompt', 'subagents', 'mcpManager']
 const API = '/ipollowork-suite/agents'
-const runtime = fileURLToPath(new URL('./agent-runtime.js', import.meta.url))
+const runtime = new URL('./agent-runtime.js', import.meta.url).href
 
 /** Deployment quotas and MCP startup budget; native settings may override them. */
 export const Config = z.object({
@@ -120,7 +119,7 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
   }))
   const releaseCoordinator = await ctx.agentPresets.register({
     id: COORDINATOR_PRESET, name: '总助手 · Main assistant', description: 'Coordinates saved specialists and temporary task workers.',
-    plugins: [...structuredClone(base).filter(row => row.id !== 'persona'), { name: fileURLToPath(new URL('./coordinator-runtime.js', import.meta.url)) }],
+    plugins: [...structuredClone(base).filter(row => row.id !== 'persona'), { name: new URL('./coordinator-runtime.js', import.meta.url).href }],
   })
   ctx.effect(() => releaseCoordinator, 'ipollo: main assistant preset')
 
