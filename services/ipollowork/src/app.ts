@@ -29,6 +29,7 @@ import { LiveshareRelay } from "./liveshare.js";
 import { mountLiveshare } from "./liveshare-http.js";
 import { mountPublications } from "./publications.js";
 import { AppData, migrateAppData } from "./app-data.js";
+import { mountEnterpriseAnalytics } from "./enterprise-analytics.js";
 import { mountAppData } from "./app-data-http.js";
 
 export const settingFields: Record<string, readonly string[]> = {
@@ -372,6 +373,7 @@ export async function createService(config: Config) {
     mountAccessKeys(app, auth);
     mountEnterpriseAssets(app, store, storage, config);
     mountEnterprise(app, store, config);
+    mountEnterpriseAnalytics(app, store);
     mountProjectSpace(app, store, storage, config);
     mountProjectArchive(app, store, storage, config);
     mountPublications(app, store, storage, config);

@@ -1,3 +1,4 @@
+import { AnalyticsTab } from "./enterprise-analytics.tsx";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Button,
@@ -268,6 +269,7 @@ function EnterprisePanel(props: Props) {
             <NoEnterprise t={t} controller={controller} />
           ) : (
             <EnterpriseBody
+              key={enterpriseId}
               enterpriseId={enterpriseId}
               userId={catalog.userId}
               tab={state.tab}
@@ -316,6 +318,7 @@ function EnterpriseBody({
   );
   const tabs = (
     [
+      ["analytics", t.analyticsTab],
       ["projects", t.projectsTab],
       ["members", t.membersTab],
       ["departments", t.departmentsTab],
@@ -373,7 +376,10 @@ function EnterpriseBody({
         aria-labelledby={active.id}
         className={css.enterpriseView}
       >
-        {active.value === "projects" ? (
+        {active.value === "analytics" ? (
+          !detail.data ? (detail.error ? <Notice error={detail.error} t={t} retry={detail.reload} /> : <ListSkeleton />) :
+          <AnalyticsTab key={enterpriseId} enterpriseId={enterpriseId} canManage={detail.data.canManage} call={controller.call} revision={revision} t={t} language={language} />
+        ) : active.value === "projects" ? (
           <ProjectsTab enterpriseId={enterpriseId} view={view} />
         ) : active.value === "members" ? (
           <MembersTab

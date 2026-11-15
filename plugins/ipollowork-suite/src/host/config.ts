@@ -17,6 +17,8 @@ export interface Config {
   maxArtifactBytes?: number;
   archiveHistoryLimit?: number;
   automaticOutputArchive?: boolean;
+  enterpriseUsageReporting?: boolean;
+  enterpriseUsageQueueLimit?: number;
 }
 export const Config = z.object({
   accountOrigin: z.string().default("https://work.ipollo.net"),
@@ -32,6 +34,8 @@ export const Config = z.object({
   maxArtifactBytes: z.number().min(1024).max(2147483648).default(536870912),
   archiveHistoryLimit: z.number().min(10).max(10000).default(500),
   automaticOutputArchive: z.boolean().default(false),
+  enterpriseUsageReporting: z.boolean().default(true),
+  enterpriseUsageQueueLimit: z.number().min(1).max(10000).default(200),
   theme: z.boolean().default(true),
   market: z.boolean().default(true),
   account: z.boolean().default(true),

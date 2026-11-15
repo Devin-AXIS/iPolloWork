@@ -3,11 +3,11 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write plugins/ipollowork-suite/README.md
 /ipollowork-dsh-suite:
-  en: 3498ca026a89e18d
-  zh: 45a6a218686219a2
+  en: 013f116c9ea906b7
+  zh: 89c377c055fd4c0d
 /ipollowork-dsh-suite/develop:
-  en: 698c5fa3905406c7
-  zh: 20eb66e460fd8a9b
+  en: 87125a19133f9636
+  zh: 6b0f0c4a00897cb9
 /ipollowork-dsh-suite/modules:
   en: 9c6ddef090a98da1
   zh: 5b2c8bf770a0f108
@@ -15,14 +15,14 @@
   en: 203a62ebc431abb6
   zh: 00d53714bdeba474
 /ipollowork-dsh-suite/official-integration:
-  en: 45e3522c987d63e3
-  zh: 5a9e1aa789b587f2
+  en: 3f0a8c8eb69904be
+  zh: 8096f716fb90cfda
 /ipollowork-dsh-suite/account-behavior:
   en: d6d213449d437cdb
   zh: 8792c9c4ef75d5f3
 /ipollowork-dsh-suite/limits:
-  en: f76a3913345032b4
-  zh: 18ae5b87b6b86629
+  en: d2417f053855a3a7
+  zh: 7c61edff0577f68b
 /ipollowork-dsh-suite/reusable-project-agents:
   en: 6aa5da71ec439bab
   zh: a88a40a28447d851
@@ -36,8 +36,8 @@
   en: 63b276efb4125362
   zh: 8f0fecfee07a27ed
 /ipollowork-dsh-suite/http-capabilities:
-  en: b409cab5363ad569
-  zh: 6f3831d59a23c682
+  en: 43281082c00a6fb2
+  zh: 7cc9138cfb9ff6b9
 /ipollowork-dsh-suite/app-data:
-  en: 88ed51d816826530
-  zh: c46bdf4a0a8e1427
+  en: 2d7b7141dc8bc868
+  zh: 8e75b204903ce5a5

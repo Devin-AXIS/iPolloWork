@@ -165,6 +165,34 @@ test("publication keeps drafts private, preserves relative assets and supports p
         (row) => row.expires_at === null && row.published_at && row.attached,
       ),
     );
+    const siteKey = "a".repeat(64);
+    const nextBody = '<h1>Updated on the same URL</h1>';
+    const updateInput = { requestId:randomUUID(), siteKey, entry:input.entry, files:[{path:input.entry,bytes:Buffer.byteLength(nextBody)}] };
+    const updateResponse = await service.app.request("/api/v1/publications",{method:"POST",headers,body:JSON.stringify(updateInput)});
+    assert.equal(updateResponse.status,201,await updateResponse.clone().text());
+    const update = await updateResponse.json();
+    assert.notEqual(update.id,publication.id);
+    assert.equal(await (await service.app.request(url)).text(),files[0]!.body,"staging must not replace the live site");
+    assert.equal((await service.app.request(`/api/v1/publications/${update.id}/publish`,{method:"POST",headers,body:"{}"})).status,409);
+    assert.equal((await service.app.request(`/api/v1/publications/${update.id}/files/${input.entry}`,{method:"PUT",headers,body:nextBody})).status,200);
+    const updated = await service.app.request(`/api/v1/publications/${update.id}/publish`,{method:"POST",headers,body:"{}"});
+    assert.equal(updated.status,200,await updated.clone().text());
+    assert.equal((await updated.json()).url,url);
+    assert.equal(await (await service.app.request(url)).text(),nextBody);
+    assert.equal((await service.app.request(asset.href)).status,404,"removed assets must not remain on the updated site");
+    const info = await service.app.request(`/api/v1/publications/site/${siteKey}`,{headers});
+    assert.equal((await info.json()).url,url);
+    const outsider = await service.app.request(`/api/v1/publications/${update.id}/publish`,{method:"POST",headers:{Authorization:"Bearer "+outside.token},body:"{}"});
+    assert.equal(outsider.status,404);
+    const again = await service.app.request("/api/v1/publications",{method:"POST",headers,body:JSON.stringify(updateInput)});
+    assert.equal((await again.json()).id,update.id);
+    assert.equal((await (await service.app.request(`/api/v1/publications/${update.id}/publish`,{method:"POST",headers,body:"{}"})).json()).url,url);
+    const staleRequest = await service.app.request("/api/v1/publications",{method:"POST",headers,body:JSON.stringify({...updateInput,requestId:randomUUID()})});
+    const stale=await staleRequest.json();
+    await service.store.run("UPDATE publications SET created_at=1 WHERE id=?",stale.id);
+    await service.app.request(`/api/v1/publications/${stale.id}/files/${input.entry}`,{method:"PUT",headers,body:nextBody});
+    assert.equal((await service.app.request(`/api/v1/publications/${stale.id}/publish`,{method:"POST",headers,body:"{}"})).status,409);
+    assert.equal(await (await service.app.request(url)).text(),nextBody);
     const invalid = await service.app.request("/api/v1/publications", {
       method: "POST",
       headers,

@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write services/ipollowork/README.md
 /ipollowork-services:
-  en: d566945f3b58ef8e
-  zh: 3c7683c89b8765b5
+  en: f066a7055ed4da85
+  zh: 69e0afc4ea836a5d
 /ipollowork-services/run:
   en: 2a349bc7d457463f
   zh: 08e040a1bfc92e13
@@ -27,5 +27,5 @@
   en: 8510d946cb1cdbeb
   zh: 5a19d7be712873ef
 /ipollowork-services/http-capabilities:
-  en: a32ea38b0aa02111
-  zh: 9ed974d0265660cc
+  en: 70f9704ce626415f
+  zh: 2d76b83fb0e350b5

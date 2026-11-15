@@ -185,6 +185,7 @@ test("publishing streams only selected outputs with the account grant and withdr
       );
       const path = new URL(String(url)).pathname;
       visited.push(path);
+      if (path.startsWith("/api/v1/publications/site/")) return Response.json({url:"https://publish.test/p/publication/design/entry.html"});
       if (path === "/api/v1/publications/status")
         return Response.json({ available: true });
       if (path === "/api/v1/projects")
@@ -194,6 +195,7 @@ test("publishing streams only selected outputs with the account grant and withdr
       if (path === "/api/v1/publications") {
         const input = JSON.parse(String(init?.body));
         assert.equal(input.projectId, "project");
+        assert.match(input.siteKey,/^[a-f0-9]{64}$/);
         assert.deepEqual(input.files, [
           { path: "design/entry.html", bytes: 6 },
         ]);
@@ -232,6 +234,7 @@ test("publishing streams only selected outputs with the account grant and withdr
     url: "https://publish.test/p/publication/design/entry.html",
   });
   assert.equal(visited.length, 5);
+  assert.deepEqual(await binding.publicationInfo?.("workspace","design/entry.html"),{url:"https://publish.test/p/publication/design/entry.html"});
   await center.choose("aliyun-oss", { source: "own" });
   assert.equal((await center.bind()).publish, undefined);
   assert.equal(

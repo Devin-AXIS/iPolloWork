@@ -29,6 +29,7 @@ export type EnterpriseView =
   | { kind: "work"; id: string }
   | { kind: "share"; id: string };
 export type EnterpriseTab =
+  | "analytics"
   | "projects"
   | "members"
   | "departments"
@@ -80,7 +81,7 @@ export class EnterpriseController {
     dialog: null,
     signedIn: false,
     enterpriseId: remembered(),
-    tab: "projects",
+    tab: "analytics",
     views: [],
     toast: null,
     revision: 0,

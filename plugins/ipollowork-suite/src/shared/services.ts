@@ -35,6 +35,7 @@ export interface ServiceBinding {
   publish?(input: PublicationInput): Promise<{ url: string }>;
   /** Whether this account service provides published file browsing. */
   publicationStatus?(): Promise<boolean>;
+  publicationInfo?(workspaceId:string,entry:string):Promise<{url:string|null}>;
   official(provider: string, hasOwnKey?: boolean): Promise<boolean>;
   request(
     provider: string,

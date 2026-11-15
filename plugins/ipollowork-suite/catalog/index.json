@@ -54,8 +54,8 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.22",
-          "publishTimestamp": 1794708961,
+          "version": "1.0.0-beta.27",
+          "publishTimestamp": 1794715274,
           "source": {
             "type": "npm"
           },
@@ -90,7 +90,7 @@
       "versions": [
         {
           "version": "1.0.0-beta.22",
-          "publishTimestamp": 1794708962,
+          "publishTimestamp": 1794715274,
           "source": {
             "type": "npm"
           },

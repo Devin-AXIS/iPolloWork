@@ -1,3 +1,4 @@
+import { enterpriseAnalyticsSchema } from "../shared/enterprise-analytics.ts";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import type { AccountService } from "./account.ts";
@@ -503,6 +504,13 @@ export class EnterpriseService {
     if (method === "POST" && path === "/assign") return this.assign(input);
     if (parts[0] === "organizations" && parts[1]) {
       const base = "enterprises/" + id.parse(parts[1]);
+      if (method === "POST" && parts[2] === "analytics" && parts.length === 3)
+        return enterpriseAnalyticsSchema.parse(await this.cloud(base + "/analytics", z.object({
+          days: z.union([z.literal(7), z.literal(30), z.literal(90)]),
+          groupBy: z.enum(["member", "department", "sku"]),
+          page: z.number().int().min(1).max(10000),
+          activityPage: z.number().int().min(1).max(10000),
+        }).strict().parse(input)));
       if (method === "GET" && parts.length === 2) return this.detail(parts[1]);
       if (method === "POST" && parts[2] === "departments" && parts.length === 3)
         return this.cloud(

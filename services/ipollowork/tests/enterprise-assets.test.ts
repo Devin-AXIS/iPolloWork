@@ -375,7 +375,7 @@ test("enterprise models use the enterprise key, follow grants, never charge poin
           url: String(url),
           auth: new Headers(options?.headers).get("authorization"),
         });
-        return Response.json({ choices: [{ message: { content: "ok" } }] });
+        return Response.json({ choices: [{ message: { content: "ok" } }], usage: { prompt_tokens: 12, completion_tokens: 7 } });
       },
     );
     await assert.rejects(
@@ -448,7 +448,11 @@ test("enterprise models use the enterprise key, follow grants, never charge poin
       contentType: "application/json",
       body: Buffer.from('{"model":"deepseek-chat"}').toString("base64"),
     };
-    assert.equal((await gateway.invoke(granted, id, request)).status, 200);
+    const response = await gateway.invoke(granted, id, request);
+    assert.equal(response.status, 200);
+    await response.text();
+    const usage = await service.store.one("SELECT enterprise_id,department_id,model_id,input_tokens,output_tokens FROM service_calls WHERE id=?", request.requestId);
+    assert.deepEqual(usage, { enterprise_id: enterprise, department_id: dep, model_id: "deepseek-chat", input_tokens: 12, output_tokens: 7 });
     assert.equal(seen.at(-1)?.auth, "Bearer enterprise-secret");
     assert.equal(
       (

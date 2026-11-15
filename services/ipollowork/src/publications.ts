@@ -37,6 +37,9 @@ interface Publication {
   enterprise_id: string | null;
   entry_path: string;
   state: string;
+  parent_id: string | null;
+  live_revision: string | null;
+  created_at: number;
 }
 const publicUrl = (origin: string, id: string, path: string) =>
   origin + "/p/" + id + "/" + path.split("/").map(encodeURIComponent).join("/");
@@ -64,6 +67,25 @@ export function mountPublications(
   app.get("/api/v1/publications/status", (c) =>
     c.json({ available: Boolean(config.publicationOrigin) }),
   );
+  app.get("/api/v1/publications/site/:key", async (c) => {
+    const key = z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .parse(c.req.param("key"));
+    const row = await store.one<Publication & Record<string, string | null>>(
+      "SELECT * FROM publications WHERE owner_id=? AND site_key=?",
+      c.get("actor").id,
+      key,
+    );
+    if (!row) return c.json({ url: null });
+    await authorize(c.get("actor"), row.id);
+    return c.json({
+      url:
+        row.state === "published" && config.publicationOrigin
+          ? publicUrl(config.publicationOrigin, row.id, row.entry_path)
+          : null,
+    });
+  });
   app.post("/api/v1/publications", async (c) => {
     if (!config.publicationOrigin)
       throw new ServiceError(
@@ -74,6 +96,10 @@ export function mountPublications(
     const input = z
       .object({
         requestId: z.uuid(),
+        siteKey: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
         entry: pathSchema,
         projectId: z.string().optional(),
         files: z
@@ -103,6 +129,33 @@ export function mountPublications(
       throw new ServiceError("UPLOAD_TOO_LARGE", 413);
     const actor = c.get("actor");
     const result = await store.transaction(async () => {
+      if (input.siteKey)
+        await store.one(
+          "SELECT pg_advisory_xact_lock(hashtextextended(?,0))",
+          actor.id + ":" + input.siteKey,
+        );
+      let site = input.siteKey
+        ? await store.one<Publication & Record<string, string | null>>(
+            "SELECT * FROM publications WHERE owner_id=? AND site_key=?",
+            actor.id,
+            input.siteKey,
+          )
+        : undefined;
+      if (!site && input.siteKey) {
+        const previous = await store.all<Publication & Record<string,string|null>>("SELECT * FROM publications WHERE owner_id=? AND entry_path=? AND project_id IS NOT DISTINCT FROM ? AND site_key IS NULL AND parent_id IS NULL AND state='published'",actor.id,input.entry,input.projectId ?? null);
+        if (previous.length === 1) {
+          site = previous[0];
+          await store.run("UPDATE publications SET site_key=? WHERE id=?",input.siteKey,site!.id);
+        } else if (previous.length > 1) throw new ServiceError("PUBLICATION_AMBIGUOUS",409,"此文件存在多个旧发布记录，请先确定要更新的页面");
+      }
+      if (site) {
+        await authorize(actor, site.id);
+        if (
+          site.entry_path !== input.entry ||
+          site.project_id !== (input.projectId ?? null)
+        )
+          throw new ServiceError("PUBLICATION_REQUEST_CONFLICT", 409);
+      }
       const existing = await store.one(
         "SELECT id FROM publications WHERE owner_id=? AND request_id=?",
         actor.id,
@@ -135,7 +188,7 @@ export function mountPublications(
         throw new ServiceError("PROJECT_PARTICIPATION_REQUIRED", 403);
       const id = uid();
       await store.run(
-        "INSERT INTO publications VALUES(?,?,?,?,?,?,'draft',?,NULL)",
+        "INSERT INTO publications(id,owner_id,project_id,enterprise_id,request_id,entry_path,state,created_at,published_at,site_key,parent_id) VALUES(?,?,?,?,?,?,'draft',?,NULL,?,?)",
         id,
         actor.id,
         project?.id ?? null,
@@ -143,6 +196,8 @@ export function mountPublications(
         input.requestId,
         input.entry,
         Date.now(),
+        site ? null : (input.siteKey ?? null),
+        site?.id ?? null,
       );
       for (const file of input.files)
         await store.run(
@@ -219,6 +274,17 @@ export function mountPublications(
       );
       const current = await authorize(actor, c.req.param("id"));
       if (current.state === "published") return current;
+      if (current.parent_id) {
+        await store.one(
+          "SELECT id FROM publications WHERE id=? FOR UPDATE",
+          current.parent_id,
+        );
+        const site = await authorize(actor, current.parent_id);
+        if (site.live_revision) {
+          const live=await authorize(actor,site.live_revision);
+          if(live.created_at > current.created_at || (live.created_at===current.created_at && live.id > current.id)) throw new ServiceError("PUBLICATION_SUPERSEDED",409,"已有较新的页面版本发布，请重新更新");
+        }
+      }
       const files = await store.all(
         "SELECT storage_key FROM publication_files WHERE publication_id=?",
         current.id,
@@ -238,13 +304,25 @@ export function mountPublications(
         Date.now(),
         current.id,
       );
-      await audit(store, actor, "publication.publish", current.id);
+      if (current.parent_id)
+        await store.run(
+          "UPDATE publications SET state='published',live_revision=?,published_at=? WHERE id=?",
+          current.id,
+          Date.now(),
+          current.parent_id,
+        );
+      await audit(
+        store,
+        actor,
+        "publication.publish",
+        current.parent_id ?? current.id,
+      );
       return current;
     });
     return c.json({
       url: publicUrl(
         config.publicationOrigin,
-        publication.id,
+        publication.parent_id ?? publication.id,
         publication.entry_path,
       ),
     });
@@ -254,7 +332,7 @@ export function mountPublications(
       c.req.path.split("/").slice(3).map(decodeURIComponent).join("/"),
     );
     const file = await store.one(
-      "SELECT f.* FROM publication_files f JOIN publications p ON p.id=f.publication_id WHERE p.id=? AND p.state='published' AND f.path=?",
+      "SELECT f.* FROM publication_files f JOIN publications p ON f.publication_id=COALESCE(p.live_revision,p.id) WHERE p.id=? AND p.state='published' AND f.path=?",
       c.req.param("id"),
       path,
     );
@@ -299,7 +377,7 @@ export function mountPublications(
           "Content-Type": getMimeType(path) ?? "application/octet-stream",
           "Content-Disposition": "inline",
           "Content-Length": String(range ? range.end - range.start + 1 : size),
-          "Cache-Control": "public, max-age=60",
+          "Cache-Control": "no-cache",
           "Accept-Ranges": "bytes",
           "Access-Control-Allow-Origin": "*",
           ...(range

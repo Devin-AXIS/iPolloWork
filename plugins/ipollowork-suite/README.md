@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 One installable DSH Bundle supplies the iPolloWork skin, a curated native-plugin market, optional iPollo Account sign-in, reusable project agents, and integrated IM channels. DSH owns execution, installed bundles, configuration layers, credentials, and the application launcher. No alternate agent runtime or installer is included.
 
+The enterprise Console opens with manager-only analytics grouped by department, member or service/model (SKU), over 7, 30 or 90 days. Calls are enterprise-owned service requests, excluding polling and personal services; departments are captured at dispatch. Token coverage is explicit. Project creation and current skill/plugin inventory counts are separate; skill loads and tool calls are reported for linked enterprise projects. `enterpriseUsageReporting` (default true) controls metadata reporting; `enterpriseUsageQueueLimit` (default 200) bounds pending reports. Failed or overflowed reports are not retried and never delay tools, so counts may be incomplete. Arguments, results and credentials are excluded.
+
 ## Develop
 
 Node 24.15 or newer is required. In this repository, run `npm run setup:build` from the product root first, then run `npm ci --ignore-scripts --workspaces=false`, `npm run link:workspace`, `npm run check`, and `npm pack` from this directory. The linking command selects matching DSH packages from the ignored official dependency cache; the registry release with the same version may not include this checkout’s native extensions. The package contains its compiled Host and Client entries, styles, brand asset, and the curated catalog. No build script runs during installation.
@@ -158,3 +160,5 @@ The native `ipollo_capabilities`, `ipollo_capability_describe`, `ipollo_capabili
 ## App data
 
 The Data page, the `app_data` model tool and the `ipolloData` plugin service give plugins, sites and apps a record store in the account service without a database of their own. See [App data](docs/app-data.md).
+
+Design publication uses a stable workspace-and-file identity. Repeated publishing updates the same public URL, while uploads remain private until the complete revision is ready. The account service must provide schema 8 and the publication-site lookup endpoint.

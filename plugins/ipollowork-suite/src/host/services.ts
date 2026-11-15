@@ -1,6 +1,6 @@
 /** Shared routing and local choices over the native credential store. */
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { AccountService } from "./account.ts";
 import type { CredentialStore } from "../shared/types.ts";
 import type {
@@ -13,6 +13,10 @@ import type {
 } from "../shared/services.ts";
 import { SuiteError } from "./errors.ts";
 import { serviceCategories } from "../shared/service-categories.ts";
+const publicationKey = (workspaceId: string, entry: string) =>
+  createHash("sha256")
+    .update(JSON.stringify([workspaceId, entry]))
+    .digest("hex");
 const KEY = "ipollowork-suite/services";
 const choiceSchema = z.discriminatedUnion("source", [
   z.object({ source: z.literal("own") }).strict(),
@@ -40,7 +44,9 @@ const serviceSchema = z.object({
       contextWindow: z.number().optional(),
       maxTokens: z.number().optional(),
       capabilities: z.array(z.string()).optional(),
-      inputModalities: z.array(z.enum(["text", "image", "audio", "video"])).optional(),
+      inputModalities: z
+        .array(z.enum(["text", "image", "audio", "video"]))
+        .optional(),
     }),
   ),
   routes: z.array(
@@ -212,13 +218,33 @@ export class Services implements ServiceCenter {
     const select = async (candidates: OfficialService[], request: Request) => {
       if (request.method !== "POST") return candidates[0];
       let model: unknown;
-      try { const payload: unknown = await request.clone().json(); model = payload && typeof payload === "object" && "model" in payload ? payload.model : undefined; }
-      catch (_error) { /* Non-JSON requests have no model selector; the gateway validates their route. */ }
-      return typeof model === "string" ? candidates.find(service => service.models.some(entry => entry.id === model)) : candidates[0];
+      try {
+        const payload: unknown = await request.clone().json();
+        model =
+          payload && typeof payload === "object" && "model" in payload
+            ? payload.model
+            : undefined;
+      } catch (_error) {
+        /* Non-JSON requests have no model selector; the gateway validates their route. */
+      }
+      return typeof model === "string"
+        ? candidates.find((service) =>
+            service.models.some((entry) => entry.id === model),
+          )
+        : candidates[0];
     };
     return {
       ...(this.enabled && choices["aliyun-oss"]?.source !== "own"
         ? {
+            publicationInfo: async (workspaceId: string, entry: string) =>
+              z
+                .object({ url: z.string().url().nullable() })
+                .parse(
+                  await this.account.request(
+                    "/api/v1/publications/site/" +
+                      publicationKey(workspaceId, entry),
+                  ),
+                ),
             publicationStatus: async () => {
               if (!this.enabled) return false;
               const status = z
@@ -256,19 +282,18 @@ export class Services implements ServiceCenter {
               const project = projects.items.find(
                 (item) => item.native_id === input.workspaceId,
               );
-              const publication = z
-                .object({ id: z.string() })
-                .parse(
-                  await this.account.request("/api/v1/publications", {
-                    requestId: randomUUID(),
-                    entry: input.entry,
-                    projectId: project?.id,
-                    files: input.files.map(({ path, bytes }) => ({
-                      path,
-                      bytes,
-                    })),
-                  }),
-                );
+              const publication = z.object({ id: z.string() }).parse(
+                await this.account.request("/api/v1/publications", {
+                  requestId: randomUUID(),
+                  siteKey: publicationKey(input.workspaceId, input.entry),
+                  entry: input.entry,
+                  projectId: project?.id,
+                  files: input.files.map(({ path, bytes }) => ({
+                    path,
+                    bytes,
+                  })),
+                }),
+              );
               for (const file of input.files) {
                 check();
                 await this.account.uploadPublication(
@@ -302,18 +327,18 @@ export class Services implements ServiceCenter {
       request: async (provider, path, init) => {
         if (!path.startsWith("/") || path.startsWith("//"))
           throw new SuiteError("IPW_INVALID_INPUT");
-        const candidates = (await resolve())
-          .get(provider)
-          ?.filter((service) => matches(service, path, init?.method ?? "GET")) ?? [];
-        if (!candidates.length) throw new SuiteError("IPW_SERVICE_UNAVAILABLE", 403);
+        const candidates =
+          (await resolve())
+            .get(provider)
+            ?.filter((service) =>
+              matches(service, path, init?.method ?? "GET"),
+            ) ?? [];
+        if (!candidates.length)
+          throw new SuiteError("IPW_SERVICE_UNAVAILABLE", 403);
         const request = new Request(new URL(path, candidates[0]!.origin), init);
         const service = await select(candidates, request);
         if (!service) throw new SuiteError("IPW_SERVICE_UNAVAILABLE", 403);
-        return invoke(
-          service,
-          path,
-          request,
-        );
+        return invoke(service, path, request);
       },
       fetch: async (input, init) => {
         if (generation !== this.account.generation)
@@ -335,7 +360,11 @@ export class Services implements ServiceCenter {
           .flat()
           .filter(
             (s) =>
-              (s.origin === url.origin || (s.provider === "aliyun-bailian" && /^dashscope(?:-intl|-us)?\.aliyuncs\.com$/.test(url.hostname))) &&
+              (s.origin === url.origin ||
+                (s.provider === "aliyun-bailian" &&
+                  /^dashscope(?:-intl|-us)?\.aliyuncs\.com$/.test(
+                    url.hostname,
+                  ))) &&
               (url.pathname === s.basePath ||
                 url.pathname.startsWith(s.basePath + "/")) &&
               matches(

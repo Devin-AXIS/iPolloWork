@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 Independent account, organization, project and billing service. Node serves the API and administration UI; PostgreSQL owns identities and transactional records, and private Alibaba OSS owns production files. The service does not import DSH or the old iPolloWork runtime.
 
+Enterprise administrators use `POST /api/v1/enterprises/:id/analytics` with `{days: 7|30|90, groupBy: "department"|"member"|"sku", page: 1}`. Results contain at most 25 groups. Schema eight adds immutable enterprise/department attribution, model IDs, polling classification and nullable provider token counts to service calls; historical unattributed calls stay excluded. Responses contain aggregates only, without prompts or response bodies. Skill/plugin inventory is separate from reported skill loads and tool calls in linked enterprise projects. The authenticated activity endpoint deduplicates by account, project, session and call. Metadata reporting is best-effort and excludes arguments and results; it is not an audit log or billing source.
+
 ## Run
 
 Use Node 24.15 or newer and PostgreSQL 15 or newer. Create a dedicated database and role, copy `.env.example` to `.env`, and set `DATABASE_URL`. Keep the same `DATA_DIR` and authentication secret when upgrading.
@@ -74,3 +76,5 @@ Schema 7 reconciles membership data and parallel execution from either schema-6 
 ## HTTP capabilities
 
 [Capability HTTP API](docs/capabilities.md) describes typed discovery, invocation, asynchronous results and application access keys over the same gateway.
+
+Published Design pages keep one public URL per owner, native workspace and entry path. Updates stage a complete file set privately, then switch the live revision atomically. An incomplete update leaves the previous page available. Schema 8 adds publication identity and revision links without new tables. A unique older publication is adopted on the first update; ambiguous older duplicates require selecting a publication before updating.

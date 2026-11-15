@@ -1,3 +1,4 @@
+import { mountEnterpriseActivity } from "./enterprise-activity.ts";
 /** One native Cordis plugin owns the suite's HTTP routes and domain services. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
@@ -257,6 +258,8 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     config.account,
   );
   ctx.provide?.("ipolloServices", services);
+  if (config.account && config.enterpriseUsageReporting)
+    ctx.inject?.(["tools"], scope => mountEnterpriseActivity(scope, account, config.accountOrigin, config.enterpriseUsageQueueLimit));
   const appData = new AppDataService(account);
   if (config.account) {
     ctx.provide?.("ipolloData", appData);

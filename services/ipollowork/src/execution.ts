@@ -17,6 +17,7 @@ import {
   wallet,
 } from "./domain.js";
 import { ServiceError } from "./errors.js";
+import { tokenUsage } from "./enterprise-analytics.js";
 import { requireUsageBudget } from "./usage.js";
 import {
   audienceOf,
@@ -40,6 +41,17 @@ import { serviceCategories, serviceCategory } from "./service-categories.js";
 import { bailianOperations, parseBailianPage, serviceModelSchema, type ModelOperation } from "./model-catalog.js";
 import { arkProvider, arkBilling, parseArkModels } from "./ark-models.js";
 import { speechRequest, speechResponse } from "./volcengine-speech.js";
+
+/** Only a bounded model identifier is retained; request contents are not analytics data. */
+function requestModel(bytes: Buffer): string | null {
+  try {
+    const body: unknown = JSON.parse(bytes.toString("utf8"));
+    const model = body && typeof body === "object" ? Reflect.get(body, "model") : undefined;
+    return typeof model === "string" && model.length <= 200 ? model : null;
+  } catch (error) {
+    return null; // Non-JSON service bodies have no model identifier.
+  }
+}
 
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,79}$/);
 const routeSchema = z
@@ -1108,7 +1120,7 @@ export class ExecutionService {
         );
       }
       await this.store.run(
-        "INSERT INTO service_calls(id,user_id,service_id,request_hash,state,points,created_at,updated_at,billing_snapshot) VALUES(?,?,?,?,'running',?,?,?,?)",
+        "INSERT INTO service_calls(id,user_id,service_id,request_hash,state,points,created_at,updated_at,billing_snapshot,enterprise_id,department_id,model_id,is_job_poll) VALUES(?,?,?,?,'running',?,?,?,?,?,?,?,?)",
         input.requestId,
         actor.id,
         id,
@@ -1117,6 +1129,10 @@ export class ExecutionService {
         now(),
         now(),
         reservation ? JSON.stringify(reservation) : null,
+        owner?.enterprise_id ?? null,
+        owner ? (await this.store.one("SELECT department_id FROM members WHERE enterprise_id=? AND user_id=?", owner.enterprise_id, actor.id))?.department_id ?? null : null,
+        upstreamBody && input.contentType?.includes("json") ? requestModel(upstreamBody) : null,
+        Boolean(jobId),
       );
       return undefined;
     });
@@ -1222,7 +1238,16 @@ export class ExecutionService {
         try {
           const next = await reader?.read();
           if (!next || next.done) {
-            await settle(Buffer.concat(chunks));
+            const bytes = Buffer.concat(chunks);
+            await settle(bytes);
+            const tokens = tokenUsage(bytes, type);
+            if (tokens) {
+              try {
+                await store.run("UPDATE service_calls SET input_tokens=?,output_tokens=? WHERE id=?", tokens.input, tokens.output, input.requestId);
+              } catch (error) {
+                console.warn("Service token analytics could not be recorded");
+              }
+            }
             let returnedJob: string | null = null;
             if (route.jobResultField) {
               try {
