@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "overrides": {
+    "glob": "14.0.2",
+    "minimatch": "11.0.1",
     "undici@^8.0.0": "8.12.4",
     "@modelcontextprotocol/client": "2.4.0",
     "fflate": "0.8.3"

@@ -4,6 +4,7 @@ FROM ${NODE_IMAGE}
 RUN apt-get update && apt-get install -y --no-install-recommends systemd systemd-sysv openssh-server openssh-client sudo chrony fuse3 iptables bash ca-certificates git curl python3 util-linux build-essential \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /opt/ipollowork
+RUN npm install --global pnpm@11.28.5
 COPY ipollo-dsh-suite.tgz /tmp/suite.tgz
 COPY runtime.package.json ./package.json
 RUN npm install --omit=dev --save-exact @deepseek-ai/dsh@0.2.2-rc.3 /tmp/suite.tgz \

@@ -20,7 +20,7 @@
 
 ## 部署
 
-1. 将本套件打包为 `ipollo-dsh-suite.tgz`，与 `deploy/cloud/runtime.package.json` 一起放入构建目录，用 `deploy/cloud/Dockerfile` 构建 `linux/amd64` 镜像。镜像安装官方 `@deepseek-ai/dsh@0.2.2-rc.3`、本套件及阿里云第二代模板要求的系统组件。发布不可变版本标签，在对应地域创建第二代模板并确认 ready。镜像构建、仓库拉取和模板启动仍需实际云上验证。
+1. 将本套件打包为 `ipollo-dsh-suite.tgz`，与 `deploy/cloud/runtime.package.json` 一起放入构建目录，用 `deploy/cloud/Dockerfile` 构建 `linux/amd64` 镜像。镜像安装官方 `@deepseek-ai/dsh@0.2.2-rc.3`、官方插件管理器所需的 pnpm、本套件及阿里云第二代模板要求的系统组件。运行安装清单固定已修复的间接依赖版本。发布不可变版本标签，在对应地域创建第二代模板并确认 ready。镜像构建、仓库拉取和模板启动仍需实际云上验证。
 2. 已有执行服务器通过官方插件管理器安装同一套件。环境变量配置 `ALIYUN_SANDBOX_API_KEY` 和至少 32 字符的随机 `IPOLLO_CLOUD_GATEWAY_KEY`。以 `deploy/cloud/server.patch.example.yml` 为模板配置，使用官方 `dsh --profile web --patch <server.patch.yml> --no-open` 启动。
 3. 通过 HTTPS 向账号服务提供 `/ipollowork-cloud-server/open`；同机可用回环代理。接口校验网关密钥。不要公开管理 profile 和其 owner token。
 4. 通过已认证管理员设置 API 配置 `cloud`：`enabled=true`、`gatewayOrigin`、`gatewayKey`，可选 `ttlSeconds`（1800）、`grantTtlSeconds`（86400）、`leaseGraceSeconds`（180）。两侧网关密钥必须一致。真实联调通过前保持关闭。当前可用状态表示已配置启用，不是阿里云健康探测结果。
