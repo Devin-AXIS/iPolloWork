@@ -97,6 +97,9 @@ export async function linkWorkspace() {
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     await symlink(join(upstreamRoot, 'apps', name, 'node_modules'), target, process.platform === 'win32' ? 'junction' : undefined)
   }
+  const cli = join(upstreamRoot, 'apps/desktop-host/node_modules/@deepseek-ai/dsh')
+  await rm(cli, { recursive: true, force: true })
+  await symlink(join(upstreamRoot, 'apps/cli'), cli, process.platform === 'win32' ? 'junction' : undefined)
   const publisher = join(upstreamRoot, 'apps/desktop/node_modules/@deepseek-ai/dsh-desktop-publisher')
   try { await rm(publisher, { recursive: true, force: true }) } catch (error) { if (error.code !== 'ENOENT') throw error }
   await symlink(join(root, 'integrations/publisher'), publisher, process.platform === 'win32' ? 'junction' : undefined)
