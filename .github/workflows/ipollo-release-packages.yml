@@ -5,7 +5,7 @@ on:
       release_tag:
         description: Existing GitHub release receiving the verified Windows installer
         required: true
-        default: v1.0
+        default: v1.0.1
 permissions:
   contents: write
 jobs:

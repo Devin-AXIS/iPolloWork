@@ -14,7 +14,7 @@ There is no old iPolloWork profile conversion or downgrade layer. Files and acco
 
 ## Product versions
 
-The current product release is **iPollo 1.0** (`1.0.0` in installer metadata). Product and desktop manifests share this version; the bundled DSH runtime retains the version in `integrations/runtime/upstream.json`. Future patch releases use `1.0.1`, `1.0.2`, and so on; display labels may use `1.0.01`, `1.0.02`. Never put leading zeroes into installer metadata, because the updater requires semantic versions.
+The current product release is **iPollo 1.0.1** (`1.0.1` in installer metadata). Product and desktop manifests share this version; the bundled DSH runtime retains the version in `integrations/runtime/upstream.json`. Future patch releases use `1.0.1`, `1.0.2`, and so on; display labels may use `1.0.01`, `1.0.02`. Never put leading zeroes into installer metadata, because the updater requires semantic versions.
 
 Unsigned Windows x64 builds run on GitHub-hosted Windows through `.github/workflows/ipollo-release-packages.yml`. The workflow validates the packaged runtime before attaching the installer to an existing release.
 
