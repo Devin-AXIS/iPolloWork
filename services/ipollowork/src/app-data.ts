@@ -88,6 +88,8 @@ const search = z.string().trim().min(1).max(200);
 const appId = z.uuid();
 const version = z.number().int().positive();
 const fieldTypes = z.enum(["text", "number", "boolean", "json"]);
+const selected = z.array(z.string().regex(FIELD)).min(1).max(30);
+const measured = z.array(fieldName).min(1).max(5);
 const statements = {
   insert: z
     .object({
@@ -95,12 +97,13 @@ const statements = {
       values: z.union([values, z.array(values).min(1).max(MAX_INSERT)]),
     })
     .strict(),
-  get: z.object({ get: collection, id: recordId }).strict(),
+  get: z.object({ get: collection, id: recordId, fields: selected.optional() }).strict(),
   find: z
     .object({
       find: collection,
       where: where.optional(),
       search: search.optional(),
+      fields: selected.optional(),
       sort: z
         .string()
         .regex(/^-?[A-Za-z_][A-Za-z0-9_]{0,39}$/)
@@ -110,9 +113,30 @@ const statements = {
     })
     .strict(),
   count: z.object({ count: collection, where: where.optional(), search: search.optional() }).strict(),
-  update: z
-    .object({ update: collection, id: recordId, set: values, version: version.optional() })
+  aggregate: z
+    .object({
+      aggregate: collection,
+      where: where.optional(),
+      search: search.optional(),
+      group: fieldName.optional(),
+      sum: measured.optional(),
+      avg: measured.optional(),
+      min: measured.optional(),
+      max: measured.optional(),
+      sort: z.enum(["key", "-key", "count", "-count"]).optional(),
+      limit: z.number().int().min(1).max(1000).optional(),
+    })
     .strict(),
+  update: z
+    .object({
+      update: collection,
+      id: recordId,
+      set: values.optional(),
+      inc: z.record(fieldName, z.number().finite()).optional(),
+      version: version.optional(),
+    })
+    .strict()
+    .refine((value) => value.set !== undefined || value.inc !== undefined, "update 需要 set 或 inc"),
   upsert: z
     .object({ upsert: collection, id: recordId, values, version: version.optional() })
     .strict(),
@@ -125,6 +149,8 @@ const statements = {
       fields: z.record(fieldName, fieldTypes).optional(),
       public: z.array(z.enum(["read", "create"])).max(2).optional(),
       unique: z.array(fieldName).min(1).max(3).nullable().optional(),
+      strict: z.boolean().optional(),
+      remove: z.array(fieldName).min(1).max(20).optional(),
     })
     .strict(),
   drop: z.object({ drop: collection }).strict(),
@@ -189,7 +215,7 @@ const invalid = () =>
   new ServiceError(
     "DATA_STATEMENT_INVALID",
     400,
-    "每条语句需要且只能有一个操作：insert、get、find、count、update、upsert、delete、define、drop、info；多条语句放在 batch 中",
+    "每条语句需要且只能有一个操作：insert、get、find、count、aggregate、update、upsert、delete、define、drop、info；多条语句放在 batch 中",
   );
 
 /** Who is calling: a signed-in account, or an anonymous visitor presenting an app's public key. */
@@ -222,6 +248,7 @@ type CollectionRow = Row & {
   public_read: boolean;
   public_create: boolean;
   unique_fields: string | null;
+  strict: boolean;
   records: number;
   bytes: number;
 };
@@ -232,6 +259,8 @@ interface Collection {
   publicRead: boolean;
   publicCreate: boolean;
   unique: string[] | null;
+  /** Writes may use only declared fields. */
+  strict: boolean;
   records: number;
   bytes: number;
   /** Set when a write added first-seen fields that must be stored with the statement. */
@@ -280,6 +309,7 @@ export interface CollectionInfo {
   fields: Record<string, FieldType>;
   public: ("read" | "create")[];
   unique: string[] | null;
+  strict: boolean;
   records: number;
   bytes: number;
 }
@@ -325,6 +355,7 @@ const collectionOf = (row: CollectionRow): Collection => ({
   publicRead: row.public_read,
   publicCreate: row.public_create,
   unique: row.unique_fields ? (JSON.parse(row.unique_fields) as string[]) : null,
+  strict: row.strict,
   records: row.records,
   bytes: row.bytes,
 });
@@ -336,6 +367,7 @@ const infoOf = (c: Collection): CollectionInfo => ({
     ...(c.publicCreate ? (["create"] as const) : []),
   ],
   unique: c.unique,
+  strict: c.strict,
   records: c.records,
   bytes: c.bytes,
 });
@@ -361,7 +393,7 @@ export async function migrateAppData(store: Store): Promise<void> {
       (await store.one("SELECT COALESCE(MAX(version),0) AS version FROM app_data_schema"))
         ?.version,
     );
-    if (current > 3)
+    if (current > 4)
       throw new Error("This app data database requires a newer iPolloWork service");
     if (current < 1) {
       await store.run(
@@ -380,6 +412,10 @@ export async function migrateAppData(store: Store): Promise<void> {
         await readFile(new URL("./app-data-migration-003.sql", import.meta.url), "utf8"),
       );
       await store.run("INSERT INTO app_data_schema(version) VALUES(3)");
+    }
+    if (current < 4) {
+      await store.run("ALTER TABLE data_collections ADD COLUMN strict BOOLEAN NOT NULL DEFAULT false");
+      await store.run("INSERT INTO app_data_schema(version) VALUES(4)");
     }
   });
 }
@@ -704,7 +740,15 @@ export class AppData {
         statement.id,
       );
       if (!row) throw notFound(c.name, statement.id);
-      return { item: recordOf(row) };
+      const item = recordOf(row);
+      if (!statement.fields) return { item };
+      const keep = new Set([...SYSTEM, ...chosen(c, statement.fields)]);
+      return { item: Object.fromEntries(Object.entries(item).filter(([name]) => keep.has(name))) };
+    }
+    if ("aggregate" in statement) {
+      const c = await this.readable(access, statement.aggregate);
+      if (!c) return { items: statement.group ? [] : [{ count: 0 }] };
+      return this.aggregate(c, statement);
     }
     if ("find" in statement) {
       const c = await this.readable(access, statement.find);
@@ -742,7 +786,7 @@ export class AppData {
       if ("update" in statement) return this.change(access, statement, seq);
       if ("upsert" in statement) return this.upsert(access, statement, seq);
       if ("delete" in statement) return this.erase(access, statement, seq);
-      if ("define" in statement) return this.define(access, statement);
+      if ("define" in statement) return this.define(access, statement, seq);
       return this.drop(access, statement.drop);
     });
   }
@@ -787,22 +831,84 @@ export class AppData {
     }
     const limit = s.limit ?? 20;
     params.push(limit + 1);
+    // The sort field travels with a narrowed row so the cursor can be built, and is dropped before returning.
+    const wanted = s.fields ? chosen(c, s.fields) : undefined;
+    const carried = wanted && !key.system && !wanted.includes(field) ? field : undefined;
     const rows = await this.data.all<RecordRow>(
-      "SELECT id,data::text AS data,version,created_at,updated_at FROM data_records WHERE collection_id=? AND deleted_at IS NULL" +
+      "SELECT id," +
+        (wanted
+          ? "COALESCE((SELECT jsonb_object_agg(e.key,e.value) FROM jsonb_each(data) e WHERE e.key IN (SELECT jsonb_array_elements_text(?::jsonb))),'{}'::jsonb)::text"
+          : "data::text") +
+        " AS data,version,created_at,updated_at FROM data_records WHERE collection_id=? AND deleted_at IS NULL" +
         filters.map((f) => " AND " + f).join("") +
         // System columns are never null; without NULLS LAST the default listing reads `data_records_created` in order.
         ` ORDER BY ${key.sql} ${desc ? "DESC" : "ASC"}${key.system ? "" : " NULLS LAST"}, id ${desc ? "DESC" : "ASC"} LIMIT ?`,
+      ...(wanted ? [JSON.stringify(carried ? [...wanted, carried] : wanted)] : []),
       ...params,
     );
     const items = rows.slice(0, limit).map(recordOf);
     const last = items[items.length - 1];
-    return {
-      items,
-      next:
-        rows.length > limit && last
-          ? encode([key.value(last), last.id])
-          : null,
+    const next = rows.length > limit && last ? encode([key.value(last), last.id]) : null;
+    if (carried) for (const item of items) delete item[carried];
+    return { items, next };
+  }
+
+  /** Count and measure records, as one row or one row per value of `group`. */
+  private async aggregate(c: Collection, s: Extract<Statement, { aggregate: string }>) {
+    const types = new Map(c.fields);
+    const typed = (field: string, use: string, allowed: FieldType[]): FieldType => {
+      const type = types.get(field);
+      if (!type) throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${field}；${fieldList(c)}`);
+      if (!allowed.includes(type))
+        throw new ServiceError("DATA_AGGREGATE_UNSUPPORTED", 400, `${use} 不能用于${label[type]}字段 ${field}`);
+      return type;
     };
+    const columns = ["COUNT(*) AS n"];
+    const measures: { op: "sum" | "avg" | "min" | "max"; field: string; alias: string }[] = [];
+    for (const op of ["sum", "avg", "min", "max"] as const)
+      for (const field of s[op] ?? []) {
+        const type = typed(field, op, op === "sum" || op === "avg" ? ["number"] : ["number", "text"]);
+        const alias = `${op}_${measures.length}`;
+        columns.push(
+          type === "number"
+            ? `${op.toUpperCase()}((data->>'${field}')::numeric)::float8 AS ${alias}`
+            : `${op.toUpperCase()}(data->>'${field}' COLLATE "C") AS ${alias}`,
+        );
+        measures.push({ op, field, alias });
+      }
+    const group = s.group === undefined ? undefined : typed(s.group, "group", ["text", "number", "boolean"]);
+    if (group)
+      columns.unshift(
+        (group === "number"
+          ? `(data->>'${s.group}')::numeric::float8`
+          : group === "boolean"
+            ? `(data->>'${s.group}')::boolean`
+            : `data->>'${s.group}'`) + " AS key",
+      );
+    const params: Parameter[] = [c.id];
+    const filters = conditions(c, s.where, params);
+    if (s.search) filters.push(searching(c, s.search, params));
+    const limit = s.limit ?? 100;
+    const sort = s.sort ?? "key";
+    const direction = sort.startsWith("-") ? "DESC" : "ASC";
+    let tail = "";
+    if (group) {
+      tail = ` GROUP BY 1 ORDER BY ${sort.endsWith("count") ? `n ${direction}, ` : ""}1 ${sort.endsWith("count") ? "ASC" : direction} NULLS LAST LIMIT ?`;
+      params.push(limit + 1);
+    }
+    const rows = await this.data.all(
+      `SELECT ${columns.join(",")} FROM data_records WHERE collection_id=? AND deleted_at IS NULL` +
+        filters.map((f) => " AND " + f).join("") +
+        tail,
+      ...params,
+    );
+    const items = rows.slice(0, group ? limit : 1).map((row) => {
+      const item: Record<string, unknown> = { ...(group ? { key: row.key } : {}), count: Number(row.n) };
+      for (const { op, field, alias } of measures)
+        ((item[op] ??= {}) as Record<string, unknown>)[field] = row[alias] ?? null;
+      return item;
+    });
+    return group ? { items, more: rows.length > limit } : { items };
   }
 
   private async insert(access: Access, s: Extract<Statement, { insert: string }>, seq: number) {
@@ -863,7 +969,14 @@ export class AppData {
     if (!row) throw notFound(c.name, s.id);
     if (s.version !== undefined && s.version !== row.version) throw conflict();
     const merged = { ...(JSON.parse(row.data) as Record<string, Value>), ...s.set };
-    for (const [k, v] of Object.entries(s.set)) if (v === null) delete merged[k];
+    for (const [k, v] of Object.entries(s.set ?? {})) if (v === null) delete merged[k];
+    // The app row lock serializes writers, so adding to the stored number cannot lose a concurrent change.
+    for (const [k, by] of Object.entries(s.inc ?? {})) {
+      const now = merged[k];
+      if (now !== undefined && typeof now !== "number")
+        throw new ServiceError("DATA_FIELD_TYPE", 400, `字段 ${k} 不是数字，不能用 inc 增减`);
+      merged[k] = (now ?? 0) + by;
+    }
     const fields = this.accept(access, c, merged);
     const size = this.size(fields);
     const at = Date.now();
@@ -944,7 +1057,7 @@ export class AppData {
     return { deleted: true };
   }
 
-  private async define(access: Access, s: Extract<Statement, { define: string }>) {
+  private async define(access: Access, s: Extract<Statement, { define: string }>, seq: number) {
     const c = (await this.collection(access.app.id, s.define)) ?? (await this.create(access.app.id, s.define));
     const fields = [...c.fields];
     for (const [name, type] of Object.entries(s.fields ?? {})) {
@@ -970,12 +1083,29 @@ export class AppData {
         unique = s.unique;
       }
     }
+    const kept = fields.filter(([name]) => !s.remove?.includes(name));
+    for (const name of s.remove ?? []) {
+      if (unique?.includes(name))
+        throw new ServiceError("DATA_FIELD_IN_USE", 409, `字段 ${name} 是唯一字段，先用 "unique":null 取消唯一再移除`);
+      if (!fields.some(([f]) => f === name))
+        throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${name}；${fieldList(c)}`);
+      // Records keep their recorded size, which only overstates the app's usage until they are next written.
+      await this.data.run(
+        "UPDATE data_records SET data=data - ?,version=version+1,seq=?,updated_at=? WHERE collection_id=? AND deleted_at IS NULL AND jsonb_exists(data, ?)",
+        name,
+        seq,
+        Date.now(),
+        c.id,
+        name,
+      );
+    }
     await this.data.run(
-      "UPDATE data_collections SET fields=?,public_read=?,public_create=?,unique_fields=? WHERE id=?",
-      JSON.stringify(fields),
+      "UPDATE data_collections SET fields=?,public_read=?,public_create=?,unique_fields=?,strict=? WHERE id=?",
+      JSON.stringify(kept),
       s.public ? s.public.includes("read") : c.publicRead,
       s.public ? s.public.includes("create") : c.publicCreate,
       unique ? JSON.stringify(unique) : null,
+      s.strict ?? c.strict,
       c.id,
     );
     return { collection: infoOf((await this.collection(access.app.id, s.define))!) };
@@ -1010,6 +1140,12 @@ export class AppData {
       if (!current) {
         if (access.level === "anonymous")
           throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 不接受字段 ${name}`);
+        if (c.strict)
+          throw new ServiceError(
+            "DATA_FIELD_UNKNOWN",
+            400,
+            `集合 ${c.name} 只接受已声明的字段，没有 ${name}；${fieldList(c)}；需要新字段时先用 define 声明`,
+          );
         c.fields.push([name, type]);
         added = true;
       }
@@ -1398,6 +1534,14 @@ function conditions(c: Collection, filter: Record<string, z.infer<typeof conditi
     }
   }
   return out;
+}
+/** Validate a `fields` selection and return the record fields it names; system fields are always returned. */
+function chosen(c: Collection, names: string[]): string[] {
+  const known = new Set(c.fields.map(([name]) => name));
+  for (const name of names)
+    if (!known.has(name) && !SYSTEM.has(name))
+      throw new ServiceError("DATA_FIELD_UNKNOWN", 400, `集合 ${c.name} 没有字段 ${name}；${fieldList(c)}`);
+  return names.filter((name) => known.has(name));
 }
 /** One predicate matching records whose id, or any text or number field, contains `term` without regard to letter case. */
 function searching(c: Collection, term: string, params: Parameter[]): string {

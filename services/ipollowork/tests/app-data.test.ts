@@ -337,7 +337,82 @@ test("refused input answers 400, storage stays bounded and a stale sync cursor i
   }
 });
 
-test("upgrading app data from schema 1 classifies public apps as sites and reaches schema 3", async () => {
+test("apps summarize, narrow and count records without reading them all, and keep declared fields clean", async () => {
+  const { call, account, close } = await fixture();
+  try {
+    const owner = await account("shape@data.test");
+    const app = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Gym", kind: "plugin" } })).data.app;
+    const run = (body: unknown, init: { token?: string; key?: string } = { token: owner.token }) =>
+      call(`/api/data/v1/apps/${app.id}/run`, { ...init, body });
+    assert.equal(
+      (await run({
+        insert: "sets",
+        values: [
+          { day: "2026-11-14", lift: "squat", reps: 5, kg: 100, note: "x".repeat(200) },
+          { day: "2026-11-14", lift: "bench", reps: 8, kg: 62.5 },
+          { day: "2026-11-15", lift: "squat", reps: 3, kg: 110 },
+          { lift: "plank" },
+        ],
+      })).status,
+      200,
+    );
+    const whole = await run({ aggregate: "sets", sum: ["reps"], avg: ["kg"], max: ["kg", "day"] });
+    assert.deepEqual(whole.data.items, [{ count: 4, sum: { reps: 16 }, avg: { kg: 90.83333333333333 }, max: { kg: 110, day: "2026-11-15" } }]);
+    const daily = await run({ aggregate: "sets", group: "day", sum: ["reps"] });
+    assert.deepEqual(daily.data, {
+      items: [
+        { key: "2026-11-14", count: 2, sum: { reps: 13 } },
+        { key: "2026-11-15", count: 1, sum: { reps: 3 } },
+        { key: null, count: 1, sum: { reps: null } },
+      ],
+      more: false,
+    });
+    const top = await run({ aggregate: "sets", group: "lift", where: { reps: { ">": 0 } }, sort: "-count", limit: 1 });
+    assert.deepEqual(top.data, { items: [{ key: "squat", count: 2 }], more: true });
+    assert.equal((await run({ aggregate: "sets", sum: ["lift"] })).data.code, "DATA_AGGREGATE_UNSUPPORTED");
+    assert.deepEqual((await run({ aggregate: "nothing", group: "day" })).data, { items: [] });
+
+    const narrow = await run({ find: "sets", fields: ["lift", "reps"], sort: "kg", limit: 2 });
+    assert.deepEqual(
+      narrow.data.items.map((item: Json) => Object.keys(item).sort()),
+      [["createdAt", "id", "lift", "reps", "updatedAt", "version"], ["createdAt", "id", "lift", "reps", "updatedAt", "version"]],
+      "only the chosen fields and the system fields return",
+    );
+    assert.deepEqual(narrow.data.items.map((item: Json) => item.lift), ["bench", "squat"]);
+    const rest = await run({ find: "sets", fields: ["lift"], sort: "kg", limit: 2, after: narrow.data.next });
+    assert.deepEqual(rest.data.items.map((item: Json) => item.lift), ["squat", "plank"], "the cursor works without returning the sort field");
+    const one = await run({ get: "sets", id: narrow.data.items[0].id, fields: ["kg"] });
+    assert.deepEqual([one.data.item.kg, one.data.item.lift], [62.5, undefined]);
+    assert.equal((await run({ find: "sets", fields: ["nope"] })).data.code, "DATA_FIELD_UNKNOWN");
+
+    const id = narrow.data.items[0].id as string;
+    const bumped = await Promise.all([1, 2, 3, 4].map(() => run({ update: "sets", id, inc: { reps: 1, done: 1 } })));
+    assert.deepEqual(bumped.map((r) => r.status), [200, 200, 200, 200]);
+    const after = (await run({ get: "sets", id })).data.item;
+    assert.deepEqual([after.reps, after.done], [12, 4], "concurrent increments all count");
+    assert.equal((await run({ update: "sets", id, inc: { lift: 1 } })).data.code, "DATA_FIELD_TYPE");
+    assert.equal((await run({ update: "sets", id })).status, 400, "an update needs set or inc");
+
+    assert.equal((await run({ insert: "sets", values: { lift: "row", rpes: 7 } })).status, 200, "a misspelled field is accepted until the table is strict");
+    const cleaned = await run({ define: "sets", strict: true, remove: ["rpes", "note"] });
+    assert.deepEqual([cleaned.data.collection.strict, "rpes" in cleaned.data.collection.fields, "note" in cleaned.data.collection.fields], [true, false, false]);
+    assert.equal((await run({ count: "sets", where: { lift: "row" } })).data.count, 1, "records stay, without the removed field");
+    assert.equal((await run({ find: "sets", fields: ["note"] })).data.code, "DATA_FIELD_UNKNOWN");
+    const typo = await run({ insert: "sets", values: { lift: "row", rpes: 7 } });
+    assert.deepEqual([typo.status, typo.data.code], [400, "DATA_FIELD_UNKNOWN"]);
+    assert.match(typo.data.error, /define/, "the rejection says how to add a field");
+    assert.equal((await run({ batch: [{ define: "sets", fields: { rpe: "number" } }, { insert: "sets", values: { lift: "row", rpe: 7 } }] })).status, 200);
+    assert.equal((await run({ define: "sets", unique: null, remove: ["nope"] })).data.code, "DATA_FIELD_UNKNOWN");
+
+    await run({ define: "sets", public: ["read"] });
+    const visitor = await run({ aggregate: "sets", group: "lift" }, { key: app.publicKey });
+    assert.equal(visitor.status, 200, "a publicly readable table can be summarized with the public key");
+  } finally {
+    await close();
+  }
+});
+
+test("upgrading app data from schema 1 classifies public apps as sites and reaches schema 4", async () => {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? "postgresql://127.0.0.1:5432/ipollowork_test";
   const schema = "test_" + randomUUID().replace(/-/g, "");
   const admin = new Store({ databaseUrl, databasePoolSize: 1, databaseSchema: "public" });
@@ -353,7 +428,8 @@ test("upgrading app data from schema 1 classifies public apps as sites and reach
     }
     await migrateAppData(store);
     assert.deepEqual((await store.all("SELECT kind FROM data_apps ORDER BY kind")).map((r) => r.kind), ["plugin", "site"]);
-    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 3);
+    assert.equal((await store.one("SELECT MAX(version) AS v FROM app_data_schema"))?.v, 4);
+    assert.equal((await store.one("SELECT strict FROM data_collections LIMIT 1"))?.strict, false);
     assert.equal((await store.one("SELECT pruned_seq FROM data_apps LIMIT 1"))?.pruned_seq, 0);
     assert.equal((await store.all("SELECT bucket FROM data_rate")).length, 0, "the rate key is a named bucket");
   } finally {

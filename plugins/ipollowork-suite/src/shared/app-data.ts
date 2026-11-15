@@ -38,6 +38,8 @@ export interface DataCollectionInfo {
   fields: Record<string, DataFieldType>
   public: ('read' | 'create')[]
   unique: string[] | null
+  /** Writes may use only declared fields. */
+  strict: boolean
   records: number
   bytes: number
 }
@@ -57,20 +59,46 @@ export type DataCondition =
 export interface DataQuery {
   where?: Record<string, DataCondition>
   search?: string
+  /** Return only these fields, besides `id`, `version`, `createdAt` and `updatedAt`. */
+  fields?: string[]
   sort?: string
   limit?: number
   after?: string
 }
+/** Options for `aggregate`: counts and measures over the matching records, as one row or one row per value of `group`. */
+export interface DataAggregate {
+  where?: Record<string, DataCondition>
+  search?: string
+  /** A text, number or boolean field; each distinct value becomes one row with that value as `key`. */
+  group?: string
+  sum?: string[]
+  avg?: string[]
+  min?: string[]
+  max?: string[]
+  /** Row order when grouped: by `key` (default) or `count`, prefixed by `-` for descending. */
+  sort?: 'key' | '-key' | 'count' | '-count'
+  limit?: number
+}
+/** One aggregate row; a measure is `null` when no matching record has the field. */
+export interface DataAggregateRow {
+  key?: string | number | boolean | null
+  count: number
+  sum?: Record<string, number | null>
+  avg?: Record<string, number | null>
+  min?: Record<string, number | string | null>
+  max?: Record<string, number | string | null>
+}
 /** One JSON statement. Exactly one operation key names the operation. */
 export type DataStatement =
   | { insert: string; values: Record<string, DataValue> | Record<string, DataValue>[] }
-  | { get: string; id: string }
+  | { get: string; id: string; fields?: string[] }
   | ({ find: string } & DataQuery)
   | { count: string; where?: Record<string, DataCondition>; search?: string }
-  | { update: string; id: string; set: Record<string, DataValue>; version?: number }
+  | ({ aggregate: string } & DataAggregate)
+  | { update: string; id: string; set?: Record<string, DataValue>; inc?: Record<string, number>; version?: number }
   | { upsert: string; id: string; values: Record<string, DataValue>; version?: number }
   | { delete: string; id: string; version?: number }
-  | { define: string; fields?: Record<string, DataFieldType>; public?: ('read' | 'create')[]; unique?: string[] | null }
+  | { define: string; fields?: Record<string, DataFieldType>; public?: ('read' | 'create')[]; unique?: string[] | null; strict?: boolean; remove?: string[] }
   | { drop: string }
   | { info: true }
 
@@ -80,7 +108,11 @@ export interface DataCollection {
   get(id: string): Promise<DataRecord>
   find(query?: DataQuery): Promise<{ items: DataRecord[]; next: string | null }>
   count(where?: Record<string, DataCondition>): Promise<number>
+  /** Totals, averages and counts computed by the service, so the caller does not read every record. */
+  aggregate(query?: DataAggregate): Promise<DataAggregateRow[]>
   update(id: string, set: Record<string, DataValue>, version?: number): Promise<DataRecord>
+  /** Add to number fields atomically; a negative amount subtracts and a missing field starts at 0. */
+  increment(id: string, by: Record<string, number>): Promise<DataRecord>
   /** Create the record with this id, or replace all of its fields. */
   upsert(id: string, values: Record<string, DataValue>, version?: number): Promise<DataRecord>
   delete(id: string, version?: number): Promise<void>
@@ -125,6 +157,8 @@ export function createDataApp(id: string, run: (statement: DataStatement | { bat
         return { items: value.items as DataRecord[], next: value.next as string | null }
       },
       count: async where => (await run({ count: name, ...(where ? { where } : {}) })).count as number,
+      aggregate: async (query = {}) => (await run({ aggregate: name, ...query })).items as DataAggregateRow[],
+      increment: async (recordId, by) => item(await run({ update: name, id: recordId, inc: by })),
       update: async (recordId, set, version) => item(await run({ update: name, id: recordId, set, ...versioned(version) })),
       upsert: async (recordId, values, version) => item(await run({ upsert: name, id: recordId, values, ...versioned(version) })),
       delete: async (recordId, version) => { await run({ delete: name, id: recordId, ...versioned(version) }) },

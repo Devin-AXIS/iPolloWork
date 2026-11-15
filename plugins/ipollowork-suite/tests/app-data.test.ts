@@ -19,6 +19,8 @@ const book = { id: 'b1', title: 'Dune', version: 1, createdAt: 1, updatedAt: 1 }
 
 function fixture(signedIn = true) {
   const calls: { method: string; path: string; body: unknown }[] = []
+  /** Run paths that answer once as if their app had been deleted. */
+  const gone = new Set<string>()
   const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
   const account = new AccountService({
     readRecord: async () => (signedIn ? { kind: 'grant', payload: { version: 1, origin: 'https://account.test', token: 'test-token' } } : undefined),
@@ -32,8 +34,10 @@ function fixture(signedIn = true) {
     if (path === '/api/data/v1/apps' && init?.method === 'POST') return json({ app: detail, created: true }, 201)
     if (path === '/api/data/v1/apps') return json({ items: [detail], organizations: [{ id: 'org-1', name: 'Acme' }] })
     if (path.endsWith('/run')) {
-      if ('update' in body) return json({ error: '字段 title 是文本，不能写入数字', code: 'DATA_FIELD_TYPE' }, 400)
-      if ('insert' in body || 'get' in body || 'upsert' in body) return json({ item: book })
+      if (gone.delete(path)) return json({ error: '应用不存在或没有访问权限', code: 'DATA_APP_NOT_FOUND' }, 404)
+      if ('update' in body && 'set' in body) return json({ error: '字段 title 是文本，不能写入数字', code: 'DATA_FIELD_TYPE' }, 400)
+      if ('aggregate' in body) return json({ items: [{ key: 'Dune', count: 2, sum: { pages: 800 } }], more: false })
+      if ('insert' in body || 'get' in body || 'upsert' in body || 'inc' in body) return json({ item: book })
       if ('find' in body) return json({ items: [book], next: null })
       if ('count' in body) return json({ count: 1 })
       return json({ deleted: true })
@@ -41,7 +45,7 @@ function fixture(signedIn = true) {
     if (init?.method === 'DELETE') return json({ deleted: true })
     return json({ app: detail })
   })
-  return { calls, service: new AppDataService(account) }
+  return { calls, gone, service: new AppDataService(account) }
 }
 
 test('plugins open an app by name and use collection helpers that send JSON statements', async () => {
@@ -151,4 +155,32 @@ test('Data page filter rules become one where object', () => {
   ], fields), { name: { contains: 'an' }, slot: { '>=': 9, '<': 12 }, paid: { '=': false }, extra: null })
   assert.equal(whereOf([{ field: 'slot', op: '=', value: 'nine' }, { field: 'name', op: '=', value: '' }, { field: 'gone', op: '=', value: 'x' }], fields), undefined,
     'a rule without a usable value or a known field is skipped')
+})
+
+test('a name keeps its app between calls, and a deleted app is opened again', async () => {
+  const { calls, gone, service } = fixture()
+  const tool = appDataTool(service, () => undefined, () => false)
+  const exec = { signal: new AbortController().signal } as never
+  const opens = () => calls.filter(call => call.path === '/api/data/v1/apps').length
+  await tool.execute({ app: 'Reading list', kind: 'plugin', statement: { insert: 'books', values: { title: 'Dune' } } }, exec)
+  await tool.execute({ app: 'reading list', kind: 'plugin', statement: { insert: 'books', values: { title: 'Emma' } } }, exec)
+  await tool.execute({ app: 'Reading list', kind: 'plugin', statement: { count: 'books' } }, exec)
+  assert.equal(opens(), 1, 'later statements reuse the app the name opened')
+  assert.equal(calls.length, 4, 'one open and three statements reach the account service')
+
+  const books = (await service.open('Reading list')).collection('books')
+  assert.equal(opens(), 1, 'a plugin opening the same name asks nothing')
+  assert.deepEqual(await books.aggregate({ group: 'title', sum: ['pages'] }), [{ key: 'Dune', count: 2, sum: { pages: 800 } }])
+  assert.deepEqual(calls.at(-1)?.body, { aggregate: 'books', group: 'title', sum: ['pages'] })
+  await books.increment('b1', { pages: 10 })
+  assert.deepEqual(calls.at(-1)?.body, { update: 'books', id: 'b1', inc: { pages: 10 } })
+  await books.find({ fields: ['title'], search: 'du' })
+  assert.deepEqual(calls.at(-1)?.body, { find: 'books', fields: ['title'], search: 'du' })
+
+  gone.add(`/api/data/v1/apps/${APP}/run`)
+  assert.equal(await books.count(), 1, 'a statement on a deleted app opens the app again and runs')
+  assert.equal(opens(), 2)
+  gone.add(`/api/data/v1/apps/${APP}/run`)
+  assert.deepEqual(await tool.execute({ app: 'Reading list', kind: 'plugin', statement: { count: 'books' } }, exec), { count: 1 }, 'a read finds the app by name again')
+  assert.equal(calls.filter(call => call.method === 'POST' && call.path === '/api/data/v1/apps').length, 2, 'the read created nothing')
 })

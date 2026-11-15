@@ -22,16 +22,51 @@ const detail = summary.extend({
   limits: z.object({ records: z.number(), bytes: z.number(), recordBytes: z.number() }),
   collectionList: z.array(z.object({
     name: z.string(), fields: z.record(z.string(), z.enum(['text', 'number', 'boolean', 'json'])),
-    public: z.array(z.enum(['read', 'create'])), unique: z.array(z.string()).nullable(), records: z.number(), bytes: z.number(),
+    public: z.array(z.enum(['read', 'create'])), unique: z.array(z.string()).nullable(), strict: z.boolean().default(false), records: z.number(), bytes: z.number(),
   })),
 })
 const result = z.record(z.string(), z.json())
 type Result = z.infer<typeof result>
+/** How long a name keeps pointing at the app it opened without asking the account service again. */
+const REMEMBER_MS = 300_000
 const openInput = z.object({ name: z.string().trim().min(1).max(80), organization: z.string().min(1).max(200).optional() }).strict()
 
 /** Account-backed app data; one instance per suite Host. */
 export class AppDataService implements IpolloData {
+  /** Apps opened by name, valid for the signed-in account that opened them. */
+  private readonly opened = new Map<string, { id: string; generation: number; at: number }>()
   constructor(private readonly account: AccountService) {}
+
+  private static key(name: string, organization: string | undefined): string {
+    return `${(organization ?? '').toLowerCase()}\n${name.trim().toLowerCase()}`
+  }
+  /**
+   * @param name - the app name.
+   * @param organization - organization name or id, or undefined for personal apps.
+   * @returns the id this name recently opened for the current account, without a request.
+   */
+  remembered(name: string, organization?: string): string | undefined {
+    const key = AppDataService.key(name, organization)
+    const hit = this.opened.get(key)
+    if (hit && hit.generation === this.account.generation && Date.now() - hit.at < REMEMBER_MS) return hit.id
+    this.opened.delete(key)
+    return undefined
+  }
+  private remember(name: string, organization: string | undefined, id: string): void {
+    this.opened.set(AppDataService.key(name, organization), { id, generation: this.account.generation, at: Date.now() })
+  }
+  private forget(id: string): void {
+    for (const [key, hit] of this.opened) if (hit.id === id) this.opened.delete(key)
+  }
+  /**
+   * The id of the app with this name, creating the app on first use and remembering it afterwards.
+   * @param input - app name, the kind recorded when it is created, an optional organization and the creating workspace's title.
+   * @param signal - cancels the request.
+   * @returns the app id.
+   */
+  async id(input: { name: string; kind: DataAppKind; organization?: string | undefined; workspace?: string | undefined }, signal?: AbortSignal): Promise<string> {
+    return this.remembered(input.name, input.organization) ?? (await this.ensure(input, signal)).id
+  }
 
   /**
    * @param signal - cancels the request.
@@ -50,7 +85,9 @@ export class AppDataService implements IpolloData {
   async ensure(input: { name: string; kind: DataAppKind; organization?: string | undefined; workspace?: string | undefined }, signal?: AbortSignal): Promise<DataAppDetail> {
     const enterpriseId = input.organization ? await this.organization(input.organization, signal) : undefined
     const body = { name: input.name, kind: input.kind, ...(enterpriseId ? { enterpriseId } : {}), ...(input.workspace ? { workspace: input.workspace } : {}) }
-    return z.object({ app: detail }).parse(await this.account.request(BASE, body, undefined, signal)).app
+    const app = z.object({ app: detail }).parse(await this.account.request(BASE, body, undefined, signal)).app
+    this.remember(input.name, input.organization, app.id)
+    return app
   }
   /**
    * @param id - the app id.
@@ -65,6 +102,7 @@ export class AppDataService implements IpolloData {
    */
   async remove(id: string): Promise<void> {
     await this.account.request(`${BASE}/${encodeURIComponent(id)}`, undefined, 'DELETE')
+    this.forget(id)
   }
   /**
    * Run one statement or `{batch}` against an app.
@@ -74,7 +112,13 @@ export class AppDataService implements IpolloData {
    * @returns the statement result.
    */
   async run(id: string, statement: unknown, signal?: AbortSignal): Promise<Result> {
-    return result.parse(await this.account.request(`${BASE}/${encodeURIComponent(id)}/run`, statement, undefined, signal))
+    try {
+      return result.parse(await this.account.request(`${BASE}/${encodeURIComponent(id)}/run`, statement, undefined, signal))
+    } catch (error) {
+      // The app was deleted or left the account's reach; its name must be resolved again.
+      if (error instanceof AppDataRejection && error.code === 'DATA_APP_NOT_FOUND') this.forget(id)
+      throw error
+    }
   }
   /**
    * Find an existing app by name without creating it.
@@ -87,11 +131,22 @@ export class AppDataService implements IpolloData {
     const enterpriseId = organization ? await this.organization(organization, signal) : undefined
     const owned = (await this.apps(signal)).items.filter(app => (enterpriseId ? app.owner.id === enterpriseId : app.owner.kind === 'user'))
     const wanted = name.trim().toLowerCase()
-    return { app: owned.find(app => app.name.trim().toLowerCase() === wanted), others: owned }
+    const app = owned.find(item => item.name.trim().toLowerCase() === wanted)
+    if (app) this.remember(name, organization, app.id)
+    return { app, others: owned }
   }
   async open(name: string, options: { organization?: string } = {}): Promise<DataApp> {
-    const app = await this.ensure({ name, kind: 'plugin', organization: options.organization })
-    return createDataApp(app.id, statement => this.run(app.id, statement))
+    const input = { name, kind: 'plugin' as const, organization: options.organization }
+    let id = await this.id(input)
+    return createDataApp(id, async statement => {
+      try {
+        return await this.run(id, statement)
+      } catch (error) {
+        if (!(error instanceof AppDataRejection) || error.code !== 'DATA_APP_NOT_FOUND') throw error
+        id = await this.id(input)
+        return this.run(id, statement)
+      }
+    })
   }
   private async organization(value: string, signal?: AbortSignal): Promise<string> {
     const items = z.object({ items: z.array(z.object({ id: z.string(), name: z.string() })) })
@@ -116,7 +171,7 @@ export async function appDataRoute(service: AppDataService, method: string, path
   if (path === '' && method === 'GET') return service.apps()
   if (path === '' && method === 'POST') {
     const input = openInput.parse(await read())
-    return { app: await service.ensure({ name: input.name, kind: 'plugin', organization: input.organization }) }
+    return { app: { id: await service.id({ name: input.name, kind: 'plugin', organization: input.organization }) } }
   }
   const match = /^\/([0-9a-f-]{36})(\/run)?$/.exec(path)
   if (!match) throw new SuiteError('IPW_NOT_FOUND', 404)
@@ -141,7 +196,7 @@ async function signedIn<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-const READS = new Set(['get', 'find', 'count', 'info'])
+const READS = new Set(['get', 'find', 'count', 'aggregate', 'info'])
 /** Whether a statement or batch only reads; reads never create an app. */
 function reads(statement: Record<string, unknown>): boolean {
   const list = Array.isArray(statement.batch) ? (statement.batch as Record<string, unknown>[]) : [statement]
@@ -165,15 +220,17 @@ export function appDataTool(
     name: 'app_data',
     description: [
       'Keep records for a website, app, mini program or DSH plugin without running a database. Read the app-data skill before writing code that uses it.',
-      'An app is created by its first write and holds collections of JSON records; reads of an unknown app list the existing apps instead; each field\'s type (text, number, boolean or json) is fixed by its first value. Record ids are short keys such as "profile" or generated UUIDs.',
+      'An app is created by its first write and holds collections of JSON records; reads of an unknown app list the existing apps instead; each field\'s type (text, number, boolean or json) is fixed by its first value. Store dates as ISO text such as "2026-11-15" so they sort, filter and group. Record ids are short keys such as "profile" or generated UUIDs.',
       'Statements:',
       '{"insert":"bookings","values":{"name":"Ann","slot":10}} (values may be an array of up to 100 records);',
       '{"find":"bookings","where":{"slot":{">=":9},"status":"open"},"search":"ann","sort":"-createdAt","limit":20,"after":"<next from the previous page>"} (search matches the id and any text or number field, ignoring case);',
+      '"fields":["name","slot"] on find or get returns only those fields; use it to keep results small.',
       '{"get":"bookings","id":"…"}; {"count":"bookings","where":{…}};',
-      '{"update":"bookings","id":"…","set":{"status":"done"},"version":2} (merges fields; null removes one; version rejects a stale write);',
+      '{"aggregate":"orders","where":{…},"group":"day","sum":["total"],"avg":["total"],"min":["total"],"max":["total"],"sort":"-count","limit":50} returns {"items":[{"key":"2026-11-15","count":3,"sum":{"total":96}}]}; without group it returns one row of totals. Use it for totals, rankings and charts instead of reading every record;',
+      '{"update":"bookings","id":"…","set":{"status":"done"},"version":2} (merges fields; null removes one; version rejects a stale write); {"update":"items","id":"…","inc":{"stock":-1}} adds to a number atomically;',
       '{"upsert":"settings","id":"profile","values":{…}} (creates the record or replaces all of its fields);',
       '{"delete":"bookings","id":"…"};',
-      '{"define":"bookings","fields":{"name":"text","slot":"number"},"public":["create"],"unique":["date","slot"]} ("read" lets anyone holding the public key read, "create" lets them submit one record at a time; visitors write only declared fields; unique needs an empty collection);',
+      '{"define":"bookings","fields":{"name":"text","slot":"number"},"public":["create"],"unique":["date","slot"]} ("read" lets anyone holding the public key read, "create" lets them submit one record at a time; visitors write only declared fields; unique needs an empty collection; "strict":true makes every write use only declared fields, so a misspelled field is rejected; "remove":["typo"] deletes a field and its values);',
       '{"drop":"bookings"}; {"info":true} lists collections, fields, the endpoint and the public key;',
       '{"batch":[…]} runs up to 20 statements atomically.',
       'Where operators: =, !=, >, >=, <, <=, in, contains (text); null matches a missing field. Records also carry id, version, createdAt and updatedAt.',
@@ -193,7 +250,16 @@ export function appDataTool(
     async execute(args, exec) {
       const signal = exec.signal
       return signedIn(async () => {
+        const gone = (error: unknown) => error instanceof AppDataRejection && error.code === 'DATA_APP_NOT_FOUND'
         if (reads(args.statement)) {
+          const known = service.remembered(args.app, args.organization)
+          if (known) {
+            try {
+              return await service.run(known, args.statement, signal)
+            } catch (error) {
+              if (!gone(error)) throw error
+            }
+          }
           const { app, others } = await service.find(args.app, args.organization, signal)
           if (!app)
             throw new AppDataRejection('DATA_APP_NOT_FOUND', 404,
@@ -204,8 +270,13 @@ export function appDataTool(
         if (session && readOnly(session))
           throw new AppDataRejection('IPW_DATA_READ_ONLY', 403,
             'This session is read-only, so app data writes are refused; reads still work. Ask the user to switch the session to a writable mode before changing records.')
-        const app = await service.ensure({ name: args.app, kind: args.kind, organization: args.organization, workspace: workspaceOf(session?.header.cwd) }, signal)
-        return service.run(app.id, args.statement, signal)
+        const input = { name: args.app, kind: args.kind, organization: args.organization, workspace: workspaceOf(session?.header.cwd) }
+        try {
+          return await service.run(await service.id(input, signal), args.statement, signal)
+        } catch (error) {
+          if (!gone(error)) throw error
+          return service.run(await service.id(input, signal), args.statement, signal)
+        }
       })
     },
     presentCall: args => ({
@@ -224,7 +295,7 @@ export const APP_DATA_SKILL = {
 
 Use app data when a website, app, mini program or DSH plugin must keep records and the user supplied no database. It is the signed-in iPolloWork account's hosted store. Systems needing joins, server logic or payments need their own back end.
 
-Every caller uses the same JSON statements listed by the \`app_data\` tool. Field types (text, number, boolean, json) are fixed by first use. Ids are short keys such as \`profile\` or generated UUIDs. Errors name the existing collections and fields.
+Every caller uses the same JSON statements listed by the \`app_data\` tool. Field types (text, number, boolean, json) are fixed by first use; store dates as ISO text (\`2026-11-15\`) so they sort and group. Ask the service for totals with \`aggregate\` and pass \`fields\` to \`find\` instead of loading whole collections. Once the collections are right, run \`define\` with \`"strict":true\` so a misspelled field is rejected; \`"remove":["typo"]\` deletes a mistaken field. Ids are short keys such as \`profile\` or generated UUIDs. Errors name the existing collections and fields.
 
 ## DSH plugin
 
@@ -246,7 +317,7 @@ return {
 
 Host half (\`index.js\`): \`export const inject = ['ipolloData']\` and call \`ctx.ipolloData.open(name)\` the same way.
 
-\`open(name, { organization })\` returns \`{ id, run(statement), collection(name) }\`. A collection has \`insert(values)\`, \`get(id)\`, \`find({ where, sort, limit, after })\` returning \`{ items, next }\`, \`count(where)\`, \`update(id, set, version?)\`, \`upsert(id, values, version?)\` and \`delete(id, version?)\`. Use \`upsert\` with a fixed id for single documents such as settings or today's plan. Calls use the signed-in account and need no key; signed out, they reject with \`IPW_SIGN_IN_REQUIRED\`, so show a sign-in hint instead of failing silently. Open inside handlers, not at load. Rejections carry \`code\` and a message that explains the fix.
+\`open(name, { organization })\` returns \`{ id, run(statement), collection(name) }\`. A collection has \`insert(values)\`, \`get(id)\`, \`find({ where, search, fields, sort, limit, after })\` returning \`{ items, next }\`, \`count(where)\`, \`aggregate({ where, group, sum, avg, min, max, sort, limit })\` returning rows like \`{ key, count, sum: { reps: 36 } }\`, \`update(id, set, version?)\`, \`increment(id, { stock: -1 })\`, \`upsert(id, values, version?)\` and \`delete(id, version?)\`. Use \`upsert\` with a fixed id for single documents such as settings or today's plan. Calls use the signed-in account and need no key; signed out, they reject with \`IPW_SIGN_IN_REQUIRED\`, so show a sign-in hint instead of failing silently. Open inside handlers, not at load. Rejections carry \`code\` and a message that explains the fix.
 
 Before writing plugin code you may create the collections with \`app_data\` (\`kind: "plugin"\`, the same app name) and inspect them with \`{"info":true}\`.
 

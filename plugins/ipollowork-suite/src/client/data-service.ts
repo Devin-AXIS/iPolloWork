@@ -25,14 +25,25 @@ async function post(path: string, body: unknown): Promise<Record<string, unknown
 }
 
 /**
- * Create the browser service. It keeps no state; each call carries the owner's page session to the suite Host.
+ * Create the browser service. Each call carries the owner's page session to the suite Host, which remembers the app
+ * a name opened; when that app was deleted, the next statement opens it again.
  * @returns the service that plugin Client modules inject as `ipolloData`.
  */
 export function createBrowserAppData(): IpolloData {
   return {
     async open(name, options = {}) {
-      const { app } = (await post('', { name, ...(options.organization ? { organization: options.organization } : {}) })) as { app: { id: string } }
-      return createDataApp(app.id, (statement: DataStatement | { batch: DataStatement[] }) => post(`/${app.id}/run`, statement))
+      const open = async () =>
+        ((await post('', { name, ...(options.organization ? { organization: options.organization } : {}) })) as { app: { id: string } }).app.id
+      let id = await open()
+      return createDataApp(id, async (statement: DataStatement | { batch: DataStatement[] }) => {
+        try {
+          return await post(`/${id}/run`, statement)
+        } catch (error) {
+          if (!(error instanceof AppDataError) || error.code !== 'DATA_APP_NOT_FOUND') throw error
+          id = await open()
+          return post(`/${id}/run`, statement)
+        }
+      })
     },
   }
 }
