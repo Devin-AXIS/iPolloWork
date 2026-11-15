@@ -119,7 +119,7 @@ export async function signMacOSRuntimeCode(path, identifier, expected, entitleme
   if (!keychain) throw new Error('desktop macOS signing: run through the package command to prepare the signing keychain')
   await runAppleCommandAsync('/usr/bin/codesign', [
     '--force',
-    '--sign', expected.signingIdentity,
+    '--sign', `Developer ID Application: ${expected.signingIdentity}`,
     '--keychain', keychain,
     '--identifier', identifier,
     '--timestamp',
