@@ -24,6 +24,8 @@ const MAX_WAITING = 100;
 const MAX_ROLES = 200;
 /** A visitor's sign-in lasts this long; replacing the app's public key ends every sign-in at once. */
 const VISITOR_MS = 30 * 86_400_000;
+/** A manager's sign-in for trying the app's page lasts this long. */
+const PREVIEW_MS = 2 * 3_600_000;
 const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 const PRUNE_INTERVAL_MS = 3_600_000;
 /** Largest request body: a full insert of maximum-size records plus statement overhead. */
@@ -165,6 +167,7 @@ const statements = {
     .strict(),
   revoke: z.object({ revoke: z.email().max(200) }).strict(),
   origins: z.object({ origins: z.array(z.url().max(200)).max(10) }).strict(),
+  preview: z.object({ preview: z.enum(["admin", "user"]) }).strict(),
 };
 type Operation = keyof typeof statements;
 /** One statement; exactly one operation key names the operation. */
@@ -225,7 +228,7 @@ const invalid = () =>
   new ServiceError(
     "DATA_STATEMENT_INVALID",
     400,
-    "每条语句需要且只能有一个操作：insert、get、find、count、aggregate、update、upsert、delete、define、drop、info、me、grant、revoke、origins；多条语句放在 batch 中",
+    "每条语句需要且只能有一个操作：insert、get、find、count、aggregate、update、upsert、delete、define、drop、info、me、grant、revoke、origins、preview；多条语句放在 batch 中",
   );
 
 /** Who is calling: a signed-in account, or an anonymous visitor presenting an app's public key. */
@@ -800,9 +803,18 @@ export class AppData {
       const actor = access.caller.kind === "member" ? access.caller.actor : undefined;
       return { user: access.user ?? (actor ? { id: actor.id, name: actor.name, role: "admin" } : null) };
     }
-    if ("grant" in statement || "revoke" in statement || "origins" in statement) {
-      if (access.level !== "manage")
+    if ("grant" in statement || "revoke" in statement || "origins" in statement || "preview" in statement) {
+      if (access.level !== "manage" || access.caller.kind !== "member")
         throw new ServiceError("DATA_FORBIDDEN", 403, "只有应用管理者可以设置角色和登录来源");
+      if ("preview" in statement) {
+        // The manager tries the page as themselves: with full rights, or as an ordinary signed-in visitor.
+        const expiresAt = Date.now() + PREVIEW_MS;
+        return {
+          token: this.issue(access.app, access.caller.actor.id, expiresAt, statement.preview === "user"),
+          role: statement.preview,
+          expiresAt,
+        };
+      }
       if ("origins" in statement) {
         const origins = [...new Set(statement.origins.map((url) => new URL(url).origin))];
         await this.data.run("UPDATE data_apps SET origins=?,updated_at=? WHERE id=?", JSON.stringify(origins), Date.now(), access.app.id);
@@ -1388,15 +1400,18 @@ export class AppData {
       )
         throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
       if (!caller.token) return { app, level: "anonymous", caller, ownerName: "" };
-      const userId = this.verify(app, caller.token);
+      const { userId, plain } = this.verify(app, caller.token);
       const user = await this.accounts.one<{ name: string }>('SELECT name FROM "user" WHERE id=? AND banned IS NOT TRUE', userId);
       if (!user) throw expired();
-      // The app's own managers are its administrators without a grant.
+      // The app's own managers are its administrators without a grant; a plain preview sets every role aside.
       const manages =
-        app.owner_kind === "user" ? app.owner_id === userId : (await this.membership(userId, false, app.owner_id))?.manager === true;
-      const role = manages
-        ? "admin"
-        : ((await this.data.one<{ role: string }>("SELECT role FROM data_app_roles WHERE app_id=? AND user_id=?", app.id, userId))?.role ?? "user");
+        !plain &&
+        (app.owner_kind === "user" ? app.owner_id === userId : (await this.membership(userId, false, app.owner_id))?.manager === true);
+      const role = plain
+        ? "user"
+        : manages
+          ? "admin"
+          : ((await this.data.one<{ role: string }>("SELECT role FROM data_app_roles WHERE app_id=? AND user_id=?", app.id, userId))?.role ?? "user");
       return { app, level: role === "admin" ? "admin" : "user", caller, ownerName: "", user: { id: userId, name: user.name, role } };
     }
     const actor = caller.actor;
@@ -1436,18 +1451,23 @@ export class AppData {
   private sign(app: AppRow, body: string): Buffer {
     return createHmac("sha256", this.identity.secret).update(`${app.id}\n${app.public_key}\n${body}`).digest();
   }
-  /** @returns the user id a visitor token was issued to for this app; expired or foreign tokens are refused. */
-  private verify(app: AppRow, token: string): string {
+  /** A visitor token for one account in one app; `plain` makes it an ordinary visitor whatever roles the account has. */
+  private issue(app: AppRow, userId: string, expiresAt: number, plain = false): string {
+    const body = Buffer.from(JSON.stringify({ u: userId, e: expiresAt, ...(plain ? { p: true } : {}) })).toString("base64url");
+    return "ipd_" + body + "." + this.sign(app, body).toString("base64url");
+  }
+  /** @returns the account a visitor token was issued to for this app; expired or foreign tokens are refused. */
+  private verify(app: AppRow, token: string): { userId: string; plain: boolean } {
     const match = /^ipd_([A-Za-z0-9_-]{1,400})\.([A-Za-z0-9_-]{43})$/.exec(token);
     if (!match) throw expired();
     const given = Buffer.from(match[2]!, "base64url");
     const wanted = this.sign(app, match[1]!);
     if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) throw expired();
     const claim = z
-      .object({ u: z.string().min(1), e: z.number() })
+      .object({ u: z.string().min(1), e: z.number(), p: z.boolean().optional() })
       .safeParse(JSON.parse(Buffer.from(match[1]!, "base64url").toString()));
     if (!claim.success || claim.data.e < Date.now()) throw expired();
-    return claim.data.u;
+    return { userId: claim.data.u, plain: claim.data.p === true };
   }
   /**
    * Describe, and on `confirm` complete, a visitor's sign-in to an app with their iPollo account.
@@ -1469,8 +1489,7 @@ export class AppData {
         `「${access.app.name}」还没有允许从 ${target.origin} 登录；应用管理者需要先把这个网址加入登录来源`,
       );
     if (!confirm) return { name: access.app.name, origin: target.origin };
-    const body = Buffer.from(JSON.stringify({ u: actor.id, e: Date.now() + VISITOR_MS })).toString("base64url");
-    target.hash = "ipollo_token=ipd_" + body + "." + this.sign(access.app, body).toString("base64url");
+    target.hash = "ipollo_token=" + this.issue(access.app, actor.id, Date.now() + VISITOR_MS);
     return { name: access.app.name, origin: target.origin, url: target.toString() };
   }
   private async roles(appId: string) {

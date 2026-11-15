@@ -83,8 +83,13 @@ test('the app_data tool opens the app for the session workspace and runs the sta
   assert.equal(kind({ insert: 'books', values: {} }), 'edit')
   await assert.rejects(tool.execute({ app: 'Studio site', statement: {} }, {} as never), 'kind is required')
   const before = calls.length
-  await assert.rejects(tool.execute({ app: 'Unknown app', kind: 'plugin', statement: { info: true } }, {} as never), (error: unknown) =>
+  await assert.rejects(tool.execute({ app: 'Unknown app', kind: 'plugin', statement: { count: 'books' } }, {} as never), (error: unknown) =>
     error instanceof AppDataRejection && error.code === 'DATA_APP_NOT_FOUND' && error.reason.includes('Reading list (plugin)'))
+  assert.deepEqual(await tool.execute({ app: 'Unknown app', kind: 'plugin', statement: { info: true } }, {} as never), {
+    app: null,
+    note: 'No app is named "Unknown app" yet. The first define, insert or upsert creates it; reads never do.',
+    existing: [{ name: 'Reading list', kind: 'plugin' }],
+  }, 'asking about an app that does not exist yet is answered, not failed')
   assert.equal(calls.slice(before).some(call => call.method === 'POST'), false, 'reading an unknown app creates nothing')
   await tool.execute({ app: 'reading list', kind: 'plugin', statement: { batch: [{ count: 'books' }] } }, {} as never)
   assert.deepEqual([calls.at(-1)?.path, calls.at(-1)?.body], [`/api/data/v1/apps/${APP}/run`, { batch: [{ count: 'books' }] }], 'a read batch reaches the existing app by name, ignoring letter case')

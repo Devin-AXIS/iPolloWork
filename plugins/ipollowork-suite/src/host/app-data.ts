@@ -197,7 +197,7 @@ async function signedIn<T>(work: () => Promise<T>): Promise<T> {
   }
 }
 
-const READS = new Set(['get', 'find', 'count', 'aggregate', 'info', 'me'])
+const READS = new Set(['get', 'find', 'count', 'aggregate', 'info', 'me', 'preview'])
 /** Whether a statement or batch only reads; reads never create an app. */
 function reads(statement: Record<string, unknown>): boolean {
   const list = Array.isArray(statement.batch) ? (statement.batch as Record<string, unknown>[]) : [statement]
@@ -235,6 +235,7 @@ export function appDataTool(
       'define also takes "users":["read","create","own"] for visitors signed in with their iPollo account: read every record, create one, or read and change the records they created (see the skill for the sign-in code);',
       '{"grant":"admin","email":"a@b.c"} makes that account an administrator of the app, who may change every record from the page; other role names are labels the page reads with {"me":true}; {"revoke":"a@b.c"} removes the role; {"origins":["https://example.com"]} allows sign-in from a page on its own domain;',
       '{"drop":"bookings"}; {"info":true} lists collections, fields, roles, the endpoint, the public key and the sign-in address;',
+      '{"preview":"user"} or {"preview":"admin"} returns a two-hour visitor token for testing the page signed in, as an ordinary visitor or as an administrator;',
       '{"batch":[…]} runs up to 20 statements atomically.',
       'Where operators: =, !=, >, >=, <, <=, in, contains (text); null matches a missing field. Records also carry id, version, createdAt and updatedAt.',
       'Errors name the existing collections and fields so the statement can be corrected.',
@@ -264,6 +265,13 @@ export function appDataTool(
             }
           }
           const { app, others } = await service.find(args.app, args.organization, signal)
+          // Models look before they write; an app that does not exist yet is an answer, not a failure.
+          if (!app && 'info' in args.statement)
+            return {
+              app: null,
+              note: `No app is named "${args.app}" yet. The first define, insert or upsert creates it; reads never do.`,
+              existing: others.map(item => ({ name: item.name, kind: item.kind })),
+            }
           if (!app)
             throw new AppDataRejection('DATA_APP_NOT_FOUND', 404,
               `No app is named "${args.app}" yet; reads do not create apps, and the first write does. Existing apps: ${others.map(item => `${item.name} (${item.kind})`).join(', ') || 'none'}.`)
@@ -320,7 +328,7 @@ return {
 
 Host half (\`index.js\`): \`export const inject = ['ipolloData']\` and call \`ctx.ipolloData.open(name)\` the same way.
 
-\`open(name, { organization })\` returns \`{ id, run(statement), collection(name) }\`. A collection has \`insert(values)\`, \`get(id)\`, \`find({ where, search, fields, sort, limit, after })\` returning \`{ items, next }\`, \`count(where)\`, \`aggregate({ where, group, sum, avg, min, max, sort, limit })\` returning rows like \`{ key, count, sum: { reps: 36 } }\`, \`update(id, set, version?)\`, \`increment(id, { stock: -1 })\`, \`upsert(id, values, version?)\` and \`delete(id, version?)\`. Use \`upsert\` with a fixed id for single documents such as settings or today's plan. Calls use the signed-in account and need no key; signed out, they reject with \`IPW_SIGN_IN_REQUIRED\`, so show a sign-in hint instead of failing silently. Open inside handlers, not at load. Rejections carry \`code\` and a message that explains the fix.
+\`open(name, { organization })\` returns \`{ id, run(statement), collection(name) }\`. A collection has \`insert(values)\`, \`get(id)\`, \`find({ where, search, fields, sort, limit, after })\` returning \`{ items, next }\`, \`count(where)\`, \`aggregate({ where, group, sum, avg, min, max, sort, limit })\` returning rows like \`{ key, count, sum: { reps: 36 } }\`, \`update(id, set, version?)\`, \`increment(id, { stock: -1 })\`, \`upsert(id, values, version?)\` and \`delete(id, version?)\`. Use \`upsert\` with a fixed id for single documents such as settings or today's plan. \`ipolloData\` is not listed by service inspection, so do not look it up there; use it as written here. Calls use the signed-in account and need no key; signed out, they reject with \`IPW_SIGN_IN_REQUIRED\`, so show a sign-in hint instead of failing silently. Open inside handlers, not at load. Rejections carry \`code\` and a message that explains the fix.
 
 Before writing plugin code you may create the collections with \`app_data\` (\`kind: "plugin"\`, the same app name) and inspect them with \`{"info":true}\`.
 
@@ -339,7 +347,7 @@ async function data(statement) {
     body: JSON.stringify(statement),
   })
   const body = await response.json()
-  if (!response.ok) throw new Error(body.error)
+  if (!response.ok) throw Object.assign(new Error(body.error), { code: body.code, status: response.status })
   return body
 }
 await data({ insert: 'bookings', values: { name, date, slot } })
@@ -362,6 +370,11 @@ const { user } = await data({ me: true }) // null, or { id, name, role }
 - On a 401 remove the token and offer sign-in again. Signing out is removing the token.
 - Roles: \`role\` is \`user\` unless granted. With \`app_data\`, \`{"grant":"admin","email":"a@b.c"}\` makes an account an administrator, who reads and changes every record of the app from the page (not its collections); the app's owner always is one. Other names such as \`staff\` are labels for the page's own logic. The owner can also manage administrators on the Data page.
 - A page on its own domain must be allowed once: \`{"origins":["https://example.com"]}\`. Pages published by iPollo and localhost need nothing.
+
+- A record a signed-in visitor creates belongs to them, also in a collection that allows public create.
+- To test the signed-in page yourself, run \`{"preview":"user"}\` or \`{"preview":"admin"}\` with \`app_data\` and open the page with \`#ipollo_token=<token>\`; the token is yours and lasts two hours.
+
+A rejected call answers \`{ "error": "<explanation>", "code": "<CODE>" }\`. Handle these in page code: \`DATA_DUPLICATE\` (409, a \`unique\` value such as a booked slot is taken), \`DATA_RATE_LIMITED\` (429, try again shortly), \`DATA_SIGNIN_EXPIRED\` (401, sign in again), \`DATA_FORBIDDEN\` (403, this visitor may not do that), \`DATA_APP_SUSPENDED\` (403, the service is paused). Anything else is a mistake in the statement; its \`error\` text says what to fix.
 
 Every visitor can see the public key. It reads or creates only in collections whose \`public\` allows it, writes one record per request and is rate-limited per visitor. Visitors cannot update or delete, so keep private data out of publicly readable collections. A \`unique\` collection rejects a second record with the same values, which suits booked time slots. The owner reviews records with \`app_data\` or the Data page.
 `,

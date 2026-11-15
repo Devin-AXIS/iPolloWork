@@ -486,6 +486,13 @@ test("visitors sign in with their iPollo account, keep their own records, and ap
     assert.equal((await run({ grant: "admin", email: "nobody@club.test" })).data.code, "DATA_USER_NOT_FOUND");
     assert.equal((await as(await enter(owner))({ me: true })).data.user.role, "admin", "the owner administers the app without a grant");
 
+    const tryAs = async (role: string) => as((await run({ preview: role })).data.token as string);
+    assert.equal((await (await tryAs("admin"))({ me: true })).data.user.role, "admin");
+    const plain = await tryAs("user");
+    assert.equal((await plain({ me: true })).data.user.role, "user", "a manager can try the page as an ordinary visitor");
+    assert.equal((await plain({ find: "staff_notes" })).status, 403);
+    assert.equal((await annDoes({ preview: "admin" })).status, 403);
+
     const annToken = await enter(ann);
     assert.equal((await as(annToken.slice(0, -2) + "xx")({ me: true })).data.code, "DATA_SIGNIN_EXPIRED");
     const other = (await call<{ app: Json }>("/api/data/v1/apps", { token: owner.token, body: { name: "Other", kind: "site" } })).data.app;

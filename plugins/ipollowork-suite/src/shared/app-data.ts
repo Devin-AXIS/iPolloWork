@@ -115,6 +115,7 @@ export type DataStatement =
   | { grant: string; email: string }
   | { revoke: string }
   | { origins: string[] }
+  | { preview: 'admin' | 'user' }
 
 /** Typed access to one collection of an opened app. */
 export interface DataCollection {
