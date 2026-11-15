@@ -2,6 +2,7 @@
 import { useSyncExternalStore } from "react";
 import type { ClientContext } from "./native.ts";
 const en = {
+  heroTitle: "Turn ideas into outcomes",
   connections: "Service connections",
   market: "iPolloWork market",
   intro: "Native DSH plugins, selected by iPolloWork.",
@@ -98,6 +99,7 @@ const en = {
   paymentPending: "Waiting for payment",
 };
 const zh: typeof en = {
+  heroTitle: "把想法变成成果",
   connections: "服务连接",
   market: "iPolloWork 市场",
   intro: "由 iPolloWork 收录的 DSH 原生插件。",

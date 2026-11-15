@@ -1,8 +1,10 @@
-/** Reversible iPolloWork identity: black and white surfaces with one blue accent, iPolloWork's mark and name in DSH's
- * brand places, and the page title. DSH retains its layout and light/dark preference. */
+/** Reversible iPolloWork identity: black and white surfaces with one blue accent, the blue and gold home glow and
+ * composer edge, iPolloWork's mark, wordmark and home title in DSH's brand places, and the page title. DSH retains its
+ * layout and light/dark preference. */
 import type { ClientContext } from './native.ts'
 import type { ReactNode } from 'react'
 import css from './suite.module.css'
+import { useCopy } from './locale.ts'
 import './brand.css'
 const pair = (light: string, dark: string) => ({ light, dark })
 const MARK = '/ipollowork-suite/assets/mark.svg'
@@ -21,10 +23,10 @@ export function mountTheme(ctx: ClientContext): void {
     '--ipw-text': pair('#18181b', '#ededef'), '--ipw-muted': pair('#71717a', '#a1a1aa'),
     '--ipw-border': pair('#ececef', '#2f2f33'), '--ipw-accent': pair('#2563eb', '#7aa2ff'),
     '--ipw-accent-ink': pair('#ffffff', '#0b1220'), '--ipw-wash': pair('#eff4ff', '#1b2333'),
-    '--ipw-gradient-start': pair('#e4e4e7', '#34343a'), '--ipw-gradient-end': pair('#e4e4e7', '#34343a'),
+    '--ipw-gradient-start': pair('#7fcdff', '#5e98cb'), '--ipw-gradient-end': pair('#ffe67d', '#c7ae53'),
     '--ipw-shadow': pair('0 1px 2px rgba(0,0,0,.03),0 6px 18px -10px rgba(0,0,0,.08)', '0 1px 2px rgba(0,0,0,.24)'),
-    '--ipw-glow-blue': pair('rgba(96,165,250,.11)', 'rgba(96,165,250,.05)'),
-    '--ipw-glow-gold': pair('transparent', 'transparent'),
+    '--ipw-glow-blue': pair('rgba(127,205,255,.14)', 'rgba(127,205,255,.05)'),
+    '--ipw-glow-gold': pair('rgba(255,230,125,.12)', 'rgba(255,230,125,.04)'),
   }), 'ipollowork-suite: palette')
   ctx.effect(() => { document.body.setAttribute('data-ipw-suite', ''); return () => document.body.removeAttribute('data-ipw-suite') }, 'ipollowork-suite: scope')
   ctx.effect(() => {
@@ -39,7 +41,7 @@ export function mountTheme(ctx: ClientContext): void {
   }, 'ipollowork-suite: page title')
   ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark', priority: -100 }, BrandMark))
   ctx.slots.inject('sidebar.brand.name', () => ctx.slots.register({ name: 'sidebar.brand.name', priority: -100 }, BrandName))
-  ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -100 }, HeroBrand))
+  ctx.slots.inject('conversation.hero.brand.mark', () => ctx.slots.register({ name: 'conversation.hero.brand.mark', priority: -100 }, heroBrand(ctx)))
   ctx.slots.inject('conversation.hero.frame', () => ctx.slots.register({ name: 'conversation.hero.frame', id: 'ipollowork-ambient' }, AmbientFrame))
 }
 function AmbientFrame({ children, hero }: { children: ReactNode; hero: boolean }) {
@@ -47,7 +49,15 @@ function AmbientFrame({ children, hero }: { children: ReactNode; hero: boolean }
 }
 function BrandMark({ size }: { size: number }) { return <img className={css.brandMark} width={size} height={size} src={MARK} alt=""/> }
 function BrandName() { return <span className={css.brandName}>iPolloWork</span> }
-/** The home headline: the mark and the product name replace DSH's whale and slogan, which brand.css hides. */
-function HeroBrand({ size }: { size: number }) {
-  return <span data-ipw-hero=""><img width={Math.round(size * .82)} height={Math.round(size * .82)} src={MARK} alt=""/><span>iPolloWork</span></span>
+/**
+ * The home headline of the original iPolloWork home: the wordmark above the localized title. It replaces DSH's whale
+ * and slogan, which brand.css hides.
+ * @param ctx - supplies the active locale.
+ * @returns the slot component.
+ */
+function heroBrand(ctx: ClientContext) {
+  return function HeroBrand() {
+    const { heroTitle } = useCopy(ctx)
+    return <span data-ipw-hero=""><span data-ipw-wordmark="" role="img" aria-label="iPolloWork"/><span data-ipw-hero-title="">{heroTitle}</span></span>
+  }
 }
