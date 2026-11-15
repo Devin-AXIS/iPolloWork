@@ -29,7 +29,7 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
   const service = <p className={css.authService}><span data-state={error === 'IPW_SERVICE_UNAVAILABLE' ? 'down' : 'up'}/>{t.service} · <a href={origin} target="_blank" rel="noreferrer">{host}</a></p>
   if (account?.status === 'signed-in') {
     return <section className={`${css.authPage} ${css.memberPage}`}>
-      <MembershipPanel key={account.user.id} account={account} t={t} refreshAccount={refresh} signOut={signOut}/>
+      <MembershipPanel key={account.user.id} account={account} t={t} refreshAccount={refresh} signOut={signOut} service={service}/>
     </section>
   }
   return <section className={css.authPage}>

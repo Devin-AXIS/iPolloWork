@@ -16,8 +16,8 @@ export function AccountArt() {
   return <span data-ipw-art="" aria-hidden="true"><img src="/ipollowork-suite/assets/mark.svg" width="22" height="22" alt="" data-ipw-mark=""/></span>
 }
 
-/** Restrained hues for identifier tiles; purple is excluded from the suite palette. */
-const HUES = [205, 172, 148, 38, 14, 218, 190, 28]
+/** Blue hues for identifier tiles; the suite palette is black and white with one blue accent. */
+const HUES = [200, 206, 212, 218, 224, 230, 214, 222]
 /** Stable small glyph tile for a provider or person: an initial on a muted hue derived from the identifier. */
 export function Monogram({ id, label, size = 28, round = false }: { id: string; label: string; size?: number; round?: boolean }) {
   let hash = 0

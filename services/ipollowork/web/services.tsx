@@ -82,7 +82,7 @@ const presets = [
 ] as const;
 const chatRoute = [{ method: "POST", path: "/chat/completions", points: 1 }];
 /** Defaults for models added from a provider listing; edit them under advanced settings. */
-const HUES = [205, 172, 148, 38, 14, 218, 190, 28];
+const HUES = [200, 206, 212, 218, 224, 230, 214, 222];
 
 /** Stable initial tile for a provider. */
 export function Glyph({

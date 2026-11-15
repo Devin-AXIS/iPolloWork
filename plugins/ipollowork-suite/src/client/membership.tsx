@@ -1,5 +1,5 @@
 /** Native account membership, metered allowance and external checkout. */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AccountState } from '../shared/types.ts'
 import type { MembershipState } from '../shared/membership.ts'
 import type { Labels } from './locale.ts'
@@ -8,10 +8,10 @@ import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import './membership.css'
 
 /** Keep purchase and usage in the existing account page; secrets stay in the Host.
- * @param props Signed-in account, localized copy and shared account refresh.
+ * @param props Signed-in account, localized copy, shared account refresh and the account-service line for the footer.
  * @returns Current membership, day/week usage and an expandable plan list.
  */
-export function MembershipPanel({ account, t, refreshAccount, signOut }: { account: Extract<AccountState, { status: 'signed-in' }>; t: Labels; refreshAccount(): Promise<void>; signOut(): Promise<void> }) {
+export function MembershipPanel({ account, t, refreshAccount, signOut, service }: { account: Extract<AccountState, { status: 'signed-in' }>; t: Labels; refreshAccount(): Promise<void>; signOut(): Promise<void>; service?: ReactNode }) {
   const [data, setData] = useState<MembershipState>()
   const [error, setError] = useState<string>()
   const [notice, setNotice] = useState<string>()
@@ -66,31 +66,30 @@ export function MembershipPanel({ account, t, refreshAccount, signOut }: { accou
   const balance = data?.points.balance ?? account.points
   const member = data?.memberships[0]
   const peak = Math.max(1, ...(data?.history.map(day => day.used) ?? []))
+  const name = account.user.name || account.user.email
+  // One flat column of setting rows, like DSH's own settings pages: identity, points and membership, then usage.
   return <div className="consumer-account" data-authenticated="true" data-embedded="true">
-    <section className="consumer-card" aria-label={t.membership}>
-      <header className="consumer-identity"><span className="consumer-avatar" aria-hidden="true">{(account.user.name || account.user.email).slice(0, 1).toUpperCase()}</span><div><strong>{account.user.name || account.user.email}</strong><span>{account.user.email}</span></div><span className={`consumer-plan-badge ${member ? 'is-pro' : ''}`}>{member?.name ?? t.noMembership}</span></header>
-      <div className="consumer-points"><span>{t.points}</span><strong>{balance === null ? '—' : number(balance)}<small>{t.pointsUnit}</small></strong><p>{t.accountIntro}</p></div>
-      <dl className="consumer-entitlements"><div><dt>{t.membership}</dt><dd>{member?.name ?? (data ? t.noMembership : t.loading)}</dd></div>{member && <div><dt>{t.membershipUntil}</dt><dd>{date(member.expiresAt)}</dd></div>}</dl>
-      <div className="consumer-primary-actions"><button type="button" className="consumer-button" data-primary="true" onClick={() => setShowPlans(true)} disabled={!data}>{member ? t.renewMembership : t.openMembership}</button></div>
+    <header className="consumer-identity"><span className="consumer-avatar" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span><div><strong>{name}</strong>{account.user.name && <span>{account.user.email}</span>}</div><span className={`consumer-plan-badge ${member ? 'is-pro' : ''}`}>{member?.name ?? t.noMembership}</span></header>
+    <section className="consumer-group" aria-label={t.membership}>
+      <div className="consumer-row consumer-points"><div><span>{t.points}</span><strong>{balance === null ? '—' : number(balance)}<small>{t.pointsUnit}</small></strong></div><button type="button" className="consumer-button" data-primary="true" onClick={() => setShowPlans(true)} disabled={!data}>{member ? t.renewMembership : t.openMembership}</button></div>
+      <div className="consumer-row"><span>{t.membership}</span><span className="consumer-value">{member ? `${member.name} · ${t.membershipUntil} ${date(member.expiresAt)}` : data ? t.noMembership : t.loading}</span></div>
       {error && <p className="consumer-note" role="alert">{error}</p>}{notice && <p className="consumer-note" role="status">{notice}</p>}
-      <div className="consumer-primary-actions"><button type="button" className="consumer-button" onClick={() => void refreshAccount()}>{t.refresh}</button><button type="button" className="consumer-button" onClick={() => void signOut()}>{t.signOut}</button></div>
     </section>
-    <section className="consumer-card consumer-usage-card" aria-label={t.usageAllowance}>
-      <header className="consumer-section-heading"><h2>{t.usageAllowance}</h2></header>
+    <section className="consumer-group" aria-label={t.usageAllowance}>
+      <h2>{t.usageAllowance}</h2>
       {data ? (['daily', 'weekly'] as const).map(kind => {
         const value = data.usage[kind], label = kind === 'daily' ? t.dailyUsage : t.weeklyUsage
         const percent = value.limit ? Math.min(100, Math.max(0, value.used / value.limit * 100)) : 0
         const minutes = Math.ceil((value.resetsAt - Date.now()) / 60000)
-        return <section className="consumer-allowance" aria-label={label} key={kind}>
+        return <section className="consumer-row consumer-allowance" aria-label={label} key={kind}>
           <div className="consumer-allowance-heading"><h3>{label}</h3><strong>{value.limit === null ? t.noLimit : `${Math.round(percent)}${t.usedPercent}`}</strong></div>
           {value.limit !== null && <div className="consumer-allowance-bar" role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={value.limit} aria-valuenow={Math.min(value.used, value.limit)}><span style={{ width: `${percent}%` }}/></div>}
-          <div className="consumer-allowance-meta"><span>{number(value.used)}{value.limit === null ? '' : ` / ${number(value.limit)}`} {t.pointsUnit}</span><span>{minutes > 0 && minutes < 60 ? `${minutes} ${t.minutesToReset}` : `${t.resetsAt} ${date(value.resetsAt)}`}</span></div>
-          {value.reserved > 0 && <p className="consumer-note">{t.reservedUsage} {number(value.reserved)} {t.pointsUnit}</p>}
+          <div className="consumer-allowance-meta"><span>{number(value.used)}{value.limit === null ? '' : ` / ${number(value.limit)}`} {t.pointsUnit}{value.reserved > 0 ? ` · ${t.reservedUsage} ${number(value.reserved)}` : ''}</span><span>{minutes > 0 && minutes < 60 ? `${minutes} ${t.minutesToReset}` : `${t.resetsAt} ${date(value.resetsAt)}`}</span></div>
         </section>
       }) : <p className="consumer-note">{error ? t.unavailable : t.loading}</p>}
-      {data && <figure className="consumer-weekly"><figcaption><span>{t.lastSevenDays}</span><small>{t.pointsUnit}</small></figcaption><ol aria-label={t.lastSevenDays}>{data.history.map(day => <li key={day.date} title={`${day.date}: ${number(day.used)}`}><strong>{day.used ? number(day.used) : ''}</strong><div><span style={{ height: day.used > 0 ? `${Math.max(4, day.used / peak * 100)}%` : '2px' }} className={day.used ? 'is-used' : ''}/></div><time dateTime={day.date}>{new Intl.DateTimeFormat(t.locale, { month: 'numeric', day: 'numeric', timeZone: 'UTC' }).format(new Date(day.date + 'T00:00:00Z'))}</time></li>)}</ol></figure>}
-      {data && <footer className="consumer-usage-total"><span>{t.weeklyUsage}</span><strong>{number(data.usage.weekly.used)} <small>{t.pointsUnit}</small></strong></footer>}
+      {data && <figure className="consumer-row consumer-weekly"><figcaption><span>{t.lastSevenDays}</span><small>{t.pointsUnit}</small></figcaption><ol aria-label={t.lastSevenDays}>{data.history.map(day => <li key={day.date} title={`${day.date}: ${number(day.used)}`}><strong>{day.used ? number(day.used) : ''}</strong><div><span style={{ height: day.used > 0 ? `${Math.max(4, day.used / peak * 100)}%` : '2px' }} className={day.used ? 'is-used' : ''}/></div><time dateTime={day.date}>{new Intl.DateTimeFormat(t.locale, { month: 'numeric', day: 'numeric', timeZone: 'UTC' }).format(new Date(day.date + 'T00:00:00Z'))}</time></li>)}</ol></figure>}
     </section>
+    <footer className="consumer-footer">{service}<span><button type="button" className="consumer-quiet" onClick={() => void refreshAccount()}>{t.refresh}</button><button type="button" className="consumer-quiet" onClick={() => void signOut()}>{t.signOut}</button></span></footer>
     {showPlans && data && <Modal open title={t.membershipPlans} closeLabel={t.hidePlans} onClose={() => { if (!busy) setShowPlans(false) }} className="consumer-subscribe-dialog">
       <label className="consumer-note">{t.paymentMethod}<select value={provider} onChange={event => setProvider(event.target.value as 'stripe' | 'alipay' | 'wechat')}>{data.channels.map(channel => <option key={channel.id} value={channel.id}>{channel.name}{channel.configured ? '' : ` · ${t.paymentUnavailable}`}</option>)}</select></label><div className="consumer-plan-options">{!data.plans.length && <p className="consumer-note">{t.noMembershipPlans}</p>}{data.plans.map(plan => <section key={plan.id} className="consumer-plan-option"><h3>{plan.name}</h3><div className="consumer-price">{new Intl.NumberFormat(t.locale, { style: 'currency', currency: plan.currency }).format(plan.amount / 100)}<span>/ {plan.days} {t.planDays}</span></div><p className="consumer-note">{number(plan.points)} {t.pointsUnit}</p><p className="consumer-note">{t.dailyLimit} {plan.dailyPoints === null ? t.noLimit : number(plan.dailyPoints)} · {t.weeklyLimit} {plan.weeklyPoints === null ? t.noLimit : number(plan.weeklyPoints)}</p><button type="button" className="consumer-button" data-primary="true" disabled={!data.channels.find(channel => channel.id === provider)?.configured || !!busy} onClick={() => void purchase(plan.id, provider)}>{busy === plan.id ? t.loading : data.channels.find(channel => channel.id === provider)?.configured ? t.buyMembership : t.paymentUnavailable}</button>{plan.pointsCost !== null && <button type="button" className="consumer-button" disabled={!!busy || balance === null || balance < plan.pointsCost} onClick={() => void purchase(plan.id, 'points')}>{t.redeemMembership} · {number(plan.pointsCost)}</button>}</section>)}</div>
       {checkout && <div className="consumer-checkout">{checkout.url && <a href={checkout.url} target="_blank" rel="noopener noreferrer" className="consumer-button" data-primary="true">{t.goToPayment}</a>}{checkout.qrCode && <PaymentQr value={checkout.qrCode} label={t.paymentMethod} error={t.error}/>}<small className="consumer-note">{t.paymentReturn}</small><button type="button" className="consumer-button" disabled={!!busy} onClick={() => void syncPayment()}>{t.syncPayment}</button></div>}
@@ -102,7 +101,7 @@ export function MembershipPanel({ account, t, refreshAccount, signOut }: { accou
 function PaymentQr({ value, label, error }: { value: string; label: string; error: string }) {
   const [image, setImage] = useState<string>()
   const [failed, setFailed] = useState(false)
-  useEffect(() => { let active = true; setImage(undefined); setFailed(false); void import('qrcode').then(qr => qr.toDataURL(value, { width: 216, margin: 3, errorCorrectionLevel: 'M', color: { dark: '#253029', light: '#ffffff' } })).then(url => { if (active) setImage(url) }).catch(() => { if (active) setFailed(true) }); return () => { active = false } }, [value])
+  useEffect(() => { let active = true; setImage(undefined); setFailed(false); void import('qrcode').then(qr => qr.toDataURL(value, { width: 216, margin: 3, errorCorrectionLevel: 'M', color: { dark: '#18181b', light: '#ffffff' } })).then(url => { if (active) setImage(url) }).catch(() => { if (active) setFailed(true) }); return () => { active = false } }, [value])
   if (failed) return <p role="alert">{error}</p>
   return image ? <img src={image} width={216} height={216} alt={label} className="consumer-payment-qr"/> : null
 }

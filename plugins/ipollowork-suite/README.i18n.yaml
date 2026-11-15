@@ -12,14 +12,14 @@
   en: 9c6ddef090a98da1
   zh: 5b2c8bf770a0f108
 /ipollowork-dsh-suite/configuration:
-  en: 203a62ebc431abb6
-  zh: 00d53714bdeba474
+  en: f04e780fdc312a3d
+  zh: 91cd3bdf616c7bad
 /ipollowork-dsh-suite/official-integration:
   en: 3f0a8c8eb69904be
   zh: 8096f716fb90cfda
 /ipollowork-dsh-suite/account-behavior:
-  en: d6d213449d437cdb
-  zh: 8792c9c4ef75d5f3
+  en: 9ef4f8ab0e76d9b4
+  zh: c74908a74519ef8f
 /ipollowork-dsh-suite/limits:
   en: d2417f053855a3a7
   zh: 7c61edff0577f68b
@@ -36,8 +36,11 @@
   en: 63b276efb4125362
   zh: 8f0fecfee07a27ed
 /ipollowork-dsh-suite/http-capabilities:
-  en: 43281082c00a6fb2
-  zh: 7cc9138cfb9ff6b9
+  en: b409cab5363ad569
+  zh: 6f3831d59a23c682
 /ipollowork-dsh-suite/app-data:
   en: 2d7b7141dc8bc868
   zh: 8e75b204903ce5a5
+/ipollowork-dsh-suite/sandbox-plugins:
+  en: e2022da53016aedb
+  zh: b5a2b9382f7c1697

@@ -22,6 +22,7 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
   let guard:
     | ((call: ToolCall, next: () => Promise<Decision>) => Promise<Decision>)
     | undefined;
+  let indexTap: ((html: string) => string) | undefined;
   const disposers: (() => void | Promise<void>)[] = [];
   const subscriptions: string[] = [];
   const ctx: HostContext = {
@@ -52,9 +53,16 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
     fiber: { entry: { id: "entry:suite" } },
     webServer: {
       register: (route) => {
+        if (route.auth === "anonymous") return () => {};
         handler = route.handler;
         return () => {
           handler = undefined;
+        };
+      },
+      tapIndex: (transform) => {
+        indexTap = transform;
+        return () => {
+          indexTap = undefined;
         };
       },
     },
@@ -87,6 +95,7 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
   assert(address && typeof address !== "string");
   const base = `http://127.0.0.1:${address.port}/ipollowork-suite`;
   try {
+    assert.match(indexTap?.("<head><title>DeepSeek Harness</title></head>") ?? "", /<title>iPolloWork<\/title>/);
     assert.equal((await fetch(base + "/info")).status, 401);
     assert.equal(
       (
@@ -134,6 +143,7 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
       404,
     );
     assert.equal(guard, undefined);
+    assert.equal(indexTap, undefined);
     assert.equal((await fetch(base + "/membership", { headers: { Cookie: "owner=test" } })).status, 404);
   } finally {
     await new Promise<void>((done, reject) =>

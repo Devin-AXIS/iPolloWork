@@ -48,6 +48,7 @@ import { Config, resolveConfig, type Config as ConfigInput } from "./config.ts";
 import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from "./app-data.ts";
 import type { IpolloData } from "../shared/app-data.ts";
 import { readMarket, type NativePluginManager } from "./market.ts";
+import { BRAND_PATH, brandIndex, serveBrand } from "./brand.ts";
 import { AppDataRejection, SuiteError } from "./errors.ts";
 import {
   blocksSuiteManagement,
@@ -119,11 +120,13 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
     register(route: {
       kind: "prefix";
       path: string;
+      auth?: "anonymous";
       handler(
         request: IncomingMessage,
         response: ServerResponse,
       ): Promise<void>;
     }): () => void;
+    tapIndex(transform: (html: string) => string): () => void;
   };
   connection: {
     admit(request: IncomingMessage): { rejection: number } | { peer: object };
@@ -343,6 +346,13 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   if (typeof runtime.version !== "string" || !semver.valid(runtime.version))
     throw new SuiteError("IPW_INVALID_RUNTIME_VERSION", 500);
   const runtimeVersion = runtime.version;
+  if (config.theme) {
+    ctx.effect(
+      () => ctx.webServer.register({ kind: "prefix", path: BRAND_PATH, auth: "anonymous", handler: serveBrand }),
+      "ipollowork-suite: brand files",
+    );
+    ctx.effect(() => ctx.webServer.tapIndex(brandIndex), "ipollowork-suite: brand page");
+  }
   ctx.effect(
     () =>
       ctx.webServer.register({

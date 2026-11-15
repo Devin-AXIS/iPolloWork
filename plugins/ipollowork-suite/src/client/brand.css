@@ -1,0 +1,17 @@
+/* iPolloWork artwork in DSH's brand places. Rules apply only while the suite theme marks the body. */
+body[data-ipw-suite] [data-home-whale] { display: none; }
+body[data-ipw-suite] [data-ipw-hero] { display: inline-flex; align-items: center; gap: 12px; font-weight: 600; letter-spacing: -.025em; }
+body[data-ipw-suite] [data-ipw-hero] img { display: block; flex-shrink: 0; }
+/* The hero mark slot shares a line with DSH's slogan and preview badge; the product name replaces both. */
+body[data-ipw-suite] span:has([data-ipw-hero]) + span { display: none; }
+/* The running status shows the mark instead of DSH's whale tail. */
+body[data-ipw-suite] [data-chat-running] > span:last-child > span:first-child {
+  background: currentColor;
+  -webkit-mask: url('../../assets/mark.svg') center / 76% no-repeat;
+  mask: url('../../assets/mark.svg') center / 76% no-repeat;
+  animation: ipw-running 1.6s ease-in-out infinite;
+}
+body[data-ipw-suite] [data-chat-running] > span:last-child > span:first-child > * { display: none; }
+body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:first-child { animation: none; }
+@keyframes ipw-running { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { body[data-ipw-suite] [data-chat-running] > span:last-child > span:first-child { animation: none; } }
