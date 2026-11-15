@@ -23,6 +23,15 @@ async function withDirectory(action: (directory: string) => Promise<void>): Prom
 }
 
 describe('Desktop local packaging configuration', () => {
+  it('loads the product feed from the platform file instead of the parent process', async () => {
+    await withDirectory(async directory => {
+      await writeFile(join(directory, '.env.macos'), 'DSH_DESKTOP_UPDATE_URL=https://updates.example.com/ipollo/\nDSH_DESKTOP_UPDATE_CHANNEL=stable\n')
+      const selected = loadDesktopPackageEnvironment('darwin', { DSH_DESKTOP_UPDATE_URL: 'https://wrong.example.com/' }, directory)
+      expect(selected.DSH_DESKTOP_UPDATE_URL).toBe('https://updates.example.com/ipollo/')
+      expect(selected.DSH_DESKTOP_UPDATE_CHANNEL).toBe('stable')
+    })
+  })
+
   it('loads file-owned compression and defaults to fast Windows archive compression', async () => {
     expect(resolveWindowsPackageSettings({}).compressionLevel).toBe(3)
     await withDirectory(async (directory) => {

@@ -7,11 +7,23 @@ import {
   resolveDesktopAutoUpdateEnvironment,
   resolveDesktopAutoUpdateTarget,
   resolveDesktopUploadConfig,
-} from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
+} from '../src/desktop-auto-update-environment.mjs'
 
 const RELEASE_ID = '0123456789abcdef0123456789abcdef'
 
 describe('desktop auto-update environment', () => {
+  it('uses the explicitly configured product feed for signed releases', () => {
+    expect(resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+      DSH_DESKTOP_UPDATE_URL: 'https://github.com/Devin-AXIS/iPolloWork/releases/latest/download',
+    }, 'darwin', 'arm64').publicUrl).toBe('https://github.com/Devin-AXIS/iPolloWork/releases/latest/download/')
+  })
+
+  it.each(['http://updates.example.com', 'https://user:secret@example.com', 'https://example.com/?token=secret', 'invalid'])
+  ('rejects an invalid product feed %s', url => {
+    expect(() => resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+      DSH_DESKTOP_UPDATE_URL: url }, 'darwin', 'arm64')).toThrow(/DSH_DESKTOP_UPDATE_URL/u)
+  })
+
   it.each([undefined, 'test'])('requires a release ID for deployment %s', (deployment) => {
     const environment = { DSH_DESKTOP_AUTO_UPDATE_ENV: deployment, DOWNLOAD_TEST_ORIGIN: 'https://updates.example.com',
       DOWNLOAD_TEST_COS_BUCKET: 'test-bucket' }

@@ -152,6 +152,17 @@ function httpsOrigin(value, name) {
   return parsed.origin
 }
 
+/** Validate an explicit product feed without inheriting the upstream download service. */
+function productUpdateUrl(value) {
+  if (value === undefined) return undefined
+  let url
+  try { url = new URL(value) } catch { throw new Error('desktop auto-update: DSH_DESKTOP_UPDATE_URL must be an HTTPS URL') }
+  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.search || url.hash) {
+    throw new Error('desktop auto-update: DSH_DESKTOP_UPDATE_URL must be an HTTPS URL without credentials, query or fragment')
+  }
+  return `${url.href.replace(/\/+$/u, '')}/`
+}
+
 /**
  * Resolve the public updater URL and object prefixes for one release target.
  * @param {NodeJS.ProcessEnv} env - Packaging or upload environment.
@@ -187,7 +198,7 @@ export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
     origin,
     keyPrefix,
     binaryKeyPrefix: `${releasePrefix}/bin/${target}${channel === 'stable' ? '/stable' : ''}`,
-    publicUrl: `${origin}/${keyPrefix}/`,
+    publicUrl: productUpdateUrl(env.DSH_DESKTOP_UPDATE_URL) ?? `${origin}/${keyPrefix}/`,
   }
 }
 
