@@ -1,4 +1,6 @@
-/** Stage local-branded DSH packages for unsigned Desktop builds without a publication record. */
+/** Stage product packages and verified native payloads for Desktop builds. */
+import { stageCuaHelper } from './stage-cua-helper.ts'
+import { stageWindowsCuaHelper } from './stage-windows-cua-helper.ts'
 
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -24,6 +26,14 @@ async function main(): Promise<void> {
   readClientBuildRecord(upstream)
   const destination = resolve(root, values.out)
   const packed = await packFamilyMembers(upstream, releaseFamily('dsh'), destination, concurrency)
+  if (process.platform === 'darwin') {
+    const version = JSON.parse(readFileSync(resolve(upstream, 'packages/experimental/cua-macos/package.json'), 'utf8')).version
+    await stageCuaHelper(resolve(destination, `deepseek-ai-dsh-cua-macos-${version}.tgz`), resolve(root, 'integrations/desktop/.desktop-build/cua-helper'))
+  }
+  if (process.platform === 'win32') {
+    const version = JSON.parse(readFileSync(resolve(upstream, 'packages/experimental/cua-windows/package.json'), 'utf8')).version
+    await stageWindowsCuaHelper(resolve(destination, `deepseek-ai-dsh-cua-windows-${version}.tgz`), root)
+  }
   execFileSync(process.execPath, [resolve(root, 'integrations/tooling/desktop-composition.mjs')], { cwd: root, stdio: 'inherit' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'integrations/desktop-host'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })

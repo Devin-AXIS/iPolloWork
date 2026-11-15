@@ -21,3 +21,7 @@ Unsigned Windows x64 builds run on GitHub-hosted Windows through `.github/workfl
 Signed iPollo releases set `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` and `DSH_DESKTOP_UPDATE_CHANNEL=stable`. The packaged updater must never point to the upstream DSH download service. Both Mac architectures share a feed containing their separate ZIP entries.
 
 Design and Video are optional market installs. Desktop packages only the suite and the official runtime closure; it excludes Studio packages, their archive dependencies and bundled installer archives. The dedicated desktop market downloads the pinned Studio releases from GitHub only when the user installs them.
+
+On macOS, run `node integrations/desktop/run.mjs prepare-cua-helper.ts` before packaging. It builds both official Computer Use helper architectures outside the pinned source tree and signs/notarizes them. Packaging rejects missing helpers. At launch, the desktop reuses SHA-256-verified SenseVoice models from the shared `~/.dsh` cache when its isolated cache has no file; existing desktop models remain unchanged.
+
+Windows packaging requires .NET SDK 10 to compile the pinned Computer Use helper; its complete self-contained output is staged in the provider and unpacked beside the app. The release workflow installs the SDK.

@@ -1,5 +1,8 @@
 /** Electron shell: desktop project ownership, custom protocol, windows, and lifecycle. */
 
+import { homedir } from 'node:os'
+import { reuseSpeechCache } from './speech-cache.ts'
+
 import { installFileActions } from './file-actions.ts'
 import { configurationFailure, channelSaveFailure, configurationMessage } from './update-configuration.ts'
 import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
@@ -392,6 +395,7 @@ async function main(): Promise<void> {
   const updateJournal = journalDirectory === undefined ? undefined : new DesktopUpdateJournal(journalDirectory, app.getVersion())
   const resources = runtimeResources()
   const paths = resolveDesktopPaths()
+  await reuseSpeechCache(resources.dsh, join(homedir(), '.dsh'), process.env.DSH_HOME!)
   const development = !app.isPackaged
   const primaryRuntime = development
     ? developmentPrimaryRuntime()
