@@ -372,6 +372,8 @@ test("apps summarize, narrow and count records without reading them all, and kee
     assert.equal((await run({ aggregate: "sets", sum: ["lift"] })).data.code, "DATA_AGGREGATE_UNSUPPORTED");
     assert.deepEqual((await run({ aggregate: "nothing", group: "day" })).data, { items: [] });
 
+    const wide = await run({ find: "sets", limit: 500 });
+    assert.deepEqual([wide.status, wide.data.items.length, wide.data.next], [200, 4, null], "a page larger than the maximum is cut, not refused");
     const narrow = await run({ find: "sets", fields: ["lift", "reps"], sort: "kg", limit: 2 });
     assert.deepEqual(
       narrow.data.items.map((item: Json) => Object.keys(item).sort()),

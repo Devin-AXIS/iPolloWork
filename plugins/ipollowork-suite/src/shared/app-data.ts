@@ -121,7 +121,10 @@ export type DataStatement =
 export interface DataCollection {
   insert(values: Record<string, DataValue>): Promise<DataRecord>
   get(id: string): Promise<DataRecord>
+  /** One page: 20 records unless `limit` says otherwise, at most 100; `next` opens the following page. */
   find(query?: DataQuery): Promise<{ items: DataRecord[]; next: string | null }>
+  /** Every matching record, following the pages; stops at 1,000 records. */
+  all(query?: Omit<DataQuery, 'limit' | 'after'>): Promise<DataRecord[]>
   count(where?: Record<string, DataCondition>): Promise<number>
   /** Totals, averages and counts computed by the service, so the caller does not read every record. */
   aggregate(query?: DataAggregate): Promise<DataAggregateRow[]>
@@ -170,6 +173,16 @@ export function createDataApp(id: string, run: (statement: DataStatement | { bat
       find: async (query = {}) => {
         const value = await run({ find: name, ...query })
         return { items: value.items as DataRecord[], next: value.next as string | null }
+      },
+      all: async (query = {}) => {
+        const items: DataRecord[] = []
+        let after: string | null = null
+        do {
+          const value: Record<string, unknown> = await run({ find: name, ...query, limit: 100, ...(after ? { after } : {}) })
+          items.push(...(value.items as DataRecord[]))
+          after = value.next as string | null
+        } while (after && items.length < 1000)
+        return items
       },
       count: async where => (await run({ count: name, ...(where ? { where } : {}) })).count as number,
       aggregate: async (query = {}) => (await run({ aggregate: name, ...query })).items as DataAggregateRow[],

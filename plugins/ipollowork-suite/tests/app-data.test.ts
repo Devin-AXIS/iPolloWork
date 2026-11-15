@@ -181,6 +181,8 @@ test('a name keeps its app between calls, and a deleted app is opened again', as
   assert.deepEqual(calls.at(-1)?.body, { update: 'books', id: 'b1', inc: { pages: 10 } })
   await books.find({ fields: ['title'], search: 'du' })
   assert.deepEqual(calls.at(-1)?.body, { find: 'books', fields: ['title'], search: 'du' })
+  assert.equal((await books.all({ sort: 'title' })).length, 1)
+  assert.deepEqual(calls.at(-1)?.body, { find: 'books', sort: 'title', limit: 100 }, 'all reads full pages until none remains')
 
   gone.add(`/api/data/v1/apps/${APP}/run`)
   assert.equal(await books.count(), 1, 'a statement on a deleted app opens the app again and runs')

@@ -225,6 +225,7 @@ export function appDataTool(
       'Statements:',
       '{"insert":"bookings","values":{"name":"Ann","slot":10}} (values may be an array of up to 100 records);',
       '{"find":"bookings","where":{"slot":{">=":9},"status":"open"},"search":"ann","sort":"-createdAt","limit":20,"after":"<next from the previous page>"} (search matches the id and any text or number field, ignoring case);',
+      'find returns one page: 20 records by default, at most 100; "next" in the result is the "after" of the following page.',
       '"fields":["name","slot"] on find or get returns only those fields; use it to keep results small.',
       '{"get":"bookings","id":"…"}; {"count":"bookings","where":{…}};',
       '{"aggregate":"orders","where":{…},"group":"day","sum":["total"],"avg":["total"],"min":["total"],"max":["total"],"sort":"-count","limit":50} returns {"items":[{"key":"2026-11-15","count":3,"sum":{"total":96}}]}; without group it returns one row of totals. Use it for totals, rankings and charts instead of reading every record;',
@@ -328,7 +329,7 @@ return {
 
 Host half (\`index.js\`): \`export const inject = ['ipolloData']\` and call \`ctx.ipolloData.open(name)\` the same way.
 
-\`open(name, { organization })\` returns \`{ id, run(statement), collection(name) }\`. A collection has \`insert(values)\`, \`get(id)\`, \`find({ where, search, fields, sort, limit, after })\` returning \`{ items, next }\`, \`count(where)\`, \`aggregate({ where, group, sum, avg, min, max, sort, limit })\` returning rows like \`{ key, count, sum: { reps: 36 } }\`, \`update(id, set, version?)\`, \`increment(id, { stock: -1 })\`, \`upsert(id, values, version?)\` and \`delete(id, version?)\`. Use \`upsert\` with a fixed id for single documents such as settings or today's plan. \`ipolloData\` is not listed by service inspection, so do not look it up there; use it as written here. Calls use the signed-in account and need no key; signed out, they reject with \`IPW_SIGN_IN_REQUIRED\`, so show a sign-in hint instead of failing silently. Open inside handlers, not at load. Rejections carry \`code\` and a message that explains the fix.
+\`open(name, { organization })\` returns \`{ id, run(statement), collection(name) }\`. A collection has \`insert(values)\`, \`get(id)\`, \`find({ where, search, fields, sort, limit, after })\` returning one page \`{ items, next }\` of 20 records by default and at most 100, \`all({ where, search, fields, sort })\` returning every matching record up to 1,000, \`count(where)\`, \`aggregate({ where, group, sum, avg, min, max, sort, limit })\` returning rows like \`{ key, count, sum: { reps: 36 } }\`, \`update(id, set, version?)\`, \`increment(id, { stock: -1 })\`, \`upsert(id, values, version?)\` and \`delete(id, version?)\`. Use \`upsert\` with a fixed id for single documents such as settings or today's plan. \`ipolloData\` is not listed by service inspection, so do not look it up there; use it as written here. Calls use the signed-in account and need no key; signed out, they reject with \`IPW_SIGN_IN_REQUIRED\`, so show a sign-in hint instead of failing silently. Open inside handlers, not at load. Rejections carry \`code\` and a message that explains the fix.
 
 Before writing plugin code you may create the collections with \`app_data\` (\`kind: "plugin"\`, the same app name) and inspect them with \`{"info":true}\`.
 

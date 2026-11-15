@@ -113,7 +113,8 @@ const statements = {
         .string()
         .regex(/^-?[A-Za-z_][A-Za-z0-9_]{0,39}$/)
         .optional(),
-      limit: z.number().int().min(1).max(MAX_PAGE).optional(),
+      // A larger page than the service serves is cut to the maximum; `next` then says more remain.
+      limit: z.number().int().min(1).transform((n) => Math.min(n, MAX_PAGE)).optional(),
       after: z.string().max(4000).optional(),
     })
     .strict(),
@@ -129,7 +130,7 @@ const statements = {
       min: measured.optional(),
       max: measured.optional(),
       sort: z.enum(["key", "-key", "count", "-count"]).optional(),
-      limit: z.number().int().min(1).max(1000).optional(),
+      limit: z.number().int().min(1).transform((n) => Math.min(n, 1000)).optional(),
     })
     .strict(),
   update: z
