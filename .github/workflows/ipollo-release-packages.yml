@@ -8,6 +8,7 @@ on:
         default: v1.0.1
 permissions:
   contents: write
+  actions: write
 jobs:
   windows:
     runs-on: windows-2025
@@ -54,4 +55,12 @@ jobs:
           $files = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
           if ($files.Count -ne 1) { throw 'Expected exactly one verified installer' }
           gh release upload $env:RELEASE_TAG $files.FullName --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Synchronize uploaded installer to mainland mirror
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh workflow run release-mirror.yml --repo $env:GITHUB_REPOSITORY --ref main -f "release_tag=$env:RELEASE_TAG" -f publish_draft=false
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
