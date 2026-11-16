@@ -66,7 +66,9 @@ export function createElectronBuilderConfig(
   if (skipNotarization && (unsigned || resolvedPlatform !== 'darwin')) throw new Error('Skipping notarization requires a signed macOS build')
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
-  const policy = packagesMacOS && unsigned ? undefined : resolveDesktopPolicyEnvironment(env)
+  const packagesLinux = resolvedPlatform === 'linux'
+  if (packagesLinux && !unsigned) throw new Error('desktop package: Linux requires unsigned packaging mode')
+  const policy = packagesLinux || (packagesMacOS && unsigned) ? undefined : resolveDesktopPolicyEnvironment(env)
   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
@@ -113,6 +115,7 @@ export function createElectronBuilderConfig(
     protocols: [{ name: 'iPollo', schemes: ['dsh'] }],
     extraMetadata: {
       productName: 'iPollo',
+      ...(packagesLinux ? { homepage: 'https://ipollo.ai' } : {}),
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
@@ -259,6 +262,9 @@ export function createElectronBuilderConfig(
     },
     linux: {
       category: 'Development',
+      executableName: 'ipollo',
+      icon: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)),
+      artifactName: 'iPollo-${version}-linux-x64-unsigned.AppImage',
       target: ['AppImage'],
     },
     nsis: {

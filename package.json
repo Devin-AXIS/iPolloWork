@@ -17,6 +17,7 @@
     "package:desktop:mac:arm64": "node integrations/desktop/run.mjs package-target.ts mac-arm64",
     "package:desktop:mac:x64": "node integrations/desktop/run.mjs package-target.ts mac-x64",
     "package:desktop:win:x64": "node integrations/desktop/run.mjs package-target.ts win-x64",
+    "package:desktop:linux:x64": "node integrations/desktop/run.mjs package-target.ts linux-x64",
     "check:docs": "node integrations/tooling/check-docs.mjs",
     "package:plugin": "node integrations/tooling/package-plugin.mjs",
     "check:desktop": "node integrations/desktop/run.mjs package-target.ts mac-arm64 --check --unsigned",

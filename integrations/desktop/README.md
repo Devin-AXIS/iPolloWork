@@ -12,6 +12,17 @@ From the repository root, run `npm run setup:build`, then run `node integrations
 
 There is no old iPolloWork profile conversion or downgrade layer. Files and account credentials remain owned by the configured DSH home. The original DeepSeek Harness MIT license is retained in `LICENSE`; product changes are maintained here, independently from the official app tree.
 
+To create the installer copies recognized by the website, run the matching command from the repository root on its native build host after `npm run setup:build` and `npm run build`.
+
+| Target | Command | Website asset |
+| --- | --- | --- |
+| Windows x64 | `npm run package:desktop:win:x64` | `ipollowork-win-x64-<version>.exe` |
+| macOS Apple Silicon | `npm run package:desktop:mac:arm64` | `ipollowork-mac-arm64-<version>.dmg` |
+| macOS Intel | `npm run package:desktop:mac:x64` | `ipollowork-mac-x64-<version>.dmg` |
+| Linux x64 | `npm run package:desktop:linux:x64` | `ipollowork-linux-x86_64-<version>.AppImage` |
+
+The copy is in the build output's `website-installers/` directory. Attach it to the corresponding GitHub release alongside the original update assets. The Windows command accepts `-- --unsigned` and keeps `-unsigned` in that copy's name. The macOS commands require notarization. Linux packages use the pinned iPollo runtime and ship as standalone AppImages without a desktop update feed.
+
 ## Product versions
 
 The current product release is **iPollo 1.0.1** (`1.0.1` in installer metadata). Product and desktop manifests share this version; the bundled DSH runtime retains the version in `integrations/runtime/upstream.json`. Future patch releases use `1.0.1`, `1.0.2`, and so on; display labels may use `1.0.01`, `1.0.02`. Never put leading zeroes into installer metadata, because the updater requires semantic versions.

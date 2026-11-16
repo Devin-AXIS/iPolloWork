@@ -11,4 +11,8 @@ while [ -L "$launcher" ]; do
   esac
 done
 resources=$(CDPATH= cd -- "$(dirname -- "$launcher")/../../.." && pwd -P)
-ELECTRON_RUN_AS_NODE=1 exec "$resources/../MacOS/iPollo" --expose-internals "$resources/app.asar/dsh/node_modules/@ipollo/desktop-host/lib/cli.js" "$@"
+case "$(uname -s)" in
+  Linux) executable="$resources/../ipollo" ;;
+  *) executable="$resources/../MacOS/iPollo" ;;
+esac
+ELECTRON_RUN_AS_NODE=1 exec "$executable" --expose-internals "$resources/app.asar/dsh/node_modules/@ipollo/desktop-host/lib/cli.js" "$@"
