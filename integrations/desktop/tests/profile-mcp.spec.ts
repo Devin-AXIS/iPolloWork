@@ -13,8 +13,8 @@ it('retains one shared resource consumer in the Desktop Web profile', async () =
   try {
     const profileDir = join(home, 'profiles', 'desktop')
     await createPluginProfile(profileDir)
-    const installAnchor = fileURLToPath(new URL('../../cli/package.json', import.meta.url))
-    const profile = loadProfileDirectory('dsh desktop', profileDir, installAnchor)
+    const installAnchor = fileURLToPath(new URL('../../../apps/cli/package.json', import.meta.url))
+    const profile = loadProfileDirectory('dsh', profileDir, installAnchor)
     const warnings: string[] = []
     const rows = composeEntries([
       ...profile.layers.map(layer => layer.patches),

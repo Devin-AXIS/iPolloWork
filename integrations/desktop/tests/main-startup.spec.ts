@@ -1405,7 +1405,7 @@ describe('desktop main startup', () => {
       .find(items => items.some(item => item.role === 'editMenu'))
     if (template === undefined) throw new Error('application menu missing')
     expect(template.map(describeItem)).toEqual(platform === 'darwin'
-      ? ['Desktop test', en.fileMenu, 'editMenu', 'windowMenu']
+      ? [en.welcomeBrand, en.fileMenu, 'editMenu', 'windowMenu']
       : ['Application', 'editMenu'])
     const describeEdit = (items: MenuItemConstructorOptions[]): unknown[] => items.map(item => Array.isArray(item.submenu)
       ? [describeItem(item), describeEdit(item.submenu)]
@@ -1449,7 +1449,7 @@ describe('desktop main startup', () => {
     harness.hosts[0]!.url = `${protocol}//127.0.0.1:3080/`
     harness.hosts[0]!.ready.resolve()
     await Promise.resolve(invoke(DESKTOP_IPC.boot))
-    expect(harness.connectWelcome).toHaveBeenCalledWith(`${protocol}//127.0.0.1:3080/`, 'dsh-desktop-session=test-private')
+    expect(harness.connectWelcome).toHaveBeenCalledWith(`${protocol}//127.0.0.1:3080/`, 'dsh-desktop-session=test-private', fetch, 'ipollo')
     expect(harness.removeLegacyHostCookies).toHaveBeenCalledWith(harness.hostCookies, `${protocol}//127.0.0.1:3080/`)
     const handler = harness.socketHeaders.mock.calls[0]![1] as (
       details: { url: string; webContentsId: number; requestHeaders: Record<string, string> },
