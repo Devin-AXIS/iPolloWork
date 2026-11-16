@@ -1,6 +1,7 @@
 # iPolloWork
 
-This repository owns iPolloWork plugins, services, clients and packaging. DSH is an external, version-pinned dependency. Never edit `.upstream/dsh`, copy its Agent loop into this repository, or add product patches to the official runtime.
+This repository owns iPolloWork plugins, services, clients and packaging. DSH is an
+external, version-pinned dependency. Never edit `.upstream/dsh`, copy its Agent loop into this repository, or add product patches to the official runtime.
 
 Run `npm run setup:build` for a fresh checkout. It verifies the official archive, installs its locked dependencies and creates ignored local resolution links. The exact revision and SHA-256 live in `integrations/runtime/upstream.json`. Upgrades change that pin deliberately, then run the product checks and real-client smoke before adoption.
 

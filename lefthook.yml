@@ -1,4 +1,5 @@
 pre-commit:
+
   commands:
     whitespace:
       run: git diff --cached --check
