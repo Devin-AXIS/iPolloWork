@@ -171,12 +171,12 @@ jobs:
           import { writeFileSync } from 'node:fs'
           import { parseEnv } from 'node:util'
           const values = {
-            DSH_DESKTOP_APP_ID: 'com.deepseek.dsh',
+            DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
             DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
             DSH_DESKTOP_UPDATE_CHANNEL: 'stable',
             DSH_DESKTOP_UPDATE_URL: 'https://github.com/' + process.env.GITHUB_REPOSITORY + '/releases/latest/download',
             DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://cloud.ipollo.net',
-            DSH_DESKTOP_MACOS_SIGNING_IDENTITY: process.env.MAC_IDENTITY,
+            DSH_DESKTOP_MACOS_SIGNING_IDENTITY: process.env.MAC_IDENTITY.replace(/^Developer ID Application: /, ''),
             DSH_DESKTOP_MACOS_TEAM_ID: process.env.MAC_TEAM,
             CSC_LINK: process.env.MAC_CERT_FILE,
             CSC_KEY_PASSWORD: process.env.CERTIFICATE_PASSWORD ?? '',
@@ -231,4 +231,4 @@ jobs:
           fi
           asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}$suffix.dmg"
           cp "${files[0]}" "$asset"
-          gh release upload "$RELEASE_TAG" "$asset" "$directory"/*.zip "$directory"/*.zip.blockmap --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$RELEASE_TAG" "$asset" "$directory"/*.dmg "$directory"/*.zip "$directory"/*.zip.blockmap "$directory"/*-release.json --repo "$GITHUB_REPOSITORY" --clobber
