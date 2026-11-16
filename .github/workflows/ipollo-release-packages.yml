@@ -115,11 +115,17 @@ jobs:
             runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
+      - name: Verify the selected macOS SDK and Swift compiler
+        run: |
+          xcodebuild -version
+          xcrun swift --version
       - name: Prepare pinned runtime and product
         run: |
           npm run setup:build
