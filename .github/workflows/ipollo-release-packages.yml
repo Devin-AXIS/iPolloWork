@@ -34,8 +34,16 @@ jobs:
           @'
           DSH_DESKTOP_APP_ID=com.deepseek.harness
           DSH_DESKTOP_AUTO_UPDATE_ENV=production
+          DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download
+          DSH_DESKTOP_UPDATE_CHANNEL=stable
           DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://work.ipollo.net
           '@ | Set-Content integrations/desktop/.env.windows
+      - name: Validate numeric release version
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Use a numeric release such as v1.0.2' }
       - name: Build and verify Windows x64
         shell: pwsh
         env:
@@ -47,7 +55,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: iPollo-windows-x64
-          path: integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+          path: |
+            integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.blockmap
+            integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/stable.yml
           if-no-files-found: error
       - name: Publish verified installer
         shell: pwsh
@@ -57,7 +68,8 @@ jobs:
         run: |
           $files = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
           if ($files.Count -ne 1) { throw 'Expected exactly one verified installer' }
-          gh release upload $env:RELEASE_TAG $files.FullName --repo $env:GITHUB_REPOSITORY --clobber
+          $uploadFiles = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/* -Include *.exe,*.blockmap,stable.yml
+          gh release upload $env:RELEASE_TAG @($uploadFiles.FullName) --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Synchronize uploaded installer to mainland mirror
         shell: pwsh

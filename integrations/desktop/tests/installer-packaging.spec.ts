@@ -103,6 +103,20 @@ describe('installer preparation preserves application dependencies', () => {
     expect(config.artifactName).toBe('iPollo-${version}-${os}-${arch}-unsigned.${ext}')
   })
 
+  it('enables explicit product update feeds for unsigned Windows without enabling unsigned Mac updates', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const env = {
+      DSH_DESKTOP_APP_ID: 'com.example.installer', DSH_DESKTOP_UNSIGNED: '1',
+      DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', DSH_DESKTOP_UPDATE_CHANNEL: 'stable',
+      DSH_DESKTOP_UPDATE_URL: 'https://github.com/Devin-AXIS/iPolloWork/releases/latest/download',
+      DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://work.ipollo.net',
+    }
+    const windows = createElectronBuilderConfig(env, 'win32', 'x64')
+    expect(windows.publish).toEqual([{ provider: 'generic', url: env.DSH_DESKTOP_UPDATE_URL + '/', channel: 'stable' }])
+    expect(windows.extraMetadata.dshDesktopUpdateChannel).toBe('stable')
+    expect(createElectronBuilderConfig(env, 'darwin', 'arm64').publish).toBeNull()
+  })
+
   it('packages every preload entry point the shell loads', async () => {
     const { readdirSync, readFileSync } = await import('node:fs')
     const sourceDirectory = new URL('../src/', import.meta.url)
