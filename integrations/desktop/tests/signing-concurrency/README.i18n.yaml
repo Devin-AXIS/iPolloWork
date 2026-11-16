@@ -1,0 +1,25 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write integrations/desktop/tests/signing-concurrency/README.md
+/:
+  en: cde5fda2a2f4b53f
+  zh: 19dbeb4af20f26fa
+/windows-signing-concurrency-qualification:
+  en: 53f3c08992c52164
+  zh: 01d77b519800fb69
+/windows-signing-concurrency-qualification/summary:
+  en: 0d910efcaf9434da
+  zh: 0e6e179620e82713
+/windows-signing-concurrency-qualification/table-of-contents:
+  en: 498f69e40952088d
+  zh: 506c81b0f6879e9a
+/windows-signing-concurrency-qualification/retest-on-another-machine:
+  en: 3d22a3ce782bc71a
+  zh: c7643c488558f6ea
+/windows-signing-concurrency-qualification/measured-reference:
+  en: c2d5b47db6ce1e20
+  zh: ca1182b064d63081
+/windows-signing-concurrency-qualification/dev-note:
+  en: b75c8458928b72b9
+  zh: 003ba4e17b4b5269

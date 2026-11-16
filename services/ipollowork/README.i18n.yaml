@@ -1,0 +1,31 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write services/ipollowork/README.md
+/ipollowork-services:
+  en: f066a7055ed4da85
+  zh: 69e0afc4ea836a5d
+/ipollowork-services/run:
+  en: 2a349bc7d457463f
+  zh: 08e040a1bfc92e13
+/ipollowork-services/data-and-deployment:
+  en: cc59270dbecfcb96
+  zh: e30bbc98b174a6cd
+/ipollowork-services/accounts-and-permissions:
+  en: 205c9d07cc82befb
+  zh: 0c8cfabef2d63db3
+/ipollowork-services/native-dsh-connection:
+  en: 8816baffa43563dd
+  zh: 2f818f13185c130d
+/ipollowork-services/sharing:
+  en: 10e3a5d168b41277
+  zh: 44e2001bd3390b31
+/ipollowork-services/official-services-and-plans:
+  en: 321d26218c5d89ab
+  zh: fac2bebe4fe45014
+/ipollowork-services/verification:
+  en: 8510d946cb1cdbeb
+  zh: 5a19d7be712873ef
+/ipollowork-services/http-capabilities:
+  en: 70f9704ce626415f
+  zh: 2d76b83fb0e350b5

@@ -1,0 +1,55 @@
+name: iPolloWork integrations
+on:
+  push:
+    branches: [main]
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
+  pull_request:
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: ipollowork_test
+          POSTGRES_PASSWORD: fixture-only
+        ports: ['5432/tcp']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d ipollowork_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.22.3'
+      - uses: pnpm/action-setup@v5.0.0
+      - name: Build pinned official DSH dependency
+        run: |
+          npm run setup:build
+          npm test
+          npm run check:upstream
+          npm run check:docs
+          npm run audit:dependencies
+      - name: Check enterprise connector
+        run: npm run check --prefix plugins/ipollo-enterprise
+      - name: Install account service dependencies
+        working-directory: services/ipollowork
+        run: npm ci --ignore-scripts --workspaces=false
+      - name: Check and package suite
+        working-directory: plugins/ipollowork-suite
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:fixture-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/ipollowork_test
+        run: |
+          npm run check --workspaces=false
+          npm run pack:check --workspaces=false
+      - name: Check and build account services
+        working-directory: services/ipollowork
+        env:
+          TEST_DATABASE_URL: postgresql://postgres:fixture-only@127.0.0.1:${{ job.services.postgres.ports[5432] }}/ipollowork_test
+        run: |
+          npm run check --workspaces=false
+          npm run build --workspaces=false

@@ -1,7 +1,0 @@
-node_modules/
-output/
-.playwright-cli/
-*.log
-*.db*
-*.pem
-.env*

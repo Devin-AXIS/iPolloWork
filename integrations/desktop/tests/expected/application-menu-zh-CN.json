@@ -1,0 +1,44 @@
+[
+  {
+    "label": "关于 iPolloWork",
+    "role": "about"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "label": "检查更新…"
+  },
+  {
+    "label": "管理 dsh 命令…"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "role": "toggleDevTools",
+    "label": "开发者工具"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "role": "hide",
+    "label": "隐藏 iPolloWork"
+  },
+  {
+    "role": "hideOthers",
+    "label": "隐藏其他"
+  },
+  {
+    "role": "unhide",
+    "label": "显示全部"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "role": "quit",
+    "label": "退出 iPolloWork"
+  }
+]

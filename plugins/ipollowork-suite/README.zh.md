@@ -1,0 +1,173 @@
+# iPolloWork DSH 套件
+
+[English](README.md) | 中文
+
+一个可安装的 DSH Bundle 提供 iPolloWork 皮肤、人工维护的原生插件市场、可选的 iPollo Account 登录、可复用的项目 agent（智能体）以及集成的 IM 通道。执行、已安装 Bundle、配置层、凭据和应用启动均由 DSH 管理。套件不包含其他 agent 运行时或安装器。
+
+组织空间默认打开管理员数据分析，可按部门、成员或服务/模型（SKU）查看近 7、30、90 天记录。调用仅含企业所属服务请求，不含轮询和个人服务；部门按发起调用时归属记录。页面标明 Token 采集覆盖率，并独立展示新增项目和当前技能、插件资源数量；企业关联项目可上报技能加载与工具调用次数。`enterpriseUsageReporting`（默认 true）控制名称与结果状态上报，`enterpriseUsageQueueLimit`（默认 200）限制排队数量。失败或队列溢出的记录不重试、不阻塞工具，统计可能不完整；不上传参数、结果正文和凭据。
+
+## 开发
+
+需要 Node 24.15 或更新版本。在本仓库中先在产品根目录执行 `npm run setup:build`，再从本目录执行 `npm ci --ignore-scripts --workspaces=false`、`npm run link:workspace`、`npm run check` 和 `npm pack`。链接命令使用版本匹配的本地 DSH 包；同版本的注册表发行包可能尚未包含本工作区的原生扩展。包内包含编译后的 Host、Client、样式、品牌资源和精选目录，安装时不运行构建脚本。
+
+`dependencies` 声明 DSH 软件包、共享的原生 pi-ai 提供方库和 `@matrix-org/olm`；后者的 WASM 文件从磁盘加载。其余第三方库在构建时打包进 `lib`。DSH 在每个进程内将已启用 Bundle 的依赖闭包中的每个包名映射到一个目录。如果与其他 Bundle 共享库名，例如 `qrcode` 引入的 `yargs`，停用套件时该库会切换到另一个 Bundle 的副本，DSH 因而会要求重启，而不能立即停用套件。
+
+使用 `dsh plugin --profile <profile> add link:/absolute/path/to/ipollowork-dsh-suite` 安装构建后的本地目录，再通过同一个 `dsh --profile <profile>` 启动器启动。先在独立 profile 中测试，再在工作 profile 中启用。运行时兼容范围限定为已测试的 DSH 版本系列。重新构建或移动链接目录，或将其替换为发布包后，重启对应 DSH profile，使 Host 实现与内置目录使用已安装文件；仅刷新浏览器不会清除 Host 模块路径。不依赖账号登录的 `/info` 路由报告已安装的软件包版本。正常的组件和 Bundle 开关会即时生效，无需重启。
+
+## 模块
+
+| 模块 | 职责 |
+| --- | --- |
+| `cordis.patch.yml` | 唯一的原生 Bundle 入口 |
+| `src/host/index.ts` | 所有者认证的路由、资源与服务生命周期 |
+| `src/host/market.ts` | DSH format-1 校验和实时安装清单 |
+| `src/host/account.ts` | iPollo 登录和 DSH 凭据记录 |
+| `src/client/theme.tsx` | 可撤销的调色板与原生品牌 slot |
+| `src/client/suite.module.css` | 所有套件视觉规则，包括原生详情与目录详情共享的尺寸 |
+| `src/client/market.tsx` | 原生插件页面中的附加市场标签页 |
+| `src/client/account.tsx` | 账号设置、入口与共享账号状态 |
+| `src/host/agents.ts` | Agent 定义、原生预设与委派 |
+| `src/host/agent-runtime.ts` | 预设指令、所选 Skills 和项目记忆 |
+| `src/client/agents.tsx` | Agent 库、配置与项目记忆编辑器 |
+
+## 配置
+
+在 profile 补丁中覆盖 `ipollowork-suite` 行的 `config`。字段包括 `accountOrigin`（默认 `https://work.ipollo.net`）、`catalogPath`（默认使用内置目录）、`requestTimeoutMs`（20000）、`maxResponseBytes`（1048576），以及 `theme`、`market`、`account`（均为 true）。账号服务必须使用 HTTPS 来源；HTTP 仅供回环地址开发使用。切换账号服务来源时，不会复用其他来源已保存的凭据。
+
+编辑 `catalog/index.json` 维护市场，其格式保持为 DSH format 1。默认目录的 Creative 分类首先显示 Design（包含 PPT）和 Video。原样安装包通过固定版本的 `@ipollo/dsh-design-resources` 与 `@ipollo/dsh-video-resources` 依赖安装（本地源码构建也支持 `catalog/packages/`），`catalog/bundled-releases.json` 固定其版本与 SHA-256 哈希。仅对该默认目录，Host 会校验文件，将其原子复制到 DSH home 中按内容寻址的持久缓存，并向 DSH 现有安装器提供本地 `file:` 规格。保存的安装来源因此能够在套件升级或移除后继续使用，不需要未发布的 npm 版本；显示卡片不会安装或启用插件。更新版本时同时替换压缩包与校验记录。自定义 `catalogPath` 索引保留声明的原生 npm/Git 来源。
+
+安装状态始终来自 DSH。市场打开 DSH 现有的安装对话框和已安装 Bundle 详情页，不自行下载或执行软件包。企业标签页会说明当前没有连接企业目录。
+
+启用 `theme` 后，皮肤为 DSH 提供 iPolloWork 品牌。客户端代码加载前，页面已带有 iPolloWork 标题、标签页图标、主屏幕图标和安装清单，DSH 启动页显示 iPolloWork 标志和名称，这些文件由免登录的 `/ipollowork-suite/brand/` 路由提供。客户端中，侧栏和运行状态以 iPolloWork 标志替换 DSH 的鲸鱼图案；首页标题沿用原版 iPolloWork 首页，在蓝色与金色的柔光上与输入框左对齐，显示 iPollo Work 字标和标题“把想法变成成果”；会话标题以 iPolloWork 结尾。配色以黑白为主，只使用一种蓝色强调色（浅色 `#2563eb`，深色 `#7aa2ff`）：包括发送按钮在内的主操作为黑色，输入框带蓝到金的渐变边，界面使用细线、浅阴影和不超过 12px 的模糊。DeepSeek 等模型和服务商名称保持不变；DSH 自身提到 DSH 的技术提示无法由插件覆盖。
+
+皮肤将原生输入框引用显示为原版 iPolloWork 的选中标签：紧凑的圆角标签、始终可用的关闭按钮、明暗调色板，以及长标签省略显示。样式仅在套件启用时生效；引用数据、键盘编辑、移除和上下文序列化仍由 DSH 管理。
+
+市场使用紧凑列表。已安装条目和 DSH 自带条目直接打开现有 DSH 详情页。未安装条目使用 `market.tsx` 中统一的 `PluginDetailPage` 模板：一个返回按钮、48px 包图标，下方依次展示包简介、组件和版本信息。套件仅在自己的目录详情打开时，通过 DSH 数据属性隐藏原生列表标题；返回时保留搜索和分类选择。布局支持明暗主题与窄屏。所有视觉规则集中在 `suite.module.css`，原生与目录详情共享图标和标题的尺寸变量。DSH 当前未导出可供已安装和未安装条目共用的页面组件，因此套件不导入或复制其私有页面实现。
+
+## 官方集成
+
+套件通过原生 profile patch 替换账户引导，首次引导通过 DSH settings 持久化。安装、启用和停用期间始终保留官方插件管理 provider 及其生成的 Remote 定义。用户可通过官方管理器停用或移除这个第三方套件。分享提供自己的会话顶部对话框与受众插槽，所有分享操作仍调用官方 `liveshareShares` Remote。这些是产品界面与策略扩展，无需修改官方源码或另建 Agent 循环。
+
+启停回归测试使用已安装构建后套件的独立官方 Web profile。将该测试环境的 `origin` 和 `cookie` 写入私有 JSON 文件，以 `IPOLLO_LIFECYCLE_OWNER_FILE` 指向它，再执行 `node --test tests/bundle-lifecycle.test.mjs`。测试会两次停用并启用套件，最终保持启用。0.1.22 移除了旧的管理器替换；从 0.1.21 更新后，需要重启 Host，以恢复官方管理器及其 Remote 定义。
+
+官方 0.2.2-rc.3 桌面发行包在 Connection 内管理认证，固定源码构建则导出独立认证服务。插件按宿主实际导出的 API 声明依赖，沿用现有认证，不创建校验器、不改变准入规则。两种运行时都要求请求经过认证。
+
+## 账号行为
+
+账号渠道默认模型通过官方模型目录、凭据元数据和 `agentDefaultModel.saveSelection()` 服务选择。已配置个人 API Key 或已选账号渠道时保留现有选择。套件不扩展 `SessionController.initializeDefaultModel()`。
+
+本地工作和浏览公开目录不需要 iPollo 登录。账号页通过邮箱和至少 10 位密码直接注册，初始显示名称取自邮箱的本地部分。账号已连接不表示官方服务已配置，服务可用状态在服务连接页展示；空服务目录不表示登录失败。注册调用 `/api/auth/sign-up/email`，并使用返回的会话登录；邮箱密码登录使用现有 Better Auth 的 `/api/auth/sign-in/email` 与 `/api/auth/get-session`。令牌仅保存在 DSH 凭据提供方中，每次请求后丢弃密码。`/api/v1/me/summary` 提供可选的积分信息；余额不可用时显示不可用，不显示为零。断开连接仅移除套件的本地令牌，不删除账号，也不改变 DSH 其他模型提供方的凭据。
+
+Bundle 通过两项普通 profile 覆盖替换内置 DeepSeek 账号及其通知界面；DeepSeek 账号服务与其他模型提供方凭据保持不变。停用 Bundle 会撤销这些覆盖。设置 `account: false` 时，套件不显示账号界面。
+
+账号页以与 DSH 设置页一致的单列设置行展示身份、可用积分与会员、当日与本周消耗，以及近七天用量；套餐在弹窗中选择。账号、订单和支付由当前独立服务处理。仅已启用的套餐和已配置的支付渠道提供购买入口。
+
+套件使用供应商公布的模型容量，不另设产品级单次输出上限。官方账号模型的已保存响应被截断、且没有待处理工具调用或用户输入时，通过原生 agent 收件箱继续任务。续接文本以 `ipollowork-output-continuation` 来源记录；客户端不展示协议警告行。卸载会移除监听器和尚未接收的续接消息，保留用户消息和已保存输出。
+
+## 限制
+
+Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与市场管理不会注入会话。专属客户端通过原生执行前策略阻止 `plugin_manager` 修改内置组件，同时保留读取与管理其他插件的能力。公共插件不添加该限制。这不是防篡改保护：shell/文件访问可以绕过该工具，DSH 的内置受保护包名单也不会自动保护任意第三方 Bundle。如果 agent 或第三方 Host 插件能够写入安装目录，管理员管理的安装仍需要通用管理授权扩展和操作系统隔离。不能把隐藏界面或安装本软件包视为企业安全边界。
+
+现有主题插件可能覆盖相同的变量，一次使用一个产品皮肤。移除套件会撤销其 slot、样式表和调色板，不会删除账号或会话数据。账号登录基于仓库中的 iPollo 服务协议实现；生产登录需要真实账号及在线服务验证。原生安装器品牌替换、企业目录分发、支付处理和导入旧版 iPolloWork 包格式不在本版本范围内。
+
+现有 iPolloWork 标志作为产品品牌资源随包提供。第三方插件保留各自的作者信息和许可证。
+
+## 可复用的项目 agent
+
+套件的 **Agents / 智能体** 导航展示可复用助手，并提供直接 **Start chat** 的操作。创建时填写名称和工作指令；Skills 与现有 DSH 服务作为可选的折叠选项。可选头像支持最大 5 MB 的 PNG、JPEG 或 WebP；浏览器先居中裁剪为 256 像素方形图片再保存，原生存储仅保留压缩后的栅格图片。没有图片的现有助手继续使用文字头像，图片不会进入模型输入。项目在开始会话或打开项目记忆时选择，不在创建助手时绑定。同一定义可用于多个项目，会话和记忆彼此隔离。所选 Skills 保留资源引用，Standard 组合中现有的 Skills 仍然可用。
+
+`ipollo_list_agents` 发现已启用的 agent，`ipollo_delegate` 通过原生 spawn 后端委派任务。每个子任务使用所选预设，主 Agent 因而可以协调不同专家而不切换自身预设。现有四个预设不会修改。服务选择器读取 DSH 现有 MCP 管理器，复用其连接与凭据，不创建另一个服务器或账号记录。服务选择限制该助手继承的 MCP 工具，并跟随实时工具注册变化。这是工具可见性控制，不是文件系统或租户隔离。旧版保存的专用 MCP 连接仍可使用，新连接在 DSH 服务设置中配置。套件账号登录与创建助手相互独立。
+
+模型选择器默认使用当前原生模型：新的顶层会话使用 DSH 全局默认模型，委派助手继承父级模型。显式选择通过原生持久模型选择机制作用于该助手之后创建的实例，包括委派子任务；不会修改 DSH 全局默认值，也不会覆盖已有会话中已选择的模型。可选模型来自原生模型目录，使用现有提供方凭据。
+
+可选的 `ipollowork-agents` 组件支持配置 agent 和记忆数量限制，以及 MCP 启动超时。停用套件移除其界面和新任务能力，已保存数据保留。该能力位于现有软件包中，不另设套件或独立应用。
+
+运行 `npm run check` 执行单元检查。原生验证时，启动加载本 Bundle 和 `tests/native.patch.yml` 的临时 DSH profile（使用已打包启动器时先将测试 fixture（测试前置数据）编译为 JavaScript），然后设置 `IPOLLO_QA_URL` 为所有者 URL，再运行 `npx tsx --test tests/native.test.ts`。该无密钥测试验证真实模型请求输入、不同子任务预设、项目记忆隔离和认证后的 MCP 启动。
+
+## 集成消息通道
+
+左侧工作区导航使用原生工作区和会话列表，不再单独显示“总助手”快捷入口。已有总助手会话保留预设和历史；消息连接继续使用 `ipollo-coordinator`。
+
+每个新消息连接都会启动原生 `ipollo-coordinator` 会话，包括扫码和自动连接。总助手可以直接工作、通过 `ipollo_delegate` 使用保存的专家，或通过 `ipollo_dispatch` 创建任务专用的临时工作者。临时工作者使用原生 Standard 预设并继承总助手模型；保存的专家保留自己的指令、Skills、服务选择和可选模型。IM 请求等待原生任务树完成后返回总助手汇总的回答。
+
+每个平台连接只授权一次，专家无需单独扫码。不同聊天保留各自的原生 Session，所选项目/工作区设置仍然生效。共享的是全局协调器定义，不是聊天历史。套件不会增加对未披露群消息的访问，也不会合并不同通道的历史。
+
+现有已绑定会话保留预设和历史。升级后发送 `/new`，以总助手开始新会话。IM 预设选择器说明这一固定入口；在 **Agents** 中管理专家。旧版保存的机器人预设选择留在磁盘上，不会覆盖。见[升级说明](docs/upgrades/main-assistant.md)。
+
+`ipollowork-im` 组件在套件中嵌入 MIT 许可的 DSH IM 适配器。其设置与可选侧栏页面属于 iPolloWork；人工维护的市场不再提供重复的独立 IM 安装。源码及本地修改记录于 [vendor/dsh-im/README.md](vendor/dsh-im/README.md)。
+
+从 `@xmanrui/dsh-im` 切换前，先在 DSH 原生插件管理器中停用该 Bundle，再启用本套件。复用现有通道设置与原生凭据引用。为防止机器人重复回复，不允许同时启用二者。停用套件时，通道控制器与界面随原生插件生命周期移除，已保存配置保留。切换 Bundle 后，如果原生热重载仍显示旧 Client，请刷新页面。不会修改 DSH 核心软件包或原始预设。
+
+图片进入正常的原生图片处理流程。无视觉能力的模型收到保留的图片文件和明确限制说明，不会声称看过图片。收到的文件和音频成为原生会话附件。钉钉识别文本与企微语音转写会被保留。飞书和企微应用录音可以使用已配置的原生语音提供方；除非输入已经是标准 16 kHz 单声道 PCM WAV，否则格式转换需要 `ffmpeg`。缺少或失败的转写会保留录音及其状态。企微智能机器人回调通常仅提供文字；只有平台提供下载引用时才能保存原录音。
+
+结果媒体继续使用现有 `dsh_im_return_file` 通道发送工具。普通 Markdown 中的本地文件路径不等于媒体上传。继承的适配器选择支持的图片或文件消息并报告发送失败；平台专用的原生语音气泡仍取决于各适配器支持情况。
+
+运行 `npm run check`、`npm run test:im-upstream` 和 `npm run pack:check`。无密钥原生媒体回放时，使用 esbuild 将 `tests/im-native-fixture.mjs` 编译为临时 fixture（旁边复制 `tests/fixtures/avatar.png`），让 `tests/im-native.patch.yml` 指向该文件，通过原生 `dsh web` profile 启动，再设置 `IPOLLO_IM_QA_URL`，运行 `node --import tsx --test tests/im-native.test.mjs`。测试使用本地通道响应与 mock 模型，不使用真实机器人凭据。
+
+### 连接机器人后的菜单
+
+飞书与 Telegram 保留原生命令菜单注册。飞书面板不可用时，第一条获得授权的私聊消息会打开现有菜单卡片。钉钉与 QQ 在第一条获得授权的私聊消息中显示现有交互菜单；企微智能机器人在首次进入聊天事件时展示紧凑欢迎卡片，若没有进入事件，则在首次私聊消息时展示。微信使用文字指南。原始消息仍会处理，群聊不会收到主动引导。
+
+企微自建应用自动创建包含 Chat、Agents 和 Actions 的原生底部菜单。点击事件映射到现有命令，保留访问检查。管理员已有菜单保持不变；如果无法注册，则改为在首次进入或首次获得授权的消息中显示文字指南。
+
+每个通道第一版状态中的可选 `menuIntroductions` 字段，在发送前记录各会话已尝试的引导，并在重启后保留。发送结果不确定或失败时，不会自动重试；用户仍可显式使用 `/menu` 或 `/help`。这不增加 DSH Session 事件或持久化类型。平台菜单与卡片布局仍需要在真实移动客户端验收，自动检查使用已认证的回调样本和 mock 平台 API。
+
+## 组织项目
+
+组织页面管理部门、文件包、Skills 和组织模型，权限规则见[组织资源](docs/enterprise-assets.md)。需要 PostgreSQL 账号服务，配置见[服务说明](../../services/ipollowork/README.zh.md)。
+
+通过原生目录表单创建个人或组织项目。项目可按成员或部门授予查看、参与、维护权限，每次请求都检查当前成员关系。维护者管理权限并接纳贡献，本地工作仍在所选目录中。
+
+项目包含概览、文件、项目记忆和改动。概览围绕参与者和实际贡献数量，文件显示输出版本、作者和容量，支持下载及手动上传。原生 `present` 默认不上传文件，不上传输入文件或完整本地 Session。参与者选择需上传的输出，维护者管理上传权限。云端到期不删除本地文件，规则见[存储说明](../../services/ipollowork/docs/storage.md)。
+
+关联文件只包含服务来源和项目 ID。每轮模型开始前重新授权并读取当前项目记忆，撤销访问后不会复用旧上下文。`ipollo_project_memory` 可读取、提交提炼知识，或由维护者携带版本和贡献 ID 明确合并。完整摘要最多 8,000 字符、两级标题，版本冲突保留草稿。后台不运行模型，不需要 Git，也不批量同步本地状态。
+
+打开分享时，通过原生 PKCE 流程接入当前账号；已校验的账号直接复用，无需再次登录或填写分享服务地址。分享沿用原生弹窗、查看器、会话权限与 fork 开关，可选择任何获得链接的人，或组织及其部门。成员变化实时影响组织分享；停用套件移除接收范围扩展和账号准备钩子。开放链接允许匿名访问，分享电脑必须保持在线。会话标题和菜单保留分享入口，未登录用户先连接账号。
+
+历史快照和旧结果仍可读取，旧快照、评论和结果写入返回 HTTP 410。升级账号服务后再安装套件，详见[升级说明](docs/upgrades/2026-11-14-project-spaces.md)。
+
+原生中继测试使用隔离服务和配置，将 `IPOLLO_QA_URL`、`IPOLLO_RELAY_ORIGIN`、`IPOLLO_RELAY_TEST_PASSWORD` 指向测试实例后执行 `node --import tsx --test tests/liveshare-native.test.ts`。不要对工作配置运行该测试。
+
+套件输出上传配置为 `uploadTimeoutMs`（300,000）和 `maxArtifactBytes`（536,870,912）。部署专用的 `automaticOutputArchive` 默认为 false；启用后，关联项目会在具备上传权限时流式归档原生展示的完成输出，`archiveHistoryLimit`（500）限制上传记录数量。内存队列不保留完整 Session 对象；队列满时 Host 提示从项目页上传本地文件。完成记录有数量上限，后端请求 ID 保证重放不会创建重复版本。
+
+可选的 Host 服务还可发布在 Design 中选定的文件集。它使用当前账号流式上传文件，在已有项目关联时保留项目归属，并在服务的独立浏览来源打开完整发布。独立安装的 Design 仍使用自己的存储服务设置。存储密钥和账号令牌不会进入生成的页面。
+
+输出归档的无 Key 测试使用隔离 PostgreSQL 服务和配置，编译 `tests/native-fixture.ts` 并加载 `tests/native.patch.yml`，然后运行 `IPOLLO_ARCHIVE_QA_URL=<private-owner-url> node --import tsx --test tests/project-archive-native.test.ts`。它验证原生展示保留在本地、明确选择输出后上传、超过 24 MiB 的授权下载和输入排除。预期结果保存在 `tests/expected`。
+
+从组织空间创建项目时，归属固定为当前组织；个人创建保留在全局目录入口。组织后台不展示共享会话页签或未归属的个人项目，原生会话分享仍在对应会话中操作。
+
+服务记录包含稳定的 `category`（`language`、`image`、`video`、`audio`、`embedding`、`tool`）和 `vendor`，各模型也保留自己的类别。只有具备 Token 上限的语言模型进入原生对话模型选择器。组织服务列表和部门授权按这些类别展示，包括工具服务。非对话组织服务须明确配置允许的接口路径，编辑已有连接会保留其路径与分类。
+
+官方媒体调用根据允许的接口路径和请求模型选择服务，因此图像生成与语音可以共用服务商接口和 Key，不会选错类别。服务商地域域名由账号服务管理；关闭套件或改用原生个人凭据后，官方路由随即移除。
+
+部署选项 `dedicatedDesktop` 使用 iPolloWork 账号复用原有欢迎、额度、用途和工作过程引导页面，仍保留 API Key 设置入口。桌面发行包内置本套件及二维码依赖，首次启动无需从 npm 安装。
+
+应用重新获得焦点或恢复可见时会刷新账户余额。兼容的 DeepSeek 和百炼聊天模型沿用已安装提供方目录中的推理等级及请求格式；未知模型仍可选择，但不会虚构推理等级。
+
+账户与支付布局在原生设置面板内管理盒模型尺寸。套件通过 peer dependencies 使用宿主提供的 DSH 服务；安装套件不会替换宿主运行时包。
+
+内置 IM 使用 Cordis 的公开根上下文标识。Design 和 Video 从其已验证的原生源码构建原样导入。运行 `node scripts/prepare-studio-releases.mjs <archive-directory> <version>` 同步更新两个压缩包及目录；各插件自行声明 rc.3 鉴权依赖。
+
+## HTTP 能力
+
+原生工具 `ipollo_capabilities`、`ipollo_capability_describe`、`ipollo_capability_invoke` 和 `ipollo_capability_task` 发现并调用[能力 HTTP API](../../services/ipollowork/docs/capabilities.md)。详细参数按需加载，请求复用原生调用标识以防重复扣费，并传递取消信号、遵守只读会话限制；工具不暴露账号或供应商 Key。
+
+## 应用数据
+
+“数据”页面、模型工具 `app_data` 和插件服务 `ipolloData` 让插件、网站和应用把记录存进账号服务，无需自建数据库。详见[应用数据](docs/app-data.md)。
+
+Design 发布会按工作区和文件复用原公开地址。新版本完整上传后才替换线上内容；上传失败保留旧页面。该能力需要账户服务的数据库版本 8 或更高版本。
+
+## 沙箱插件
+
+阿里云 Agent Sandbox 作为可独立配置、默认关闭的插件组件打包，使用官方 DSH 工具与生命周期接口。[配置方式、持久化前提与验证范围](docs/sandbox-plugins.zh.md)。
+
+云端项目：[配置、生命周期与验证范围](docs/cloud-projects.zh.md)。
+
+可用 `npm run pack:resources` 单独准备资源包，但资源包不是套件依赖。默认流程仅在用户安装时下载选中的插件。
+
+iPollo 专用桌面主包不包含 Design、Video 安装压缩包和资源包依赖。插件市场只展示固定版本的 GitHub 下载地址，不提前读取或下载；用户点击安装后才由 DSH 下载并安装选中的插件。
+
+套件本身不依赖 Design/Video 资源包；没有本地插件压缩包时，目录返回固定 GitHub 下载地址，由用户安装时下载。
+
+首次引导的办公选项和跳过操作保留完整智能体预设列表；紧凑聊天只改变轨迹与用量展示，不再关闭编程视图。既有配置可在设置中开启“编程视图”恢复 PTC 和极简模式。

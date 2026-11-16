@@ -1,4 +1,0 @@
-interface:
-  display_name: "iPolloWork Maintainable Code"
-  short_description: "Modern, minimal, reuse-first iPolloWork code gate"
-  default_prompt: "Use $ipollowork-maintainable-code to implement this change with modern reuse-first design, bounded performance, no repository clutter, and a focused audit."

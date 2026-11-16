@@ -1,0 +1,212 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { AccountService } from '../src/host/account.ts'
+import { resolveConfig } from '../src/host/config.ts'
+import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from '../src/host/app-data.ts'
+import { AppDataRejection } from '../src/host/errors.ts'
+import { createBrowserAppData, AppDataError } from '../src/client/data-service.ts'
+import { whereOf } from '../src/client/data-query.ts'
+
+const APP = '6f1c2a40-1111-4c2d-9a8b-000000000001'
+const detail = {
+  id: APP, kind: 'plugin', name: 'Reading list', slug: 'reading-list', workspace: 'Notes', owner: { kind: 'user', id: 'me', name: 'Me' }, public: false,
+  collections: 1, records: 1, bytes: 20, canManage: true, createdAt: 1, updatedAt: 2,
+  endpoint: `https://account.test/api/data/v1/apps/${APP}/run`, publicKey: 'pk_test',
+  limits: { records: 100000, bytes: 67108864, recordBytes: 16384 },
+  collectionList: [{ name: 'books', fields: { title: 'text' }, public: [], unique: null, records: 1, bytes: 20 }],
+}
+const book = { id: 'b1', title: 'Dune', version: 1, createdAt: 1, updatedAt: 1 }
+
+function fixture(signedIn = true) {
+  const calls: { method: string; path: string; body: unknown }[] = []
+  /** Run paths that answer once as if their app had been deleted. */
+  const gone = new Set<string>()
+  const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } })
+  const account = new AccountService({
+    readRecord: async () => (signedIn ? { kind: 'grant', payload: { version: 1, origin: 'https://account.test', token: 'test-token' } } : undefined),
+    modifyRecord: async () => undefined, deleteRecord: async () => {},
+  }, resolveConfig({ accountOrigin: 'https://account.test' }), new AbortController().signal, async (input, init) => {
+    init?.signal?.throwIfAborted()
+    const path = new URL(String(input)).pathname
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined
+    calls.push({ method: init?.method ?? 'GET', path, body })
+    if (path === '/api/v1/me/orgs') return json({ items: [{ id: 'org-1', name: 'Acme', role: 'member' }] })
+    if (path === '/api/data/v1/apps' && init?.method === 'POST') return json({ app: detail, created: true }, 201)
+    if (path === '/api/data/v1/apps') return json({ items: [detail], organizations: [{ id: 'org-1', name: 'Acme' }] })
+    if (path.endsWith('/run')) {
+      if (gone.delete(path)) return json({ error: '应用不存在或没有访问权限', code: 'DATA_APP_NOT_FOUND' }, 404)
+      if ('update' in body && 'set' in body) return json({ error: '字段 title 是文本，不能写入数字', code: 'DATA_FIELD_TYPE' }, 400)
+      if ('aggregate' in body) return json({ items: [{ key: 'Dune', count: 2, sum: { pages: 800 } }], more: false })
+      if ('insert' in body || 'get' in body || 'upsert' in body || 'inc' in body) return json({ item: book })
+      if ('find' in body) return json({ items: [book], next: null })
+      if ('count' in body) return json({ count: 1 })
+      return json({ deleted: true })
+    }
+    if (init?.method === 'DELETE') return json({ deleted: true })
+    return json({ app: detail })
+  })
+  return { calls, gone, service: new AppDataService(account) }
+}
+
+test('plugins open an app by name and use collection helpers that send JSON statements', async () => {
+  const { calls, service } = fixture()
+  const app = await service.open('Reading list', { organization: 'acme' })
+  assert.deepEqual(calls.at(-1), { method: 'POST', path: '/api/data/v1/apps', body: { name: 'Reading list', kind: 'plugin', enterpriseId: 'org-1' } })
+  const books = app.collection('books')
+  assert.equal((await books.insert({ title: 'Dune' })).title, 'Dune')
+  assert.deepEqual(calls.at(-1)?.body, { insert: 'books', values: { title: 'Dune' } })
+  assert.equal((await books.find({ where: { title: 'Dune' }, limit: 5 })).items.length, 1)
+  assert.deepEqual(calls.at(-1)?.body, { find: 'books', where: { title: 'Dune' }, limit: 5 })
+  assert.equal(await books.count(), 1)
+  await books.upsert('today', { plan: 'legs' })
+  assert.deepEqual(calls.at(-1)?.body, { upsert: 'books', id: 'today', values: { plan: 'legs' } })
+  await books.delete('b1', 1)
+  assert.deepEqual(calls.at(-1)?.body, { delete: 'books', id: 'b1', version: 1 })
+  await assert.rejects(books.update('b1', { title: 3 }), (error: unknown) =>
+    error instanceof AppDataRejection && error.code === 'DATA_FIELD_TYPE' && error.reason.includes('不能写入数字') && error.status === 400)
+  await assert.rejects(service.open('x', { organization: 'Elsewhere' }), (error: unknown) =>
+    error instanceof AppDataRejection && error.code === 'IPW_ORGANIZATION_NOT_FOUND' && error.reason.includes('Acme'))
+})
+
+test('the app_data tool opens the app for the session workspace and runs the statement', async () => {
+  const { calls, service } = fixture()
+  const tool = appDataTool(service, cwd => (cwd === '/work/site' ? 'Studio site' : undefined), () => false)
+  assert.equal(tool.name, 'app_data')
+  const value = await tool.execute(
+    { app: 'Studio site', kind: 'site', statement: { insert: 'books', values: { title: 'Dune' } } },
+    { agent: { session: { header: { cwd: '/work/site' } } }, signal: new AbortController().signal } as never,
+  )
+  assert.deepEqual(value, { item: book })
+  assert.deepEqual(calls.find(call => call.path === '/api/data/v1/apps')?.body, { name: 'Studio site', kind: 'site', workspace: 'Studio site' })
+  const kind = (statement: object) => (tool.presentCall?.({ app: 'Studio site', kind: 'site', statement }) as { kind?: string } | undefined)?.kind
+  assert.equal(kind({ find: 'books' }), 'read')
+  assert.equal(kind({ insert: 'books', values: {} }), 'edit')
+  await assert.rejects(tool.execute({ app: 'Studio site', statement: {} }, {} as never), 'kind is required')
+  const before = calls.length
+  await assert.rejects(tool.execute({ app: 'Unknown app', kind: 'plugin', statement: { count: 'books' } }, {} as never), (error: unknown) =>
+    error instanceof AppDataRejection && error.code === 'DATA_APP_NOT_FOUND' && error.reason.includes('Reading list (plugin)'))
+  assert.deepEqual(await tool.execute({ app: 'Unknown app', kind: 'plugin', statement: { info: true } }, {} as never), {
+    app: null,
+    note: 'No app is named "Unknown app" yet. The first define, insert or upsert creates it; reads never do.',
+    existing: [{ name: 'Reading list', kind: 'plugin' }],
+  }, 'asking about an app that does not exist yet is answered, not failed')
+  assert.equal(calls.slice(before).some(call => call.method === 'POST'), false, 'reading an unknown app creates nothing')
+  await tool.execute({ app: 'reading list', kind: 'plugin', statement: { batch: [{ count: 'books' }] } }, {} as never)
+  assert.deepEqual([calls.at(-1)?.path, calls.at(-1)?.body], [`/api/data/v1/apps/${APP}/run`, { batch: [{ count: 'books' }] }], 'a read batch reaches the existing app by name, ignoring letter case')
+  const signedOut = appDataTool(fixture(false).service, () => undefined, () => false)
+  await assert.rejects(signedOut.execute({ app: 'x', kind: 'plugin', statement: { info: true } }, {} as never), (error: unknown) =>
+    error instanceof Error && error.message.includes('not signed in to iPolloWork'))
+  assert.ok(APP_DATA_SKILL.content.length < 8192, 'the skill stays below the result pruning threshold')
+})
+
+test('the app_data tool reads concurrently, writes in order, refuses read-only writes and forwards cancellation', async () => {
+  const { calls, service } = fixture()
+  const session = { header: { cwd: '/work' } }
+  const tool = appDataTool(service, () => undefined, current => current === session)
+  const args = (statement: object) => ({ app: 'Reading list', kind: 'plugin', statement })
+  assert.equal(tool.isConcurrencySafe?.(args({ find: 'books' })), true)
+  assert.equal(tool.isConcurrencySafe?.(args({ batch: [{ get: 'books', id: 'b1' }, { count: 'books' }] })), true)
+  assert.equal(tool.isConcurrencySafe?.(args({ insert: 'books', values: {} })), false)
+  const exec = { agent: { session }, signal: new AbortController().signal } as never
+  assert.deepEqual(await tool.execute(args({ count: 'books' }), exec), { count: 1 }, 'a read-only session still reads')
+  const before = calls.length
+  await assert.rejects(tool.execute(args({ insert: 'books', values: { title: 'Dune' } }), exec), (error: unknown) =>
+    error instanceof AppDataRejection && error.code === 'IPW_DATA_READ_ONLY' && error.reason.includes('reads still work'))
+  assert.equal(calls.length, before, 'a refused write sends nothing')
+  const stop = new AbortController()
+  stop.abort(new Error('stopped by user'))
+  await assert.rejects(tool.execute(args({ count: 'books' }), { signal: stop.signal } as never), /stopped by user/)
+})
+
+test('the Data page routes list, describe, query and delete apps', async () => {
+  const { calls, service } = fixture()
+  assert.equal(((await appDataRoute(service, 'GET', '', async () => undefined)) as { items: unknown[] }).items.length, 1)
+  assert.equal(((await appDataRoute(service, 'GET', `/${APP}`, async () => undefined)) as { app: { id: string } }).app.id, APP)
+  assert.deepEqual(await appDataRoute(service, 'POST', `/${APP}/run`, async () => ({ count: 'books' })), { count: 1 })
+  assert.equal(((await appDataRoute(service, 'POST', '', async () => ({ name: 'Fitness coach' }))) as { app: { id: string } }).app.id, APP)
+  assert.deepEqual(calls.at(-1)?.body, { name: 'Fitness coach', kind: 'plugin' }, 'browser plugins always open plugin apps')
+  await assert.rejects(appDataRoute(service, 'POST', '', async () => ({ name: 'x', kind: 'site' })), 'the route accepts only name and organization')
+  assert.deepEqual(await appDataRoute(service, 'DELETE', `/${APP}`, async () => undefined), { deleted: true })
+  assert.equal(calls.at(-1)?.method, 'DELETE')
+  await assert.rejects(appDataRoute(service, 'GET', '/not-an-id', async () => undefined), { code: 'IPW_NOT_FOUND' })
+  await assert.rejects(appDataRoute(service, 'PUT', `/${APP}`, async () => undefined), { code: 'IPW_NOT_FOUND' })
+})
+
+test('plugin Client modules open apps through the browser service with the Host contract', async (t) => {
+  const sent: { url: string; body: unknown }[] = []
+  t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body))
+    sent.push({ url, body })
+    if (url.endsWith('/data/apps')) return Response.json({ app: { id: APP } })
+    if ('update' in body) return Response.json({ error: 'DATA_FIELD_UNKNOWN', message: '集合 workouts 没有字段 kg；已有字段：reps（数字）' }, { status: 400 })
+    return Response.json({ item: { id: 'today', plan: 'legs', version: 1, createdAt: 1, updatedAt: 1 } })
+  })
+  const app = await createBrowserAppData().open('Fitness coach', { organization: 'Acme' })
+  assert.deepEqual(sent[0], { url: '/ipollowork-suite/data/apps', body: { name: 'Fitness coach', organization: 'Acme' } })
+  assert.equal((await app.collection('plans').upsert('today', { plan: 'legs' })).plan, 'legs')
+  assert.deepEqual(sent[1], { url: `/ipollowork-suite/data/apps/${APP}/run`, body: { upsert: 'plans', id: 'today', values: { plan: 'legs' } } })
+  await assert.rejects(app.collection('workouts').update('w1', { kg: 3 }), (error: unknown) =>
+    error instanceof AppDataError && error.code === 'DATA_FIELD_UNKNOWN' && error.message.includes('已有字段'))
+})
+
+test('Data page filter rules become one where object', () => {
+  const fields: [string, 'text' | 'number' | 'boolean' | 'json'][] = [['name', 'text'], ['slot', 'number'], ['paid', 'boolean'], ['extra', 'json']]
+  assert.deepEqual(whereOf([
+    { field: 'name', op: 'contains', value: 'an' },
+    { field: 'slot', op: '>=', value: '9' },
+    { field: 'slot', op: '<', value: '12' },
+    { field: 'paid', op: '=', value: 'false' },
+    { field: 'extra', op: 'empty', value: '' },
+  ], fields), { name: { contains: 'an' }, slot: { '>=': 9, '<': 12 }, paid: { '=': false }, extra: null })
+  assert.equal(whereOf([{ field: 'slot', op: '=', value: 'nine' }, { field: 'name', op: '=', value: '' }, { field: 'gone', op: '=', value: 'x' }], fields), undefined,
+    'a rule without a usable value or a known field is skipped')
+})
+
+test('a name keeps its app between calls, and a deleted app is opened again', async () => {
+  const { calls, gone, service } = fixture()
+  const tool = appDataTool(service, () => undefined, () => false)
+  const exec = { signal: new AbortController().signal } as never
+  const opens = () => calls.filter(call => call.path === '/api/data/v1/apps').length
+  await tool.execute({ app: 'Reading list', kind: 'plugin', statement: { insert: 'books', values: { title: 'Dune' } } }, exec)
+  await tool.execute({ app: 'reading list', kind: 'plugin', statement: { insert: 'books', values: { title: 'Emma' } } }, exec)
+  await tool.execute({ app: 'Reading list', kind: 'plugin', statement: { count: 'books' } }, exec)
+  assert.equal(opens(), 1, 'later statements reuse the app the name opened')
+  assert.equal(calls.length, 4, 'one open and three statements reach the account service')
+
+  const books = (await service.open('Reading list')).collection('books')
+  assert.equal(opens(), 1, 'a plugin opening the same name asks nothing')
+  assert.deepEqual(await books.aggregate({ group: 'title', sum: ['pages'] }), [{ key: 'Dune', count: 2, sum: { pages: 800 } }])
+  assert.deepEqual(calls.at(-1)?.body, { aggregate: 'books', group: 'title', sum: ['pages'] })
+  await books.increment('b1', { pages: 10 })
+  assert.deepEqual(calls.at(-1)?.body, { update: 'books', id: 'b1', inc: { pages: 10 } })
+  await books.find({ fields: ['title'], search: 'du' })
+  assert.deepEqual(calls.at(-1)?.body, { find: 'books', fields: ['title'], search: 'du' })
+  assert.equal((await books.all({ sort: 'title' })).length, 1)
+  assert.deepEqual(calls.at(-1)?.body, { find: 'books', sort: 'title', limit: 100 }, 'all reads full pages until none remains')
+
+  gone.add(`/api/data/v1/apps/${APP}/run`)
+  assert.equal(await books.count(), 1, 'a statement on a deleted app opens the app again and runs')
+  assert.equal(opens(), 2)
+  gone.add(`/api/data/v1/apps/${APP}/run`)
+  assert.deepEqual(await tool.execute({ app: 'Reading list', kind: 'plugin', statement: { count: 'books' } }, exec), { count: 1 }, 'a read finds the app by name again')
+  assert.equal(calls.filter(call => call.method === 'POST' && call.path === '/api/data/v1/apps').length, 2, 'the read created nothing')
+})
+
+
+test('the Host attachment API streams bytes and keeps the account token outside records',async()=>{
+ const bytes=new Uint8Array([1,2,3]);let uploaded=false;
+ const account=new AccountService({readRecord:async()=>({kind:'grant',payload:{version:1,origin:'https://account.test',token:'secret'}}),modifyRecord:async()=>undefined,deleteRecord:async()=>{}},resolveConfig({accountOrigin:'https://account.test'}),new AbortController().signal,async(url,init)=>{
+  const path=new URL(String(url)).pathname;
+  if(path.endsWith('/files')){
+   uploaded=true;assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer secret');
+   assert.deepEqual(new Uint8Array(await new Response(init?.body).arrayBuffer()),bytes);
+   assert.equal(JSON.parse(decodeURIComponent(new Headers(init?.headers).get('x-data-file')!)).name,'图片.png');
+   return Response.json({id:APP,name:'图片.png',mime:'image/png',bytes:3,sha256:'hash'});
+  }
+  if(path.endsWith('/files/'+APP))return Response.json(init?.method==='DELETE'?{deleted:true}:{url:'https://bucket.oss.test/image?temporary=1'});
+  return Response.json({app:detail});
+ });
+ const app=await new AppDataService(account).open('Media');
+ const file=await app.files.upload('图片.png',bytes,{mime:'image/png'});assert(uploaded);assert.equal(file.id,APP);
+ assert.equal((await app.files.download(file.id)).url,'https://bucket.oss.test/image?temporary=1');await app.files.remove(file.id);
+});

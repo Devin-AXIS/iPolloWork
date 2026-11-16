@@ -1,0 +1,63 @@
+{
+  "name": "@ipollo/desktop-host",
+  "description": "Private Node-mode host process for the Electron desktop application",
+  "version": "0.2.2-rc.3",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": [
+    "lib/index.js",
+    "lib/cli.js",
+    "cordis.patch.yml",
+    "application.yml",
+    "locale",
+    "assets",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md",
+    "LICENSE.upstream"
+  ],
+  "dependencies": {
+    "koffi": "3.1.1",
+    "@deepseek-ai/cordis": "4.1.0",
+    "@deepseek-ai/dsh": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-agent": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-app-boot": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-connection": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-host-authentication-desktop": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-jobs": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-schedule": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-deepseek-account": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-plugin-manager": "0.2.2-rc.3",
+    "@ipollo/dsh-suite": "0.1.27"
+  },
+  "devDependencies": {
+    "ws": "^8.21.3",
+    "@types/ws": "^8.18.1",
+    "@deepseek-ai/dsh-api-gateway": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-api-remote-access": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-typert-registry": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-fs": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-fs-local": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-session-persistence": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-util-workspace-path": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-brand": "0.2.2-rc.3"
+  },
+  "scripts": {
+    "build": "tsc -b && tsdown --config-loader native"
+  },
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "icon": "./assets/mark.svg"
+}

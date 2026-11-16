@@ -1,76 +1,9 @@
 # Contributing to iPolloWork
 
-Thank you for helping improve iPolloWork. Read `README.md`, `AGENTS.md`,
-`docs/governance.md`, `SECURITY.md`, and `apps/app/src/react-app/ARCHITECTURE.md`
-before making product changes.
+Read the [license](LICENSE) before using or contributing code. Describe bugs with the iPolloWork version, DSH version, operating system, reproduction steps and a redacted error message. Never include API keys, cookies, account tokens, private documents or complete session logs.
 
-## Development
+Run `npm run setup:build` to prepare the pinned official DSH dependency. Keep changes in `plugins/`, `services/` or the product-owned `integrations/` directories. Do not modify `.upstream/dsh`: new capabilities use official extension points or independent services. Propose missing upstream capabilities separately.
 
-```bash
-./ipollowork setup
-./ipollowork dev
-./ipollowork check
-```
+For a change, run the owning package's checks plus `npm test`, `npm run check:upstream` and `npm run check:docs`. Runtime changes also need a real profile test. Test the public plugin in the official client and the branded client with their respective activation policies. State exactly what was tested and which platforms remain unverified.
 
-Keep changes focused, preserve the iPolloWork/OpenCode boundary, and include the checks used to validate the change.
-
-`pnpm install` installs the repository's Lefthook pre-commit checks. Run
-`pnpm run prepare` to repair the installation, or `pnpm exec lefthook run pre-commit`
-to check it manually. The hook checks staged whitespace and runs the canonical
-maintainability audit over local changes; owning-package tests and type checks
-still need to run before submission.
-
-## Issue tracker
-
-Use GitHub Issues for public bug reports, feature requests, documentation
-defects, and task tracking. Do not use public issues for security
-vulnerabilities; follow `SECURITY.md` instead.
-
-## Coding standards
-
-Primary application code is TypeScript, React, Electron, Bun, and Node.js.
-Contributions must follow the local patterns in the owning package and these
-project-wide rules:
-
-- Prefer the existing module owner before adding files, directories, routes, or
-  dependencies.
-- Keep the iPolloWork/OpenCode boundary intact and use supported OpenCode
-  APIs, SDKs, CLI, plugins, and configuration surfaces.
-- Use typed boundaries; avoid `any`, broad type assertions, duplicated derived
-  state, and fallback paths that the type system or control flow already rules
-  out.
-- Reuse UI primitives from `apps/app/src/components/ui` and shared app
-  components from `apps/app/src/components`.
-- Keep generated runtime artifacts out of source directories.
-- Preserve third-party copyright and license notices.
-
-The standard check command is `./ipollowork check` on macOS/Linux or
-`.\ipollowork.cmd check` on Windows. CI also runs package tests, type checks,
-REUSE lint, OpenSSF Scorecard, CodeQL, and dependency review.
-
-## Tests
-
-Major new functionality must include automated tests at the owning package
-layer. Bug fixes should include regression tests whenever practical; maintainers
-expect regression tests for at least half of bugs fixed in any six-month period.
-If a change cannot be tested automatically, explain the reason and include
-manual verification steps in the pull request.
-
-Run the narrowest meaningful checks before opening a pull request, then let CI
-run the shared repository checks. Document every command and result in the pull
-request template.
-
-## Change review
-
-All non-trivial code changes should be reviewed by a maintainer who did not
-author the change. Reviewers check correctness, tests, security impact,
-license/attribution, user-facing behavior, and rollback risk.
-
-## Contribution terms
-
-By submitting a pull request or other contribution for inclusion in iPolloWork, you represent that you have the right to submit it and agree that:
-
-1. The contribution may be distributed to users under the current iPolloWork Source Available License and any future version of that license; and
-2. You grant Different AI, Inc. a perpetual, worldwide, non-exclusive, irrevocable, royalty-free license to use, reproduce, modify, distribute, sublicense, and commercially license the contribution as part of iPolloWork and related products.
-
-Third-party code must keep its original copyright and license notice. Identify the source and license in the pull request. Do not submit code that cannot legally be included under these terms.
+Keep original author and license notices. Normal commits and file moves preserve history; do not rewrite shared history to change contributor attribution. Pull requests should explain the user-visible problem, the resulting behavior and verification.

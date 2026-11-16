@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-native-fixture
+      name: './native-fixture.ts'

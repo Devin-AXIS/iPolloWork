@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "target": "Devin-AXIS/iPolloWork:main",
+  "sources": {
+    "suite": {
+      "directory": "plugins/ipollowork-suite",
+      "version": "0.1.27"
+    },
+    "backend": {
+      "directory": "services/ipollowork",
+      "version": "0.1.11"
+    },
+    "design-video": {
+      "repository": "https://github.com/Devin-AXIS/deepseek-design",
+      "version": "1.0.0-beta.22",
+      "releases": "plugins/ipollowork-suite/catalog/bundled-releases.json"
+    },
+    "dsh": {
+      "repository": "https://github.com/deepseek-ai/deepseek-harness.git",
+      "pin": "integrations/runtime/upstream.json"
+    }
+  },
+  "features": [
+    "native-enterprise-connector",
+    "theme",
+    "plugin-market",
+    "design-and-ppt",
+    "video",
+    "shared-connections",
+    "official-service-execution",
+    "native-models",
+    "project-agents",
+    "main-assistant",
+    "im-channels",
+    "enterprise-projects",
+    "project-memory",
+    "file-submissions",
+    "native-session-sharing",
+    "postgresql-accounts",
+    "owner-storage-quotas",
+    "native-output-archives",
+    "compact-project-memory",
+    "usage-metered-billing",
+    "ecs-role-object-storage",
+    "https-account-service",
+    "explicit-output-uploads",
+    "account-backed-web-publication",
+    "private-oss-published-sites",
+    "native-sharing-account-preparation",
+    "shared-provider-model-discovery",
+    "editable-model-unit-prices",
+    "membership-cost-preview",
+    "native-ark-image-and-video",
+    "seedance-2-and-2-5",
+    "seedream-5-5",
+    "shared-volcengine-iam-key",
+    "volcengine-speech-and-embeddings",
+    "ark-full-model-discovery"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@ipollo/dsh-suite",
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "upstream": {
+    "name": "@xmanrui/dsh-im",
+    "version": "5.10.0",
+    "commit": "fc2ceab217309f8973afa03c58cdd8ff3e900130"
+  }
+}

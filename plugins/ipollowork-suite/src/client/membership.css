@@ -1,0 +1,64 @@
+/* Personal center: one flat column of setting rows with hairline separators, matching DSH's settings pages. */
+.consumer-account,.consumer-account *,.consumer-subscribe-dialog,.consumer-subscribe-dialog *{box-sizing:border-box}
+.consumer-account{--muted-foreground:var(--g-sub,var(--ipw-muted));width:100%;max-width:640px;min-width:0;margin:0 auto;display:flex;flex-direction:column;color:var(--g-ink,var(--ipw-text));font-size:13px;line-height:1.5}
+.consumer-identity{display:flex;align-items:center;gap:12px;min-width:0;padding:4px 0 20px}
+.consumer-avatar{display:grid;place-items:center;flex:0 0 40px;width:40px;height:40px;border-radius:50%;background:var(--g-track,var(--ipw-muted-surface));font-size:15px;font-weight:500;color:var(--g-ink,var(--ipw-text))}
+.consumer-identity>div{min-width:0;flex:1;display:flex;flex-direction:column;gap:2px}
+.consumer-identity strong{font-size:15px;font-weight:600;letter-spacing:-.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.consumer-identity>div>span{font-size:12px;color:var(--muted-foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.consumer-plan-badge{flex-shrink:0;padding:3px 9px;border-radius:999px;font-size:11px;color:var(--muted-foreground);box-shadow:inset 0 0 0 .5px var(--g-line,var(--ipw-border))}
+.consumer-plan-badge.is-pro{color:var(--g-action-ink,#fff);background:var(--g-action,#18181b);box-shadow:none}
+.consumer-group{border-top:.5px solid var(--g-line,var(--ipw-border))}
+.consumer-group>h2{margin:20px 0 4px;font-size:13px;font-weight:600}
+.consumer-row{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:52px;padding:12px 0}
+.consumer-row+.consumer-row{border-top:.5px solid var(--g-line,var(--ipw-border))}
+.consumer-row>span:first-child{color:var(--g-ink,var(--ipw-text))}
+.consumer-value{min-width:0;text-align:right;color:var(--muted-foreground);overflow-wrap:anywhere}
+.consumer-points{padding:18px 0}
+.consumer-points>div{display:flex;flex-direction:column;gap:4px;min-width:0}
+.consumer-points>div>span{font-size:12px;color:var(--muted-foreground)}
+.consumer-points strong{font-size:30px;line-height:1.1;font-weight:600;letter-spacing:-.03em;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.consumer-points strong>small{margin-left:6px;font-size:12px;font-weight:400;letter-spacing:0;color:var(--muted-foreground)}
+.consumer-note{margin:0 0 12px;color:var(--muted-foreground);font-size:12px;line-height:1.6}
+.consumer-allowance{display:block}
+.consumer-allowance-heading{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.consumer-allowance-heading h3{margin:0;font-size:13px;font-weight:400}
+.consumer-allowance-heading>strong{font-size:12px;font-weight:500;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
+.consumer-allowance-bar{height:4px;margin:10px 0 8px;border-radius:4px;background:var(--g-track,var(--ipw-muted-surface));overflow:hidden}
+.consumer-allowance-bar>span{display:block;height:100%;border-radius:inherit;background:var(--g-brand,var(--ipw-accent))}
+.consumer-allowance-meta{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:4px 12px;margin-top:4px;font-size:12px;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
+.consumer-weekly{display:block;margin:0}
+.consumer-weekly figcaption{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}
+.consumer-weekly figcaption small{font-size:11px;color:var(--muted-foreground)}
+.consumer-weekly ol{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px;list-style:none;padding:0;margin:14px 0 0}
+.consumer-weekly li{min-width:0;display:flex;flex-direction:column;align-items:center;font-variant-numeric:tabular-nums}
+.consumer-weekly li>strong{height:16px;max-width:100%;overflow:hidden;font-size:10px;font-weight:400;color:var(--muted-foreground);white-space:nowrap}
+.consumer-weekly li>div{height:56px;width:100%;display:flex;align-items:flex-end;justify-content:center}
+.consumer-weekly li>div>span{display:block;width:min(18px,100%);border-radius:3px 3px 1px 1px;background:var(--g-track,var(--ipw-muted-surface))}
+.consumer-weekly li>div>span.is-used{background:var(--g-brand,var(--ipw-accent))}
+.consumer-weekly time{margin-top:6px;max-width:100%;overflow:hidden;color:var(--muted-foreground);font-size:10px;white-space:nowrap}
+.consumer-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;margin-top:8px;padding:14px 0 4px;border-top:.5px solid var(--g-line,var(--ipw-border))}
+.consumer-account .consumer-footer>p{margin:0}
+.consumer-footer>span{display:flex;gap:4px;margin-left:auto}
+.consumer-quiet{height:28px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--muted-foreground);font:inherit;font-size:12px;cursor:pointer}
+.consumer-button{display:inline-flex;align-items:center;justify-content:center;gap:7px;flex-shrink:0;min-height:34px;padding:0 14px;border:0;border-radius:9px;background:var(--ipw-muted-surface,#f4f4f5);color:var(--ipw-text,#18181b);font:inherit;font-size:13px;font-weight:500;cursor:pointer;text-decoration:none;box-shadow:inset 0 0 0 .5px var(--ipw-border,#ececef)}
+.consumer-button[data-primary=true]{background:var(--g-action,#18181b);color:var(--g-action-ink,#fff);box-shadow:none}
+.consumer-button:disabled{opacity:.45;cursor:default}
+.consumer-account :focus-visible,.consumer-subscribe-dialog :focus-visible{outline:2px solid var(--ipw-accent,#2563eb);outline-offset:2px}
+@media (hover:hover){.consumer-quiet:hover{color:var(--g-ink,var(--ipw-text));background:var(--g-hover,var(--ipw-muted-surface))}.consumer-button[data-primary=true]:not(:disabled):hover{background:var(--g-action-hover,#3f3f46)}}
+@media (max-width:480px){.consumer-points{flex-wrap:wrap}.consumer-points>.consumer-button{width:100%}.consumer-row:not(.consumer-points){flex-wrap:wrap}.consumer-value{text-align:left}}
+
+/* Plan picker dialog; it renders outside the account page and uses the suite's global tokens. */
+.consumer-subscribe-dialog{width:calc(100vw - 28px);max-width:420px;max-height:calc(100dvh - 28px);overflow:auto;padding:24px;gap:16px;border-radius:16px}
+.consumer-subscribe-dialog [data-slot=dialog-title]{font-size:16px;font-weight:600}
+.consumer-subscribe-dialog label.consumer-note{display:flex;flex-direction:column;gap:6px;margin:0}
+.consumer-subscribe-dialog select{height:34px;padding:0 10px;border:0;border-radius:8px;font:inherit;color:inherit;background:var(--ipw-muted-surface,#f4f4f5)}
+.consumer-plan-options{display:grid;gap:12px;margin-top:4px}
+.consumer-plan-option{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;box-shadow:inset 0 0 0 .5px var(--ipw-border,#ececef)}
+.consumer-plan-option h3{margin:0;font-size:14px;font-weight:600}
+.consumer-plan-option .consumer-note{margin:0}
+.consumer-plan-option .consumer-button{margin-top:6px}
+.consumer-price{font-size:26px;font-weight:600;letter-spacing:-.02em}
+.consumer-price>span{margin-left:6px;font-size:12px;font-weight:400;letter-spacing:0;color:var(--ipw-muted,#71717a)}
+.consumer-checkout{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.consumer-payment-qr{display:block;width:200px;height:200px;margin:0 auto;background:#fff}

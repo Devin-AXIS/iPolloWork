@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-enterprise-connector
+      name: '@ipollo/dsh-enterprise-connector'

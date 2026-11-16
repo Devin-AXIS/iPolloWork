@@ -1,0 +1,37 @@
+{
+  "nativeMenu": {
+    "button": [
+      {
+        "name": "会话",
+        "sub_button": [
+          { "type": "click", "name": "新会话", "key": "ipollo_im_v1_new" },
+          { "type": "click", "name": "会话列表", "key": "ipollo_im_v1_sessions" }
+        ]
+      },
+      {
+        "name": "智能体",
+        "sub_button": [
+          { "type": "click", "name": "切换智能体", "key": "ipollo_im_v1_agents" },
+          { "type": "click", "name": "切换模型", "key": "ipollo_im_v1_models" }
+        ]
+      },
+      {
+        "name": "操作",
+        "sub_button": [
+          { "type": "click", "name": "查看状态", "key": "ipollo_im_v1_status" },
+          { "type": "click", "name": "停止任务", "key": "ipollo_im_v1_stop" },
+          { "type": "click", "name": "更多操作", "key": "ipollo_im_v1_help" }
+        ]
+      }
+    ]
+  },
+  "welcomeCard": {
+    "title": "欢迎使用 iPolloWork",
+    "description": "选择下方操作，或直接发送消息开始。",
+    "entries": [
+      ["新会话", "/new"], ["切换模型", "/menu models"], ["切换智能体", "/menu presets"],
+      ["查看状态", "/status"], ["停止任务", "/stop"], ["更多操作", "/help"]
+    ]
+  },
+  "fallback": "欢迎使用 iPolloWork\n直接发送问题、图片或语音即可开始。常用操作：\n新会话  /new\n切换模型  /models\n切换智能体  /presets\n查看状态  /status\n停止任务  /stop\n更多操作  /help"
+}

@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "target": "ES2023", "lib": ["ES2023", "DOM", "DOM.Iterable"], "module": "NodeNext", "moduleResolution": "NodeNext",
+    "strict": true, "jsx": "react-jsx", "esModuleInterop": true, "skipLibCheck": true, "resolveJsonModule": true,
+    "allowImportingTsExtensions": true, "noEmit": true, "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "web/**/*.ts", "web/**/*.tsx", "tests/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}

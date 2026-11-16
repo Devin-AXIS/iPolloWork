@@ -1,94 +1,73 @@
-.turbo/
-node_modules/
-apps/server/models/
-apps/desktop/dist-electron/
-apps/desktop/dist-engine-packs/
-apps/desktop/dist-video-packs/
-apps/desktop/dist-electron-windows-0.17.34-20260728101109/
-
-
-packages/*/node_modules/
-apps/*/node_modules/
-.next/
-out/
-dist/
-coverage/
-packages/*/dist/
-apps/*/dist/
-tmp/
-
-# Local git worktrees
-_worktrees/
-.worktrees/
-
-# Desktop sidecars
-apps/desktop/resources/sidecars/
-apps/desktop/resources/plugin-packages/
-apps/desktop/server/
-apps/desktop/.hyperframes-build-stamp.json
-apps/desktop/dist-electron-test-filter/
-apps/desktop/hyperframes-runtime/
-apps/desktop/dsh-runtime/node-runtime/
-apps/desktop/dsh-runtime/.install-stamp.json
-apps/desktop/video/
-# Runtime video-session projects created by the desktop app.
-/video/
-
-# Env
+CLAUDE.local.md
 .env
-.env.*
-!.env.example
-# Committed local-dev defaults (throwaway secrets) loaded by scripts/dev-local.mjs.
-!.env.dev
-# The migration-release fragment is committed only on the tagged
-# migration-release commit and removed by 03-post-migration-cleanup.mjs.
-# Allow git to see it so `cut-migration-release` can commit it.
-!.env.migration-release
-
-# Bun build artifacts
-*.bun-build
-apps/server/cli
-
-# pnpm store (created by Docker volume mounts)
+apps/desktop/.env.windows
+apps/desktop/.env.macos
+apps/desktop/*.p12
+node_modules/
+lib/
+*.tsbuildinfo
+pnpm-debug.log
 .pnpm-store/
-
-# Docker dev workspace (ephemeral mount point)
-packaging/docker/workspace/
-
-# OS
-.DS_Store
-
-# OpenCode mirror
-vendor/opencode/
-
-# OpenCode local deps
-.opencode/node_modules/
-.opencode/bun.lock
-
-# iPolloWork workspace-local artifacts
-.opencode/ipollowork/
-.opencode/agents/ipollowork.md
-.opencode/ipollowork.json
-opencode.jsonc
-.vercel
-.env*.local
-.claude/*
-.security
-transcript-analysis
-# Eval runner output
-evals/results/
-.playwright-mcp/
+.cache/
+examples/*/*.jsonl
+.storages/
+.sessions/
+examples/*/.sessions/
+coverage/
+.coverage-times.json
+.doc-typecheck-*/
+.node-next-types-*/
+.oxlint-contract-*/
+.oxlintrc.contract-*.json
+oxlint-contract-*.ts
+.humanize/
+tmp/
+.claude/commands/
+.claude/launch.json
+.claude/settings.json
 .vscode/
-.ipollowork-dev/
-/design/
-/nba-story/
-.superpowers/
-# Local repositories and non-source working documents.
-/external-plugins/jev-decision-model/
-/docs/*.docx
-/docs/code-optimization.md
-/docs/superpowers/
-# Local design-system experiments; keep out of commits for now.
-# /apps/app/src/react-app/domains/session/design/design-systems/
+.DS_Store
+.idea
+mise.toml
+dist-exe/
+/dist/
+apps/desktop/.desktop-build/
+python/sdk-runtime/src/deepseek_harness_runtime/runtime/
+python/**/__pycache__/
+python/**/.pytest_cache/
+packages/**/__pycache__/
+apps/web/dist/
+apps/cli/docs/
+.artifacts/
+.dsh-build/
+.dsh-report/
+.ui-review/
+.playwright-mcp/
+.orig
+.worktrees/
+worktrees/
+.agents/worktrees/
+.typert-*/
+native/system/test/bin/
 
-/apps/desktop/video-codecs/
+# Generated company-signed CUA release record.
+/packages/experimental/cua-macos/cua-helper.json
+
+# Downloaded official DSH source and generated resolution links.
+/.upstream/
+/apps
+/packages
+/vendor
+/native
+/scripts
+/node_modules
+/tsconfig.base.json
+/tsconfig.base.client.json
+/tsconfig.node.base.json
+/vitest.shared.ts
+/integrations/desktop-host/application.yml
+/integrations/desktop-host/assets/mark.svg
+
+# Local product desktop signing configuration.
+/integrations/desktop/.env.macos
+/integrations/desktop/.env.windows

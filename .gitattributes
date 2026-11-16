@@ -1,0 +1,5 @@
+# Keep portable source files normalized while preserving Windows launchers.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.pdf binary
+*.tgz binary

@@ -1,8 +1,0 @@
-node_modules
-dist
-artifacts
-pnpm-lock.yaml
-.local
-.data
-release
-.env

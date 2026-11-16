@@ -1,7 +1,0 @@
-node_modules/
-src/
-studio/vite.config.ts
-tsconfig.json
-tsdown.config.ts
-pnpm-lock.yaml
-pnpm-workspace.yaml

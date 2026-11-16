@@ -1,0 +1,11 @@
+{
+  "upstreamRepository": "https://github.com/deepseek-ai/deepseek-harness.git",
+  "releaseTag": "dsh-v0.2.2-rc.3",
+  "npmPackage": "@deepseek-ai/dsh",
+  "npmVersion": "0.2.2-rc.3",
+  "npmIntegrity": "sha512-S+4oUYVKWuc1SCMMp1mpUa2llxVy0o9gIgp7TDg/Ea7PuvXVkAfnykqSH1/oDXVB+y5VzEm0QIJulo1LIB3qRg==",
+  "sourceTree": "5740b68dc7112a9b8489be01c39814e874118dbd",
+  "sourceRevision": "39163dd30f703a79079e2d2446545cff3c453738",
+  "sourceArchiveSha256": "f77ad662bf7d6875f01e34f69c9e1c5f4f306a4dd5265e663c2093fdf9957cc0",
+  "packageManager": "pnpm@11.28.5"
+}

@@ -1,0 +1,15 @@
+- id: webserver
+  config:
+    host: 127.0.0.1
+    port: 4791
+- insert:
+    - id: ipollowork-cloud-server
+      name: '@ipollo/dsh-suite/cloud-server'
+      config:
+        accountOrigin: https://work.ipollo.net
+        apiUrl: https://api.cn-hangzhou.sandbox.aliyuncs.com
+        domain: cn-hangzhou.sandbox.aliyuncs.com
+        template: YOUR_DSH_TEMPLATE
+        bucket: YOUR_PRIVATE_PROJECT_BUCKET
+        storageEndpoint: https://oss-cn-hangzhou.aliyuncs.com
+        roleArn: acs:ram::YOUR_ACCOUNT:role/YOUR_PROJECT_ROLE

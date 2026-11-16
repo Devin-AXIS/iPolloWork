@@ -1,0 +1,57 @@
+name: iPollo release packages
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing GitHub release receiving the verified Windows installer
+        required: true
+        default: v1.0.1
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Prepare pinned runtime and product
+        shell: pwsh
+        run: |
+          npm run setup:build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Configure unsigned installer
+        shell: pwsh
+        run: |
+          @'
+          DSH_DESKTOP_APP_ID=com.deepseek.harness
+          DSH_DESKTOP_AUTO_UPDATE_ENV=production
+          DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://work.ipollo.net
+          '@ | Set-Content integrations/desktop/.env.windows
+      - name: Build and verify Windows x64
+        shell: pwsh
+        run: |
+          node integrations/desktop/run.mjs package-target.ts win-x64 --unsigned
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iPollo-windows-x64
+          path: integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+          if-no-files-found: error
+      - name: Publish verified installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          $files = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+          if ($files.Count -ne 1) { throw 'Expected exactly one verified installer' }
+          gh release upload $env:RELEASE_TAG $files.FullName --repo $env:GITHUB_REPOSITORY --clobber
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }

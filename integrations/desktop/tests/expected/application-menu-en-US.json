@@ -1,0 +1,44 @@
+[
+  {
+    "label": "About iPolloWork",
+    "role": "about"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "label": "Check for Updates…"
+  },
+  {
+    "label": "Manage dsh Command…"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "role": "toggleDevTools",
+    "label": "Developer tools"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "role": "hide",
+    "label": "Hide iPolloWork"
+  },
+  {
+    "role": "hideOthers",
+    "label": "Hide Others"
+  },
+  {
+    "role": "unhide",
+    "label": "Show All"
+  },
+  {
+    "type": "separator"
+  },
+  {
+    "role": "quit",
+    "label": "Quit iPolloWork"
+  }
+]

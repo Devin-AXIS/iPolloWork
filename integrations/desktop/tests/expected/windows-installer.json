@@ -1,0 +1,22 @@
+{
+  "launchCheckboxState": 1,
+  "nativeProgressVisible": false,
+  "cases": [
+    "canonical-drive-roots-rejected-before-ownership-check",
+    "enter-validates-current-path-and-unchecked-launch",
+    "completion-preserves-window-position",
+    "welcome-ready-before-first-show",
+    "welcome-presented-on-first-show",
+    "successful-install-paints-100-before-finish",
+    "locked-directory-shows-error-and-copy-control-and-preserves-installation",
+    "registered-directory-with-trailing-separators",
+    "registered-directory-and-checked-launch",
+    "launch-failure-retry-and-prompt-dismissal",
+    "running-app-rejected-before-welcome-and-extraction",
+    "silent-running-app-rejected-before-extraction",
+    "app-started-on-welcome-rejected-before-extraction",
+    "silent-update-retains-directory-and-ignores-unrelated-process",
+    "invalid-destination-rejection",
+    "uninstall"
+  ]
+}

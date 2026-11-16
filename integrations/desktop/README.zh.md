@@ -1,0 +1,27 @@
+# iPolloWork desktop
+
+[English](README.md) | 中文
+
+本包维护 iPolloWork 的 Electron 外壳、邮箱登录、品牌界面与发行打包，通过[桌面宿主](../desktop-host/README.zh.md)启动官方 DSH profile。Agent 循环、工具、会话和凭据仍由官方 DSH 服务管理。产品账户、首次引导、分享及必需插件策略位于[套件](../../plugins/ipollowork-suite/README.zh.md)。
+
+用户看到的都是 iPolloWork：菜单、关于面板、托盘、对话框、应用和托盘图标（白底黑色标志）、版权、链接协议名和 Windows 快捷方式。宿主启动期间，外壳送出的 DSH 启动页和网页以 iPolloWork 的标题、标志和名称替换 DSH 字标。打包后的应用包、可执行文件、辅助进程和 Windows 安装目录都以 iPolloWork 命名（`iPollo.app`、`iPollo.exe`），macOS 菜单栏和活动监视器也显示 iPolloWork。安装包和更新文件沿用 `iPollo-<版本>-<系统>-<架构>` 文件名，因为固定版本的 DSH 发布工具按这个名字查找文件。
+
+DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源码版本构建，不修改 `packages/` 或 `apps/`。同版本号的 npm 发布包早于源码中的认证 API，因此不能混入桌面版。沿用官方 ASAR 布局：JavaScript 和资源位于 `app.asar/dsh`，仅原生可执行文件及需要物理路径的资源放在归档外。CLI、Host 和运行验证使用同一布局。
+
+在仓库根目录执行 `npm run setup:build`，然后运行 `node integrations/desktop/run.mjs package-target.ts mac-arm64 --dir --unsigned`。输出位于 `.desktop-build/`。本包使用校验后的官方依赖缓存，不单独执行 npm 安装。正式签名发行还需配置对应平台的签名环境。
+
+不提供旧版 iPolloWork profile 转换或降级层。文件和账户凭据仍由配置的 DSH home 管理。`LICENSE` 保留原 DeepSeek Harness MIT 许可证；产品修改独立维护于本目录，不进入官方应用源码树。
+
+## 产品版本
+
+当前产品发行版为 **iPollo 1.0.1**（安装包元数据为 `1.0.1`）。产品与桌面端清单使用相同版本；内置 DSH 运行时保留 `integrations/runtime/upstream.json` 中固定的版本。后续补丁版本依次使用 `1.0.1`、`1.0.2`，展示名称可写为 `1.0.01`、`1.0.02`。安装包元数据不得使用前导零，因为更新器要求标准语义化版本号。
+
+Windows x64 未签名安装包通过 `.github/workflows/ipollo-release-packages.yml` 在 GitHub 托管的 Windows 构建机生成；工作流先验证打包后的运行时，再上传到已有发行版。
+
+iPollo 签名发行设置 `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` 和 `DSH_DESKTOP_UPDATE_CHANNEL=stable`。安装包中的更新器不得指向上游 DSH 下载服务；两个 Mac 架构共用包含各自 ZIP 条目的更新清单。
+
+Design 和 Video 由用户在插件市场按需安装。桌面主包仅包含套件和官方运行时依赖，不预装创作插件、不携带其安装压缩包或资源包依赖。专用桌面的插件市场仅在用户安装时从 GitHub 下载固定版本。设计和视频插件各自在自己的仓库构建、发版；客户端发行流程不得构建或发布它们的插件安装包。
+
+macOS 打包前执行 `node integrations/desktop/run.mjs prepare-cua-helper.ts`，在固定上游源码目录外编译两个架构的官方电脑操作辅助程序并签名、公证；缺失辅助程序时禁止打包。桌面启动时，仅当独立目录缺少模型文件，才从共享 `~/.dsh` 缓存复用 SHA-256 校验通过的 SenseVoice 模型；不会覆盖已有模型。
+
+Windows 打包需要 .NET SDK 10 编译固定版本的电脑操作辅助程序；完整独立运行输出随提供方打包，并放在应用归档外。发行工作流会安装该 SDK。

@@ -1,0 +1,12 @@
+{
+  "name": "iPolloWork",
+  "short_name": "iPolloWork",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    { "src": "/ipollowork-suite/brand/app-icon.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}

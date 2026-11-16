@@ -1,4 +1,0 @@
-interface:
-  display_name: "iPolloWork Template Generation"
-  short_description: "Create reusable Design, Slides/PPT, and Video templates."
-  default_prompt: "Use $ipollowork-template-generation to guide me one question at a time and create a validated, reusable iPolloWork template."

@@ -1,0 +1,13 @@
+# Bilingual-pair consistency record for README.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write plugins/ipollo-enterprise/README.md
+/ipolloos-enterprise-connector-for-dsh:
+  en: 8dcc4767f96c5553
+  zh: 0403bf2f38eed53a
+/ipolloos-enterprise-connector-for-dsh/install:
+  en: 63302ba292cf50c4
+  zh: 549244bf040c2272
+/ipolloos-enterprise-connector-for-dsh/verification:
+  en: 1c085e8ecc1f9784
+  zh: d30c23e34ce0488e

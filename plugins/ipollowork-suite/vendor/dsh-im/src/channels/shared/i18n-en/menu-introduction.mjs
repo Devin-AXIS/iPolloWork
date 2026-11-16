@@ -1,0 +1,18 @@
+export default {
+  '总助手': 'Main assistant',
+  '自动处理任务，按需调用固定专家或临时助手，无需为专家分别扫码。': 'Handles tasks and delegates to saved specialists or temporary workers. No separate specialist pairing is needed.',
+  '已有会话保持不变，发送 /new 后由总助手接待。': 'Existing conversations are retained. Send /new to start with the main assistant.',
+  '此连接由总助手统一接待，专家由总助手在任务中调用。': 'This connection uses the main assistant, which delegates to specialists during tasks.',
+  '欢迎使用 iPolloWork': 'Welcome to iPolloWork',
+  '直接发送问题、图片或语音即可开始。常用操作：': 'Send a question, image or voice message to start. Common actions:',
+  '切换模型': 'Switch model',
+  '切换智能体': 'Switch agent',
+  '查看状态': 'View status',
+  '停止任务': 'Stop task',
+  '更多操作': 'More actions',
+  '会话': 'Chat',
+  '智能体': 'Agents',
+  '操作': 'Actions',
+  '功能菜单': 'Menu',
+  '选择下方操作，或直接发送消息开始。': 'Choose an action below, or send a message to start.',
+};

@@ -1,0 +1,30 @@
+/* iPolloWork artwork in DSH's brand places. Rules apply only while the suite theme marks the body. */
+body[data-ipw-suite] [data-home-whale] { display: none; }
+/* The home headline follows the original iPolloWork home: the wordmark above a large title, left-aligned with the
+   composer. */
+body[data-ipw-suite] div:has(> span [data-ipw-hero]) { justify-content: flex-start; }
+body[data-ipw-suite] span:has([data-ipw-hero]) { flex: 1 1 100%; min-width: 0; justify-content: flex-start; }
+body[data-ipw-suite] [data-ipw-hero] { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; min-width: 0; margin-bottom: 16px; }
+body[data-ipw-suite] [data-ipw-wordmark] {
+  display: block;
+  width: 144px;
+  height: 25px;
+  background: currentColor;
+  -webkit-mask: url('../../assets/wordmark.svg') center / contain no-repeat;
+  mask: url('../../assets/wordmark.svg') center / contain no-repeat;
+}
+body[data-ipw-suite][data-ds-dark-theme] [data-ipw-wordmark] { opacity: .8; }
+body[data-ipw-suite] [data-ipw-hero-title] { font-size: clamp(32px, 5vw, 48px); line-height: 1; font-weight: 600; letter-spacing: -.04em; overflow-wrap: anywhere; }
+/* The hero mark slot shares a line with DSH's slogan and preview badge; the wordmark and title replace both. */
+body[data-ipw-suite] span:has([data-ipw-hero]) + span { display: none; }
+/* The running status shows the mark instead of DSH's whale tail. */
+body[data-ipw-suite] [data-chat-running] > span:last-child > span:first-child {
+  background: currentColor;
+  -webkit-mask: url('../../assets/mark.svg') center / 76% no-repeat;
+  mask: url('../../assets/mark.svg') center / 76% no-repeat;
+  animation: ipw-running 1.6s ease-in-out infinite;
+}
+body[data-ipw-suite] [data-chat-running] > span:last-child > span:first-child > * { display: none; }
+body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:first-child { animation: none; }
+@keyframes ipw-running { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { body[data-ipw-suite] [data-chat-running] > span:last-child > span:first-child { animation: none; } }

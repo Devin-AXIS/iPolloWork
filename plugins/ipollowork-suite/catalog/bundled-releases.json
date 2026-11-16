@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "plugins": [
+    {
+      "name": "deepseek-idesign",
+      "version": "1.0.0-beta.27",
+      "file": "deepseek-idesign-1.0.0-beta.27-8582ffc54e8c.tgz",
+      "sha256": "8582ffc54e8c786fc729aca0293721883e04dc0654d24bb9bb758891e7dedd9c"
+    },
+    {
+      "name": "deepseek-ivideo",
+      "version": "1.0.0-beta.22",
+      "file": "deepseek-ivideo-1.0.0-beta.22-e5f044d93ee4.tgz",
+      "sha256": "e5f044d93ee420c8a7abb2dfd590be71c8a012bec15a60d38b32d69d45959186"
+    }
+  ]
+}
