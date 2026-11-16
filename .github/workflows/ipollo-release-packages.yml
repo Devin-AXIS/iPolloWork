@@ -38,8 +38,11 @@ jobs:
           '@ | Set-Content integrations/desktop/.env.windows
       - name: Build and verify Windows x64
         shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          node integrations/desktop/run.mjs package-target.ts win-x64 --unsigned
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          node integrations/desktop/run.mjs package-target.ts win-x64 --unsigned --build-version $version
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
