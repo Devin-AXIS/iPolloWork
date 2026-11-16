@@ -92,3 +92,9 @@ Use [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues) for iPolloW
 ## License
 
 Owned iPolloWork code uses the [iPolloWork Source Available License](LICENSE). This is source-available software, not an unrestricted MIT grant. Third-party code and previously granted licenses remain under their original terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Git history and original author attribution are retained when upstream files are removed from the current tree.
+
+## Synchronized release mirrors
+
+[Release mirror automation](.github/workflows/release-mirror.yml) copies the original GitHub release assets to S3-compatible mainland storage; it never rebuilds a second version. Each local download and each public mirror download must match GitHub's SHA-256 digest and size before a verified manifest is exposed. Published release changes trigger synchronization; after all platform assets reach a draft, dispatch the workflow with its tag to mirror, verify, and publish it. Failed copies are retryable and do not publish the draft.
+
+Configure the `release-mirror` GitHub environment once: variables `IPOLLO_MIRROR_S3_ENDPOINT`, `IPOLLO_MIRROR_BUCKET`, `IPOLLO_MIRROR_PUBLIC_URL`, `IPOLLO_MIRROR_REGION`; secrets `IPOLLO_MIRROR_ACCESS_KEY_ID`, `IPOLLO_MIRROR_SECRET_ACCESS_KEY`. The public origin must serve the bucket's `releases/<tag>/<filename>` paths over HTTPS without redirects. Use a dedicated mainland bucket with write access restricted to this prefix. Missing configuration fails explicitly; an unconfigured workflow is not an active mainland mirror.

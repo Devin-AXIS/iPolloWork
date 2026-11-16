@@ -92,3 +92,9 @@ Windows PowerShell 使用相同命令。`npm start` 使用编译后的固定版�
 ## 许可证
 
 iPolloWork 自有代码使用原有的 [iPolloWork Source Available License](LICENSE)，属于源码可用软件，不是无限制的 MIT 授权。第三方代码及此前已授予的许可继续适用原条款，详见[第三方声明](THIRD_PARTY_NOTICES.md)。从当前目录移除上游文件不会删除 Git 历史和原作者记录。
+
+## 全球与大陆镜像同步发布
+
+[发布镜像流程](.github/workflows/release-mirror.yml) 将 GitHub Release 的原始文件复制到兼容 S3 的大陆存储，不重新构建第二个版本。本地下载和大陆公开下载都必须通过 GitHub SHA-256 与文件大小校验，才会公开验证清单。已发布版本的变更自动触发同步；所有平台文件进入草稿后，使用版本标签启动该流程，即可完成镜像、验证并发布草稿。复制失败可以重试，并且不会发布草稿。
+
+在 GitHub 的 `release-mirror` environment 中配置一次：变量 `IPOLLO_MIRROR_S3_ENDPOINT`、`IPOLLO_MIRROR_BUCKET`、`IPOLLO_MIRROR_PUBLIC_URL`、`IPOLLO_MIRROR_REGION`；密钥 `IPOLLO_MIRROR_ACCESS_KEY_ID`、`IPOLLO_MIRROR_SECRET_ACCESS_KEY`。公开地址须通过 HTTPS 直接提供存储桶中的 `releases/<tag>/<filename>`，不经过跳转。使用专用大陆存储桶，并把写权限限制在此路径。缺少配置会明确失败；未配置的流程不代表大陆镜像已经上线。
