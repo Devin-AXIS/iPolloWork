@@ -98,3 +98,5 @@ iPolloWork 自有代码使用原有的 [iPolloWork Source Available License](LIC
 [发布镜像流程](.github/workflows/release-mirror.yml) 将 GitHub Release 的原始文件复制到兼容 S3 的大陆存储，不重新构建第二个版本。本地下载和大陆公开下载都必须通过 GitHub SHA-256 与文件大小校验，才会公开验证清单。已发布版本的变更自动触发同步；所有平台文件进入草稿后，使用版本标签启动该流程，即可完成镜像、验证并发布草稿。复制失败可以重试，并且不会发布草稿。
 
 在 GitHub 的 `release-mirror` environment 中配置一次：变量 `IPOLLO_MIRROR_S3_ENDPOINT`、`IPOLLO_MIRROR_BUCKET`、`IPOLLO_MIRROR_PUBLIC_URL`、`IPOLLO_MIRROR_REGION`；密钥 `IPOLLO_MIRROR_ACCESS_KEY_ID`、`IPOLLO_MIRROR_SECRET_ACCESS_KEY`。公开地址须通过 HTTPS 直接提供存储桶中的 `releases/<tag>/<filename>`，不经过跳转。使用专用大陆存储桶，并把写权限限制在此路径。缺少配置会明确失败；未配置的流程不代表大陆镜像已经上线。
+
+桌面发布版本仅使用三段数字（例如 `1.0.2`）。GitHub Latest 必须同时包含 `stable-mac.yml`、`stable.yml` 及其中引用的 ZIP／安装器；仅修改发布标题无法通知已安装的客户端。发布前使用 `integrations/tooling/release-update-feed.mjs` 生成并验证更新清单。
