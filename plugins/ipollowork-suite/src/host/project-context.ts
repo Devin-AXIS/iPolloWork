@@ -6,6 +6,7 @@ import { z } from "zod";
 import { defineTool, type ToolDefinition } from "@deepseek-ai/dsh-tools";
 import type { AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
+import { matchesProjectAccount, ProjectAccountMismatch } from "./project-account.ts";
 
 const binding = z.object({
   origin: z.string(),
@@ -66,8 +67,8 @@ export function mountProjectContext(
     const link = binding.parse(
       JSON.parse(await readFile(join(path, ".ipollo", "project.json"), "utf8")),
     );
-    if (link.origin !== origin)
-      throw new SuiteError("IPW_PROJECT_ACCOUNT_MISMATCH", 403);
+    if (!matchesProjectAccount(link.origin, origin))
+      throw new ProjectAccountMismatch();
     return link.projectId;
   };
   ctx.tools?.register(
@@ -207,8 +208,8 @@ export function mountProjectContext(
         return next();
       throw new SuiteError("IPW_PROJECT_LINK_INVALID", 409);
     }
-    if (link.origin !== origin)
-      throw new SuiteError("IPW_PROJECT_ACCOUNT_MISMATCH", 403);
+    if (!matchesProjectAccount(link.origin, origin))
+      throw new ProjectAccountMismatch();
     const space = z
       .object({
         title: z.string(),

@@ -1,6 +1,10 @@
 import type { ClientContext } from "./native.ts";
 import { language } from "./locale.ts";
 const en = {
+  batchInvite: "Invite in bulk", batchHint: "One email per line. Invitations use the selected department and role.", batchEmails: "Employee emails", invitationDays: "Valid for (days)", invitationLinks: "Invitation links",
+  identityNotifications: "Member change notifications", notificationEndpoint: "HTTPS receiver", notificationEnabled: "Send member changes", notificationSecret: "Signing secret — copy once to your receiver", rotateSecret: "Rotate signing secret",
+  credentialMode: "API key ownership", sharedKey: "Organization key", memberKey: "Each member supplies a key",
+  ownKey: "My API key", clearKey: "Remove my key", memberKeyHint: "Your key is used only for this organization's projects. Other members cannot read it.",
   localShareHint:
     "This account service is local to this computer. Connect a shared team service before sending links to another computer.",
   sharedContext: "Shared context",
@@ -373,7 +377,7 @@ const en = {
   newModel: "Connect a service",
   noModels: "No organization services yet",
   noModelsHint:
-    "Connect the enterprise’s own provider key and grant models by department. Usage is billed by the provider to the enterprise, not to personal points.",
+    "Configure organization services with a shared key or individual member keys and grant access by department. Usage is billed by the provider, not personal points.",
   endpoint: "Endpoint",
   apiKey: "Key",
   keySaved: "Saved; leave blank to keep",
@@ -399,6 +403,10 @@ const en = {
   modelEnabled: "Enabled",
 };
 const zh: typeof en = {
+  batchInvite: "批量邀请", batchHint: "每行一个员工邮箱，使用当前选择的部门和角色。", batchEmails: "员工邮箱", invitationDays: "有效天数", invitationLinks: "邀请链接",
+  identityNotifications: "身份变更通知", notificationEndpoint: "HTTPS 接收地址", notificationEnabled: "发送成员变更通知", notificationSecret: "签名密钥，请复制到接收系统，仅此次显示", rotateSecret: "更换签名密钥",
+  credentialMode: "凭证模式", sharedKey: "组织共用 Key", memberKey: "每位成员填写自己的 Key",
+  ownKey: "我的 API Key", clearKey: "删除我的 Key", memberKeyHint: "仅用于本组织的项目，其他成员无法读取你的 Key。",
   localShareHint:
     "当前账户服务仅在本机运行；同事跨电脑使用分享链接前，需要连接团队共用的服务地址",
   sharedContext: "共享上下文",
@@ -737,7 +745,7 @@ const zh: typeof en = {
   newModel: "接入服务",
   noModels: "还没有组织服务",
   noModelsHint:
-    "接入组织自己的模型 Key，按部门分给同事使用；费用由组织直接和厂商结算，不扣个人积分",
+    "配置组织服务，选择共用或成员独立 Key，按部门授权；费用由服务商结算，不扣个人积分",
   endpoint: "接口地址",
   apiKey: "Key",
   keySaved: "已保存，留空保持不变",

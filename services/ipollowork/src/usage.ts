@@ -33,11 +33,12 @@ async function limits(store: Store, userId: string, timestamp: number) {
  * @param userId Authenticated account.
  * @param offsetMinutes Deployment calendar offset east of UTC.
  * @param timestamp Epoch milliseconds used for this snapshot.
- * @returns Settled and reserved credits, plan limits and reset times.
+ * @param limitsEnabled Whether stored membership limits are currently enforced.
+ * @returns Settled and reserved credits, effective limits and reset times.
  */
-export async function accountUsage(store: Store, userId: string, offsetMinutes: number, timestamp = Date.now()) {
+export async function accountUsage(store: Store, userId: string, offsetMinutes: number, timestamp = Date.now(), limitsEnabled = false) {
   const period = usagePeriods(timestamp, offsetMinutes);
-  const cap = await limits(store, userId, timestamp);
+  const cap = limitsEnabled ? await limits(store, userId, timestamp) : { daily: null, weekly: null };
   const row = await store.one(`SELECT
     COALESCE(SUM(points) FILTER (WHERE created_at>=?),0) AS daily,
     COALESCE(SUM(points),0) AS weekly,
@@ -61,7 +62,7 @@ export async function accountUsage(store: Store, userId: string, offsetMinutes: 
  * @returns Resolves when both active membership budgets permit the reservation.
  */
 export async function requireUsageBudget(store: Store, userId: string, points: number, offsetMinutes: number) {
-  const usage = await accountUsage(store, userId, offsetMinutes);
+  const usage = await accountUsage(store, userId, offsetMinutes, Date.now(), true);
   if (usage.daily.remaining !== null && points > usage.daily.remaining)
     throw new ServiceError("DAILY_USAGE_LIMIT_REACHED", 429, "本次任务超出今日剩余额度，请在额度重置后重试");
   if (usage.weekly.remaining !== null && points > usage.weekly.remaining)

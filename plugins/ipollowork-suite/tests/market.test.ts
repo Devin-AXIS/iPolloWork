@@ -125,3 +125,12 @@ test('dedicated desktop prefers the checked bundled Studio archives', async () =
     assert(item.spec.endsWith('.tgz'))
   }
 })
+
+test('service-curated entries merge with bundled plugins and use the official pinned source resolver', async () => {
+  const entry = { name: '@publisher/plugin', title: 'External', metadata: { category: 'productivity' }, versions: [{ version: '1.0.0', publishTimestamp: 1, source: { type: 'git', url: 'https://github.com/publisher/plugin', commit: 'a'.repeat(40), path: 'packages/plugin' } }] }
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, undefined, false, [entry])
+  assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
+  assert.equal(state.items.at(-1)?.spec, 'git+https://github.com/publisher/plugin.git#' + 'a'.repeat(40) + '&path:/packages/plugin')
+  assert.equal(state.items.at(-1)?.categoryTitle, 'Productivity')
+  await assert.rejects(readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, undefined, false, [{ ...entry, versions: [] }]), { code: 'IPW_INVALID_CATALOG' })
+})

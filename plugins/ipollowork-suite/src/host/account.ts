@@ -139,6 +139,10 @@ export class AccountService {
     }
     return readJson(response, this.config.maxResponseBytes);
   }
+  /** Public discovery metadata; no credential is sent. */
+  async marketCatalog(): Promise<unknown> {
+    return this.send('/api/market/catalog', undefined, undefined, undefined, undefined, 3000);
+  }
   /** Call an account-owned business endpoint with the saved, origin-bound grant; `signal` cancels only this call. */
   async request(
     path: string,
@@ -286,6 +290,7 @@ export class AccountService {
     id: string,
     input: unknown,
     signal: AbortSignal,
+    projectId?: string,
   ): Promise<Response> {
     const revision = this.revision;
     const grant = await this.grant();
@@ -303,6 +308,7 @@ export class AccountService {
         headers: {
           Authorization: "Bearer " + grant.token,
           "Content-Type": "application/json",
+          ...(projectId ? { "X-iPollo-Project": projectId } : {}),
         },
         body: JSON.stringify(input),
         signal: AbortSignal.any([this.signal, signal]),

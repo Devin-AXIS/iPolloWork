@@ -2,6 +2,20 @@
 import { useSyncExternalStore } from "react";
 import type { ClientContext } from "./native.ts";
 const en = {
+  cancel: "Cancel",
+  marketImportHint: "Paste a GitHub address or npm package name. Read its details, then confirm to add it.",
+  marketAddress: "GitHub address or npm package", marketRead: "Read plugin", marketReading: "Reading…",
+  marketChangeSource: "Change", marketChoosePlugin: "Choose a plugin", marketAdvanced: "Advanced settings",
+  marketNoDescription: "No description provided by the author.", marketNoPlugin: "No compatible public DSH plugin was found at this source.",
+  marketInvalidSource: "Enter a public GitHub repository address or npm package name.", marketLookupFailed: "Could not read this source. Check the address and network, then retry.",
+  marketAdd: "Add plugin", marketAddHint: "List a reviewed native DSH plugin. Its code stays with the publisher; adding it does not install it.",
+  marketTitle: "Plugin title", marketDescription: "Description and recommendation", marketSource: "Install source",
+  marketRegistry: "Registry URL (optional)", marketRepository: "Repository HTTPS URL", marketCommit: "Reviewed commit (40-character SHA)", marketPath: "Package directory (optional)",
+  marketProductivity: "Productivity", marketCommunication: "Communication", marketCreative: "Creative",
+  marketPublish: "Add to market", marketSaving: "Saving…", marketDuplicate: "This plugin is already listed.",
+  marketPermission: "Sign in with a platform administrator account to add plugins.", marketSaveFailed: "Could not save. Check the source, exact version and compatibility range, then try again.",
+  marketMirrorHint: "Use HTTPS sources and a fixed version. An optional npm mirror must contain that same version. Automatic mainland/overseas routing is not configured yet.",
+
   heroTitle: "Turn ideas into outcomes",
   connections: "Service connections",
   market: "iPolloWork market",
@@ -101,6 +115,20 @@ const en = {
   paymentPending: "Waiting for payment",
 };
 const zh: typeof en = {
+  cancel: "取消",
+  marketImportHint: "粘贴 GitHub 地址或 npm 包名，自动读取插件资料，确认后添加。",
+  marketAddress: "GitHub 地址或 npm 包名", marketRead: "读取插件", marketReading: "读取中…",
+  marketChangeSource: "更换", marketChoosePlugin: "选择插件", marketAdvanced: "高级设置",
+  marketNoDescription: "作者未提供介绍。", marketNoPlugin: "这个来源中没有找到兼容的公开 DSH 插件。",
+  marketInvalidSource: "请输入公开的 GitHub 仓库地址或 npm 包名。", marketLookupFailed: "未能读取来源，请检查地址和网络后重试。",
+  marketAdd: "添加插件", marketAddHint: "收录已审核的 DSH 原生插件。代码保留在发布者来源，添加不会安装插件。",
+  marketTitle: "插件名称", marketDescription: "介绍与推荐理由", marketSource: "安装来源",
+  marketRegistry: "npm 注册表或镜像地址（可选）", marketRepository: "Git 仓库 HTTPS 地址", marketCommit: "已审核提交（40 位 SHA）", marketPath: "插件子目录（可选）",
+  marketProductivity: "效率", marketCommunication: "通信", marketCreative: "创作",
+  marketPublish: "添加到市场", marketSaving: "保存中…", marketDuplicate: "该插件已在市场中。",
+  marketPermission: "请使用平台管理员账号登录后添加插件。", marketSaveFailed: "保存失败，请检查来源、精确版本和兼容范围后重试。",
+  marketMirrorHint: "使用 HTTPS 来源并固定版本。填写 npm 镜像时，须确保镜像包含相同版本。大陆与海外自动选源尚未配置。",
+
   heroTitle: "把想法变成成果",
   connections: "服务连接",
   market: "iPolloWork 市场",

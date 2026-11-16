@@ -72,12 +72,19 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
 }
 
 /** Each request re-reads the operator's catalog. No copied installation state is persisted. */
-export async function readMarket(path: string, manager: NativePluginManager, runtimeVersion: string, language: string, maxBytes: number, cacheDirectory?: string, downloadOnDemand = false): Promise<MarketState> {
+export async function readMarket(path: string, manager: NativePluginManager, runtimeVersion: string, language: string, maxBytes: number, cacheDirectory?: string, downloadOnDemand = false, curated: unknown[] = []): Promise<MarketState> {
   const content = await readFile(path)
   if (content.byteLength > maxBytes) throw new SuiteError('IPW_CATALOG_TOO_LARGE', 500)
   let index
   try { index = parseMarketIndex(JSON.parse(content.toString('utf8')), 'https://catalog.ipollowork.invalid/index.json') }
   catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 500, { cause }) }
+  if (curated.length) {
+    try {
+      const names = new Set(index.plugins.map(plugin => plugin.name))
+      const additional = parseMarketIndex({ format: 1, title: 'Curated', metadata: { categories: index.metadata.categories }, plugins: curated }, 'https://catalog.ipollowork.invalid/index.json')
+      index = { ...index, plugins: [...index.plugins, ...additional.plugins.filter(plugin => !names.has(plugin.name))] }
+    } catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 502, { cause }) }
+  }
   const bundled = await bundledInstallTargets(path, cacheDirectory, downloadOnDemand)
   const installed = new Map((await manager.listBundles()).map(bundle => [bundle.name, bundle]))
   return {

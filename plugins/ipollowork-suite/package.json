@@ -49,7 +49,8 @@
     "LICENSES/MIT-legacy.txt",
     "deploy/cloud",
     "catalog/packages/deepseek-idesign-1.0.0-beta.30-e1efbf202b5f.tgz",
-    "catalog/packages/deepseek-ivideo-1.0.0-beta.23-694a29056881.tgz"
+    "catalog/packages/deepseek-ivideo-1.0.0-beta.23-694a29056881.tgz",
+    "LICENSES/MIT-dsh-market-generator.txt"
   ],
   "dsh": {
     "bundle": {

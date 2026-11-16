@@ -1467,6 +1467,7 @@ export function ModelsTab(props: AssetProps) {
   const [category, setCategory] = useState<ServiceCategory | "all">("all");
   const [editing, setEditing] = useState<EnterpriseModel | null>(),
     [access, setAccess] = useState<EnterpriseModel | null>(null);
+  const [credential, setCredential] = useState<EnterpriseModel | null>(null);
   const [results, setResults] = useState<
     Record<string, { result: ModelProbe; chat?: ModelProbe } | "busy">
   >({});
@@ -1615,6 +1616,7 @@ export function ModelsTab(props: AssetProps) {
                     t={t}
                     {...(manage ? { onEdit: () => setAccess(m) } : {})}
                   />
+                  {m.credentialMode === "member" && <button type="button" className={css.quietButton} onClick={() => setCredential(m)}>{t.ownKey}</button>}
                   {manage && (
                     <span className={css.personActions}>
                       <button
@@ -1668,6 +1670,7 @@ export function ModelsTab(props: AssetProps) {
             })}
         </div>
       )}
+      {credential && <MemberKeyDialog {...props} model={credential} close={() => setCredential(null)} />}
       {editing !== undefined && (
         <ModelDialog
           {...props}
@@ -1689,6 +1692,24 @@ export function ModelsTab(props: AssetProps) {
   );
 }
 
+function MemberKeyDialog({ enterpriseId, t, call, controller, model, close }: AssetProps & { model: EnterpriseModel; close(): void }) {
+  const [key, setKey] = useState("");
+  const task = useTask(t);
+  const save = (value: string) => void task.run(async () => {
+    await call("/organizations/" + enterpriseId + "/services/" + model.id + "/credential", { key: value }, "PUT");
+    setKey(""); await controller.load(); close();
+  });
+  return <Modal open title={t.ownKey + " · " + model.title} closeLabel={t.close} onClose={close} className={css.enterpriseModal!}>
+    <form className={css.assetForm} onSubmit={e => { e.preventDefault(); save(key); }}>
+      <p>{t.memberKeyHint}</p><label className={css.stackField}><span>{t.apiKey}</span><input type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)} placeholder={model.configured ? t.keySaved : t.pasteKey}/></label>
+      <FormError message={task.error}/><div className={css.dialogFooter}>
+        {model.configured && <Button type="button" variant="outline" disabled={task.busy} onClick={() => save("")}>{t.clearKey}</Button>}
+        <Button type="submit" variant="primary" disabled={task.busy || !key.trim()}>{t.save}</Button>
+      </div>
+    </form>
+  </Modal>;
+}
+
 function ModelDialog({
   enterpriseId,
   t,
@@ -1699,6 +1720,7 @@ function ModelDialog({
   language,
 }: AssetProps & { model: EnterpriseModel | null; close(): void }) {
   const task = useTask(t);
+  const [mode, setMode] = useState<"shared" | "member">(model?.credentialMode ?? "shared");
   const [category, setCategory] = useState<ServiceCategory>(
     model?.category ?? "language",
   );
@@ -1783,7 +1805,8 @@ function ModelDialog({
           ...(model ? { id: model.id } : {}),
           title: title.trim(),
           baseUrl,
-          ...(key ? { key } : {}),
+          credentialMode: mode,
+          ...(mode === "shared" && key ? { key } : {}),
           models: chosen.map((m) => ({ ...m, category })),
           category,
           vendor: preset,
@@ -1879,7 +1902,9 @@ function ModelDialog({
               placeholder="https://…/v1"
             />
           </label>
-          <label className={css.stackField}>
+          <label className={css.stackField}><span>{t.credentialMode}</span><select value={mode} onChange={e => { setMode(e.target.value as "shared" | "member"); setKey(""); }}><option value="shared">{t.sharedKey}</option><option value="member">{t.memberKey}</option></select></label>
+          {mode === "member" && <p>{t.memberKeyHint}</p>}
+          {mode === "shared" && <label className={css.stackField}>
             <span>
               <KeyGlyph size={13} />
               {t.apiKey}
@@ -1901,7 +1926,7 @@ function ModelDialog({
             >
               {probe === "busy" ? t.testing : t.test}
             </button>
-          </label>
+          </label>}
         </div>
         {done && (
           <p className={css.probeChip} data-ok={passed} data-wide="">
@@ -1967,7 +1992,7 @@ function ModelDialog({
               task.busy ||
               !title.trim() ||
               !baseUrl ||
-              (!model && !key) ||
+              (mode === "shared" && !model && !key) ||
               (category !== "tool" && !chosen.length)
             }
           >

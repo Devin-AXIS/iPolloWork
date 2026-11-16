@@ -1,6 +1,8 @@
 /** Official chat services mount through DSH's existing pi-ai adapter. */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolveImageAttachmentAccess, resolveRetryPolicy, ACCOUNT_QUOTA_EXCEEDED_CODE, type GenerateOptions, type StreamChunk, type PreparedAdapterCall } from "@deepseek-ai/dsh-llm";
+import type {} from "@deepseek-ai/dsh-session";
+import type {} from "@deepseek-ai/dsh-workspace";
 import { SuiteError } from "./errors.ts";
 import {
   createProvider,
@@ -65,11 +67,16 @@ export function mountServiceModels(
   const token = randomBytes(32).toString("hex"),
     lifetime = new AbortController();
   ctx.effect(() => () => lifetime.abort());
+  let registeredServices = new Map<string, Awaited<ReturnType<Services["catalog"]>>["items"][number]>();
   let profiles = new Map<string, pi.ResolvedPiAiProviderProfile>(),
     facts = "",
     serial = Promise.resolve();
   const adapter = new OfficialModelAdapter({
     profiles: () => profiles,
+    prepareHeaders: (request, headers) => {
+      if (request.sessionId) headers.set("X-iPollo-Session", request.sessionId);
+      return headers;
+    },
     resolveApiKey: async () => token,
     resolveAttachments: () => ctx.get("attachments"),
     resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
@@ -115,6 +122,15 @@ export function mountServiceModels(
             if (length > 16 * 1024 * 1024) throw Error("request limit");
             chunks.push(Buffer.from(chunk));
           }
+          const service = registeredServices.get(match[1]!);
+          let projectId: string | undefined;
+          if (service?.credentialMode === "member") {
+            const sessionId = req.headers["x-ipollo-session"];
+            const workspace = typeof sessionId === "string" ? ctx.get("workspaceRegistry")?.list().find(item => item.sessionIds.includes(sessionId as never)) : undefined;
+            const data = await account.request("/api/v1/projects") as { items: { id: string; native_id: string | null; enterprise_id: string | null }[] };
+            projectId = workspace && data.items.find(item => item.native_id === workspace.id && item.enterprise_id === service.enterprise?.id)?.id;
+            if (!projectId) throw new SuiteError("SERVICE_ORGANIZATION_CONTEXT_REQUIRED", 403);
+          }
           const response = await account.execute(
             match[1]!,
             {
@@ -125,6 +141,7 @@ export function mountServiceModels(
               contentType: "application/json",
             },
             AbortSignal.any([controller.signal, lifetime.signal]),
+            projectId,
           );
           res.writeHead(response.status, {
             "Content-Type":
@@ -180,7 +197,7 @@ export function mountServiceModels(
         );
         if (lifetime.signal.aborted || generation !== services.generation)
           return;
-        const next = JSON.stringify(models.map((s) => [s.id, s.models]));
+        const next = JSON.stringify(models.map((s) => [s.id, s.models, s.credentialMode, s.enterprise]));
         const changed = next !== facts;
         if (!changed && services.modelStatus === "ready") return;
         if (changed) {
@@ -257,6 +274,7 @@ export function mountServiceModels(
               }),
             });
           }
+          registeredServices = new Map(models.map(service => [service.id, service]));
           profiles = nextProfiles;
           if (registration) registration.replace([...profiles.keys()]);
           else if (profiles.size)

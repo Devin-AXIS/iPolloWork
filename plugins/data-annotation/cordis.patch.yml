@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-data-annotation
+      name: "@ipollo/dsh-data-annotation"

@@ -1,3 +1,5 @@
+import { mountMarket } from './market.js';
+import { OrganizationMembers } from "./organization-members.js";
 import { AppDataFiles } from './app-data-files.js';
 import { CloudProjects, cloudGrantAllows, mountCloudProjects } from './cloud-projects.js';
 import { ExecutionService, mountExecution } from "./execution.js";
@@ -77,6 +79,7 @@ export async function createService(config: Config) {
         ? new AppData(dataStore, store, config.appData, config.origin, { secret: config.secret, publicationOrigin: config.publicationOrigin })
         : undefined;
     const settings = new Settings(store, config.secret);
+    const organizationMembers = new OrganizationMembers(store, settings, config.origin);
     const cloud = new CloudProjects(store, settings, config);
     const storage = new Storage(store, settings, config);
     const appFiles=appData?new AppDataFiles(store,appData,storage,config.storageCleanupIntervalMs):undefined;
@@ -243,6 +246,7 @@ export async function createService(config: Config) {
           await relay.refresh();
       }
     });
+    mountMarket(app, store, settings);
     const summary = async (userId: string) => ({
       points: await wallet(store, userId),
       entitlements: await store.all(
@@ -401,13 +405,16 @@ export async function createService(config: Config) {
         new URL(config.origin).hostname,
       ),
       config.usageUtcOffsetMinutes,
+      config.usageLimitsEnabled,
     );
     await execution.recover();
     mountExecution(app, execution);
     mountCapabilities(app, new Capabilities(execution, store));
     mountAccessKeys(app, auth);
     mountEnterpriseAssets(app, store, storage, config);
-    mountEnterprise(app, store, config, cloud);
+    mountEnterprise(app, store, config, cloud, organizationMembers);
+    organizationMembers.mount(app);
+    organizationMembers.start();
     mountCloudProjects(app, cloud);
     mountEnterpriseAnalytics(app, store);
     mountProjectSpace(app, store, storage, config);
@@ -443,6 +450,7 @@ export async function createService(config: Config) {
       appData,
       appFiles,
       close: async () => {
+        await organizationMembers.close();
         await appFiles?.close();
         await storage.close();
         await relay.close();

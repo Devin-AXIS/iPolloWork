@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import type { AccountService } from "./account.ts";
+import { matchesProjectAccount } from "./project-account.ts";
 
 /** Minimal observer and lifecycle services required for usage reporting. */
 export interface ActivityScope {
@@ -40,7 +41,7 @@ export function mountEnterpriseActivity(scope: ActivityScope, account: AccountSe
         if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
         throw error;
       }
-      if (!active || generation !== account.generation || link.origin !== origin) return;
+      if (!active || generation !== account.generation || !matchesProjectAccount(link.origin, origin)) return;
       await account.request("/api/v1/projects/" + encodeURIComponent(link.projectId) + "/activity", event);
     }).catch(() => {
       scope.logger.warn("Enterprise usage report failed; aggregate counts may be incomplete");

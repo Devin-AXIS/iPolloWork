@@ -128,12 +128,13 @@ const modelsResponse = z.object({
             z.object({
               method: z.enum(["GET", "POST"]),
               path: z.string(),
-              points: z.number(), jobField:z.string().optional(), jobResultField:z.string().optional(),
+              points: z.number(), base: z.enum(["service", "origin"]).optional(), origin: z.url().optional(), jobField:z.string().optional(), jobResultField:z.string().optional(),
             }),
           )
           .optional(),
         enabled: z.boolean(),
         configured: z.boolean(),
+        credentialMode: z.enum(["shared", "member"]).default("shared"),
         headerName: z.string(),
         headerPrefix: z.string(),
         audience,
@@ -516,6 +517,12 @@ export class EnterpriseService {
           activityPage: z.number().int().min(1).max(10000),
         }).strict().parse(input)));
       if (method === "GET" && parts.length === 2) return this.detail(parts[1]);
+      if (parts[2] === "notifications" && parts.length === 3) {
+        if (method === "GET") return this.cloud(base + "/notifications");
+        if (method === "PUT") return this.cloud(base + "/notifications", z.object({endpoint:z.string().max(2048),enabled:z.boolean(),rotate:z.boolean().optional()}).strict().parse(input), "PUT");
+      }
+      if (method === "POST" && parts[2] === "invitations" && parts[3] === "batch" && parts.length === 4)
+        return this.cloud(base + "/invitations/batch", z.object({people:z.array(z.object({email:z.email(),departmentId:id.nullable(),role:z.enum(["member","admin"])}).strict()).min(1).max(500),days:z.number().int().min(1).max(30)}).strict().parse(input));
       if (method === "POST" && parts[2] === "departments" && parts.length === 3)
         return this.cloud(
           base + "/departments",
@@ -632,6 +639,8 @@ export class EnterpriseService {
           );
       }
       if (parts[2] === "services") {
+        if (method === "PUT" && parts.length === 5 && parts[4] === "credential")
+          return this.cloud(base + "/services/" + id.parse(parts[3]) + "/credential", z.object({ key: z.string().max(8192).refine(v => !/[\r\n]/.test(v)) }).strict().parse(input), "PUT");
         if (method === "GET" && parts.length === 3)
           return modelsResponse.parse(await this.cloud(base + "/services"))
             .items satisfies EnterpriseModel[];
@@ -643,6 +652,7 @@ export class EnterpriseService {
                 id: id.optional(),
                 title: name,
                 baseUrl: httpUrl,
+                credentialMode: z.enum(["shared", "member"]).optional(),
                 key: key.optional(),
                 headerName: headerName.optional(),
                 headerPrefix: headerPrefix.optional(),
@@ -654,7 +664,7 @@ export class EnterpriseService {
                     z.object({
                       method: z.enum(["GET", "POST"]),
                       path: z.string(),
-                      points: z.number(), jobField:z.string().optional(), jobResultField:z.string().optional(),
+                      points: z.number(), base: z.enum(["service", "origin"]).optional(), origin: z.url().optional(), jobField:z.string().optional(), jobResultField:z.string().optional(),
                     }),
                   )
                   .optional(),

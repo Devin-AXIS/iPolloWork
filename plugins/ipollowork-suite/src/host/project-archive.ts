@@ -6,6 +6,7 @@ import { z } from "zod";
 import type { FileSystem } from "@deepseek-ai/dsh-fs";
 import type { AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
+import { matchesProjectAccount, ProjectAccountMismatch } from "./project-account.ts";
 
 export interface ArchiveSession {
   id: string;
@@ -169,8 +170,8 @@ export class ProjectArchive {
       }
       throw error;
     }
-    if (link.origin !== this.origin)
-      throw new SuiteError("IPW_PROJECT_ACCOUNT_MISMATCH", 403);
+    if (!matchesProjectAccount(link.origin, this.origin))
+      throw new ProjectAccountMismatch();
     job.projectId = link.projectId;
     const listing = z
       .object({ policy: z.object({ outputs: z.boolean() }) })

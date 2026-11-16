@@ -53,6 +53,7 @@ function requestModel(bytes: Buffer): string | null {
   }
 }
 
+const credentialMode = z.enum(["shared", "member"]);
 const identifier = z.string().regex(/^[a-z][a-z0-9-]{0,79}$/);
 const routeSchema = z
   .object({
@@ -62,6 +63,8 @@ const routeSchema = z
       .regex(/^\/[A-Za-z0-9_/:.~-]*$/)
       .max(300),
     points: z.number().int().min(0).max(1000000),
+    base: z.enum(["service", "origin"]).optional(),
+    origin: z.url().optional(),
     async: z.boolean().optional(),
     jobField: z
       .string()
@@ -94,6 +97,7 @@ export const executionServiceSchema = z
       .array(serviceModelSchema)
       .max(5000)
       .default([]),
+    credentialMode: credentialMode.default("shared"),
     keyId: identifier,
     key: z
       .string()
@@ -136,6 +140,7 @@ const enterpriseServiceSchema = z
     id: z.string().min(1).max(100).optional(),
     title: z.string().trim().min(1).max(100),
     baseUrl: executionServiceSchema.shape.baseUrl,
+    credentialMode: credentialMode.optional(),
     key: executionServiceSchema.shape.key,
     headerName: executionServiceSchema.shape.headerName,
     headerPrefix: executionServiceSchema.shape.headerPrefix,
@@ -199,6 +204,8 @@ const requestSchema = z
       .max(24 * 1024 * 1024)
       .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)
       .optional(),
+    destination: z.url().optional(),
+    headers: z.record(z.enum(["accept", "mcp-session-id", "mcp-protocol-version", "last-event-id"]), z.string().max(2048).refine(v => !/[\r\n]/.test(v))).optional(),
     contentType: z
       .string()
       .max(200)
@@ -222,6 +229,7 @@ function definition(row: ServiceRow): Definition {
       : [];
   return {
     category,
+    credentialMode: details.credentialMode ?? "shared",
     vendor:
       details.vendor ?? (row.id.startsWith("ent-") ? "custom" : row.provider),
     id: row.id,
@@ -267,6 +275,7 @@ function routeCost(
   service: Definition,
   path: string,
   method: string,
+  destination?: string,
 ): z.infer<typeof routeSchema> {
   if (
     !path.startsWith("/") ||
@@ -285,6 +294,7 @@ function routeCost(
   const route = service.routes.find(
     (r) =>
       r.method === method &&
+      (destination === undefined ? !r.origin : (r.origin ? new URL(r.origin).origin : new URL(service.baseUrl).origin) === new URL(destination).origin) &&
       new RegExp(
         "^" +
           r.path
@@ -310,6 +320,7 @@ export class ExecutionService {
     /** Development deployments on a loopback origin may connect enterprise models to loopback upstreams. */
     private loopbackUpstreams = false,
     private usageUtcOffsetMinutes = 480,
+    private usageLimitsEnabled = false,
   ) {}
   /** Mark interrupted requests uncertain only after their reservation lease expires. */
   async recover(): Promise<void> {
@@ -341,6 +352,31 @@ export class ExecutionService {
       actor.id,
       "service",
     );
+  }
+  private keyName(service: Definition, actor: Actor): string {
+    return service.credentialMode === "member"
+      ? `member-service-key/${service.id}/${actor.id}`
+      : "service-key/" + service.keyId;
+  }
+  async memberKey(actor: Actor, enterpriseId: string, serviceId: string, raw: unknown) {
+    await requireUse(this.store, actor, enterpriseId, "service", serviceId);
+    const service = definition(await this.enterpriseService(enterpriseId, serviceId));
+    if (service.credentialMode !== "member") throw new ServiceError("SERVICE_CREDENTIAL_MODE", 409);
+    const { key } = z.object({ key: executionServiceSchema.shape.key.unwrap().transform(v => v.trim()) }).strict().parse(raw);
+    const name = this.keyName(service, actor);
+    await this.store.transaction(async () => {
+      // Lock the service and membership so updates/removal cannot leave a stale key behind.
+      const current = await this.store.one<ServiceRow>("SELECT * FROM execution_services WHERE id=? FOR UPDATE", serviceId);
+      if (!current || definition(current).credentialMode !== "member") throw new ServiceError("SERVICE_CREDENTIAL_MODE", 409);
+      // Serialize with member removal; never leave a new credential after departure.
+      const member = await this.store.one("SELECT user_id FROM members WHERE enterprise_id=? AND user_id=? FOR UPDATE", enterpriseId, actor.id);
+      if (!member) throw new ServiceError("ENTERPRISE_FORBIDDEN", 403);
+      await requireUse(this.store, actor, enterpriseId, "service", serviceId);
+      if (key) await this.settings.set(name, { key });
+      else await this.store.run("DELETE FROM settings WHERE key=?", name);
+      await audit(this.store, actor, "enterprise.service.credential", serviceId);
+    });
+    return { configured: Boolean(key) };
   }
   async catalog(actor: Actor, projectId?:string) {
     const project=projectId?await projectAccess(this.store,actor,projectId):undefined;
@@ -398,8 +434,9 @@ export class ExecutionService {
               protocol: s.billing?.protocol ?? "openai",
               limits: [],
               billing: undefined,
+              credentialMode: s.credentialMode,
               available: Boolean(
-                (await this.settings.get("service-key/" + s.keyId)).key,
+                (await this.settings.get(this.keyName(s, actor))).key,
               ),
               enterprise: { id: row.enterprise_id, name: row.enterprise_name },
             };
@@ -757,8 +794,9 @@ export class ExecutionService {
           enabled: s.enabled,
           headerName: s.headerName,
           headerPrefix: s.headerPrefix,
+          credentialMode: s.credentialMode,
           configured: Boolean(
-            (await this.settings.get("service-key/" + s.keyId)).key,
+            (await this.settings.get(this.keyName(s, actor))).key,
           ),
           audience: await audienceOf(this.store, "service", s.id),
         };
@@ -781,6 +819,7 @@ export class ExecutionService {
       (category === "language"
         ? [{ method: "POST", path: "/chat/completions", points: 0 }]
         : undefined);
+    for (const route of routes ?? []) if (route.origin) this.enterpriseUpstream(route.origin);
     if (!routes)
       throw new ServiceError(
         "SERVICE_ROUTES_REQUIRED",
@@ -797,9 +836,15 @@ export class ExecutionService {
       throw new ServiceError("MODEL_LIMITS_REQUIRED", 400);
     const id =
       existing?.id ?? "ent-" + randomUUID().replace(/-/g, "").slice(0, 20);
-    if (!existing && !input.key)
+    const mode = input.credentialMode ?? previous?.credentialMode ?? "shared";
+    if (mode === "member" && input.key) throw new ServiceError("SERVICE_MEMBER_KEY_REQUIRED", 400, "成员 Key 请在个人凭证入口填写");
+    if (mode === "shared" && !input.key && (!previous || previous.credentialMode === "member"))
       throw new ServiceError("SERVICE_UNCONFIGURED", 400, "请填写 Key");
     await this.store.transaction(async () => {
+      if (existing) await this.store.one("SELECT id FROM execution_services WHERE id=? FOR UPDATE", id);
+      if (previous && (previous.baseUrl !== baseUrl || previous.credentialMode !== mode || previous.headerName !== input.headerName || previous.headerPrefix !== input.headerPrefix))
+        await this.store.run("DELETE FROM settings WHERE key LIKE ?", "member-service-key/" + id + "/%");
+      if (mode === "member") await this.store.run("DELETE FROM settings WHERE key=?", "service-key/" + id);
       if (input.key)
         await this.settings.set("service-key/" + id, { key: input.key });
       await this.store.run(
@@ -818,6 +863,7 @@ export class ExecutionService {
           models: input.models,
           category,
           vendor: input.vendor ?? previous?.vendor ?? "custom",
+          credentialMode: mode,
         }),
         Number(input.enabled),
         now(),
@@ -879,7 +925,7 @@ export class ExecutionService {
           row.id,
         );
       }
-      await this.settings.set("service-key/" + row.key_id, {});
+      await this.store.run("DELETE FROM settings WHERE key=? OR key LIKE ?", "service-key/" + row.key_id, "member-service-key/" + row.id + "/%");
       await audit(this.store, actor, "enterprise.service.remove", row.id);
     });
     return { ok: true };
@@ -893,17 +939,9 @@ export class ExecutionService {
     await requireEnterpriseManager(this.store, actor, enterpriseId);
     const draft = enterpriseProbeSchema.parse(raw);
     const baseUrl = this.enterpriseUpstream(draft.baseUrl);
-    const key =
-      draft.key ||
-      (draft.serviceId
-        ? (
-            await this.settings.get(
-              "service-key/" +
-                (await this.enterpriseService(enterpriseId, draft.serviceId))
-                  .key_id,
-            )
-          ).key
-        : undefined);
+    const stored = draft.serviceId ? definition(await this.enterpriseService(enterpriseId, draft.serviceId)) : undefined;
+    if (stored && stored.baseUrl !== baseUrl && !draft.key) throw new ServiceError("SERVICE_ENDPOINT_MISMATCH", 400);
+    const key = draft.key || (stored ? (await this.settings.get(this.keyName(stored, actor))).key : undefined);
     if (!key) throw new ServiceError("SERVICE_UNCONFIGURED", 400, "请填写 Key");
     return await this.upstreamProbe(
       baseUrl,
@@ -1005,15 +1043,16 @@ export class ExecutionService {
       await requireUse(this.store, actor, owner.enterprise_id, "service", id);
     else if (!(await allowed(this.store, actor, s)))
       throw new ServiceError("SERVICE_PLAN_REQUIRED", 403);
-    const route = routeCost(s, input.path, input.method),
-      key = (await this.settings.get("service-key/" + s.keyId)).key;
+    if (owner && s.credentialMode === "member" && !projectId) throw new ServiceError("SERVICE_ORGANIZATION_CONTEXT_REQUIRED", 403);
+    const route = routeCost(s, input.path, input.method, input.destination),
+      key = (await this.settings.get(this.keyName(s, actor))).key;
     let points = owner ? 0 : route.points;
     let reservation: BillingReservation | undefined;
     if (!key) throw new ServiceError("SERVICE_UNCONFIGURED", 503);
     let upstreamBody = input.body
       ? Buffer.from(input.body, "base64")
       : undefined;
-    if (s.models.length && input.method === "POST" && !route.jobField) {
+    if (s.models.length && input.method === "POST" && !route.jobField && (s.category !== "language" || route.path === "/chat/completions")) {
       let payload: Record<string, unknown>;
       try {
         payload = JSON.parse(upstreamBody?.toString("utf8") ?? "{}");
@@ -1112,10 +1151,10 @@ export class ExecutionService {
       if (metered) {
         if (Number((await wallet(this.store, actor.id)).balance) <= 0)
           throw new ServiceError("INSUFFICIENT_POINTS", 409, "账户积分已用完，请补充积分后重试");
-        await requireUsageBudget(this.store, actor.id, 1, this.usageUtcOffsetMinutes);
+        if (this.usageLimitsEnabled) await requireUsageBudget(this.store, actor.id, 1, this.usageUtcOffsetMinutes);
       }
       if (points) {
-        await requireUsageBudget(this.store, actor.id, points, this.usageUtcOffsetMinutes);
+        if (this.usageLimitsEnabled) await requireUsageBudget(this.store, actor.id, points, this.usageUtcOffsetMinutes);
         await ledgerEntry(
           this.store,
           actor.id,
@@ -1184,12 +1223,13 @@ export class ExecutionService {
       const speech = s.billing?.protocol === "volcengine-speech" && input.method === "POST"
         ? speechRequest(upstreamBody, jobId ?? input.requestId, String(speechJob ? JSON.parse(String(speechJob.billing_snapshot)).model : JSON.parse(upstreamBody?.toString("utf8") ?? "{}").model), input.path)
         : undefined;
-      response = await this.fetcher(s.baseUrl.replace(/\/$/, "") + input.path, {
+      response = await this.fetcher((route.origin ? this.enterpriseUpstream(route.origin).replace(/\/$/, "") : route.base === "origin" ? new URL(s.baseUrl).origin : s.baseUrl.replace(/\/$/, "")) + input.path, {
         method: input.method,
         headers: {
           [s.headerName]: s.headerPrefix + key,
           ...(route.async ? { "X-DashScope-Async": "enable" } : {}),
           ...speech?.headers,
+          ...input.headers,
           ...(input.contentType ? { "content-type": input.contentType } : {}),
         },
         body: input.method === "POST" ? speech?.body ?? upstreamBody : undefined,
@@ -1304,12 +1344,15 @@ export class ExecutionService {
         "content-type": type,
         "cache-control": "no-store",
         "x-ipollo-call-id": input.requestId,
+        ...(response.headers.has("mcp-session-id") ? { "mcp-session-id": response.headers.get("mcp-session-id")! } : {}),
       },
     });
   }
 }
 /** All writes are authenticated; only administrators configure upstreams or settle unknown calls. */
 export function mountExecution(app: App, service: ExecutionService) {
+  app.put("/api/v1/enterprises/:id/services/:serviceId/credential", async c =>
+    c.json(await service.memberKey(c.get("actor"), c.req.param("id"), c.req.param("serviceId"), await c.req.json())));
   app.get("/api/v1/services", async (c) =>
     c.json(await service.catalog(c.get("actor"),c.get("cloudGrant")?.projectId)),
   );
@@ -1381,7 +1424,7 @@ export function mountExecution(app: App, service: ExecutionService) {
         c.get("actor"),
         c.req.param("id"),
         await c.req.json(),
-        c.get('cloudGrant')?.projectId,
+        c.get('cloudGrant')?.projectId ?? c.req.header('X-iPollo-Project'),
       ),
   );
 }

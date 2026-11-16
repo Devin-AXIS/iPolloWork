@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { build } from 'esbuild'
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { larkSdkHandshakePatch } from '../vendor/dsh-im/plugin-src/host/lark-sdk-handshake-patch.mjs'
@@ -19,6 +20,11 @@ await build({
   external: ['@deepseek-ai/*', ...external],
   banner: { js: "import { createRequire as __imRequire } from 'node:module'; import { fileURLToPath as __imPath } from 'node:url'; import { dirname as __imDirname } from 'node:path'; const require = __imRequire(import.meta.url); const __filename = __imPath(import.meta.url); const __dirname = __imDirname(__filename);" },
   minify: true, legalComments: 'eof',
+})
+// Bundle the pinned official generator unchanged; keep it out of the Host and browser entrypoints.
+await build({ entryPoints: ['src/host/market-generator.ts'], outfile: 'lib/host/market-generator.js', bundle: true, platform: 'node', format: 'esm', target: 'node24',
+  alias: { '#dsh-market-generator': resolve('../../.upstream/dsh/apps/plugin-market-generator/src/generate.ts') },
+  external: ['@deepseek-ai/*'], banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
 })
 const browser = await build({ entryPoints: ['src/client/index.tsx'], outfile: 'lib/browser.cjs', bundle: true, platform: 'browser', format: 'cjs', target: 'es2022', loader: { '.webp': 'dataurl', '.svg': 'dataurl' }, external: ['react', 'react-dom', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives', '@deepseek-ai/dsh-client-store'], write: false })
 const js = browser.outputFiles.find(file => file.path.endsWith('.cjs'))

@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-operation-recorder
+      name: "@ipollo/dsh-operation-recorder"

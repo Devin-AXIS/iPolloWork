@@ -1,6 +1,7 @@
 /** Host-only optional service API. References contain no vendor credentials. */
 export type ServiceCategory = 'language' | 'image' | 'video' | 'audio' | 'embedding' | 'tool';
 export interface OfficialService {
+  credentialMode?: "shared" | "member" | undefined;
   category?: ServiceCategory | undefined;
   vendor?: string | undefined;
   models: {
@@ -18,7 +19,7 @@ export interface OfficialService {
   capabilities: string[];
   origin: string;
   basePath: string;
-  routes: { method: string; path: string; points: number }[];
+  routes: { method: string; path: string; points: number; origin?: string | undefined }[];
   available: boolean;
   /** The owning enterprise for an enterprise model, which bills the enterprise's own provider account; null for official services. */
   enterprise: { id: string; name: string } | null;
@@ -31,6 +32,8 @@ export type ServiceChoice =
   | { source: "own" }
   | { source: "official"; serviceId: string };
 export interface ServiceBinding {
+  /** Authorized organization request. Keys remain at the account service. */
+  organizationRequest?(serviceId: string, projectId: string, path: string, init?: { method?: "GET" | "POST"; body?: unknown; destination?: string; headers?: Record<string, string> }): Promise<Response>;
   /** Publish an explicitly selected file set; file bodies stay in the Host. */
   publish?(input: PublicationInput): Promise<{ url: string }>;
   /** Whether this account service provides published file browsing. */
@@ -50,5 +53,7 @@ export interface PublicationInput {
   files: { path: string; bytes: number; open(): ReadableStream<Uint8Array> }[];
 }
 export interface ServiceCenter {
+  /** Resolve a native workspace against current account-owned organization projects. */
+  organizationProject?(workspaceId: string, enterpriseId: string): Promise<string | null>;
   bind(signal?: AbortSignal): Promise<ServiceBinding>;
 }

@@ -34,6 +34,7 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
   const [addingDepartment, setAddingDepartment] = useState(false), [departmentName, setDepartmentName] = useState('')
   const [email, setEmail] = useState(''), [role, setRole] = useState<'member' | 'admin'>('member'), [link, setLink] = useState<{ email: string; url: string } | null>(null)
   const task = useTask(t)
+  const [batchOpen, setBatchOpen] = useState(false), [notificationOpen, setNotificationOpen] = useState(false)
   if (!detail.data) return detail.error ? <Notice error={detail.error} t={t} retry={detail.reload}/> : <ListSkeleton/>
   const data = detail.data, needle = query.trim().toLocaleLowerCase()
   const members = data.members.filter(m => (department === null || m.departmentId === department)
@@ -75,6 +76,9 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
       </div>
       <button type="submit" className={css.keySave} disabled={task.busy || !email.trim()}>{t.invite}</button>
     </form>}
+    {data.canManage && <div className={css.chipRow}><Button variant="outline" onClick={() => setBatchOpen(true)}>{t.batchInvite}</Button><Button variant="ghost" onClick={() => setNotificationOpen(true)}>{t.identityNotifications}</Button></div>}
+    {batchOpen && <BatchInviteDialog enterpriseId={enterpriseId} departmentId={department} role={role} t={t} call={call} controller={controller} close={() => setBatchOpen(false)}/>}
+    {notificationOpen && <NotificationDialog enterpriseId={enterpriseId} t={t} call={call} close={() => setNotificationOpen(false)}/>}
     {link && <div className={css.linkNote}><span>{format(t.inviteSent, { email: link.email })}</span><CopyLink url={link.url} t={t}/>
       <button type="button" className={css.iconGhost} aria-label={t.dismiss} onClick={() => setLink(null)}><IconCloseOutlineRegular size={14}/></button></div>}
     <FormError message={task.error}/>
@@ -163,4 +167,26 @@ export function NoEnterprise({ t, controller }: { t: EnterpriseLabels; controlle
     <Button variant="outline" onClick={() => controller.open({ kind: 'join' })}>{t.join}</Button>
     <Button variant="primary" onClick={() => controller.open({ kind: 'create' })}>{t.create}</Button>
   </EmptyState>
+}
+
+function BatchInviteDialog({enterpriseId,departmentId,role,t,call,controller,close}:{enterpriseId:string;departmentId:string|null;role:"member"|"admin";t:EnterpriseLabels;call:Call;controller:EnterpriseController;close():void}) {
+ const [emails,setEmails]=useState(""),[days,setDays]=useState(7),[links,setLinks]=useState(""); const task=useTask(t);
+ return <Modal open title={t.batchInvite} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close() }}>
+ <form className={css.enterpriseForm} onSubmit={e=>{e.preventDefault();void task.run(async()=>{
+ const people=emails.split(/[\n,;]+/).map(email=>email.trim()).filter(Boolean).map(email=>({email,departmentId,role}));
+ const result=await call<{items:{email:string;url:string}[]}>("/organizations/"+enterpriseId+"/invitations/batch",{people,days});
+ setLinks(result.items.map(item=>item.email+"\t"+item.url).join("\n"));await controller.load();
+ });}}><p>{t.batchHint}</p><Field label={t.batchEmails}><textarea rows={8} required value={emails} disabled={task.busy} onChange={e=>setEmails(e.target.value)}/></Field>
+ <Field label={t.invitationDays}><input type="number" min={1} max={30} disabled={task.busy} value={days} onChange={e=>setDays(Number(e.target.value))}/></Field>
+ {links&&<Field label={t.invitationLinks}><textarea readOnly rows={8} value={links}/></Field>}<FormError message={task.error}/><div className={css.dialogFooter}><Button type="submit" variant="primary" disabled={task.busy||!emails.trim()}>{t.batchInvite}</Button></div></form></Modal>;
+}
+function NotificationDialog({enterpriseId,t,call,close}:{enterpriseId:string;t:EnterpriseLabels;call:Call;close():void}) {
+ const state=useRecord<{endpoint:string;enabled:boolean;configured:boolean}>("/organizations/"+enterpriseId+"/notifications",call,0),task=useTask(t);
+ const [endpoint,setEndpoint]=useState<string>(),[enabled,setEnabled]=useState<boolean>(),[secret,setSecret]=useState("");
+ if(!state.data)return <Modal open title={t.identityNotifications} closeLabel={t.close} className={css.enterpriseModal!} onClose={close}>{state.error?<Notice error={state.error} t={t} retry={state.reload}/>:<ListSkeleton/>}</Modal>;
+ const save=(rotate=false)=>void task.run(async()=>{const result=await call<{secret?:string}>("/organizations/"+enterpriseId+"/notifications",{endpoint:endpoint??state.data!.endpoint,enabled:enabled??state.data!.enabled,rotate},"PUT");setSecret(result.secret??"");});
+ return <Modal open title={t.identityNotifications} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close() }}><form className={css.enterpriseForm} onSubmit={e=>{e.preventDefault();save();}}>
+ <Field label={t.notificationEndpoint}><input type="url" disabled={task.busy} required={enabled??state.data.enabled} value={endpoint??state.data.endpoint} onChange={e=>setEndpoint(e.target.value)}/></Field>
+ <label><input type="checkbox" disabled={task.busy} checked={enabled??state.data.enabled} onChange={e=>setEnabled(e.target.checked)}/>{t.notificationEnabled}</label>
+ {secret&&<Field label={t.notificationSecret}><textarea readOnly value={secret}/></Field>}<FormError message={task.error}/><div className={css.dialogFooter}><Button type="button" variant="outline" disabled={task.busy} onClick={()=>save(true)}>{t.rotateSecret}</Button><Button type="submit" variant="primary" disabled={task.busy}>{t.save}</Button></div></form></Modal>;
 }

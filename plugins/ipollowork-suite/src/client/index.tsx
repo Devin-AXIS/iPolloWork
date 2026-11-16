@@ -1,6 +1,6 @@
 /** Browser entry: native slots compose the theme, market, and account modules. */
 import type { ClientContext } from './native.ts'
-import type { SuiteInfo, MarketState } from '../shared/types.ts'
+import type { SuiteInfo, MarketState, MarketEntry } from '../shared/types.ts'
 import { request } from './api.ts'
 import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
@@ -38,9 +38,13 @@ export async function apply(ctx: ClientContext): Promise<void> {
   mountCurrentVersion(ctx)
   if (info.market) {
     const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
-    const subscribeChanges = (listener: () => void) => ctx.remote.$on('plugin-manager/changed', listener)
+    const subscribeChanges = (listener: () => void) => {
+      const plugins = ctx.remote.$on('plugin-manager/changed', listener)
+      const credentials = ctx.remote.$on('credentials/record-updated', listener)
+      return () => { plugins(); credentials() }
+    }
     ctx.slots.inject('plugins.tab', () => ctx.slots.register({ name: 'plugins.tab', id: 'ipollowork-market', order: -10, label: () => copy(ctx).market,
-      inject: () => ({ load, subscribeChanges, hooks: { labels } }),
+      inject: () => ({ load, subscribeChanges, discover: async (source: string) => (await request<{ entries: MarketEntry[] }>('/catalog/discover', { method: 'POST', body: JSON.stringify({ source, language: language(ctx) }) })).entries, add: (entry: MarketEntry) => request<void>('/catalog/plugins', { method: 'POST', body: JSON.stringify(entry) }), hooks: { labels } }),
     }, MarketPanel))
   }
   if (info.account) {
