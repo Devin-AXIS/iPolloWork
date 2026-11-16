@@ -5,28 +5,41 @@ import type { Labels } from './locale.ts'
 import type { LauncherProps } from './native.ts'
 import { IconEyeOffOutlineRegular, IconEyeOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AccountArt, ArrowGlyph, LockGlyph, MailGlyph, Monogram } from './glyphs.tsx'
+import { request } from './api.ts'
 import { MembershipPanel } from './membership.tsx'
 import css from './suite.module.css'
 
 interface AccountProps {
   useLabels<T>(selector: (value: Labels) => T): T; useAccount<T>(selector: (value: AccountSnapshot) => T): T;
-  signIn(email: string, password: string): Promise<void>; signUp(name: string, email: string, password: string): Promise<void>; signOut(): Promise<void>; refresh(): Promise<void>; origin: string;
+  signIn(email: string, password: string): Promise<void>; signUp(name: string, email: string, password: string): Promise<void>; signOut(): Promise<void>; refresh(): Promise<void>;
 }
-export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, refresh, origin }: AccountProps) {
+export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, refresh }: AccountProps) {
   const t = useLabels(value => value); const { account, busy, error } = useAccount(value => value)
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
   const [registering, setRegistering] = useState(false); const [reveal, setReveal] = useState(false)
+  const [resetStatus, setResetStatus] = useState<'sending' | 'sent' | 'error'>()
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { if (account?.status === 'signed-in') setRegistering(false) }, [account?.status])
-  const host = (() => { try { return new URL(origin).host } catch { return origin } })()
   const submit = (event: FormEvent) => {
     event.preventDefault(); const secret = password; setPassword('')
     // The account service requires a display name; the email's local part is the editable default.
     if (registering) void signUp(email.split('@')[0] || email, email, secret)
     else void signIn(email, secret)
   }
+  const resetPassword = async () => {
+    setResetStatus('sending')
+    try {
+      await request('/account/request-password-reset', { method: 'POST', body: JSON.stringify({ email }) })
+      setResetStatus('sent')
+    } catch {
+      setResetStatus('error')
+    }
+  }
   const message = error && (error === 'IPW_REGISTRATION_REJECTED' ? t.registrationError : error === 'IPW_SIGN_IN_REQUIRED' || error === 'IPW_INVALID_LOGIN' ? t.loginError : error === 'IPW_LOGIN_CANCELLED' ? t.canceled : t.error)
-  const service = <p className={css.authService}><span data-state={error === 'IPW_SERVICE_UNAVAILABLE' ? 'down' : 'up'}/>{t.service} · <a href={origin} target="_blank" rel="noreferrer">{host}</a></p>
+  const service = <p className={css.authService}>
+    <span aria-hidden="true" data-state={error === 'IPW_SERVICE_UNAVAILABLE' ? 'down' : 'up'}/>
+    {t.service}
+  </p>
   if (account?.status === 'signed-in') {
     return <section className={`${css.authPage} ${css.memberPage}`}>
       <MembershipPanel key={account.user.id} account={account} t={t} refreshAccount={refresh} signOut={signOut} service={service}/>
@@ -53,7 +66,12 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
           {message && <p role="alert" className={css.authError}>{message}</p>}
           <button className={css.authSubmit} type="submit" disabled={busy || !email || !password}>{busy ? t.loading : registering ? t.registerAndSignIn : t.signIn}<ArrowGlyph size={14}/></button>
         </form>
-        <p className={css.authService}><a href={origin + '/forgot-password'} target="_blank" rel="noreferrer">{t.email === '邮箱' ? '忘记密码？' : 'Forgot password?'}</a></p>
+        {!registering && <>
+          <button className={css.authReset} type="button" disabled={!email || busy || resetStatus === 'sending'}
+            onClick={() => void resetPassword()}>{resetStatus === 'sending' ? t.loading : t.requestPasswordReset}</button>
+          {resetStatus === 'sent' && <p role="status" className={css.authService}>{t.passwordResetSent}</p>}
+          {resetStatus === 'error' && <p role="alert" className={css.authError}>{t.error}</p>}
+        </>}
         {registering && <p className={css.authService}>{t.email === '邮箱' ? '使用受邀邮箱注册后，打开邀请链接即可加入组织。' : 'Register with the invited email, then open the invitation link to join.'}</p>}
         {service}
       </div>

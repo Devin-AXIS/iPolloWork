@@ -3,14 +3,14 @@ import { existsSync } from 'node:fs'
 import { readFile, writeFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { createRequire } from 'node:module'
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const cli = join(root, '.upstream/dsh/apps/cli/lib/bin.js')
 if (!existsSync(cli)) throw new Error('Run npm run setup:build and npm run build first')
 const require = createRequire(join(root, 'plugins/ipollowork-suite/package.json'))
 const yaml = require('js-yaml')
-const { resolveProfileDir } = await import(require.resolve('@deepseek-ai/dsh-app-boot'))
+const { resolveProfileDir } = await import(pathToFileURL(require.resolve('@deepseek-ai/dsh-app-boot')).href)
 const args = process.argv.slice(2)
 const profile = args.includes('--profile') ? args[args.indexOf('--profile') + 1] : 'web'
 if (!profile || !/^[A-Za-z0-9_-]+$/.test(profile)) throw new Error('Invalid profile name')

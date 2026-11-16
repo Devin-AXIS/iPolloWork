@@ -1,4 +1,4 @@
-/** Immutable version identity shared by one Electron shell and its bundled dsh runtime. */
+/** Immutable version identity of the DSH runtime bundled with Desktop. */
 
 import { valid } from 'semver'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from './host-protocol.ts'
@@ -6,7 +6,7 @@ import { DESKTOP_HOST_PROTOCOL_VERSION } from './host-protocol.ts'
 /** Release facts embedded in the bundled runtime descriptor. */
 export interface DesktopRelease {
   readonly schemaVersion: 1
-  /** Exact version used by both Electron and `@deepseek-ai/dsh`. */
+  /** Exact version of the bundled `@deepseek-ai/dsh` package. */
   readonly version: string
   readonly hostProtocolVersion: typeof DESKTOP_HOST_PROTOCOL_VERSION
   readonly nodeVersion: string

@@ -16,9 +16,8 @@ import type { AccountController } from './account-controller.ts'
 /** Keep the original introduction without sharing account credentials.
  * @param ctx - Native client services and slot registration.
  * @param account - iPolloWork account state owner.
- * @param origin - Account service address for account and top-up pages.
  */
-export function mountDesktopOnboarding(ctx: ClientContext, account: AccountController, origin: string): void {
+export function mountDesktopOnboarding(ctx: ClientContext, account: AccountController): void {
   const platform = (globalThis as typeof globalThis & { dshPlatform?: PlatformBridge }).dshPlatform
   const pages = createPlatformPages()
   ctx.effect(() => () => pages.dispose(), 'ipollowork-suite: top-up page lifetime')
@@ -76,9 +75,7 @@ export function mountDesktopOnboarding(ctx: ClientContext, account: AccountContr
       hooks: { account: source, onboarding: controller.state },
       t: (key: AccountKey) => key === 'close' ? language(ctx) === 'zh' ? '关闭' : 'Close' : (language(ctx) === 'zh' ? onboardingZh : onboardingEn)[key],
       setVisible: () => {},
-      openPlatformPage: (page, closed) => platform
-        ? pages.open(page, () => { closed(); void account.refresh() })
-        : (() => { window.open(new URL('/top_up', origin).href, '_blank', 'noopener,noreferrer'); return () => {} })(),
+      ...(platform ? { openPlatformPage: (page, closed) => pages.open(page, () => { closed(); void account.refresh() }) } : {}),
       update: change => controller.update(change),
       complete: reason => controller.complete(reason),
       retry: () => controller.retry(),

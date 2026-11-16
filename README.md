@@ -65,7 +65,7 @@ The same commands work in Windows PowerShell. `npm start` uses the compiled pinn
 
 Open the local address printed by the launcher. The suite adds iPolloWork's account, agents and plugin views to the native Web UI. Sign in for configured account services and organization features; local model providers keep their own credentials. Do not paste an account or provider key into a project page.
 
-The account service is deployed separately. Its [setup guide](services/ipollowork/README.md) covers PostgreSQL, account configuration and storage; [capability API documentation](services/ipollowork/docs/capabilities.md) covers external HTTP access. The suite defaults to `https://work.ipollo.net`; configure `accountOrigin` as described in the [suite guide](plugins/ipollowork-suite/README.md) for your own service.
+The account service is deployed separately. Its [setup guide](services/ipollowork/README.md) covers PostgreSQL, account configuration and storage; [capability API documentation](services/ipollowork/docs/capabilities.md) covers external HTTP access. The suite uses iPolloWork Cloud by default; configure `accountOrigin` as described in the [suite guide](plugins/ipollowork-suite/README.md) for your own service.
 
 ## Desktop and development
 

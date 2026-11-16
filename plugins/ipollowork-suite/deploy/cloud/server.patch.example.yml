@@ -6,7 +6,7 @@
     - id: ipollowork-cloud-server
       name: '@ipollo/dsh-suite/cloud-server'
       config:
-        accountOrigin: https://work.ipollo.net
+        accountOrigin: https://cloud.ipollo.net
         apiUrl: https://api.cn-hangzhou.sandbox.aliyuncs.com
         domain: cn-hangzhou.sandbox.aliyuncs.com
         template: YOUR_DSH_TEMPLATE

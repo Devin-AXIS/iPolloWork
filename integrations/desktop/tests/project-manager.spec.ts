@@ -6,6 +6,7 @@ import { resolveDesktopPaths } from '../src/paths.ts'
 import { DesktopProjectManager, createPluginProfile } from '../src/project-manager.ts'
 import { readProfilePlugins } from '@deepseek-ai/dsh-app-boot'
 import { runtimeFixture } from './runtime-fixture.ts'
+import { parse } from 'yaml'
 
 const roots: string[] = []
 function temporaryRoot(): string {
@@ -37,6 +38,11 @@ function setup(): { root: string; manager: DesktopProjectManager } {
   const dsh = join(root, 'resources', 'dsh')
   runtimeFixture(dsh)
   return { root, manager: new DesktopProjectManager(resolveDesktopPaths(join(root, '.dsh')), { dsh }) }
+}
+function seedSuite(manager: DesktopProjectManager): void {
+  const dir = join(manager.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite')
+  mkdirSync(dir, { recursive: true })
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@ipollo/dsh-suite' }))
 }
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -143,11 +149,55 @@ describe('desktop external plugin profile', () => {
     expect(existsSync(manager.paths.lock)).toBe(false)
   })
 
-  it('initializes the same pnpm settings as a Web profile without a Desktop build allowlist', async () => {
+  it('initializes the same pinned Studio build decisions as a Web profile', async () => {
     const { manager } = setup()
     await manager.applyRelease()
     expect(readFileSync(join(manager.paths.profile, 'pnpm-workspace.yaml'), 'utf8'))
       .toContain('onnxruntime-node@1.27.0: false')
+  })
+
+  it('prepares the known Studio scripts for the product desktop profile', async () => {
+    const { manager } = setup()
+    seedSuite(manager)
+    await manager.applyRelease()
+    const path = join(manager.paths.profile, 'pnpm-workspace.yaml')
+    const first = readFileSync(path, 'utf8')
+    expect(parse(first)).toMatchObject({
+      nodeLinker: 'hoisted',
+      autoInstallPeers: false,
+      allowBuilds: {
+        'esbuild@0.25.12': true,
+        'sharp@0.34.5': true,
+        'onnxruntime-node@1.21.0': false,
+        'onnxruntime-node@1.27.0': false,
+        'protobufjs@7.6.6': false,
+      },
+    })
+    await manager.applyRelease()
+    expect(readFileSync(path, 'utf8')).toBe(first)
+  })
+
+  it('migrates pending Studio scripts and respects existing build decisions', async () => {
+    const { manager } = setup()
+    await manager.applyRelease()
+    seedSuite(manager)
+    const path = join(manager.paths.profile, 'pnpm-workspace.yaml')
+    writeFileSync(path, [
+      '# Pinned dependency preferences', 'nodeLinker: hoisted', 'allowBuilds:', '  esbuild: false',
+      '  sharp: set this to true or false', '  onnxruntime-node@1.21.0: true',
+      '  onnxruntime-node@~1.27.0: false', '  unrelated: set this to true or false', '',
+    ].join('\n'))
+    await manager.applyRelease()
+    const raw = readFileSync(path, 'utf8')
+    expect(raw).toContain('# Pinned dependency preferences')
+    expect(parse(raw).allowBuilds).toEqual({
+      esbuild: false,
+      'sharp@0.34.5': true,
+      'onnxruntime-node@1.21.0': true,
+      'onnxruntime-node@~1.27.0': false,
+      unrelated: 'set this to true or false',
+      'protobufjs@7.6.6': false,
+    })
   })
 
   it('opens a linked profile without migrating generated pnpm defaults', async () => {
@@ -333,10 +383,10 @@ describe('desktop link-backend projections', () => {
 })
 
 
-it('selects the application bundle without selecting the independently switchable suite', () => {
+it('selects the application bundle without selecting the independently switchable suite', async () => {
   const root = mkdtempSync(join(tmpdir(), 'ipollo-desktop-'))
   roots.push(root)
-  createPluginProfile(root, ['@ipollo/desktop-host'])
+  await createPluginProfile(root, ['@ipollo/desktop-host'])
   const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
   expect(manifest.dsh.profile.bundles).toContain('@ipollo/desktop-host')
   expect(manifest.dsh.profile.bundles).not.toContain('@ipollo/dsh-suite')

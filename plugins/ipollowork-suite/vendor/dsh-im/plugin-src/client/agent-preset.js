@@ -52,7 +52,7 @@ export function AgentPresetEditor({ agentPreset = '', disabled = false, onSave }
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(null);
   if (catalog.defaultId === COORDINATOR_PRESET && current === COORDINATOR_PRESET) {
-    return h('div', { className: 'dim-preset' },
+    return h('div', { className: 'dim-preset dim-presetSummary' },
       h('div', { className: 'dim-presetHeader' }, h('span', { className: 'dim-presetTitle' }, '总助手')),
       h('p', null, '自动处理任务，按需调用固定专家或临时助手，无需为专家分别扫码。'),
       h('p', null, '已有会话保持不变，发送 /new 后由总助手接待。'));

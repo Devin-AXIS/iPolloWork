@@ -30,7 +30,7 @@ try {
     pnpmVersion: pnpm.version, hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION }
   const target = resolveDesktopBuildTarget()
   createDevelopmentProjectMetadata(project, release)
-  createPluginProfile(profile)
+  await createPluginProfile(profile)
   await writeFile(join(project, 'desktop-runtime.json'), JSON.stringify({
     schemaVersion: 1, release, ...desktopTargetPlatform(target), files: [],
     sharedPackages: ['@deepseek-ai/dsh', '@ipollo/desktop-host']

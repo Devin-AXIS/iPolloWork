@@ -5,7 +5,7 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from "node:http";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import packageInfo from "../package.json" with { type: "json" };
@@ -15,7 +15,18 @@ import type { Decision, ToolCall } from "../src/host/management.ts";
 for (const dedicatedDesktop of [false, true]) test(`native authorization and delivery policy (${dedicatedDesktop})`, async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-host-"));
   const anchor = join(dir, "package.json");
-  await writeFile(anchor, JSON.stringify({ version: "0.2.2-rc.2" }));
+  const runtimeVersion = "0.2.2-rc.3";
+  if (dedicatedDesktop) {
+    const cli = join(dir, "node_modules", "@deepseek-ai", "dsh");
+    await mkdir(cli, { recursive: true });
+    await writeFile(join(cli, "package.json"), JSON.stringify({
+      name: "@deepseek-ai/dsh", version: runtimeVersion, exports: { "./package.json": "./package.json" },
+    }));
+  }
+  await writeFile(anchor, JSON.stringify({
+    name: dedicatedDesktop ? "@ipollo/desktop-runtime" : "@deepseek-ai/dsh",
+    version: dedicatedDesktop ? "0.0.0" : runtimeVersion,
+  }));
   let handler:
     | ((request: IncomingMessage, response: ServerResponse) => Promise<void>)
     | undefined;
@@ -110,14 +121,19 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
     const info = await fetch(base + "/info", {
       headers: { Cookie: "owner=test" },
     });
-    assert.equal((await info.json()).version, packageInfo.version);
+    const details = await info.json();
+    assert.equal(details.version, packageInfo.version);
+    assert(!('accountOrigin' in details));
     const account = await fetch(base + "/account", {
       headers: { Cookie: "owner=test" },
     });
-    assert.deepEqual(await account.json(), {
-      status: "anonymous",
-      origin: "https://work.ipollo.net",
-    });
+    assert.deepEqual(await account.json(), { status: "anonymous" });
+    const catalog = await fetch(base + "/catalog", { headers: { Cookie: "owner=test" } });
+    assert.equal(catalog.status, 200);
+    const market = await catalog.json();
+    assert.equal(market.runtimeVersion, runtimeVersion);
+    assert.deepEqual(market.items.slice(0, 2).map(({ title, compatible }: { title: string; compatible: boolean }) =>
+      [title, compatible]), [["Design", true], ["Video", true]]);
     const availability=await fetch(base+'/cloud/availability',{headers:{Cookie:'owner=test'}});
     assert.deepEqual(await availability.json(),{enabled:false});
     assert.equal((await fetch(base+'/cloud/projects',{method:'POST',headers:{Cookie:'owner=test','Content-Type':'application/json'},body:'{}'})).status,409);

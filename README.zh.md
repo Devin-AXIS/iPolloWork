@@ -65,7 +65,7 @@ Windows PowerShell 使用相同命令。`npm start` 使用编译后的固定版�
 
 打开启动器输出的本地地址。套件会在原生 Web 界面中加入 iPolloWork 的账号、智能体和插件页面。已配置的账号服务和组织功能需要登录；本地模型提供方继续使用各自的凭据。不要把账号或供应商 Key 粘贴进项目页面。
 
-账号服务单独部署。[部署说明](services/ipollowork/README.zh.md)介绍 PostgreSQL、账号配置和存储；[能力 API 文档](services/ipollowork/docs/capabilities.md)介绍对外 HTTP 接入。套件默认连接 `https://work.ipollo.net`；自建服务请按[套件说明](plugins/ipollowork-suite/README.zh.md)配置 `accountOrigin`。
+账号服务单独部署。[部署说明](services/ipollowork/README.zh.md)介绍 PostgreSQL、账号配置和存储；[能力 API 文档](services/ipollowork/docs/capabilities.md)介绍对外 HTTP 接入。套件默认连接 iPolloWork 云服务；自建服务请按[套件说明](plugins/ipollowork-suite/README.zh.md)配置 `accountOrigin`。
 
 ## 桌面端与开发
 

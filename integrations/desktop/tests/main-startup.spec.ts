@@ -21,6 +21,7 @@ type InvokeHandler = (event: InvokeEvent, ...args: unknown[]) => unknown
 
 const fileDrag = vi.hoisted(() => ({ dispose: vi.fn<() => Promise<void>>(), install: vi.fn() }))
 vi.mock('../src/file-drag.ts', () => ({ installDesktopFileDrag: () => { fileDrag.install(); return fileDrag.dispose } }))
+vi.mock('../src/speech-cache.ts', () => ({ reuseSpeechCache: vi.fn(async () => 0) }))
 
 vi.mock('../src/web-document.ts', () => ({
   serveWebDocument: vi.fn(), forwardWebRequest: vi.fn(),
@@ -75,7 +76,7 @@ const harness = await vi.hoisted(async () => {
   const updateDownload = vi.fn(async (_version: string, _revision?: number): Promise<DesktopUpdateState> => updateState)
   const updateInstall = vi.fn(async (_version: string, _revision?: number): Promise<DesktopUpdateState> => updateState)
   const popup = vi.fn<(options: { window: FakeWindow; x?: number; y?: number; callback?: () => void }) => void>()
-  const menuBuilder = vi.fn<(template: MenuItemConstructorOptions[]) => { popup: typeof popup }>(() => ({ popup }))
+  const menuBuilder = vi.fn((template: MenuItemConstructorOptions[]) => ({ popup, template }))
   const menu = Object.assign(menuBuilder, { buildFromTemplate: menuBuilder, setApplicationMenu: vi.fn() })
   class FakeWindow extends EventEmitter {
     destroyed = false
@@ -178,6 +179,7 @@ const harness = await vi.hoisted(async () => {
   const app = Object.assign(new EventEmitter(), {
     isPackaged: true,
     name: 'Desktop test',
+    setName: vi.fn(),
     whenReady: () => Promise.resolve(),
     getLocale: (): string => 'en-US',
     getPreferredSystemLanguages: () => ['en-US'],
@@ -185,6 +187,7 @@ const harness = await vi.hoisted(async () => {
     getAppPath: (): string => 'desktop-test-app',
     setAppLogsPath: vi.fn(),
     getPath: vi.fn<(name: string) => string>(),
+    setPath: vi.fn(),
     setAboutPanelOptions: vi.fn<(options: Electron.AboutPanelOptionsOptions) => void>(),
     requestSingleInstanceLock: () => true,
     setAsDefaultProtocolClient: vi.fn(),
@@ -449,9 +452,8 @@ function invoke(channel: string, origin = channel === DESKTOP_IPC.boot ? 'app' :
 function applicationMenuItems(): MenuItemConstructorOptions[] {
   const native = harness.menu.mock.calls[0]?.[0][0]?.submenu
   if (Array.isArray(native)) return native
-  const sender = harness.windows[0]!.webContents
-  void harness.handlers.get(DESKTOP_IPC.windowsMenu)!({ sender, senderFrame: sender.mainFrame }, 'application', 0, 0)
-  return harness.menu.mock.lastCall![0]
+  const tray = harness.trays[0]!.setContextMenu.mock.lastCall![0] as { template: MenuItemConstructorOptions[] }
+  return tray.template.slice(2)
 }
 
 beforeEach(() => {
@@ -477,6 +479,7 @@ beforeEach(() => {
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.stubEnv('DSH_DESKTOP_PNPM_ENTRY', 'test-pnpm')
   vi.stubEnv('DSH_DESKTOP_DSH_DIR', 'test-runtime')
+  vi.stubEnv('DSH_HOME', join(userData, 'harness'))
   vi.stubEnv('DSH_DESKTOP_PRIMARY_RUNTIME_DIR', 'test-primary-runtime')
   vi.stubGlobal('process', { ...process, platform: 'win32', arch: 'x64', resourcesPath: 'desktop-test-resources' })
   vi.stubEnv('DSH_DESKTOP_HOST_INSPECT_PORT', undefined)
@@ -826,7 +829,7 @@ describe('desktop main startup', () => {
       'separator', ...packaged ? [] : [messages.reloadPageMenu, messages.restartAppHostMenu],
       messages.toggleDevToolsMenu, 'separator',
       ...platform === 'darwin' ? [messages.hideApplication, messages.hideOtherApplications, messages.showAllApplications, 'separator'] : [],
-      'quit',
+      (platform === 'win32' ? messages.quitApplication : 'quit'),
     ])
     expect(visible.filter(item => item.role === 'toggleDevTools')).toEqual([
       { role: 'toggleDevTools', label: messages.toggleDevToolsMenu },
@@ -1375,42 +1378,20 @@ describe('desktop main startup', () => {
     expect((harness.dialog.showMessageBox.mock.calls[0]![0] as MessageBoxOptions).message).toBe(zh.fatalSummary)
   })
 
-  it('maps Windows caption menus to localized native commands and rejects foreign popup requests', async () => {
+  it('uses the product icon and caption colors on Windows without exposing native caption menus', async () => {
     vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
     await import('../src/main.ts')
     await harness.preparing.promise
     const window = harness.windows[0]!
     const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
     const appearance = harness.ipcOn.mock.calls.find(([channel]) => channel === DESKTOP_IPC.windowsAppearance)![1]
-    harness.ipcOn.mock.calls.find(([channel]) => channel === DESKTOP_IPC.localeChanged)![1](event, 'zh')
     appearance(event, 'zh-CN', '#fff', '#000')
-    const handler = harness.handlers.get(DESKTOP_IPC.windowsMenu)!
-    const foreignEvent = { ...event, sender: {} }
-    expect(() => handler(foreignEvent, 'application', 48, 34)).toThrow('rejected sender')
-    expect(() => handler(event, 'arbitrary-command', 48, 34)).toThrow('invalid popup request')
-    expect(() => handler(event, 'application', NaN, 34)).toThrow('invalid popup request')
-    const application = handler(event, 'application', 48, 34)
-    expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '关于 iPolloWork', 'separator', '检查更新…', '管理 dsh 命令…', 'separator', zh.toggleDevToolsMenu, 'separator', '退出',
-    ])
-    expect(harness.popup.mock.lastCall![0]).toMatchObject({ window, x: 48, y: 34 })
-    expect(harness.popup.mock.lastCall![0].callback).toBeTypeOf('function')
-    harness.popup.mock.lastCall![0].callback!()
-    await application
-    const edit = handler(event, 'edit', 104, 34)
-    expect(harness.menu.buildFromTemplate.mock.lastCall![0].map(item => item.label ?? item.type)).toEqual([
-      '撤销', '重做', 'separator', '剪切', '复制', '粘贴', '删除', 'separator', '全选',
-    ])
-    const commands = harness.menu.buildFromTemplate.mock.lastCall![0].filter(item => item.type !== 'separator')
-    for (const [index, keyCode] of ['Z', 'Y', 'X', 'C', 'V', 'Delete', 'A'].entries()) {
-      const click = commands[index]!.click as () => void
-      click()
-      const modifiers = keyCode === 'Delete' ? [] : ['control']
-      expect(window.webContents.sendInputEvent).toHaveBeenNthCalledWith(index * 2 + 1, { type: 'keyDown', keyCode, modifiers })
-      expect(window.webContents.sendInputEvent).toHaveBeenNthCalledWith(index * 2 + 2, { type: 'keyUp', keyCode, modifiers })
-    }
-    harness.popup.mock.lastCall![0].callback!()
-    await edit
+    expect(window.options.icon).toBe(join('desktop-test-resources', 'icon.png'))
+    expect(window.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#fff', symbolColor: '#000' })
+    expect(harness.handlers.has('dsh-desktop:windows-menu')).toBe(false)
+    const version = harness.handlers.get(DESKTOP_IPC.appVersion)!
+    expect(version(event)).toBe(harness.app.getVersion())
+    expect(() => version({ ...event, sender: {} })).toThrow('unowned renderer')
   })
 
   it.each(['darwin', 'linux'] as const)('declares the platform application menus, with the product File, Edit, and Window menus on macOS (%s)', async (platform) => {

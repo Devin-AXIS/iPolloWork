@@ -3,9 +3,13 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing GitHub release receiving the verified Windows installer
+        description: Existing GitHub release receiving the verified installers
         required: true
-        default: v1.0.1
+        default: v1.0.3
+      unsigned_macos:
+        description: Build ad-hoc signed Mac DMGs when Developer ID signing is unavailable
+        type: boolean
+        default: false
 permissions:
   contents: write
   actions: write
@@ -36,14 +40,14 @@ jobs:
           DSH_DESKTOP_AUTO_UPDATE_ENV=production
           DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download
           DSH_DESKTOP_UPDATE_CHANNEL=stable
-          DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://work.ipollo.net
+          DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://cloud.ipollo.net
           '@ | Set-Content integrations/desktop/.env.windows
       - name: Validate numeric release version
         shell: pwsh
         env:
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Use a numeric release such as v1.0.2' }
+          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Use a numeric release such as v1.0.3' }
       - name: Build and verify Windows x64
         shell: pwsh
         env:
@@ -68,8 +72,12 @@ jobs:
         run: |
           $files = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
           if ($files.Count -ne 1) { throw 'Expected exactly one verified installer' }
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          $asset = Join-Path $env:RUNNER_TEMP "ipollowork-win-x64-$version-unsigned.exe"
+          Copy-Item -LiteralPath $files.FullName -Destination $asset
           $uploadFiles = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/* -Include *.exe,*.blockmap,stable.yml
-          gh release upload $env:RELEASE_TAG @($uploadFiles.FullName) --repo $env:GITHUB_REPOSITORY --clobber
+          $paths = @($uploadFiles.FullName) + $asset
+          gh release upload $env:RELEASE_TAG @paths --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Synchronize uploaded installer to mainland mirror
         shell: pwsh
@@ -77,5 +85,55 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          $draft = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if ($draft -eq 'true') { exit 0 }
           gh workflow run release-mirror.yml --repo $env:GITHUB_REPOSITORY --ref main -f "release_tag=$env:RELEASE_TAG" -f publish_draft=false
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+
+  macos:
+    if: inputs.unsigned_macos
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            runner: macos-15
+          - target: mac-x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      PACKAGE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Prepare pinned runtime and product
+        run: |
+          npm run setup:build
+          npm run build
+      - name: Build and verify macOS DMG
+        run: |
+          version="${RELEASE_TAG#v}"
+          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --unsigned --build-version "$version"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iPollo-${{ matrix.target }}
+          path: integrations/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*.dmg
+          if-no-files-found: error
+      - name: Publish verified DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(integrations/desktop/.desktop-build/targets/"$PACKAGE_TARGET"/unsigned-artifacts/*.dmg)
+          if (( ${#files[@]} != 1 )); then
+            echo 'Expected exactly one verified DMG' >&2
+            exit 1
+          fi
+          asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}-unsigned.dmg"
+          cp "${files[0]}" "$asset"
+          gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY" --clobber

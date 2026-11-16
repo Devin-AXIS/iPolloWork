@@ -22,7 +22,7 @@ afterEach(() => {
 })
 
 function setup() {
-  dom = new JSDOM('<html><body><button>Product action</button><div data-windows-menu></div></body></html>', { url: 'dsh-app://app/' })
+  dom = new JSDOM('<html><body><button>Product action</button></body></html>', { url: 'dsh-app://app/' })
   vi.stubGlobal('window', dom.window)
   vi.stubGlobal('document', dom.window.document)
   vi.stubGlobal('HTMLElement', dom.window.HTMLElement)
@@ -71,20 +71,8 @@ it('rejects forged window events and accepts actions only through the transferre
   expect(ipc.invoke).toHaveBeenCalledExactlyOnceWith(MANDATORY_IPC.action, 'download', '2.0.0', undefined)
 })
 
-it('keeps caption menu keyboard events available while blocking background shortcuts', () => {
+it('blocks background shortcuts while the update overlay owns the window', () => {
   const f = setup()
-  const host = dom.window.document.querySelector('[data-windows-menu]')!
-  const shadow = host.attachShadow({ mode: 'open' })
-  const button = dom.window.document.createElement('button')
-  shadow.append(button)
-  const received = vi.fn()
-  button.addEventListener('keydown', received)
-  for (const key of ['Enter', 'ArrowDown', 'ArrowRight']) {
-    const event = new dom.window.KeyboardEvent('keydown', { key, bubbles: true, composed: true, cancelable: true })
-    button.dispatchEvent(event)
-    expect(event.defaultPrevented).toBe(false)
-  }
-  expect(received).toHaveBeenCalledTimes(3)
   const background = new dom.window.KeyboardEvent('keydown', { key: 'n', bubbles: true, cancelable: true })
   dom.window.document.body.dispatchEvent(background)
   expect(background.defaultPrevented).toBe(true)

@@ -28,6 +28,24 @@ afterEach(async () => {
 })
 
 describe('mandatory update policy', () => {
+  it('uses the cloud origin for an embedded legacy policy and removes service addresses from its notice', async () => {
+    const origin = 'https://work.ipollo.net'
+    const config = resolveDesktopPolicyConfig({ ...deployment, origin, allowedPageOrigins: [origin] })!
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({
+      code: 40005, data: {
+        show_content: { title: 'Update from cloud.ipollo.net.', detail: 'Visit https://work.ipollo.net/download.' },
+        desktop_app_link: 'https://work.ipollo.net/download?os=win',
+      },
+    }))
+    const policy = new DesktopMandatoryUpdatePolicy(config, identity, () => {}, request, () => client)
+    instances.push(policy)
+    expect(await policy.check('launch', true)).toMatchObject({
+      blocking: true, title: 'Update from iPolloWork.', detail: 'Visit iPolloWork.',
+      page: 'https://cloud.ipollo.net/download?os=win',
+    })
+    expect(String(request.mock.calls[0]?.[0])).toBe('https://cloud.ipollo.net/api/v0/check_client_update?scenario=launch')
+  })
+
   it('retains a known block through test authentication expiry and rejects 422 as a policy decision', async () => {
     const { policy, request } = fixture('feishu-test')
     request.mockResolvedValueOnce(Response.json(force)).mockResolvedValueOnce(Response.json({

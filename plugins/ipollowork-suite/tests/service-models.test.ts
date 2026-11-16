@@ -85,6 +85,7 @@ test("official models register lazily, retain native providers and withdraw on o
     new AbortController().signal,
   );
   let refresh = async () => {};
+  let defaultAttempts = 0;
   const fiber = ctx.plugin({
     inject: ["llm"],
     apply(child: Context) {
@@ -93,14 +94,22 @@ test("official models register lazily, retain native providers and withdraw on o
         { getOrigin: () => "http://127.0.0.1:12345", register: () => () => {} },
         center,
         account,
+        async () => {
+          if (++defaultAttempts === 1) throw new Error("Default selection temporarily unavailable");
+        },
       );
     },
   });
   await fiber;
   try {
     assert.equal(ctx.llm.listProviders().length, 0);
+    await assert.rejects(refresh(), /Default selection temporarily unavailable/);
+    assert.equal(center.modelStatus, "error");
+    assert.equal(ctx.llm.listProviders().length, 1);
     await refresh();
     assert.equal(center.modelStatus, "ready");
+    assert.equal(center.modelError, "");
+    assert.equal(defaultAttempts, 2);
     assert.deepEqual(
       ctx.llm.listProviders().map((p) => p.id),
       ["ipollo-chat"],

@@ -9,6 +9,12 @@ import { AppDataRejection, SuiteError } from "./errors.ts";
 
 const KEY = "ipollowork-suite/account";
 type Grant = { version: 1; origin: string; token: string };
+type HostAccountState = AccountState & { origin: string };
+
+/** Keep the account service address out of renderer responses. */
+export function publicAccountState({ origin: _origin, ...state }: HostAccountState): AccountState {
+  return state;
+}
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -333,7 +339,7 @@ export class AccountService {
     return { version: 1, origin: value.origin, token: value.token };
   }
   /** Return only account identity and points; never the token or upstream session. */
-  async state(): Promise<AccountState> {
+  async state(): Promise<HostAccountState> {
     const grant = await this.grant();
     if (!grant)
       return { status: "anonymous", origin: this.config.accountOrigin };
@@ -372,7 +378,7 @@ export class AccountService {
     };
   }
   /** Authenticate with the configured service; a concurrent sign-out supersedes the result. */
-  async signIn(input: unknown): Promise<AccountState> {
+  async signIn(input: unknown): Promise<HostAccountState> {
     if (
       !object(input) ||
       typeof input.email !== "string" ||
@@ -389,7 +395,7 @@ export class AccountService {
     });
   }
   /** Register through the configured service and persist only its verified session grant. */
-  async signUp(input: unknown): Promise<AccountState> {
+  async signUp(input: unknown): Promise<HostAccountState> {
     if (
       !object(input) ||
       typeof input.name !== "string" ||
@@ -412,7 +418,7 @@ export class AccountService {
   private async authenticate(
     path: string,
     input: { email: string; password: string; name?: string },
-  ): Promise<AccountState> {
+  ): Promise<HostAccountState> {
     const revision = ++this.revision;
     const result = await this.send(path, undefined, input);
     if (!object(result) || typeof result.token !== "string" || !result.token)
@@ -434,8 +440,19 @@ export class AccountService {
     });
     return this.state();
   }
+  /** Ask the configured account service to send a reset email. */
+  async requestPasswordReset(input: unknown): Promise<void> {
+    const email = object(input) && typeof input.email === "string" ? input.email.trim() : "";
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      throw new SuiteError("IPW_INVALID_LOGIN");
+    await this.send("/api/auth/request-password-reset", undefined, {
+      email,
+      redirectTo: new URL("/reset-password", this.config.accountOrigin).href,
+    });
+  }
+
   /** Disconnect only this suite's local account. DSH provider credentials are untouched. */
-  async signOut(): Promise<AccountState> {
+  async signOut(): Promise<HostAccountState> {
     ++this.revision;
     await this.credentials.deleteRecord(KEY);
     return { status: "anonymous", origin: this.config.accountOrigin };

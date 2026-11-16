@@ -2,7 +2,7 @@
 import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile, rename, rm, symlink, lstat } from 'node:fs/promises'
+import { mkdir, readFile, writeFile, rename, rm, symlink, lstat, realpath } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import { join } from 'node:path'
 
@@ -96,6 +96,17 @@ export async function linkWorkspace() {
       await rm(target)
     } catch (error) { if (error.code !== 'ENOENT') throw error }
     await symlink(join(upstreamRoot, 'apps', name, 'node_modules'), target, process.platform === 'win32' ? 'junction' : undefined)
+  }
+  const yamlSource = join(upstreamRoot, 'packages/boot/plugin-manager/node_modules/yaml')
+  if (existsSync(yamlSource)) {
+    const productModules = join(root, 'integrations', 'node_modules')
+    const target = join(productModules, 'yaml')
+    await mkdir(productModules, { recursive: true })
+    try {
+      if (!(await lstat(target)).isSymbolicLink()) throw new Error('Refusing to replace the product YAML dependency')
+      await rm(target)
+    } catch (error) { if (error.code !== 'ENOENT') throw error }
+    await symlink(await realpath(yamlSource), target, process.platform === 'win32' ? 'junction' : undefined)
   }
   const cli = join(upstreamRoot, 'apps/desktop-host/node_modules/@deepseek-ai/dsh')
   await rm(cli, { recursive: true, force: true })

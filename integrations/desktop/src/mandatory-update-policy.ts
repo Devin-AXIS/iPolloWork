@@ -38,6 +38,12 @@ function record(value: unknown): Record<string, unknown> | undefined {
   return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
+/** Move the former production policy host without changing custom origins. */
+function migratePolicyUrl(url: URL): URL {
+  if (url.origin === 'https://work.ipollo.net') url.hostname = 'cloud.ipollo.net'
+  return url
+}
+
 function origin(value: unknown, local: boolean): string {
   if (typeof value !== 'string') throw new Error('desktop policy: origin must be a URL')
   const url = new URL(value)
@@ -45,7 +51,7 @@ function origin(value: unknown, local: boolean): string {
     || (url.protocol !== 'https:' && !(local && url.protocol === 'http:' && url.hostname === '127.0.0.1'))) {
     throw new Error('desktop policy: expected an HTTPS origin without credentials, path, query, or fragment')
   }
-  return url.origin
+  return migratePolicyUrl(url).origin
 }
 
 /**
@@ -103,12 +109,15 @@ export function desktopPolicyPage(value: unknown, allowedOrigins: readonly strin
   if (typeof value !== 'string' || value.length > 2048) return undefined
   let url: URL
   try { url = new URL(value) } catch { return undefined }
+  migratePolicyUrl(url)
   return url.protocol === 'https:' && url.username === '' && url.password === '' && allowedOrigins.includes(url.origin)
     ? url.href : undefined
 }
 
 function text(value: unknown, limit: number): string | undefined {
-  return typeof value === 'string' && value.trim() !== '' && value.length <= limit ? value : undefined
+  if (typeof value !== 'string' || value.trim() === '' || value.length > limit) return undefined
+  return value.replace(/\b(?:https?:\/\/)?(?:work|cloud)\.ipollo\.net(?![\w-]|\.[a-z0-9])(?::\d+)?(?:[/?#][^\s<>"'()[\]，。！？；]*)?/gi,
+    address => 'iPolloWork' + (address.match(/[.,;:!?]+$/)?.[0] ?? ''))
 }
 
 function parsePolicy(body: unknown, ok: boolean, config: DesktopPolicyConfig): DesktopPolicyState {

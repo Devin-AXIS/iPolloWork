@@ -165,10 +165,9 @@ export function mountServiceModels(
   );
 
   return () => {
-    serial = serial
-      .catch(() => {})
-      .then(async () => {
-        const generation = services.generation;
+    const refresh = async () => {
+      const generation = services.generation;
+      try {
         const catalog = await services.catalog();
         const choices = await services.choices();
         const models = catalog.items.filter(
@@ -182,89 +181,101 @@ export function mountServiceModels(
         if (lifetime.signal.aborted || generation !== services.generation)
           return;
         const next = JSON.stringify(models.map((s) => [s.id, s.models]));
-        if (next === facts) return;
-        const nextProfiles = new Map<string, pi.ResolvedPiAiProviderProfile>();
-        for (const service of models) {
-          const provider = "ipollo-" + service.id,
-            baseURL =
-              webServer.getOrigin() +
-              "/ipollo-service-models/" +
-              service.id +
-              "/v1";
-          const modelList = service.models.flatMap((model) => {
-            if (
-              (model.category ?? "language") !== "language" ||
-              model.contextWindow === undefined ||
-              model.maxTokens === undefined
-            )
-              return [];
-            const catalogProvider = service.provider === "deepseek" ? "deepseek"
-              : service.provider === "aliyun-bailian" ? "qwen-token-plan-cn" : undefined;
-            const known = catalogProvider && getBuiltinModels(catalogProvider).find(entry =>
-              entry.id === model.id && entry.api === "openai-completions");
-            const capabilities = known && known.api === "openai-completions" ? {
-              reasoning: known.reasoning,
-              ...(known.thinkingLevelMap ? { thinkingLevelMap: known.thinkingLevelMap }
-                : known.reasoning && known.compat?.supportsReasoningEffort === false
-                  ? { thinkingLevelMap: { minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null } } : {}),
-              ...(known.compat ? { compat: known.compat } : {}),
-            } : { reasoning: false };
-            return [
-              {
-                ...model,
-                contextWindow: model.contextWindow,
-                maxTokens: model.maxTokens,
-                provider,
+        const changed = next !== facts;
+        if (!changed && services.modelStatus === "ready") return;
+        if (changed) {
+          const nextProfiles = new Map<string, pi.ResolvedPiAiProviderProfile>();
+          for (const service of models) {
+            const provider = "ipollo-" + service.id,
+              baseURL =
+                webServer.getOrigin() +
+                "/ipollo-service-models/" +
+                service.id +
+                "/v1";
+            const modelList = service.models.flatMap((model) => {
+              if (
+                (model.category ?? "language") !== "language" ||
+                model.contextWindow === undefined ||
+                model.maxTokens === undefined
+              )
+                return [];
+              const catalogProvider = service.provider === "deepseek" ? "deepseek"
+                : service.provider === "aliyun-bailian" ? "qwen-token-plan-cn" : undefined;
+              const known = catalogProvider && getBuiltinModels(catalogProvider).find(entry =>
+                entry.id === model.id && entry.api === "openai-completions");
+              const capabilities = known && known.api === "openai-completions" ? {
+                reasoning: known.reasoning,
+                ...(known.thinkingLevelMap ? { thinkingLevelMap: known.thinkingLevelMap }
+                  : known.reasoning && known.compat?.supportsReasoningEffort === false
+                    ? { thinkingLevelMap: { minimal: null, low: null, medium: null, high: "high", xhigh: null, max: null } } : {}),
+                ...(known.compat ? { compat: known.compat } : {}),
+              } : { reasoning: false };
+              return [
+                {
+                  ...model,
+                  contextWindow: model.contextWindow,
+                  maxTokens: model.maxTokens,
+                  provider,
+                  baseUrl: baseURL,
+                  api: "openai-completions" as const,
+                  input: ["text" as const, ...(model.inputModalities?.includes("image") || model.capabilities?.includes("input:image") || known?.input.includes("image") ? ["image" as const] : [])],
+                  ...capabilities,
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                },
+              ];
+            });
+            if (!modelList.length) continue;
+            nextProfiles.set(provider, {
+              provider,
+              displayName:
+                (service.enterprise ? service.enterprise.name : "iPolloWork") +
+                " · " +
+                service.title,
+              api: "openai-completions",
+              baseURL,
+              streamIdleTimeoutMs: 120000,
+              maxRequestImageBytes: 16 * 1024 * 1024,
+              maxRequestImages: 100,
+              imageOffloadCountQuantum: 10,
+              requestImagePixelBudget: 1000000,
+              requestImageMaxBytes: 1000000,
+              retryPolicy: resolveRetryPolicy(
+                { mode: "normal", maxRetries: 0 },
+                service.enterprise
+                  ? "iPolloWork enterprise model"
+                  : "iPolloWork official service",
+              ),
+              modelErrors: new Map(),
+              configuredMaxTokens: new Map(),
+              piProvider: createProvider({
+                id: provider,
+                name: service.title,
                 baseUrl: baseURL,
-                api: "openai-completions" as const,
-                input: ["text" as const, ...(model.inputModalities?.includes("image") || model.capabilities?.includes("input:image") || known?.input.includes("image") ? ["image" as const] : [])],
-                ...capabilities,
-                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-              },
-            ];
-          });
-          if (!modelList.length) continue;
-          nextProfiles.set(provider, {
-            provider,
-            displayName:
-              (service.enterprise ? service.enterprise.name : "iPolloWork") +
-              " · " +
-              service.title,
-            api: "openai-completions",
-            baseURL,
-            streamIdleTimeoutMs: 120000,
-            maxRequestImageBytes: 16 * 1024 * 1024,
-            maxRequestImages: 100,
-            imageOffloadCountQuantum: 10,
-            requestImagePixelBudget: 1000000,
-            requestImageMaxBytes: 1000000,
-            retryPolicy: resolveRetryPolicy(
-              { mode: "normal", maxRetries: 0 },
-              service.enterprise
-                ? "iPolloWork enterprise model"
-                : "iPolloWork official service",
-            ),
-            modelErrors: new Map(),
-            configuredMaxTokens: new Map(),
-            piProvider: createProvider({
-              id: provider,
-              name: service.title,
-              baseUrl: baseURL,
-              auth: { apiKey: envApiKeyAuth("iPolloWork", []) },
-              models: modelList,
-              api: openAICompletionsApi(),
-            }),
-          });
+                auth: { apiKey: envApiKeyAuth("iPolloWork", []) },
+                models: modelList,
+                api: openAICompletionsApi(),
+              }),
+            });
+          }
+          profiles = nextProfiles;
+          if (registration) registration.replace([...profiles.keys()]);
+          else if (profiles.size)
+            registration = ctx.llm.registerAdapter([...profiles.keys()], adapter);
+          facts = next;
         }
-        profiles = nextProfiles;
-        if (registration) registration.replace([...profiles.keys()]);
-        else if (profiles.size)
-          registration = ctx.llm.registerAdapter([...profiles.keys()], adapter);
-        facts = next;
+        await initializeDefault?.([...profiles.keys()]);
+        if (lifetime.signal.aborted || generation !== services.generation) return;
         services.modelStatus = "ready";
         services.modelError = "";
-        await initializeDefault?.([...profiles.keys()]);
-      });
+      } catch (error) {
+        if (!lifetime.signal.aborted && generation === services.generation) {
+          services.modelStatus = "error";
+          services.modelError = error instanceof SuiteError ? error.code : "IPW_MODEL_REGISTRATION_FAILED";
+        }
+        throw error;
+      }
+    };
+    serial = serial.then(refresh, refresh);
     return serial;
   };
 }

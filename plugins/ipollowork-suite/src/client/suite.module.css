@@ -66,7 +66,7 @@
 .launcher { display: flex; gap: 10px; align-items: center; width: 100%; border: 0; padding: 8px; border-radius: 10px; font: inherit; background: transparent; color: inherit; cursor: pointer; text-align: left; }
 .launcher span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar { display: grid; place-items: center; flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%; corner-shape: round; background: var(--ipw-wash, var(--dsw-alias-bg-base)); color: var(--ipw-accent, var(--dsw-alias-state-business-primary)); font-size: 11px; }
-.brandName { font-weight: 500; white-space: nowrap; }.brandMark { object-fit: contain; }
+.brandName { font-weight: 500; white-space: nowrap; }.brandMark { display: block; flex: none; background: currentColor; mask: url('../../assets/mark.svg') center / contain no-repeat; }
 .ambient { position: absolute; inset: 0; z-index: -1; pointer-events: none; background: radial-gradient(ellipse at 35% 36%, var(--ipw-glow-blue), transparent 34%), radial-gradient(ellipse at 65% 40%, var(--ipw-glow-gold), transparent 30%); }
 .page :focus-visible,.launcher:focus-visible { outline: 2px solid var(--ipw-accent, var(--dsw-focus-ring-color)); outline-offset: 3px; }
 @media (hover: hover) { .secondary:hover,.back:hover,.launcher:hover { background: var(--ipw-wash, var(--dsw-alias-bg-base)); }.card:hover { background: var(--ipw-muted-surface); }.textAction:hover { text-decoration: underline; } }
@@ -337,7 +337,9 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .authSubmit:disabled { opacity:.28;cursor:default; }
 .authPage .authError { margin:2px 0 0;text-align:left;font-size:12px;color:var(--g-bad); }
 .authPage .authService { display:inline-flex;align-items:center;gap:6px;margin:16px 0 0;font-size:11px;color:var(--g-faint); }
-.authService a { color:inherit;text-decoration:none; }
+.authReset { align-self:center;border:0;padding:4px 0;background:transparent;color:var(--g-faint);font:inherit;font-size:12px;cursor:pointer; }
+.authReset:hover:not(:disabled) { text-decoration:underline; }
+.authReset:disabled { opacity:.55;cursor:default; }
 .authService > span { width:6px;height:6px;border-radius:50%;background:var(--g-ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--g-ok) 16%,transparent); }
 .authService > span[data-state='down'] { background:var(--g-warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--g-warn) 16%,transparent); }
 .identity { display:flex;align-items:center;gap:12px; }
@@ -395,6 +397,8 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .keyForm .fieldPill { height:34px;border-radius:10px;background:var(--g-glass-strong); }
 .keySave { align-self:flex-end;height:34px;border:0;border-radius:10px;padding:0 14px;font:inherit;font-size:12px;font-weight:500;color:var(--g-action-ink);background:var(--g-action);cursor:pointer; }
 .keySave:disabled { opacity:.4;cursor:default; }
+.modelStatus { display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px; }
+.modelStatus .rowError { flex-basis:auto; }
 .rowError { flex-basis:100%;margin:0;font-size:12px;color:var(--g-bad); }
 .quietBack { display:inline-flex;align-self:flex-start;align-items:center;gap:4px;border:0;border-radius:8px;padding:4px 8px 4px 4px;margin-left:-4px;font:inherit;font-size:12px;color:var(--g-sub);background:transparent;cursor:pointer; }
 @media (hover:hover) { .provider:not([data-open]):hover { background:var(--g-hover); }.sourceSwitch button:not(:disabled):not([aria-pressed='true']):hover,.quietBack:hover { color:var(--g-ink); } }
@@ -671,3 +675,5 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .analyticsTable th:first-child { text-align:left;white-space:normal;min-width:150px;max-width:280px;overflow-wrap:anywhere; }
 .analyticsTable thead { color:var(--g-sub); }
 .analyticsPages { display:flex;align-items:center;justify-content:flex-end;gap:12px;font-size:12px; }
+
+.currentVersion { padding: 16px 0; color: var(--dsw-alias-label-primary); font-size: 14px; line-height: 22px; overflow-wrap: anywhere; }

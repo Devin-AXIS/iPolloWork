@@ -20,12 +20,6 @@ export function installDesktopShortcuts(
   overlayInput: (window: BrowserWindow) => { readonly revision: number; readonly blocked: boolean },
 ): {
   fileMenu(labels: { fileMenu: string; closePage: string }): MenuItemConstructorOptions
-  /**
-   * Send a native Edit action to the editor without matching user shortcuts.
-   * @param keyCode - edit key.
-   * @param modifiers - edit modifiers.
-   */
-  sendEditingKey(keyCode: string, modifiers: Array<'control'>): void
   attach(window: BrowserWindow): void
   /**
    * Intercept an approved browser guest's keys until its lease ends.
@@ -41,7 +35,6 @@ export function installDesktopShortcuts(
   let recording = false
   let revision: ShortcutRevision | undefined
   let closeBinding: NormalizedBinding | null = null
-  let editingInput: BrowserWindow['webContents'] | undefined
   const scopedDesktop = platform === 'windows' || platform === 'macos'
   const disposers = new Set<() => void>()
   const guestInputs = new Map<WebContents, { window: BrowserWindow; reset(): void }>()
@@ -130,12 +123,6 @@ export function installDesktopShortcuts(
       if (overlay.revision !== overlayRevision) { resetInput(); overlayRevision = overlay.revision }
       if (overlay.blocked) { event.preventDefault(); return }
       if (event.defaultPrevented) { resetInput(); return }
-      if (editingInput === contents) {
-        held.clear()
-        consumed.clear()
-        contents.setIgnoreMenuShortcuts(true)
-        return
-      }
       if (window !== getWindow() || !window.isFocused() || !window.isEnabled() || revision === undefined
         || (guestName !== undefined && !contents.isFocused())) {
         contents.setIgnoreMenuShortcuts(false)
@@ -222,23 +209,6 @@ export function installDesktopShortcuts(
   }
 
   return {
-    sendEditingKey(keyCode, modifiers) {
-      const window = getWindow()
-      if (window === undefined || window.isDestroyed() || overlayInput(window).blocked) return
-      const contents = [...guestInputs].find(([guest, owner]) => owner.window === window && !guest.isDestroyed() && guest.isFocused())?.[0]
-        ?? window.webContents
-      contents.focus()
-      const previous = editingInput
-      editingInput = contents
-      try {
-        // Electron emits before-input-event synchronously for these editor-owned keys.
-        contents.sendInputEvent({ type: 'keyDown', keyCode, modifiers })
-        contents.sendInputEvent({ type: 'keyUp', keyCode, modifiers })
-      } finally {
-        editingInput = previous
-        if (!contents.isDestroyed()) contents.setIgnoreMenuShortcuts(recording)
-      }
-    },
     fileMenu: (labels) => {
       const accelerator = closeAccelerator()
       return { label: labels.fileMenu, submenu: [{

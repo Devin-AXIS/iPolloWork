@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { AccountController } from '../src/client/account-controller.ts'
 
-const account = (points: number) => ({ status: 'signed-in', origin: 'https://accounts.test', user: { id: 'user', email: 'user@example.com', name: 'User' }, points, balanceStatus: 'available' })
+const account = (points: number) => ({ status: 'signed-in', user: { id: 'user', email: 'user@example.com', name: 'User' }, points, balanceStatus: 'available' })
 test('account refresh reads changed balances, coalesces reads and preserves pending authentication', async () => {
   const fetcher = globalThis.fetch
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window')

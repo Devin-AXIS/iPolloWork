@@ -5,6 +5,7 @@ import { mountEnterpriseActivity } from "./enterprise-activity.ts";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -21,7 +22,7 @@ import type {} from "@deepseek-ai/dsh-agent-default-model";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
 import { Services } from "./services.ts";
 import type { ServiceCenter, ServiceChoice } from "../shared/services.ts";
-import { AccountService } from "./account.ts";
+import { AccountService, publicAccountState } from "./account.ts";
 import { mountCapabilityTools } from "./capability-tools.ts";
 import {
   sharingStatus,
@@ -309,11 +310,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       account,
       providers => initializeAccountModel(scope, providers, account.cloudOnly),
     );
-    void refreshModels().catch((error) => {
-      services.modelStatus = "error";
-      services.modelError =
-        error instanceof Error ? error.message : "Model registration failed";
-    });
+    void refreshModels().catch(() => { /* The refresh records the failure in Services. */ });
     scope.effect(() => () => {
       refreshModels = async () => {};
     });
@@ -340,9 +337,12 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       )
     : undefined;
   if (config.account) mountProjectContext(ctx, account, config.accountOrigin);
-  const runtime = JSON.parse(
-    readFileSync(ctx.profileContext.installAnchor, "utf8"),
-  ) as { version?: unknown };
+  const anchor = ctx.profileContext.installAnchor;
+  const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown };
+  // The desktop anchor is a private package-manager project, whose version is always 0.0.0.
+  const runtime = installation.name === "@ipollo/desktop-runtime"
+    ? JSON.parse(readFileSync(createRequire(anchor).resolve("@deepseek-ai/dsh/package.json"), "utf8")) as { version?: unknown }
+    : installation;
   if (typeof runtime.version !== "string" || !semver.valid(runtime.version))
     throw new SuiteError("IPW_INVALID_RUNTIME_VERSION", 500);
   const runtimeVersion = runtime.version;
@@ -410,7 +410,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               json(response, 200, {
                 name: "iPolloWork",
                 version: packageInfo.version,
-                accountOrigin: config.accountOrigin,
                 theme: config.theme,
                 market: config.market,
                 account: config.account,
@@ -440,13 +439,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               return;
             }
             if (request.method === "GET" && path === "/services") {
-              await refreshModels().catch((error) => {
-                services.modelStatus = "error";
-                services.modelError =
-                  error instanceof Error
-                    ? error.message
-                    : "Model registration failed";
-              });
+              await refreshModels().catch(() => { /* Return the catalog with the refresh status. */ });
               json(response, 200, await services.state());
               return;
             }
@@ -467,7 +460,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             ) {
               const state = await account.state();
               await refreshAccount().catch(() => {});
-              json(response, 200, state);
+              json(response, 200, publicAccountState(state));
               return;
             }
             if (
@@ -477,7 +470,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             ) {
               const state = await account.signIn(await body(request));
               await refreshAccount().catch(() => {});
-              json(response, 200, state);
+              json(response, 200, publicAccountState(state));
               return;
             }
             if (
@@ -487,7 +480,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             ) {
               const state = await account.signUp(await body(request));
               await refreshAccount().catch(() => {});
-              json(response, 200, state);
+              json(response, 200, publicAccountState(state));
               return;
             }
             if (
@@ -497,7 +490,12 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             ) {
               const state = await account.signOut();
               await refreshAccount().catch(() => {});
-              json(response, 200, state);
+              json(response, 200, publicAccountState(state));
+              return;
+            }
+            if (request.method === "POST" && path === "/account/request-password-reset" && config.account) {
+              await account.requestPasswordReset(await body(request));
+              json(response, 200, { ok: true });
               return;
             }
             if (request.method === "GET" && path === "/membership" && config.account) {

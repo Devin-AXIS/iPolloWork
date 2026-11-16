@@ -1,6 +1,7 @@
 /** Link this source checkout to the matching DSH packages built in its repository. */
 import { globSync, lstatSync, mkdirSync, readFileSync, realpathSync, rmSync, symlinkSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { satisfies } from 'semver'
@@ -29,7 +30,15 @@ for (const link of links) {
     if (error.code !== 'ENOENT') throw error
   }
   mkdirSync(dirname(link.path), { recursive: true })
-  rmSync(link.path, { recursive: true, force: true })
-  symlinkSync(link.target, link.path, process.platform === 'win32' ? 'junction' : 'dir')
+  rmSync(link.path, { recursive: true, force: true, maxRetries: 4, retryDelay: 50 })
+  for (let attempt = 0; ; attempt++) {
+    try {
+      symlinkSync(link.target, link.path, process.platform === 'win32' ? 'junction' : 'dir')
+      break
+    } catch (error) {
+      if (process.platform !== 'win32' || error.code !== 'EBUSY' || attempt === 4) throw error
+      await delay(50 * (attempt + 1))
+    }
+  }
 }
 console.log(`Linked ${links.length} matching DSH workspace packages.`)

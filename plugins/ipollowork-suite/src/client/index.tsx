@@ -4,6 +4,7 @@ import type { SuiteInfo, MarketState } from '../shared/types.ts'
 import { request } from './api.ts'
 import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
+import { mountCurrentVersion } from './desktop-version.tsx'
 import { MarketPanel } from './market.tsx'
 import { AccountPanel, AccountLauncher } from './account.tsx'
 import { AccountController } from './account-controller.ts'
@@ -34,6 +35,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   mountCoordinator(ctx)
   mountIm(ctx)
   if (info.theme) mountTheme(ctx)
+  mountCurrentVersion(ctx)
   if (info.market) {
     const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
     const subscribeChanges = (listener: () => void) => ctx.remote.$on('plugin-manager/changed', listener)
@@ -83,13 +85,13 @@ export async function apply(ctx: ClientContext): Promise<void> {
       ctx.provide('ipolloData', createBrowserAppData())
     }
     ctx.effect(() => () => account.dispose(), 'ipollowork-suite: account state')
-    const props = () => ({ origin: info.accountOrigin, refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })
+    const props = () => ({ refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })
     if (info.dedicatedDesktop) {
       const { mountDesktopOnboarding } = await import('./desktop-onboarding.ts')
       document.title = 'iPolloWork'
       ctx.effect(() => ctx.remote.$on('credentials/record-updated', () => { void account.refresh() }),
         'ipollowork-suite: native account changes')
-      mountDesktopOnboarding(ctx, account, info.accountOrigin)
+      mountDesktopOnboarding(ctx, account)
     }
     ctx.slots.inject('settings.section', () => ctx.slots.register({ name: 'settings.section', id: 'ipollowork-account', order: -20, label: () => copy(ctx).account, inject: props }, AccountPanel))
     ctx.slots.inject('settings.launcher', () => ctx.slots.register({ name: 'settings.launcher', priority: -100, inject: props }, AccountLauncher))

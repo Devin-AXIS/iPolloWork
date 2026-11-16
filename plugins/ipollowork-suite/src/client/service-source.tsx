@@ -15,11 +15,12 @@ export type Source = { kind: 'official'; service: OfficialService | undefined } 
 /** Read the catalog; refreshes when the account or another view changes a source. */
 export function useServiceState() {
   const [state, setState] = useState<ServiceState>(), [failed, setFailed] = useState(false)
+  const [attempt, setAttempt] = useState(0)
   useEffect(() => {
     const controller = new AbortController()
     const refresh = () => {
       void request<ServiceState>('/services', { signal: controller.signal }).then(
-        value => { setState(value); setFailed(false) },
+        value => { if (!controller.signal.aborted) { setState(value); setFailed(false) } },
         () => { if (!controller.signal.aborted) setFailed(true) },
       )
     }
@@ -31,14 +32,14 @@ export function useServiceState() {
       window.removeEventListener('ipollo-account-changed', refresh)
       window.removeEventListener('ipollo-service-changed', refresh)
     }
-  }, [])
+  }, [attempt])
   /** Persist one provider's source; other mounted views refresh through the change event. */
   const choose = useCallback(async (provider: string, choice: ServiceChoice) => {
     await request('/services/choice', { method: 'POST', body: JSON.stringify({ provider, choice }) })
     setState(current => current ? { ...current, choices: { ...current.choices, [provider]: choice } } : current)
     window.dispatchEvent(new Event('ipollo-service-changed'))
   }, [])
-  return { state, failed, choose }
+  return { state, failed, choose, retry: () => setAttempt(value => value + 1) }
 }
 
 /**

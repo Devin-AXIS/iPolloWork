@@ -7,8 +7,8 @@
 使用 Ubuntu 24.04、Docker Engine 和 Compose v2。在 `services/ipollowork` 中创建私有 `.env`，填写以下配置，并生成仅含 URL 安全字符的随机数据库密码。迁移时保留原有身份验证密钥、设置和数据库。
 
 ~~~dotenv
-SERVICE_DOMAIN=work.ipollo.net
-SERVICE_ORIGIN=https://work.ipollo.net
+SERVICE_DOMAIN=cloud.ipollo.net
+SERVICE_ORIGIN=https://cloud.ipollo.net
 PUBLICATION_DOMAIN=publish.ipollo.net
 PUBLICATION_ORIGIN=https://publish.ipollo.net
 POSTGRES_PASSWORD=replace-with-a-random-secret

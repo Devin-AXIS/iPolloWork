@@ -56,7 +56,7 @@ export async function smokeDesktopRuntime(
   try {
     writeFileSync(join(home, 'npmrc'), '')
     const dedicatedSuite = runtime.sharedPackages.some(pkg => pkg.name === '@ipollo/dsh-suite')
-    createPluginProfile(profile, dedicatedSuite ? ['@ipollo/desktop-host'] : [])
+    await createPluginProfile(profile, dedicatedSuite ? ['@ipollo/desktop-host'] : [])
     const pluginName = 'desktop-runtime-smoke-plugin'
     const plugin = join(home, pluginName)
     mkdirSync(plugin, { recursive: true })
@@ -204,10 +204,14 @@ export function apply(ctx) {
         throw new Error('desktop runtime: embedded account route did not start signed out')
       }
       const market = await fetch(new URL('/ipollowork-suite/catalog', ready.url), { headers: { cookie } })
-      const catalog = await market.json() as { items?: { name: string; installed: boolean; spec: string }[] }
+      const catalog = await market.json() as {
+        runtimeVersion?: string
+        items?: { name: string; compatible: boolean; installed: boolean; spec: string }[]
+      }
       const studios = catalog.items?.filter(item => item.name === 'deepseek-idesign' || item.name === 'deepseek-ivideo')
-      if (!market.ok || studios?.length !== 2 || studios.some(item => item.installed || !item.spec.startsWith('file:'))) {
-        throw new Error('desktop runtime: Studio plugins must have checked local installation archives without being preinstalled')
+      if (!market.ok || catalog.runtimeVersion !== runtime.release.version || studios?.length !== 2
+        || studios.some(item => !item.compatible || item.installed || !item.spec.startsWith('file:'))) {
+        throw new Error('desktop runtime: Studio plugins must be compatible with the bundled DSH and have checked local installation archives')
       }
       const anonymous = await fetch(new URL('/ipollowork-suite/account', ready.url))
       const foreignOrigin = await fetch(new URL('/ipollowork-suite/account', ready.url), {

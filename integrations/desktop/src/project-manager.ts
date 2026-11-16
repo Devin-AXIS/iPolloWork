@@ -14,7 +14,6 @@ import {
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { load, dump } from 'js-yaml'
 import {
   DESKTOP_HOST_PACKAGE,
   desktopCorePackageOverrides,
@@ -25,12 +24,28 @@ import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
+import semver from 'semver'
+import { isMap, isScalar, parseDocument } from 'yaml'
 
 const PROJECT_NAME = '@ipollo/desktop-runtime'
 const DSH_PACKAGE = '@deepseek-ai/dsh'
 const CORE_BUILD_PACKAGE = '@deepseek-ai/dsh-subprocess-local'
 const WEB_PROFILE = PROFILE_TEMPLATES.web as ProfileTemplate
 const WORKSPACE_SETTINGS = 'nodeLinker: hoisted\nautoInstallPeers: false\n'
+const STUDIO_NATIVE_BUILDS = {
+  'esbuild@0.25.12': true,
+  'sharp@0.34.5': true,
+  'onnxruntime-node@1.21.0': true,
+  'onnxruntime-node@1.27.0': true,
+} as const
+const STUDIO_PROFILE_BUILDS = {
+  ...STUDIO_NATIVE_BUILDS,
+  'onnxruntime-node@1.21.0': false,
+  'onnxruntime-node@1.27.0': false,
+  'protobufjs@7.6.6': false,
+} as const
+const PENDING_BUILD = 'set this to true or false'
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, undefined, 2)}\n`, { mode: 0o600 })
 }
@@ -46,8 +61,46 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
     ? CORE_BUILD_PACKAGE
     : `${CORE_BUILD_PACKAGE}@${coreBuildSpec.replace('file:./', 'file:')}`
   // Bundled Studio packages pin these native dependency versions in their manifests.
-  const studioBuilds = '  "esbuild@0.25.12": true\n  "sharp@0.34.5": true\n  "onnxruntime-node@1.21.0": true\n  "onnxruntime-node@1.27.0": true\n'
+  const studioBuilds = overrides['deepseek-idesign'] || overrides['deepseek-ivideo']
+    ? Object.keys(STUDIO_NATIVE_BUILDS).map(spec => `  ${JSON.stringify(spec)}: true\n`).join('')
+    : ''
   return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n${studioBuilds}  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
+}
+
+/** Apply the shipped Studio dependency decisions to the desktop plugin profile. */
+async function configureStudioBuilds(profile: string): Promise<void> {
+  const path = join(profile, 'pnpm-workspace.yaml')
+  const document = parseDocument(readFileSync(path, 'utf8'))
+  if (document.errors.length > 0 || !isMap(document.contents)) return
+  // Legacy custom build policies cannot be combined with allowBuilds.
+  if (document.has('<<') || document.get('dangerouslyAllowAllBuilds') === true
+    || ['onlyBuiltDependencies', 'onlyBuiltDependenciesFile', 'neverBuiltDependencies', 'ignoredBuiltDependencies']
+      .some(key => document.has(key))) return
+  const builds = document.get('allowBuilds')
+  if (builds !== undefined && !isMap(builds)) return
+  const existing = new Map<string, boolean | typeof PENDING_BUILD>()
+  if (isMap(builds)) {
+    if (builds.anchor) return
+    for (const { key, value } of builds.items) {
+      if (!isScalar(key) || typeof key.value !== 'string' || key.anchor || /[*?]/.test(key.value)
+        || !isScalar(value) || value.anchor || (typeof value.value !== 'boolean' && value.value !== PENDING_BUILD)) return
+      existing.set(key.value, value.value)
+    }
+  }
+
+  let changed = false
+  for (const [spec, allow] of Object.entries(STUDIO_PROFILE_BUILDS)) {
+    const at = spec.lastIndexOf('@')
+    const name = spec.slice(0, at)
+    const version = spec.slice(at + 1)
+    const decided = [...existing].some(([key, value]) => value !== PENDING_BUILD
+      && (key === name || (key.startsWith(`${name}@`) && semver.satisfies(version, key.slice(at + 1)))))
+    if (decided) continue
+    if (existing.get(name) === PENDING_BUILD) document.deleteIn(['allowBuilds', name])
+    document.setIn(['allowBuilds', spec], allow)
+    changed = true
+  }
+  if (changed) await writeFileAtomic(path, String(document), { mode: 0o600 })
 }
 
 /** Initializes the Desktop profile and disables third-party bundles during recovery. */
@@ -77,7 +130,8 @@ export class DesktopProjectManager {
     await this.withLock(async () => {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
       readDesktopRuntime(this.runtime.dsh)
-      createPluginProfile(this.paths.profile, existsSync(join(this.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite', 'package.json')) ? [DESKTOP_HOST_PACKAGE] : [])
+      const hasSuite = existsSync(join(this.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite', 'package.json'))
+      await createPluginProfile(this.paths.profile, hasSuite ? [DESKTOP_HOST_PACKAGE] : [])
       removeLinkProjections(this.paths.profile)
     })
   }
@@ -166,15 +220,7 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
  * @param projectDir - Desktop profile directory.
  * @param requiredBundles - Installation-owned bundles enabled by the desktop distribution.
  */
-export function createPluginProfile(projectDir: string, requiredBundles: readonly string[] = []): void {
+export async function createPluginProfile(projectDir: string, requiredBundles: readonly string[] = []): Promise<void> {
   initProfile(projectDir, [...WEB_PROFILE.bundles, ...requiredBundles])
-  const path = join(projectDir, 'pnpm-workspace.yaml')
-  const original = readFileSync(path, 'utf8')
-  const config = load(original) as Record<string, unknown>
-  const existing = (config.allowBuilds ?? {}) as Record<string, boolean>
-  const defaults = { 'esbuild@0.25.12': true, 'sharp@0.34.5': true, 'onnxruntime-node@1.21.0': false, 'onnxruntime-node@1.27.0': false, protobufjs: false }
-  if (Object.keys(defaults).some(key => !(key in existing))) {
-    config.allowBuilds = { ...defaults, ...existing }
-    writeFileSync(path, dump(config), { mode: 0o600 })
-  }
+  await configureStudioBuilds(projectDir)
 }

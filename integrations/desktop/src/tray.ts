@@ -1,6 +1,6 @@
 /** Windows system tray: the always-present way back to a hidden window and the explicit quit entry. */
 
-import { Menu, nativeImage, Tray } from 'electron'
+import { Menu, nativeImage, Tray, type MenuItemConstructorOptions } from 'electron'
 import type { DesktopLocale } from './locale.ts'
 
 /** Main-process actions the tray triggers; both run the same paths as the window and application menu. */
@@ -8,6 +8,7 @@ export interface DesktopTrayOptions {
   /** Multi-size ICO rendered by `scripts/render-tray-icon.ts`; Windows picks the bitmap for the display scale. */
   readonly iconPath: string
   readonly locale: () => DesktopLocale
+  readonly commands: () => MenuItemConstructorOptions[]
   /** Show and focus the primary window. */
   readonly open: () => void
   /** Request quit through the same confirmation as every other quit entry. */
@@ -32,9 +33,12 @@ export class DesktopTray {
     if (tray === undefined) return
     const { messages } = this.options.locale()
     tray.setToolTip(messages.aboutProduct)
+    const commands = this.options.commands()
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: messages.openApplication, click: () => { this.options.open() } },
       { type: 'separator' },
+      ...commands,
+      ...(commands.length > 0 ? [{ type: 'separator' } as const] : []),
       { label: messages.quitApplication, click: () => { this.options.quit() } },
     ]))
   }
