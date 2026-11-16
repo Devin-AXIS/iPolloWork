@@ -22,6 +22,15 @@ export const DESKTOP_RUNTIME_PATCHES: Readonly<Record<string, DesktopRuntimePatc
   'node-pty@1.2.0-beta.15': { scope: 'shared', reason: 'Runtime terminals need helper resolution and Windows worker cleanup.' },
 }
 
+/** Linux AppImages use the WASM fallback when the optional native engine is absent. */
+export const LINUX_DESKTOP_RUNTIME_PATCHES: Readonly<Record<string, DesktopRuntimePatch>> = {
+  ...DESKTOP_RUNTIME_PATCHES,
+  '@deepseek-ai/libreoffice-kit@0.2.3': {
+    scope: 'runtime-only', path: 'patches/libreoffice-kit-0.2.3.patch',
+    reason: 'Electron ASAR returns null for missing files when throwIfNoEntry is false.',
+  },
+}
+
 /** Reviewed Desktop dependency constraints, independent of patch selection. */
 export const DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES: Readonly<Record<string, string>> = {
   // The provider declares ^1.3.0; its patch is qualified against 1.3.0.

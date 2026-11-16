@@ -23,6 +23,7 @@ import { smokePrimaryRuntime } from './prepare-primary-runtime.ts'
 import { smokePreparedRuntime } from './smoke-prepared-runtime.ts'
 import { prepareRuntimeManifests } from './prepare-runtime-manifests.ts'
 import { prepareRuntimePatches, verifyRuntimePatches } from './prepare-runtime-patches.ts'
+import { LINUX_DESKTOP_RUNTIME_PATCHES } from './runtime-patch-policy.ts'
 import { writeDesktopRuntime, writeDesktopRuntimeAsync, verifyDesktopRuntime } from '../src/runtime-tree.ts'
 import {
   resolveDesktopAppId,
@@ -120,11 +121,13 @@ async function main(): Promise<void> {
       mkdirSync(STORE_ROOT, { recursive: true })
     })
     const release = desktopRelease()
+    const target = desktopTargetPlatform(resolveDesktopBuildTarget())
     const patches = await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:stage-packages', async () => {
       copyFileSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGE_SET_FILE), join(BUILD_ROOT, DESKTOP_PACKAGE_SET_FILE))
       cpSync(join(PACKAGE_SET_ROOT, DESKTOP_PACKAGES_DIR), join(BUILD_ROOT, DESKTOP_PACKAGES_DIR), { recursive: true })
       createRuntimeProjectMetadata(BUILD_ROOT, release)
-      return prepareRuntimePatches(BUILD_ROOT, resolve(APP_ROOT, '..', '..', '.upstream', 'dsh'))
+      const policy = target.platform === 'linux' ? LINUX_DESKTOP_RUNTIME_PATCHES : undefined
+      return prepareRuntimePatches(BUILD_ROOT, resolve(APP_ROOT, '..', '..', '.upstream', 'dsh'), policy, undefined, APP_ROOT)
     })
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:lockfile', () => runPnpm(['install', '--lockfile-only']))
     verifyRuntimePatches(BUILD_ROOT, patches)
@@ -136,8 +139,6 @@ async function main(): Promise<void> {
     )
     await packagingStep(process.env.DSH_DESKTOP_PACKAGING_RUN_DIR, 'runtime:install', () => runPnpm(['install', '--prod', '--frozen-lockfile', '--trust-lockfile']))
     const packageSet = readDesktopCorePackageSet(BUILD_ROOT, release.version)
-    const targetName = resolveDesktopBuildTarget()
-    const target = desktopTargetPlatform(targetName)
     const modules = join(BUILD_ROOT, 'node_modules')
     const officeManifest = JSON.parse(readFileSync(join(modules, '@deepseek-ai/libreoffice-kit/package.json'), 'utf8'))
     const officeEngine = selectOfficeEngine(officeManifest, target)

@@ -40,12 +40,14 @@ function patchHash(bytes: Buffer): string {
  * @param repositoryRoot Source repository; its files remain read-only.
  * @param policy Desktop patch decisions, including optional runtime-only files relative to the repository.
  * @param overrides Explicit Desktop dependency constraints; patch versions never generate overrides.
+ * @param runtimePatchRoot Product directory owning Desktop-only patch files.
  * @returns Expected patch identities and hashes for lockfile and staged-file verification.
  */
 export function prepareRuntimePatches(
   projectRoot: string, repositoryRoot: string,
   policy: Readonly<Record<string, DesktopRuntimePatch>> = DESKTOP_RUNTIME_PATCHES,
   overrides: Readonly<Record<string, string>> = DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES,
+  runtimePatchRoot = repositoryRoot,
 ): PreparedRuntimePatches {
   if (resolve(projectRoot) === resolve(repositoryRoot)) throw new Error('desktop patches: destination must not be the source workspace')
   const source = yaml.load(readFileSync(join(repositoryRoot, 'pnpm-workspace.yaml'), 'utf8')) as {
@@ -65,11 +67,12 @@ export function prepareRuntimePatches(
     }
     if (rule.scope === 'workspace-only') continue
     const sourcePath = rule.scope === 'shared' ? source.patchedDependencies[spec]! : rule.path
-    const localPath = relative(resolve(repositoryRoot), resolve(repositoryRoot, sourcePath))
+    const patchRoot = rule.scope === 'shared' ? repositoryRoot : runtimePatchRoot
+    const localPath = relative(resolve(patchRoot), resolve(patchRoot, sourcePath))
     if (isAbsolute(sourcePath) || localPath.startsWith('..') || isAbsolute(localPath)) {
       throw new Error(`desktop patches: patch must be inside the repository: ${sourcePath}`)
     }
-    const bytes = readFileSync(join(repositoryRoot, sourcePath))
+    const bytes = readFileSync(join(patchRoot, sourcePath))
     const hash = patchHash(bytes)
     if (rule.scope === 'shared' && sourceLock.patchedDependencies[spec] !== hash) {
       throw new Error(`desktop patches: shared patch hash differs from the root lockfile: ${spec}`)

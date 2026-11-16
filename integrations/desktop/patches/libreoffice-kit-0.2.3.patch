@@ -1,0 +1,8 @@
+diff --git a/lib/index.js b/lib/index.js
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -1575,3 +1575,3 @@
+ function installedPackageExists(name) {
+-	return (require.resolve.paths(name) ?? []).some((directory) => lstatSync(join(directory, name), { throwIfNoEntry: false }) !== void 0);
++	return (require.resolve.paths(name) ?? []).some((directory) => Boolean(lstatSync(join(directory, name), { throwIfNoEntry: false })));
+ }
