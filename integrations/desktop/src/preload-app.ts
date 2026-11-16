@@ -16,6 +16,7 @@ import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
 function createProductApi(): DshDesktopProductApi {
   return {
     protocolVersion: 1,
+    appVersion: () => ipcRenderer.invoke(DESKTOP_IPC.appVersion) as Promise<string>,
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
       readClipboardImage: url => ipcRenderer.invoke(DESKTOP_IPC.clipboardImageRead, url) as

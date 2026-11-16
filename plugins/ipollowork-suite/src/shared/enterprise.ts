@@ -17,6 +17,9 @@ export interface Department {
   name: string;
 }
 export interface Invitation {
+  projectId?: string | null;
+  projectRole?: "view" | "participate" | "maintain" | null;
+  departmentId?: string | null;
   id: string;
   email: string;
   role: string;

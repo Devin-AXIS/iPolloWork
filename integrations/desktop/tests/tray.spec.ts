@@ -31,7 +31,7 @@ function setup(locale = 'en') {
   let current = resolveDesktopLocale(locale)
   const open = vi.fn()
   const quit = vi.fn()
-  const tray = new DesktopTray({ iconPath: 'C:/app/resources/tray.ico', locale: () => current, open, quit })
+  const tray = new DesktopTray({ iconPath: 'C:/app/resources/tray.ico', locale: () => current, commands: () => [], open, quit })
   return { tray, open, quit, native: native.trays[0]!, setLocale: (next: string) => { current = resolveDesktopLocale(next) } }
 }
 

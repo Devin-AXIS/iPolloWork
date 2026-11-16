@@ -57,19 +57,15 @@ git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git
 cd iPolloWork
 npm run setup:build
 npm run build
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$(pwd)/plugins/ipollowork-suite"
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts web
+npm start
 ```
 
-Windows PowerShell 使用相同命令，但将安装插件的一行替换为：
+Windows PowerShell 使用相同命令。`npm start` 使用编译后的固定版本 DSH 启动器，保留现有配置，并配置已审核的 Studio 依赖构建规则。
 
-```powershell
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$((Get-Location).Path)/plugins/ipollowork-suite"
-```
 
 打开启动器输出的本地地址。套件会在原生 Web 界面中加入 iPolloWork 的账号、智能体和插件页面。已配置的账号服务和组织功能需要登录；本地模型提供方继续使用各自的凭据。不要把账号或供应商 Key 粘贴进项目页面。
 
-账号服务单独部署。[部署说明](services/ipollowork/README.zh.md)介绍 PostgreSQL、账号配置和存储；[能力 API 文档](services/ipollowork/docs/capabilities.md)介绍对外 HTTP 接入。套件默认连接 `https://work.ipollo.net`；自建服务请按[套件说明](plugins/ipollowork-suite/README.zh.md)配置 `accountOrigin`。
+账号服务单独部署。[部署说明](services/ipollowork/README.zh.md)介绍 PostgreSQL、账号配置和存储；[能力 API 文档](services/ipollowork/docs/capabilities.md)介绍对外 HTTP 接入。套件默认连接 iPolloWork 云服务；自建服务请按[套件说明](plugins/ipollowork-suite/README.zh.md)配置 `accountOrigin`。
 
 ## 桌面端与开发
 
@@ -96,3 +92,13 @@ node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add
 ## 许可证
 
 iPolloWork 自有代码使用原有的 [iPolloWork Source Available License](LICENSE)，属于源码可用软件，不是无限制的 MIT 授权。第三方代码及此前已授予的许可继续适用原条款，详见[第三方声明](THIRD_PARTY_NOTICES.md)。从当前目录移除上游文件不会删除 Git 历史和原作者记录。
+
+## 全球与大陆镜像同步发布
+
+[发布镜像流程](.github/workflows/release-mirror.yml) 将 GitHub Release 的原始文件复制到兼容 S3 的大陆存储，不重新构建第二个版本。本地下载和大陆公开下载都必须通过 GitHub SHA-256 与文件大小校验，才会公开验证清单。已发布版本的变更自动触发同步；所有平台文件进入草稿后，使用版本标签启动该流程，即可完成镜像、验证并发布草稿。复制失败可以重试，并且不会发布草稿。
+
+在 GitHub 的 `release-mirror` environment 中配置一次：变量 `IPOLLO_MIRROR_S3_ENDPOINT`、`IPOLLO_MIRROR_BUCKET`、`IPOLLO_MIRROR_PUBLIC_URL`、`IPOLLO_MIRROR_REGION`；密钥 `IPOLLO_MIRROR_ACCESS_KEY_ID`、`IPOLLO_MIRROR_SECRET_ACCESS_KEY`。公开地址须通过 HTTPS 直接提供存储桶中的 `releases/<tag>/<filename>`，不经过跳转。使用专用大陆存储桶，并把写权限限制在此路径。缺少配置会明确失败；未配置的流程不代表大陆镜像已经上线。
+
+桌面发布版本仅使用三段数字（例如 `1.0.2`）。GitHub Latest 必须同时包含 `stable-mac.yml`、`stable.yml` 及其中引用的 ZIP／安装器；仅修改发布标题无法通知已安装的客户端。发布前使用 `integrations/tooling/release-update-feed.mjs` 生成并验证更新清单。
+
+固定发布入口为 **Actions → Publish verified iPolloWork release**（`ipollo-publish.yml`）。先将已签名公证的 Apple Silicon／Intel DMG、更新 ZIP、blockmap、干净构建记录、Windows 安装器及当前设计／套件插件上传到纯数字版本草稿，再输入该标签启动流程。流程会拒绝缺包和旧版本，逐个核对 GitHub 下载文件的哈希，生成两个更新索引及校验文件，发布 Latest，并检查公开更新索引和下载地址。公开检查失败会恢复上一版 Latest。镜像流程接收同一批最终文件，不重新构建。不要手动发布草稿，也不要把带测试后缀的版本设为 Latest。

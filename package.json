@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/work",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.5",
@@ -21,7 +21,8 @@
     "check:docs": "node integrations/tooling/check-docs.mjs",
     "package:plugin": "node integrations/tooling/package-plugin.mjs",
     "check:desktop": "node integrations/desktop/run.mjs package-target.ts mac-arm64 --check --unsigned",
-    "audit:dependencies": "node integrations/tooling/audit.mjs"
+    "audit:dependencies": "node integrations/tooling/audit.mjs",
+    "start": "node integrations/tooling/start.mjs"
   },
   "license": "SEE LICENSE IN LICENSE"
 }

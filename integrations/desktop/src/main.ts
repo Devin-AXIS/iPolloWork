@@ -271,14 +271,15 @@ function platformLoginUrl(authorizeUrl: string): string {
   return url.href
 }
 
-function createWindow(preload: string, show = false, primary = false): BrowserWindow {
+function createWindow(preload: string, applicationIconPath: string): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 520,
     minHeight: 600,
-    show,
-    ...(process.platform === 'win32' && primary ? {
+    show: false,
+    ...(process.platform === 'win32' ? {
+      icon: applicationIconPath,
       backgroundColor: chromeFallbackFill(),
       titleBarStyle: 'hidden' as const,
       titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
@@ -301,7 +302,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
       contextIsolation: true,
       sandbox: true,
       webSecurity: true,
-      webviewTag: primary,
+      webviewTag: true,
       devTools: true,
     },
   })
@@ -320,7 +321,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     // current state so a fullscreen reload does not fall back to windowed CSS.
     window.webContents.on('did-finish-load', sendFullscreen)
   }
-  if (process.platform === 'win32' && primary) {
+  if (process.platform === 'win32') {
     const updateBackground = (): void => {
       if (!window.isDestroyed()) window.setBackgroundColor(chromeFallbackFill())
     }
@@ -950,6 +951,10 @@ async function main(): Promise<void> {
     assertProductSender(event)
     return updatePresentation(updates.state)
   })
+  ipcMain.handle(DESKTOP_IPC.appVersion, (event) => {
+    assertProductSender(event)
+    return app.getVersion()
+  })
   ipcMain.handle(DESKTOP_IPC.deviceInfo, (event) => {
     assertProductSender(event)
     return readDeviceInfo()
@@ -1211,7 +1216,7 @@ async function main(): Promise<void> {
       { role: 'hideOthers', label: currentDesktopLocale().messages.hideOtherApplications },
       { role: 'unhide', label: currentDesktopLocale().messages.showAllApplications }, { type: 'separator' }]
     : []
-  const applicationItems = (): MenuItemConstructorOptions[] => [
+  const applicationCommands = (): MenuItemConstructorOptions[] => [
     // Windows has no system About panel; Electron's fallback is a plain
     // message box, so the shell shows its own dimmed dialog instead.
     process.platform === 'win32'
@@ -1232,10 +1237,12 @@ async function main(): Promise<void> {
       } },
     ] : [],
     { role: 'toggleDevTools', label: currentDesktopLocale().messages.toggleDevToolsMenu },
+  ]
+  const applicationItems = (): MenuItemConstructorOptions[] => [
+    ...applicationCommands(),
     { type: 'separator' },
     ...hideCommands,
-    { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication }
-      : process.platform === 'win32' ? { label: currentDesktopLocale().messages.exitApplication } : {}) },
+    { role: 'quit', ...(darwin ? { label: currentDesktopLocale().messages.quitApplication } : {}) },
   ]
   const devToolsF12Shortcut: MenuItemConstructorOptions = { role: 'toggleDevTools', visible: false, accelerator: 'F12' }
   const windowsDevToolsShortcuts: MenuItemConstructorOptions[] = [
@@ -1255,7 +1262,7 @@ async function main(): Promise<void> {
   if (process.platform === 'win32') {
     // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
     try {
-      tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale,
+      tray = new DesktopTray({ iconPath: trayIconPath, locale: currentDesktopLocale, commands: applicationCommands,
         open: () => { focusPrimaryWindow() }, quit: () => { app.quit() } })
     } catch (error) { console.warn('desktop tray: unavailable', error) }
   }
@@ -1277,38 +1284,6 @@ async function main(): Promise<void> {
   })
 
   if (process.platform === 'win32') {
-    ipcMain.handle(DESKTOP_IPC.windowsMenu, (event, name: unknown, x: unknown, y: unknown) => {
-      assertDesktopSender(event, ['app'])
-      if (mainWindow === undefined || event.sender !== mainWindow.webContents
-        || event.senderFrame !== mainWindow.webContents.mainFrame) throw new Error('desktop menu: rejected sender')
-      if ((name !== 'application' && name !== 'edit')
-        || typeof x !== 'number' || typeof y !== 'number' || !Number.isFinite(x) || !Number.isFinite(y)
-        || x < 0 || y < 0 || x > 100_000 || y > 100_000) throw new Error('desktop menu: invalid popup request')
-      const window = mainWindow
-      // Editor-owned history listens to key events rather than Chromium's native undo stack.
-      const editItem = (label: string, keyCode: string, modifiers: Array<'control'>, accelerator?: string): MenuItemConstructorOptions => ({
-        label,
-        ...(accelerator === undefined ? {} : { accelerator }),
-        click: () => {
-          shortcuts.sendEditingKey(keyCode, modifiers)
-        },
-      })
-      const items: MenuItemConstructorOptions[] = name === 'application' ? applicationItems() : [
-        editItem(currentDesktopLocale().messages.undo, 'Z', ['control'], 'Ctrl+Z'),
-        editItem(currentDesktopLocale().messages.redo, 'Y', ['control'], 'Ctrl+Y'),
-        { type: 'separator' },
-        editItem(currentDesktopLocale().messages.cut, 'X', ['control'], 'Ctrl+X'),
-        editItem(currentDesktopLocale().messages.copy, 'C', ['control'], 'Ctrl+C'),
-        editItem(currentDesktopLocale().messages.paste, 'V', ['control'], 'Ctrl+V'),
-        editItem(currentDesktopLocale().messages.delete, 'Delete', []),
-        { type: 'separator' },
-        editItem(currentDesktopLocale().messages.selectAll, 'A', ['control'], 'Ctrl+A'),
-      ]
-      const zoom = mainWindow.webContents.getZoomFactor()
-      return new Promise<void>((resolve) => {
-        Menu.buildFromTemplate(items).popup({ window, x: Math.round(x * zoom), y: Math.round(y * zoom), callback: resolve })
-      })
-    })
     ipcMain.on(DESKTOP_IPC.windowsAppearance, (event, _language: unknown, color: unknown, symbolColor: unknown) => {
       if (mainWindow === undefined || event.sender !== mainWindow.webContents
         || event.senderFrame !== mainWindow.webContents.mainFrame) return
@@ -1331,7 +1306,7 @@ async function main(): Promise<void> {
     }
   }
   const createMainWindow = (): BrowserWindow => {
-    const window = createWindow(appPreload, false, true)
+    const window = createWindow(appPreload, applicationIconPath)
     mainWindow = window
     browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
     shortcuts.attach(window)
@@ -1452,7 +1427,7 @@ async function main(): Promise<void> {
           return { ok: true }
         },
         skip: enterWorkspace,
-      })
+      }, applicationIconPath)
       const window = welcomeWindow
       window.once('closed', () => {
         void welcomeBackend?.account.state().then((state) => {
@@ -1583,7 +1558,7 @@ async function main(): Promise<void> {
     mandatoryPolicy = new DesktopMandatoryUpdatePolicy(policyConfig, {
       platform: process.platform as 'win32' | 'darwin', arch: process.arch as 'x64' | 'arm64',
       get channel() { return updates.selectedChannel },
-      bundledDshVersion: app.isPackaged ? readDesktopRuntime(resources.dsh).release.version : app.getVersion(),
+      bundledDshVersion: readDesktopRuntime(resources.dsh).release.version,
     }, (state) => {
       if (state.error !== 'authentication-required') policyAuthenticationQueued = false
       if (state.blocking) {

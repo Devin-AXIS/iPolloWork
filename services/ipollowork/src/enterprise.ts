@@ -87,7 +87,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         id,
       ),
       invitations: await store.all(
-        "SELECT id,email,role,department_id,expires_at,accepted_by,revoked_at FROM invitations WHERE enterprise_id=? ORDER BY created_at DESC LIMIT 100",
+        "SELECT id,email,role,department_id,expires_at,accepted_by,revoked_at,project_id,project_role FROM invitations WHERE enterprise_id=? ORDER BY created_at DESC LIMIT 100",
         id,
       ),
     });
@@ -168,14 +168,22 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         role: z.enum(["admin", "member"]).default("member"),
         departmentId: z.string().nullable().default(null),
         days: z.number().int().min(1).max(30).default(7),
+        projectId: z.string().optional(),
+        projectRole: z.enum(["view", "participate", "maintain"]).default("view"),
       })
       .parse(await c.req.json());
     await departmentAccess(store, id, input.departmentId);
+    if (input.projectId) {
+      const project = await projectAccess(store, actor, input.projectId, true);
+      if (project.enterprise_id !== id) throw new ServiceError("PROJECT_ORGANIZATION_MISMATCH", 400, "空间不属于该组织");
+      if (input.role !== "member" || input.departmentId)
+        throw new ServiceError("INVITATION_SCOPE_INVALID", 400, "空间邀请仅授予普通成员身份，不附加部门权限");
+    }
     const token = randomBytes(32).toString("base64url"),
       invitationId = uid();
     await store.transaction(async () => {
       await store.run(
-        "INSERT INTO invitations VALUES(?,?,?,?,?,?,?,NULL,NULL,?)",
+        "INSERT INTO invitations(id,enterprise_id,token_hash,email,role,department_id,expires_at,accepted_by,revoked_at,created_at,project_id,project_role) VALUES(?,?,?,?,?,?,?,NULL,NULL,?,?,?)",
         invitationId,
         id,
         hash(token),
@@ -184,13 +192,13 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         input.departmentId,
         now() + input.days * 86400000,
         now(),
+        input.projectId ?? null,
+        input.projectId ? input.projectRole : null,
       );
       await audit(store, actor, "invitation.create", invitationId);
     });
-    return c.json(
-      { id: invitationId, url: config.origin + "/invite/" + token },
-      201,
-    );
+    const url = config.origin + "/invite/" + token;
+    return c.json({ id: invitationId, url, delivery: "link" }, 201);
   });
   app.delete("/api/v1/enterprises/:id/invitations/:inviteId", async (c) => {
     const actor = c.get("actor"),
@@ -209,16 +217,10 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
   });
   app.post("/api/v1/invitations/:token/accept", async (c) => {
     const actor = c.get("actor");
-    if (!actor.emailVerified)
-      throw new ServiceError(
-        "EMAIL_NOT_VERIFIED",
-        403,
-        "请先验证被邀请的邮箱，再接受邀请",
-      );
     return c.json(
       await store.transaction(async () => {
         const invitation = await store.one(
-          "SELECT * FROM invitations WHERE token_hash=?",
+          "SELECT * FROM invitations WHERE token_hash=? FOR UPDATE",
           hash(c.req.param("token")),
         );
         if (
@@ -242,7 +244,14 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         if (invitation.accepted_by) {
           if (invitation.accepted_by !== actor.id)
             throw new ServiceError("INVITATION_USED", 409);
+          const member = await store.one("SELECT 1 FROM members WHERE enterprise_id=? AND user_id=?", invitation.enterprise_id, actor.id);
+          if (!member) throw new ServiceError("INVITATION_USED", 409, "邀请已使用，请联系管理员重新邀请");
           return { enterpriseId: invitation.enterprise_id, duplicate: true };
+        }
+        if (invitation.project_id) {
+          const project = await store.one("SELECT enterprise_id FROM projects WHERE id=?", invitation.project_id);
+          if (project?.enterprise_id !== invitation.enterprise_id)
+            throw new ServiceError("INVITATION_EXPIRED", 404, "空间归属已变更，请重新获取邀请");
         }
         await departmentAccess(
           store,
@@ -257,6 +266,12 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
           invitation.department_id,
           now(),
         );
+        if (invitation.project_id) {
+          await store.run(
+            "INSERT INTO project_grants(project_id,kind,subject_id,role) VALUES(?,'member',?,?) ON CONFLICT(project_id,kind,subject_id) DO NOTHING",
+            invitation.project_id, actor.id, invitation.project_role,
+          );
+        }
         await store.run(
           "UPDATE invitations SET accepted_by=? WHERE id=?",
           actor.id,

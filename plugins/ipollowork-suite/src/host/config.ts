@@ -3,6 +3,9 @@ import { fileURLToPath } from "node:url";
 import z from "@deepseek-ai/schemastery";
 import { SuiteError } from "./errors.ts";
 
+const ACCOUNT_ORIGIN = "https://cloud.ipollo.net";
+const LEGACY_ACCOUNT_ORIGIN = "https://work.ipollo.net";
+
 export interface Config {
   accountOrigin?: string;
   cloudRuntimeTokenEnv?: string;
@@ -23,7 +26,7 @@ export interface Config {
 }
 export const Config = z.object({
   cloudRuntimeTokenEnv: z.string().default(""),
-  accountOrigin: z.string().default("https://work.ipollo.net"),
+  accountOrigin: z.string().default(ACCOUNT_ORIGIN),
   catalogPath: z
     .string()
     .default(
@@ -63,5 +66,5 @@ export function resolveConfig(input: Config): ResolvedConfig {
   ) {
     throw new SuiteError("IPW_INVALID_ACCOUNT_ORIGIN");
   }
-  return { ...result, accountOrigin: url.origin };
+  return { ...result, accountOrigin: url.origin === LEGACY_ACCOUNT_ORIGIN ? ACCOUNT_ORIGIN : url.origin };
 }

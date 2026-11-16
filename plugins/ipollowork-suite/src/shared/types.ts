@@ -1,8 +1,8 @@
 /** Shared, credential-free records sent from the Host to the browser. */
 export interface AccountUser { id: string; name: string; email: string }
 export type AccountState =
-  | { status: 'anonymous'; origin: string }
-  | { status: 'signed-in'; origin: string; user: AccountUser; points: number | null; balanceStatus: 'available' | 'unavailable' }
+  | { status: 'anonymous' }
+  | { status: 'signed-in'; user: AccountUser; points: number | null; balanceStatus: 'available' | 'unavailable' }
 
 export interface MarketItem {
   name: string; title: string; description: string; author: string; icon: string | null;
@@ -12,7 +12,7 @@ export interface MarketItem {
   installedVersion: string | null; resources: readonly string[];
 }
 export interface MarketState { title: string; items: MarketItem[]; categories: { id: string; title: string }[]; runtimeVersion: string }
-export interface SuiteInfo { name: 'iPolloWork'; version: string; accountOrigin: string }
+export interface SuiteInfo { name: 'iPolloWork'; version: string }
 
 /** Narrow native services used by this package; no runtime service is reimplemented. */
 export interface CredentialStore {

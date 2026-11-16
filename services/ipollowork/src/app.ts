@@ -3,6 +3,7 @@ import { CloudProjects, cloudGrantAllows, mountCloudProjects } from './cloud-pro
 import { ExecutionService, mountExecution } from "./execution.js";
 import { Capabilities, mountCapabilities } from "./capabilities.js";
 import { authenticateCapabilityKey, mountAccessKeys } from "./access-keys.js";
+import { createHash } from "node:crypto";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
@@ -192,6 +193,17 @@ export async function createService(config: Config) {
         return await auth.handler(new Request(c.req.raw, { headers }));
       }
       return await auth.handler(c.req.raw);
+    });
+    app.get("/api/invitations/:token", async (c) => {
+      c.header("Cache-Control", "no-store");
+      const token = c.req.param("token");
+      if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ServiceError("INVITATION_EXPIRED", 404, "邀请不存在或已失效");
+      const invitation = await store.one(
+        "SELECT e.name,i.expires_at,p.title AS project_title FROM invitations i JOIN enterprises e ON e.id=i.enterprise_id LEFT JOIN projects p ON p.id=i.project_id WHERE i.token_hash=? AND i.revoked_at IS NULL AND i.accepted_by IS NULL AND i.expires_at>?",
+        createHash("sha256").update(token).digest("hex"), now(),
+      );
+      if (!invitation) throw new ServiceError("INVITATION_EXPIRED", 404, "邀请不存在或已失效");
+      return c.json({ organization: invitation.name, space: invitation.project_title, expiresAt: invitation.expires_at });
     });
     app.use("/api/v1/*", async (c, next) => {
       c.header("Cache-Control", "no-store");

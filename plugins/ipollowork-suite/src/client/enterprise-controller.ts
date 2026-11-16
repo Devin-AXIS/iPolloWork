@@ -14,6 +14,8 @@ export type EnterpriseDialog =
       role?: string;
       departmentId?: string | null;
       replaces?: string;
+      projectId?: string;
+      projectRole?: "view" | "participate" | "maintain";
     }
   | { kind: "member"; enterpriseId: string; userId: string }
   | {

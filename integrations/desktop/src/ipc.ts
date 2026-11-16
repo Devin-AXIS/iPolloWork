@@ -43,7 +43,7 @@ export const DESKTOP_IPC = {
   nativeThemeSet: 'dsh-desktop:native-theme-set',
   windowFullscreen: 'dsh-desktop:window-fullscreen',
   windowsAppearance: 'dsh-desktop:windows-appearance',
-  windowsMenu: 'dsh-desktop:windows-menu',
+  appVersion: 'dsh-desktop:app-version',
 } as const
 
 /** Desktop release update state rendered by desktop-owned UI. */
@@ -93,6 +93,7 @@ export interface DesktopUpdatePresentation {
 export interface DshDesktopProductApi {
   readonly fileActions: DesktopFileActions
   readonly protocolVersion: 1
+  readonly appVersion: () => Promise<string>
   readonly browser: DesktopBrowserBridge
   readonly fileDrag: DesktopFileDrag
   readonly keyboard: DesktopKeyboardApi

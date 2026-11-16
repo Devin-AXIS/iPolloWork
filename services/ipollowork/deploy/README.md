@@ -7,8 +7,8 @@ Deploy the account, organization and project service on a dedicated ECS instance
 Use Ubuntu 24.04, Docker Engine and Compose v2. From `services/ipollowork`, create a private `.env` with these values and a URL-safe random database password. When migrating, preserve the existing authentication secret, settings and database.
 
 ~~~dotenv
-SERVICE_DOMAIN=work.ipollo.net
-SERVICE_ORIGIN=https://work.ipollo.net
+SERVICE_DOMAIN=cloud.ipollo.net
+SERVICE_ORIGIN=https://cloud.ipollo.net
 PUBLICATION_DOMAIN=publish.ipollo.net
 PUBLICATION_ORIGIN=https://publish.ipollo.net
 POSTGRES_PASSWORD=replace-with-a-random-secret

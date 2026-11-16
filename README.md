@@ -57,19 +57,15 @@ git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git
 cd iPolloWork
 npm run setup:build
 npm run build
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$(pwd)/plugins/ipollowork-suite"
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts web
+npm start
 ```
 
-In Windows PowerShell, use the same commands but replace the plugin-install command with:
+The same commands work in Windows PowerShell. `npm start` uses the compiled pinned DSH launcher, preserves the profile, and configures the reviewed Studio dependency builds.
 
-```powershell
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$((Get-Location).Path)/plugins/ipollowork-suite"
-```
 
 Open the local address printed by the launcher. The suite adds iPolloWork's account, agents and plugin views to the native Web UI. Sign in for configured account services and organization features; local model providers keep their own credentials. Do not paste an account or provider key into a project page.
 
-The account service is deployed separately. Its [setup guide](services/ipollowork/README.md) covers PostgreSQL, account configuration and storage; [capability API documentation](services/ipollowork/docs/capabilities.md) covers external HTTP access. The suite defaults to `https://work.ipollo.net`; configure `accountOrigin` as described in the [suite guide](plugins/ipollowork-suite/README.md) for your own service.
+The account service is deployed separately. Its [setup guide](services/ipollowork/README.md) covers PostgreSQL, account configuration and storage; [capability API documentation](services/ipollowork/docs/capabilities.md) covers external HTTP access. The suite uses iPolloWork Cloud by default; configure `accountOrigin` as described in the [suite guide](plugins/ipollowork-suite/README.md) for your own service.
 
 ## Desktop and development
 
@@ -96,3 +92,13 @@ Use [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues) for iPolloW
 ## License
 
 Owned iPolloWork code uses the [iPolloWork Source Available License](LICENSE). This is source-available software, not an unrestricted MIT grant. Third-party code and previously granted licenses remain under their original terms; see [third-party notices](THIRD_PARTY_NOTICES.md). Git history and original author attribution are retained when upstream files are removed from the current tree.
+
+## Synchronized release mirrors
+
+[Release mirror automation](.github/workflows/release-mirror.yml) copies the original GitHub release assets to S3-compatible mainland storage; it never rebuilds a second version. Each local download and each public mirror download must match GitHub's SHA-256 digest and size before a verified manifest is exposed. Published release changes trigger synchronization; after all platform assets reach a draft, dispatch the workflow with its tag to mirror, verify, and publish it. Failed copies are retryable and do not publish the draft.
+
+Configure the `release-mirror` GitHub environment once: variables `IPOLLO_MIRROR_S3_ENDPOINT`, `IPOLLO_MIRROR_BUCKET`, `IPOLLO_MIRROR_PUBLIC_URL`, `IPOLLO_MIRROR_REGION`; secrets `IPOLLO_MIRROR_ACCESS_KEY_ID`, `IPOLLO_MIRROR_SECRET_ACCESS_KEY`. The public origin must serve the bucket's `releases/<tag>/<filename>` paths over HTTPS without redirects. Use a dedicated mainland bucket with write access restricted to this prefix. Missing configuration fails explicitly; an unconfigured workflow is not an active mainland mirror.
+
+Published desktop versions use three numeric parts (for example `1.0.2`). A GitHub Latest release must include `stable-mac.yml` and `stable.yml` plus every referenced ZIP/installer; the release title alone cannot notify installed clients. Generate and verify feeds with `integrations/tooling/release-update-feed.mjs` before publication.
+
+The standard publication entrypoint is **Actions → Publish verified iPolloWork release** (`ipollo-publish.yml`). Upload the signed and notarized Apple Silicon/Intel DMGs, update ZIPs, blockmaps, clean-build records, Windows installer and current Design/suite packages to a numeric draft. Then dispatch this workflow with the tag. It rejects incomplete drafts and versions older than Latest, verifies every downloaded byte against GitHub, generates both update feeds and checksums, publishes Latest, and checks the public feeds and referenced downloads. A failed public check restores the previous Latest. The mirror workflow receives the same finalized files; it does not rebuild them. Do not publish a draft manually or promote a test suffix to Latest.

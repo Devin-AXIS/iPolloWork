@@ -166,9 +166,7 @@ it('blocks macOS shortcuts while an update overlay loads and clears held and con
   expect(press('KeyK', 'keyDown', true)).toBe(true)
   closeMenu()
   await f.call(DESKTOP_IPC.shortcutsCloseWindow, snapshot.revision)
-  f.keyboard.sendEditingKey('C', ['control'])
   expect(f.window.close).not.toHaveBeenCalled()
-  expect(f.contents.sendInputEvent).not.toHaveBeenCalled()
   expect(f.contents.send).not.toHaveBeenCalled()
   first.destroy()
   expect(press('KeyB')).toBe(false)
@@ -191,8 +189,6 @@ it('blocks macOS shortcuts while an update overlay loads and clears held and con
   expect(f.contents.send).toHaveBeenLastCalledWith(DESKTOP_IPC.shortcutsInput, expect.objectContaining({ kind: 'menu' }))
   await f.call(DESKTOP_IPC.shortcutsCloseWindow, snapshot.revision)
   expect(f.window.close).toHaveBeenCalledOnce()
-  f.keyboard.sendEditingKey('C', ['control'])
-  expect(f.contents.sendInputEvent).toHaveBeenCalledTimes(2)
 })
 
 it.each([false, true])('blocks approved browser guest input across update overlays, including guests attached while blocked: %s', async (attachWhileBlocked) => {
@@ -224,8 +220,6 @@ it.each([false, true])('blocks approved browser guest input across update overla
   }
   f.contents.send.mockClear()
   expect(press('KeyK', 'keyDown', true)).toBe(true)
-  f.keyboard.sendEditingKey('C', ['control'])
-  expect(guest.sendInputEvent).not.toHaveBeenCalled()
   expect(f.contents.send).not.toHaveBeenCalled()
   const second = open()
   first.destroy()
@@ -249,8 +243,6 @@ it.each([false, true])('blocks approved browser guest input across update overla
   expect(press('KeyB', 'keyUp')).toBe(false)
   expect(press('KeyK', 'keyDown', true)).toBe(true)
   expect(f.contents.send).toHaveBeenCalledTimes(2)
-  f.keyboard.sendEditingKey('C', ['control'])
-  expect(guest.sendInputEvent).toHaveBeenCalledTimes(2)
 })
 
 it('rejects other windows, subframes, remote/shell pages, and malformed edits', async () => {
@@ -467,72 +459,6 @@ it.each(['macos', 'windows'] as const)('intercepts complete %s chords once and l
   f.contents.send.mockClear()
   press('KeyC'); press('KeyA'); press('KeyB')
   expect(f.contents.send).not.toHaveBeenCalled()
-})
-
-it.each(['C', 'V', 'Z'])('delivers Windows Edit %s to the editor and physical input to its shortcut', async (keyCode) => {
-  const f = await fixture('windows')
-  const initial = await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet, f.definitions)
-  const saved = await f.call<ShortcutSaveResult>(DESKTOP_IPC.shortcutsEdit,
-    { type: 'set', id: 'sidebar.left.toggle', binding: { code: `Key${keyCode}`, modifiers: ['control'] } }, initial.revision)
-  const registry = new ShortcutRegistry('desktop', 'windows', saved.snapshot)
-  const run = vi.fn()
-  registry.register({ ...f.definitions[0]!, label: () => 'Toggle sidebar', aliases: [], regions: ['page', 'editable'], modals: [],
-    resolve: () => ({ status: 'handled', run }) })
-  let nativeInput: (input: DesktopShortcutInput) => void = () => {}
-  onTestFinished(installNativeKeyboard(window, {
-    closeWindow: vi.fn(), subscribe: (listener) => { nativeInput = listener; return () => {} },
-  }, registry, () => registry.config.getSnapshot()))
-  onTestFinished(installKeyboard(window, registry, undefined, true))
-  f.contents.send.mockImplementation((channel: string, input: DesktopShortcutInput) => {
-    if (channel === DESKTOP_IPC.shortcutsInput) nativeInput(input)
-  })
-  const editorInput: string[] = []
-  const deliver = (type: 'keyDown' | 'keyUp'): void => {
-    const preventDefault = vi.fn()
-    f.contents.emit('before-input-event', { preventDefault }, { type, code: `Key${keyCode}`, key: keyCode.toLowerCase(),
-      modifiers: ['control'], control: true, meta: false, alt: false, shift: false, isAutoRepeat: false, isComposing: false })
-    if (!preventDefault.mock.calls.length) {
-      editorInput.push(type)
-      document.body.dispatchEvent(new KeyboardEvent(type === 'keyDown' ? 'keydown' : 'keyup',
-        { code: `Key${keyCode}`, key: keyCode.toLowerCase(), ctrlKey: true, bubbles: true, cancelable: true }))
-    }
-  }
-  f.contents.sendInputEvent.mockImplementation((input: { type: 'keyDown' | 'keyUp' }) => { deliver(input.type) })
-  f.contents.send.mockClear()
-
-  f.keyboard.sendEditingKey(keyCode, ['control'])
-
-  expect(f.contents.focus).toHaveBeenCalledOnce()
-  expect(editorInput).toEqual(['keyDown', 'keyUp'])
-  expect(f.contents.send).not.toHaveBeenCalled()
-  expect(run).not.toHaveBeenCalled()
-  expect(f.contents.sendInputEvent.mock.calls).toEqual([
-    [{ type: 'keyDown', keyCode, modifiers: ['control'] }],
-    [{ type: 'keyUp', keyCode, modifiers: ['control'] }],
-  ])
-  editorInput.length = 0
-  deliver('keyDown')
-  deliver('keyUp')
-  expect(editorInput).toEqual([])
-  expect(f.contents.send).toHaveBeenCalledExactlyOnceWith(DESKTOP_IPC.shortcutsInput,
-    expect.objectContaining({ kind: 'keyboard', code: `Key${keyCode}` }))
-  expect(run).toHaveBeenCalledOnce()
-})
-
-it('restores shortcut interception after native Edit delivery fails', async () => {
-  const f = await fixture('windows')
-  await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet, f.definitions)
-  f.contents.sendInputEvent.mockImplementationOnce(() => { throw new Error('editor unavailable') })
-  expect(() => { f.keyboard.sendEditingKey('C', ['control']) }).toThrow('editor unavailable')
-  const preventDefault = vi.fn()
-  f.contents.emit('before-input-event', { preventDefault }, { type: 'keyDown', code: 'KeyB', key: 'b', modifiers: ['control'],
-    control: true, meta: false, alt: false, shift: false, isAutoRepeat: false, isComposing: false })
-  expect(preventDefault).toHaveBeenCalledOnce()
-  f.window.isDestroyed.mockReturnValue(true)
-  expect(() => { f.keyboard.sendEditingKey('C', ['control']) }).not.toThrow()
-  f.detach()
-  expect(() => { f.keyboard.sendEditingKey('C', ['control']) }).not.toThrow()
-  expect(f.contents.sendInputEvent).toHaveBeenCalledOnce()
 })
 
 it.each(['macos', 'windows'] as const)('intercepts %s standalone custom keys and clears held state when preferences change', async (platform) => {
@@ -798,33 +724,4 @@ it('keeps browser guest chord state local and leaves accepted bindings active th
   expect(f.contents.send).toHaveBeenCalledTimes(2)
   expect(f.contents.send).toHaveBeenLastCalledWith(DESKTOP_IPC.shortcutsInput,
     expect.objectContaining({ kind: 'keyboard', code: 'KeyF', secondCode: 'KeyG' }))
-})
-
-it('delivers Windows Edit actions to the focused browser guest without invoking its custom shortcut', async () => {
-  const f = await fixture('windows')
-  const initial = await f.call<ShortcutConfigSnapshot>(DESKTOP_IPC.shortcutsGet, f.definitions)
-  await f.call(DESKTOP_IPC.shortcutsEdit, { type: 'set', id: 'sidebar.left.toggle',
-    binding: { code: 'KeyC', modifiers: ['control'] } }, initial.revision)
-  const frame: FrameFixture = { url: 'https://example.test/', name: '', parent: null }
-  const guest = Object.assign(new EventEmitter(), { mainFrame: frame, focusedFrame: frame,
-    isDestroyed: () => false, isFocused: () => true, setIgnoreMenuShortcuts: vi.fn(),
-    send: vi.fn(), focus: vi.fn(), sendInputEvent: vi.fn() })
-  const dispose = f.keyboard.attachGuest(f.window, guest, 'guest' as DesktopBrowserLeaseId)
-  onTestFinished(dispose)
-  const events: string[] = []
-  guest.sendInputEvent.mockImplementation((input: { type: 'keyDown' | 'keyUp' }) => {
-    const preventDefault = vi.fn()
-    guest.emit('before-input-event', { preventDefault }, { ...input, code: 'KeyC', key: 'c', modifiers: ['control'],
-      control: true, meta: false, alt: false, shift: false, isAutoRepeat: false, isComposing: false })
-    if (!preventDefault.mock.calls.length) events.push(input.type)
-  })
-  f.contents.send.mockClear()
-  f.keyboard.sendEditingKey('C', ['control'])
-  expect(guest.focus).toHaveBeenCalledOnce()
-  expect(events).toEqual(['keyDown', 'keyUp'])
-  expect(f.contents.send).not.toHaveBeenCalled()
-  expect(f.contents.sendInputEvent).not.toHaveBeenCalled()
-  dispose()
-  f.keyboard.sendEditingKey('C', ['control'])
-  expect(f.contents.sendInputEvent).toHaveBeenCalledTimes(2)
 })

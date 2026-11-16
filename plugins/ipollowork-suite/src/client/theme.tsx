@@ -7,7 +7,6 @@ import css from './suite.module.css'
 import { useCopy } from './locale.ts'
 import './brand.css'
 const pair = (light: string, dark: string) => ({ light, dark })
-const MARK = '/ipollowork-suite/assets/mark.svg'
 /** DSH's product titles across its build profile and baseline locales. */
 const DSH_TITLE = /DeepSeek Harness|DSH Local Build|DSH 本地构建/g
 export function mountTheme(ctx: ClientContext): void {
@@ -47,7 +46,7 @@ export function mountTheme(ctx: ClientContext): void {
 function AmbientFrame({ children, hero }: { children: ReactNode; hero: boolean }) {
   return <>{hero && <div className={css.ambient} aria-hidden="true"/>}{children}</>
 }
-function BrandMark({ size }: { size: number }) { return <img className={css.brandMark} width={size} height={size} src={MARK} alt=""/> }
+function BrandMark({ size }: { size: number }) { return <span className={css.brandMark} style={{ width: size, height: size }} aria-hidden="true"/> }
 function BrandName() { return <span className={css.brandName}>iPolloWork</span> }
 /**
  * The home headline of the original iPolloWork home: the wordmark above the localized title. It replaces DSH's whale

@@ -1,0 +1,81 @@
+name: Publish identical global and mainland releases
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Fully built release tag (a draft is published only after mirror verification)
+        required: true
+      publish_draft:
+        description: Publish draft after every mirrored asset passes verification
+        type: boolean
+        default: true
+permissions:
+  contents: write
+concurrency:
+  group: release-mirror-${{ github.event.release.tag_name || inputs.release_tag }}
+  cancel-in-progress: false
+jobs:
+  mirror:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.draft == false
+    runs-on: ubuntu-latest
+    environment: release-mirror
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+      MIRROR_ENDPOINT: ${{ vars.IPOLLO_MIRROR_S3_ENDPOINT }}
+      MIRROR_BUCKET: ${{ vars.IPOLLO_MIRROR_BUCKET }}
+      MIRROR_PUBLIC_URL: ${{ vars.IPOLLO_MIRROR_PUBLIC_URL }}
+      AWS_DEFAULT_REGION: ${{ vars.IPOLLO_MIRROR_REGION || 'cn-north-1' }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.IPOLLO_MIRROR_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.IPOLLO_MIRROR_SECRET_ACCESS_KEY }}
+      AWS_RETRY_MODE: standard
+      AWS_MAX_ATTEMPTS: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Require configured mainland storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${MIRROR_ENDPOINT:?Configure IPOLLO_MIRROR_S3_ENDPOINT}"
+          : "${MIRROR_BUCKET:?Configure IPOLLO_MIRROR_BUCKET}"
+          : "${MIRROR_PUBLIC_URL:?Configure IPOLLO_MIRROR_PUBLIC_URL}"
+          : "${AWS_ACCESS_KEY_ID:?Configure IPOLLO_MIRROR_ACCESS_KEY_ID}"
+          : "${AWS_SECRET_ACCESS_KEY:?Configure IPOLLO_MIRROR_SECRET_ACCESS_KEY}"
+      - name: Download and verify original GitHub assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release-assets
+          release_api=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq .apiUrl)
+          gh api "$release_api" > release.json
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets
+          node integrations/tooling/release-mirror.mjs manifest release.json release-assets
+      - name: Configure OSS-compatible addressing
+        run: aws configure set default.s3.addressing_style virtual
+      - name: Copy exact bytes to mainland storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws s3 cp release-assets/ "s3://$MIRROR_BUCKET/releases/$RELEASE_TAG/" --recursive --endpoint-url "$MIRROR_ENDPOINT" --only-show-errors --exclude mirror-manifest.json
+      - name: Verify every asset through the public mirror
+        shell: bash
+        run: |
+          set -euo pipefail
+          node integrations/tooling/release-mirror.mjs verify release-assets/mirror-manifest.json "$MIRROR_PUBLIC_URL"
+      - name: Publish verified manifest and optional draft
+        shell: bash
+        env:
+          PUBLISH_DRAFT: ${{ inputs.publish_draft }}
+        run: |
+          set -euo pipefail
+          aws s3 cp release-assets/mirror-manifest.json "s3://$MIRROR_BUCKET/releases/$RELEASE_TAG/mirror-manifest.json" --endpoint-url "$MIRROR_ENDPOINT" --cache-control no-cache --only-show-errors
+          if [ "$PUBLISH_DRAFT" = true ]; then
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+          fi
+          echo "Verified global and mainland release: $RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

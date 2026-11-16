@@ -8,13 +8,13 @@ import { expect, it } from 'vitest'
 import { composeEntries, loadProfileDirectory } from '@deepseek-ai/dsh-app-boot'
 import { createPluginProfile } from '../src/project-manager.ts'
 
-it('retains one shared resource consumer in the Desktop Web profile', () => {
+it('retains one shared resource consumer in the Desktop Web profile', async () => {
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-profile-mcp-'))
   try {
     const profileDir = join(home, 'profiles', 'desktop')
-    createPluginProfile(profileDir)
-    const installAnchor = fileURLToPath(new URL('../../cli/package.json', import.meta.url))
-    const profile = loadProfileDirectory('dsh desktop', profileDir, installAnchor)
+    await createPluginProfile(profileDir)
+    const installAnchor = fileURLToPath(new URL('../../../apps/cli/package.json', import.meta.url))
+    const profile = loadProfileDirectory('dsh', profileDir, installAnchor)
     const warnings: string[] = []
     const rows = composeEntries([
       ...profile.layers.map(layer => layer.patches),

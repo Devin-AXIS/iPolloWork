@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { AccountService } from '../src/host/account.ts'
+import { AccountService, publicAccountState } from '../src/host/account.ts'
 import { resolveConfig } from '../src/host/config.ts'
 import type { CredentialStore } from '../src/shared/types.ts'
 
@@ -17,7 +17,8 @@ const user = { id: 'test-user', name: 'Test member', email: 'test@example.com' }
 const config = resolveConfig({ accountOrigin: 'https://account.example.com' })
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
 test('the default uses the production service and explicit deployments remain authoritative', () => {
-  assert.equal(resolveConfig({}).accountOrigin, 'https://work.ipollo.net')
+  assert.equal(resolveConfig({}).accountOrigin, 'https://cloud.ipollo.net')
+  assert.equal(resolveConfig({ accountOrigin: 'https://work.ipollo.net/' }).accountOrigin, 'https://cloud.ipollo.net')
   assert.equal(resolveConfig({}).automaticOutputArchive, false)
   assert.equal(resolveConfig({ accountOrigin: 'https://accounts.example.com' }).accountOrigin, 'https://accounts.example.com')
 })
@@ -61,12 +62,28 @@ test('registration rejects incomplete input and does not store a rejected accoun
   await assert.rejects(account.signUp({ name: user.name, email: user.email, password: 'new-password-123' }), { code: 'IPW_REGISTRATION_REJECTED' })
   assert.equal(fixture.record(), undefined)
 })
+test('password reset uses the configured service without accepting a client redirect', async () => {
+  const fixture = credentials()
+  let calls = 0
+  const account = new AccountService(fixture.store, config, new AbortController().signal, async (input, init) => {
+    calls++
+    assert.equal(String(input), 'https://account.example.com/api/auth/request-password-reset')
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      email: user.email, redirectTo: 'https://account.example.com/reset-password',
+    })
+    return json({ status: true })
+  })
+  await assert.rejects(account.requestPasswordReset({ email: 'invalid' }), { code: 'IPW_INVALID_LOGIN' })
+  await account.requestPasswordReset({ email: user.email, redirectTo: 'https://example.test/' })
+  assert.equal(calls, 1)
+})
 test('sign-in survives a new service, exposes no credentials, and disconnect removes its record', async () => {
   const fixture = credentials()
   const a = new AccountService(fixture.store, config, new AbortController().signal, success)
   const state = await a.signIn({ email: user.email, password: 'test-password' })
   assert.equal(state.status, 'signed-in')
   assert(!JSON.stringify(state).includes('private-session-token'))
+  assert(!('origin' in publicAccountState(state)))
   assert(!JSON.stringify(fixture.record()).includes('test-password'))
   const b = new AccountService(fixture.store, config, new AbortController().signal, success)
   assert.deepEqual(await b.state(), state)
@@ -101,6 +118,15 @@ test('changing the configured account origin cannot send an existing token to an
   await new AccountService(fixture.store, config, new AbortController().signal, success).signIn({ email: user.email, password: 'valid' })
   const a = new AccountService(fixture.store, resolveConfig({ accountOrigin: 'https://other.example.com' }), new AbortController().signal, async () => { throw new Error('must not send') })
   assert.equal((await a.state()).status, 'anonymous')
+})
+test('moving to the official cloud service does not send old-origin sign-in grants', async () => {
+  const fixture = credentials()
+  await fixture.store.modifyRecord('ipollowork-suite/account', async () => ({
+    kind: 'grant', payload: { version: 1, origin: 'https://work.ipollo.net', token: 'old-origin-token' },
+  }))
+  const account = new AccountService(fixture.store, resolveConfig({ accountOrigin: 'https://work.ipollo.net' }),
+    new AbortController().signal, async () => { assert.fail('old-origin grant was sent') })
+  assert.deepEqual(publicAccountState(await account.state()), { status: 'anonymous' })
 })
 test('remote HTTP account services are rejected before mounting', () => {
   assert.throws(() => resolveConfig({ accountOrigin: 'http://account.example.com' }), { code: 'IPW_INVALID_ACCOUNT_ORIGIN' })

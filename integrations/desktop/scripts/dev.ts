@@ -48,14 +48,6 @@ async function run(command: string, args: readonly string[], cwd: string, enviro
   })
 }
 
-async function runPackageScript(script: string, cwd: string): Promise<void> {
-  const packageManager = process.env.npm_execpath
-  if (packageManager === undefined || packageManager === '') {
-    throw new Error('desktop development: invoke this launcher through pnpm run dev:desktop or start:desktop')
-  }
-  await run(process.execPath, [packageManager, 'run', script], cwd)
-}
-
 async function launchElectron(): Promise<void> {
   const require = createRequire(import.meta.url)
   const electron: unknown = require('electron')
@@ -93,8 +85,7 @@ async function launchElectron(): Promise<void> {
 async function main(): Promise<void> {
   const { values } = parseArgs({ options: { 'skip-build': { type: 'boolean', default: false } } })
   if (!values['skip-build']) {
-    await runPackageScript('build:artifacts', join(REPOSITORY_ROOT, '.upstream/dsh'))
-    await runPackageScript('build', APP_ROOT)
+    await run(process.execPath, [join(REPOSITORY_ROOT, 'integrations/tooling/build.mjs')], REPOSITORY_ROOT)
   }
   for (const path of [
     join(APP_ROOT, 'lib', 'main.js'),
@@ -102,7 +93,8 @@ async function main(): Promise<void> {
   ]) {
     if (!existsSync(path)) throw new Error(`desktop development: missing built artifact ${path}`)
   }
-  const version = packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')
+  const cliDir = join(REPOSITORY_ROOT, 'apps', 'cli')
+  const version = packageVersion(join(cliDir, 'package.json'), 'DSH CLI package')
   const pnpmVersion = packageVersion(join(APP_ROOT, 'node_modules', 'pnpm', 'package.json'), 'pnpm package')
   const release: DesktopRelease = {
     schemaVersion: 1,
@@ -114,7 +106,7 @@ async function main(): Promise<void> {
   }
   prepareDevelopmentProject({
     projectDir: join(DEVELOPMENT_ROOT, 'project'),
-    cliDir: join(REPOSITORY_ROOT, 'apps', 'cli'),
+    cliDir,
     hostDir: join(REPOSITORY_ROOT, 'integrations', 'desktop-host'),
     suiteDir: join(REPOSITORY_ROOT, 'plugins', 'ipollowork-suite'),
     dependencyDir: join(REPOSITORY_ROOT, 'node_modules', '.pnpm', 'node_modules'),
