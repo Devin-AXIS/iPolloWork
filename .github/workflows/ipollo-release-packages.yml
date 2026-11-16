@@ -126,6 +126,28 @@ jobs:
         run: |
           xcodebuild -version
           xcrun swift --version
+      - name: Restore the notarized native helpers for the v1.0.1 rebuild
+        if: inputs.release_tag == 'v1.0.1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node -p 'require("./integrations/runtime/upstream.json").sourceRevision')" = 39163dd30f703a79079e2d2446545cff3c453738
+          scratch=$(mktemp -d "$RUNNER_TEMP/ipollo-helper-cache.XXXXXX")
+          trap 'rm -rf "$scratch"' EXIT
+          archive=iPollo-1.0.1-mac-arm64.zip
+          gh release download v1.0.1 --repo "$GITHUB_REPOSITORY" --pattern "$archive" --dir "$scratch"
+          (
+            cd "$scratch"
+            printf '%s  %s\n' 65ca484ad402dceb6b7948326f2691f6cb16e94ae553659685b3af60fcc025f2 "$archive" | shasum -a 256 --check
+            ditto -x -k "$archive" extracted
+          )
+          helper="$scratch/extracted/iPollo.app/Contents/Resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-cua-macos/native/bin"
+          test -f "$helper/darwin-arm64/current.json"
+          test -f "$helper/darwin-x64/current.json"
+          mkdir -p integrations/desktop/.desktop-build/cua-helper/native
+          ditto "$helper" integrations/desktop/.desktop-build/cua-helper/native/bin
       - name: Prepare pinned runtime and product
         run: |
           npm run setup:build
@@ -198,7 +220,9 @@ jobs:
           writeFileSync('integrations/desktop/.env.macos', settings + '\n', { mode: 0o600 })
           NODE
           unset APPLE_CODESIGN_CERT_P12_BASE64 APPLE_CODESIGN_CERT_PASSWORD APPLE_NOTARY_API_KEY_P8_BASE64
-          node integrations/desktop/run.mjs prepare-cua-helper.ts
+          if [[ ! -f integrations/desktop/.desktop-build/cua-helper/native/bin/darwin-arm64/current.json ]]; then
+            node integrations/desktop/run.mjs prepare-cua-helper.ts
+          fi
           node integrations/desktop/run.mjs package-target.ts "$TARGET"
           xcrun stapler validate integrations/desktop/.desktop-build/targets/"$TARGET"/artifacts/website-installers/*.dmg
       - uses: actions/upload-artifact@v4
