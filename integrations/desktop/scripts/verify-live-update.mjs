@@ -8,6 +8,7 @@ import updaterModule from 'electron-updater'
 import { DesktopUpdateCoordinator } from '../lib/types/update-coordinator.js'
 import { DesktopUpdateHttpExecutor } from '../lib/types/updates/electron-updater/http-executor.js'
 
+async function main() {
 let root, coordinator
 try {
   await app.whenReady()
@@ -50,5 +51,7 @@ try {
 } finally {
   coordinator?.dispose()
   if (root) await rm(root, { recursive: true, force: true })
-  app.quit()
+  app.exit(process.exitCode || 0)
 }
+}
+void main()
