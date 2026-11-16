@@ -6,10 +6,6 @@ on:
         description: Existing GitHub release receiving the verified installers
         required: true
         default: v1.0.3
-      unsigned_macos:
-        description: Build ad-hoc signed Mac DMGs when Developer ID signing is unavailable
-        type: boolean
-        default: false
       signed_macos:
         description: Build Developer ID signed and notarized Mac installers and update ZIPs
         type: boolean
@@ -106,7 +102,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
   macos:
-    if: inputs.signed_macos || inputs.unsigned_macos
+    if: inputs.signed_macos
     strategy:
       fail-fast: false
       matrix:
@@ -120,7 +116,6 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
       PACKAGE_TARGET: ${{ matrix.target }}
-      SIGNED_MACOS: ${{ inputs.signed_macos }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -133,7 +128,6 @@ jobs:
           npm run setup:build
           npm run build
       - name: Prepare Apple signing configuration
-        if: inputs.signed_macos
         env:
           CERTIFICATE_P12: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
           CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
@@ -193,42 +187,48 @@ jobs:
           })
           writeFileSync('integrations/desktop/.env.macos', lines.join('\n') + '\n', { mode: 0o600 })
           NODE
+      - name: Build and notarize the native Computer Use helpers
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process'
+          import { loadDesktopPackageEnvironment } from './integrations/desktop/scripts/desktop-package-environment.mjs'
+          import { withMacOSSigningKeychain } from './integrations/desktop/scripts/macos-signing-keychain.mjs'
+          const configuration = loadDesktopPackageEnvironment('darwin')
+          await withMacOSSigningKeychain(configuration, async environment => {
+            execFileSync(process.execPath, ['--import', 'tsx/esm', 'integrations/desktop/scripts/prepare-cua-helper.ts'], {
+              env: { ...process.env, ...environment }, stdio: 'inherit',
+            })
+          })
+          NODE
       - name: Build and verify macOS DMG
         run: |
           version="${RELEASE_TAG#v}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          args=()
-          if [[ "$SIGNED_MACOS" != true ]]; then args+=(--unsigned); fi
-          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$version" "${args[@]}"
+          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$version"
       - uses: actions/upload-artifact@v4
         with:
           name: iPollo-${{ matrix.target }}
           path: |
-            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/${{ inputs.signed_macos && 'artifacts' || 'unsigned-artifacts' }}/*.dmg
-            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/${{ inputs.signed_macos && 'artifacts' || 'unsigned-artifacts' }}/*.zip
-            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/${{ inputs.signed_macos && 'artifacts' || 'unsigned-artifacts' }}/*.zip.blockmap
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*.dmg
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*.zip
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*.zip.blockmap
           if-no-files-found: error
       - name: Publish verified DMG
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/unsigned-artifacts"
-          suffix=-unsigned
-          if [[ "$SIGNED_MACOS" == true ]]; then
-            directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts"
-            suffix=
-            zip=("$directory"/*.zip)
-            if (( ${#zip[@]} != 1 )); then
-              echo 'Expected exactly one notarized update ZIP' >&2
-              exit 1
-            fi
+          directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts"
+          zip=("$directory"/*.zip)
+          if (( ${#zip[@]} != 1 )); then
+            echo 'Expected exactly one notarized update ZIP' >&2
+            exit 1
           fi
           files=("$directory"/*.dmg)
           if (( ${#files[@]} != 1 )); then
             echo 'Expected exactly one verified DMG' >&2
             exit 1
           fi
-          asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}$suffix.dmg"
+          asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}.dmg"
           cp "${files[0]}" "$asset"
           gh release upload "$RELEASE_TAG" "$asset" "$directory"/*.dmg "$directory"/*.zip "$directory"/*.zip.blockmap "$directory"/*-release.json --repo "$GITHUB_REPOSITORY" --clobber
