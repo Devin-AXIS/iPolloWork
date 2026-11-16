@@ -2,7 +2,7 @@
 
 import { resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import type { DesktopPackageTargetName } from './package-target.ts'
+import type { DesktopAutoUpdateTarget } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import { createDesktopCos } from '@deepseek-ai/dsh-desktop-publisher/desktop-cos.ts'
 import { requiredEnvironmentValue, resolveDesktopAutoUpdateEnvironment, resolveDesktopUploadConfig } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import { desktopTargetPlatform } from './desktop-build-paths.mjs'
@@ -12,13 +12,13 @@ import { desktopReleaseTag, tagDesktopRelease } from './desktop-release-tag.ts'
 import { uploadDesktopRelease } from './desktop-upload-run.ts'
 import { DesktopPurgeError, purgeDesktopInstaller, resolveDesktopPurgeConfig } from './desktop-edgeone.ts'
 
-const SUPPORTED_TARGETS = new Set<DesktopPackageTargetName>(['mac-arm64', 'mac-x64', 'win-x64'])
+const SUPPORTED_TARGETS = new Set<DesktopAutoUpdateTarget>(['mac-arm64', 'mac-x64', 'win-x64'])
 
-function targetName(value: string): DesktopPackageTargetName {
-  if (!SUPPORTED_TARGETS.has(value as DesktopPackageTargetName)) {
+function targetName(value: string): DesktopAutoUpdateTarget {
+  if (!SUPPORTED_TARGETS.has(value as DesktopAutoUpdateTarget)) {
     throw new DesktopUploadUsageError(`desktop upload: unsupported target ${JSON.stringify(value)}; expected ${[...SUPPORTED_TARGETS].join(', ')}`)
   }
-  return value as DesktopPackageTargetName
+  return value as DesktopAutoUpdateTarget
 }
 
 /** Invalid command arguments or release configuration, reported before network writes. */
@@ -36,7 +36,7 @@ class DesktopUploadUsageError extends Error {}
 export function resolveCredentialUploadEnvironment(
   fileEnvironment: NodeJS.ProcessEnv, injectedEnvironment: NodeJS.ProcessEnv,
   selected: 'test' | 'production', bucket: string,
-  target: DesktopPackageTargetName,
+  target: DesktopAutoUpdateTarget,
 ): NodeJS.ProcessEnv {
   const { platform, arch } = desktopTargetPlatform(target)
   const destination = resolveDesktopUploadConfig(fileEnvironment, platform, arch)
@@ -54,7 +54,7 @@ export function resolveCredentialUploadEnvironment(
   }
 }
 
-function purgeConfig(environment: NodeJS.ProcessEnv, target: DesktopPackageTargetName, publicUrl?: string) {
+function purgeConfig(environment: NodeJS.ProcessEnv, target: DesktopAutoUpdateTarget, publicUrl?: string) {
   try {
     return resolveDesktopPurgeConfig(environment, target, publicUrl)
   } catch (error) {

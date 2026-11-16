@@ -1,6 +1,6 @@
 /** Validate packaged Desktop update artifacts before any network upload begins. */
 
-import type { DesktopPackageTargetName } from './package-target.ts'
+import type { DesktopAutoUpdateTarget } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import type { DesktopUploadArtifact, DesktopUploadPlan } from '@deepseek-ai/dsh-desktop-publisher/desktop-upload-types.ts'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
@@ -24,7 +24,7 @@ const TARGETS = {
   'mac-arm64': { platform: 'darwin', arch: 'arm64', os: 'mac' },
   'mac-x64': { platform: 'darwin', arch: 'x64', os: 'mac' },
   'win-x64': { platform: 'win32', arch: 'x64', os: 'win' },
-} as const satisfies Record<DesktopPackageTargetName, {
+} as const satisfies Record<DesktopAutoUpdateTarget, {
   readonly platform: NodeJS.Platform
   readonly arch: string
   readonly os: string
@@ -156,7 +156,7 @@ function uploadArtifact(
  * @returns A fixed installer upload or an update plan with channel metadata ordered last.
  */
 export async function createDesktopUploadPlan(
-  targetName: DesktopPackageTargetName,
+  targetName: DesktopAutoUpdateTarget,
   options: DesktopUploadPlanOptions = {},
 ): Promise<DesktopUploadPlan> {
   const target = TARGETS[targetName]

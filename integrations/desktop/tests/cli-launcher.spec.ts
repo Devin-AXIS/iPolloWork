@@ -20,15 +20,17 @@ function fixture() {
     await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
   })
   const application = join(root, 'Application 中文 with spaces.app')
-  const platform = process.platform === 'win32' ? 'win32' : 'darwin'
+  const platform = process.platform === 'win32' ? 'win32' : process.platform === 'linux' ? 'linux' : 'darwin'
   const resources = join(application, ...platform === 'darwin' ? ['Contents', 'Resources'] : ['resources'])
   const cli = join(resources, 'runtime', 'cli')
   prepareDesktopCli(cli, platform)
-  const electron = join(application, ...platform === 'darwin' ? ['Contents', 'MacOS', 'iPollo'] : ['iPollo.exe'])
+  const electron = platform === 'darwin' ? join(application, 'Contents', 'MacOS', 'iPollo')
+    : join(application, platform === 'linux' ? 'ipollo' : 'iPollo.exe')
   mkdirSync(dirname(electron), { recursive: true })
   if (platform === 'win32') copyFileSync(process.execPath, electron)
   else symlinkSync(process.execPath, electron)
-  const entry = join(resources, 'app.asar', 'dsh', 'node_modules', '@ipollo', 'desktop-host', 'lib', 'cli.js')
+  const dsh = platform === 'linux' ? join(resources, 'dsh') : join(resources, 'app.asar', 'dsh')
+  const entry = join(dsh, 'node_modules', '@ipollo', 'desktop-host', 'lib', 'cli.js')
   mkdirSync(dirname(entry), { recursive: true })
   writeFileSync(join(dirname(entry), 'package.json'), '{"type":"module"}\n')
   writeFileSync(entry, [

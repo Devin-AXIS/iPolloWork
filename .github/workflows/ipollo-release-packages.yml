@@ -19,6 +19,10 @@ on:
         description: Build the Windows x64 installer and its update files
         type: boolean
         default: true
+      linux:
+        description: Build the standalone Linux x64 AppImage for the website
+        type: boolean
+        default: false
       source_ref:
         description: Optional immutable commit for rebuilding an existing draft
         type: string
@@ -106,6 +110,44 @@ jobs:
           gh workflow run release-mirror.yml --repo $env:GITHUB_REPOSITORY --ref main -f "release_tag=$env:RELEASE_TAG" -f publish_draft=false
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
+  linux:
+    if: inputs.linux
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    env:
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Prepare pinned runtime and product
+        run: |
+          npm run setup:build
+          npm run build
+      - name: Build and verify Linux x64 AppImage
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          npm run package:desktop:linux:x64 -- --build-version "${RELEASE_TAG#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: website-linux-x64
+          path: integrations/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/website-installers/*.AppImage
+          if-no-files-found: error
+          include-hidden-files: true
+      - name: Upload verified Linux installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          directory=integrations/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/website-installers
+          asset="$directory/ipollowork-linux-x86_64-${RELEASE_TAG#v}.AppImage"
+          test -f "$asset"
+          gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY" --clobber
+
   macos:
     if: inputs.signed_macos
     strategy:
@@ -117,6 +159,7 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
       PACKAGE_TARGET: ${{ matrix.target }}
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
@@ -124,6 +167,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
+      - name: Verify the selected macOS SDK and Swift compiler
+        run: |
+          xcodebuild -version
+          xcrun swift --version
       - name: Restore notarized helpers for the identical pinned DSH release
         id: cua_helper
         env:

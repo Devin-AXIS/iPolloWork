@@ -1,11 +1,11 @@
 /** Select local test defaults or platform release settings without changing the caller's environment. */
 
 /**
- * Select local macOS test defaults without reading dotenv files or inheriting release settings.
+ * Select unsigned defaults without reading dotenv files or inheriting release settings.
  * @param environment Parent environment, retained for build tools and networking.
  * @returns Unsigned build environment with the standard application identifier and no update policy.
  */
-export function localMacOSPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
+export function localUnsignedPackageEnvironment(environment?: NodeJS.ProcessEnv): NodeJS.ProcessEnv
 
 /**
  * Read a machine preset when selected, otherwise the target's required dotenv; no ambient release fallback.
@@ -35,6 +35,6 @@ export function loadDesktopPackageEnvironment(
  */
 export function validateDesktopPackageEnvironment(
   environment: NodeJS.ProcessEnv,
-  target: { platform: 'win32' | 'darwin', arch: string },
+  target: { platform: 'win32' | 'darwin' | 'linux', arch: string },
   options?: { unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean },
 ): void

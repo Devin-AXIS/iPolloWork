@@ -1,6 +1,6 @@
 /** Submit one production fixed-installer cache purge to EdgeOne. */
 import type { teo } from 'tencentcloud-sdk-nodejs-teo'
-import type { DesktopPackageTargetName } from './package-target.ts'
+import type { DesktopAutoUpdateTarget } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import type { DesktopPurgeConfig } from '@deepseek-ai/dsh-desktop-publisher/desktop-purge-types.ts'
 import { desktopLatestInstallerFilename, requiredEnvironmentValue, resolveDesktopAutoUpdateEnvironment, resolveDesktopUploadConfig } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import { desktopTargetPlatform } from './desktop-build-paths.mjs'
@@ -18,7 +18,7 @@ export type DesktopPurgeClient = Pick<InstanceType<typeof teo.v20220901.Client>,
  * @returns Validated destination and credentials.
  */
 export function resolveDesktopPurgeConfig(
-  env: NodeJS.ProcessEnv, target: DesktopPackageTargetName, publicUrl?: string,
+  env: NodeJS.ProcessEnv, target: DesktopAutoUpdateTarget, publicUrl?: string,
 ): DesktopPurgeConfig {
   if (resolveDesktopAutoUpdateEnvironment(env) !== 'production') throw new DesktopPurgeError('desktop purge: production is required')
   const { platform, arch } = desktopTargetPlatform(target)

@@ -66,7 +66,9 @@ export function createElectronBuilderConfig(
   if (skipNotarization && (unsigned || resolvedPlatform !== 'darwin')) throw new Error('Skipping notarization requires a signed macOS build')
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
-  const policy = packagesMacOS && unsigned ? undefined : resolveDesktopPolicyEnvironment(env)
+  const packagesLinux = resolvedPlatform === 'linux'
+  if (packagesLinux && !unsigned) throw new Error('desktop package: Linux requires unsigned packaging mode')
+  const policy = packagesLinux || (packagesMacOS && unsigned) ? undefined : resolveDesktopPolicyEnvironment(env)
   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
   const macOSSigning = packagesMacOS && !unsigned ? resolveMacOSSigningEnvironment(env) : undefined
   if (packagesMacOS && !unsigned && !skipNotarization) resolveMacOSNotarizationEnvironment(env)
@@ -105,6 +107,11 @@ export function createElectronBuilderConfig(
   const update = unsigned && !(packagesWindows && env.DSH_DESKTOP_UPDATE_URL)
     ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
   if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime
+  const dshFiles = [
+    { from: buildPaths.dsh, to: 'dsh', filter: packagesLinux ? ['**/*', '!node_modules/**'] : ['**/*'] },
+    // electron-builder excludes a source directory's root node_modules.
+    { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
+  ]
   // electron-builder merges extraMetadata into the packaged manifest, so a build version here reaches
   // the artifact names, the update feed, and the installed app.getVersion() the updater compares against.
   const productVersion = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8')).version
@@ -116,6 +123,7 @@ export function createElectronBuilderConfig(
     protocols: [{ name: 'iPollo', schemes: ['dsh'] }],
     extraMetadata: {
       productName: 'iPollo',
+      ...(packagesLinux ? { homepage: 'https://ipollo.ai' } : {}),
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
       ...(policy === undefined ? {} : { dshMandatoryUpdatePolicy: policy }),
@@ -158,13 +166,14 @@ export function createElectronBuilderConfig(
       'package.json',
       '!node_modules/**/*.{js,cjs,mjs,ts,cts,mts,css}.map',
       '!node_modules/**/*.tsbuildinfo',
-      { from: buildPaths.dsh, to: 'dsh', filter: ['**/*'] },
-      // electron-builder excludes a source directory's root node_modules.
-      { from: join(buildPaths.dsh, 'node_modules'), to: 'dsh/node_modules', filter: ['**/*'] },
+      ...(packagesLinux ? [] : dshFiles),
     ],
     asarUnpack: unpack,
     extraResources: [
       { from: buildPaths.runtime, to: 'runtime' },
+      // Office Kit checks whether optional native engines exist. Resolving the
+      // runtime from disk lets its normal missing-engine path select WASM.
+      ...(packagesLinux ? dshFiles : []),
       { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
       ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
@@ -262,6 +271,9 @@ export function createElectronBuilderConfig(
     },
     linux: {
       category: 'Development',
+      executableName: 'ipollo',
+      icon: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)),
+      artifactName: 'iPollo-${version}-linux-x64-unsigned.AppImage',
       target: ['AppImage'],
     },
     nsis: {

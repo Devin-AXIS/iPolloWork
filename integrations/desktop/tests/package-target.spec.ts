@@ -26,7 +26,10 @@ describe('desktop package target', () => {
   })
 
   it('rejects unsupported targets and hosts before building', () => {
-    expect(() => resolveDesktopPackageTarget('linux-x64', 'linux', 'x64')).toThrow(/unsupported target/u)
+    const linux = resolveDesktopPackageTarget('linux-x64', 'linux', 'x64')
+    expect(desktopElectronBuilderArguments(linux, false)).toEqual(expect.arrayContaining(['--linux', '--x64']))
+    expect(() => resolveDesktopPackageTarget('linux-x64', 'linux', 'arm64')).toThrow(/Linux x64/u)
+    expect(() => resolveDesktopPackageTarget('linux-arm64', 'linux', 'arm64')).toThrow(/unsupported target/u)
     expect(() => resolveDesktopPackageTarget('win-x64', 'darwin', 'arm64')).toThrow(/Windows x64/u)
     expect(() => resolveDesktopPackageTarget('mac-arm64', 'darwin', 'x64')).toThrow(/Apple Silicon/u)
     expect(() => resolveDesktopPackageTarget('mac-arm64', 'linux', 'arm64')).toThrow(/macOS/u)
@@ -42,6 +45,13 @@ describe('desktop package target', () => {
     expect(parseDesktopPackageInvocation(['win-x64', '--check', '--unsigned'], 'win32', 'x64')).toMatchObject({ check: true, unsigned: true })
     expect(() => parseDesktopPackageInvocation(['mac-arm64', 'mac-x64'], 'darwin', 'arm64'))
       .toThrow(/at most one target/u)
+  })
+
+  it('uses the standalone Linux build mode for AppImages', () => {
+    expect(parseDesktopPackageInvocation(['linux-x64'], 'linux', 'x64'))
+      .toMatchObject({ unsigned: true, target: { name: 'linux-x64' } })
+    expect(() => parseDesktopPackageInvocation(['linux-x64', '--skip-notarization'], 'linux', 'x64'))
+      .toThrow(/requires a signed macOS build/u)
   })
 
   it('parses a build version, including the separator a pnpm run script forwards', () => {

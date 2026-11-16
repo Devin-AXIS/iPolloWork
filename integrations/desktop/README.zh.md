@@ -12,6 +12,17 @@ DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源
 
 不提供旧版 iPolloWork profile 转换或降级层。文件和账户凭据仍由配置的 DSH home 管理。`LICENSE` 保留原 DeepSeek Harness MIT 许可证；产品修改独立维护于本目录，不进入官方应用源码树。
 
+执行 `npm run setup:build` 和 `npm run build` 后，在对应平台的构建机上从仓库根目录运行以下命令，即可生成官网识别的安装包。
+
+| 目标 | 命令 | 官网识别的文件 |
+| --- | --- | --- |
+| Windows x64 | `npm run package:desktop:win:x64` | `ipollowork-win-x64-<版本>.exe` |
+| macOS Apple 芯片 | `npm run package:desktop:mac:arm64` | `ipollowork-mac-arm64-<版本>.dmg` |
+| macOS Intel | `npm run package:desktop:mac:x64` | `ipollowork-mac-x64-<版本>.dmg` |
+| Linux x64 | `npm run package:desktop:linux:x64` | `ipollowork-linux-x86_64-<版本>.AppImage` |
+
+官网安装包位于打包输出的 `website-installers/` 目录。将它和原有更新文件一起附加到对应版本的 GitHub Release。Windows 命令可附加 `-- --unsigned`，此时文件名保留 `-unsigned`。macOS 官方下载包须完成公证。Linux AppImage 使用当前固定版本的 iPollo 运行时，可独立分发，不接入桌面自动更新源。
+
 ## 产品版本
 
 当前产品发行版为 **iPollo 1.0.1**（安装包元数据为 `1.0.1`）。产品与桌面端清单使用相同版本；内置 DSH 运行时保留 `integrations/runtime/upstream.json` 中固定的版本。后续补丁版本依次使用 `1.0.1`、`1.0.2`，展示名称可写为 `1.0.01`、`1.0.02`。安装包元数据不得使用前导零，因为更新器要求标准语义化版本号。

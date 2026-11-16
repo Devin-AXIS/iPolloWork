@@ -39,6 +39,8 @@ export function assertOfficeSkillsLoadable(results: ReadonlyArray<{ readonly nam
 export async function smokeDesktopRuntime(
   root: string, node: string, runtime: DesktopRuntimeDescriptor, environment: NodeJS.ProcessEnv, resourcesRuntime: string,
 ): Promise<void> {
+  // Intel macOS runners can take longer on the Office conversion fixtures.
+  const officeTimeoutMs = runtime.platform === 'darwin' && runtime.arch === 'x64' ? 180_000 : 60_000
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   const profile = join(home, 'profiles', 'desktop')
   const hostEnvironment = {
@@ -184,7 +186,11 @@ export function apply(ctx) {
     writeFileSync(join(profile, 'package.json'), JSON.stringify(manifest))
     const overlayPath = join(profile, 'cordis.patch.yml')
     const overlay = load(readFileSync(overlayPath, 'utf8')) as object[]
-    writeFileSync(overlayPath, dump([...overlay, { id: 'webserver', config: { host: '127.0.0.1', port: 0 } }]))
+    writeFileSync(overlayPath, dump([
+      ...overlay,
+      { id: 'webserver', config: { host: '127.0.0.1', port: 0 } },
+      { id: 'office-kit', config: { timeoutMs: officeTimeoutMs } },
+    ]))
     const ready = await Promise.race([host.start(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])
@@ -278,7 +284,7 @@ export function apply(ctx) {
     console.log('desktop runtime: packaged Office skills listed and loaded')
     for (const { extension } of inputs) {
       const converted = await fetch(new URL(`/desktop-smoke-office/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(120_000),
+        headers: { cookie }, signal: AbortSignal.timeout(officeTimeoutMs + 60_000),
       })
       if (!converted.ok) throw new Error(`desktop runtime: ${extension} conversion failed: ${await converted.text()}`)
       const pdf = Buffer.from(await converted.arrayBuffer())
@@ -289,7 +295,7 @@ export function apply(ctx) {
     }
     for (const { extension } of inputs) {
       const operations = await fetch(new URL(`/desktop-smoke-office-operations/${extension}`, ready.url), {
-        headers: { cookie }, signal: AbortSignal.timeout(240_000),
+        headers: { cookie }, signal: AbortSignal.timeout(officeTimeoutMs * 3 + 60_000),
       })
       if (!operations.ok) throw new Error(`desktop runtime: ${extension} Office operations failed: ${await operations.text()}`)
       const result = await operations.json() as { images: string[]; converted: string; recalculated: string | null }

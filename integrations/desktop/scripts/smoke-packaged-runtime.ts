@@ -12,11 +12,15 @@ const { values } = parseArgs({ options: { unsigned: { type: 'boolean', default: 
 const target = resolveDesktopBuildTarget()
 const windows = target === 'win-x64'
 const artifacts = desktopArtifactOutput(paths, { unsigned: values.unsigned, skipNotarization: values['skip-notarization'] }).directory
+const linux = target === 'linux-x64'
 const application = windows ? join(artifacts, 'win-unpacked')
-  : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', 'iPollo.app', 'Contents')
-const resources = join(application, windows ? 'resources' : 'Resources')
-const executable = windows ? join(application, 'iPollo.exe') : join(application, 'MacOS', 'iPollo')
+  : linux ? join(artifacts, 'linux-unpacked')
+    : join(artifacts, target === 'mac-arm64' ? 'mac-arm64' : 'mac', 'iPollo.app', 'Contents')
+const resources = join(application, windows || linux ? 'resources' : 'Resources')
+const executable = join(application, windows ? 'iPollo.exe' : linux ? 'ipollo' : 'MacOS/iPollo')
 const descriptor = await verifyDesktopRuntime(paths.dsh, readDesktopRuntime(paths.dsh).release.version,
   resolveDesktopPackageTarget(target))
 if (windows && !values.unsigned) await verifyWindowsCode(application)
-await smokePreparedRuntime(join(resources, 'app.asar', 'dsh'), executable, join(resources, 'runtime'), descriptor)
+const dsh = linux ? join(resources, 'dsh') : join(resources, 'app.asar', 'dsh')
+if (linux) await verifyDesktopRuntime(dsh, descriptor.release.version, { platform: 'linux', arch: 'x64' })
+await smokePreparedRuntime(dsh, executable, join(resources, 'runtime'), descriptor)

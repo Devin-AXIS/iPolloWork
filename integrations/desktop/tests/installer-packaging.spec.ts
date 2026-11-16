@@ -103,6 +103,19 @@ describe('installer preparation preserves application dependencies', () => {
     expect(config.artifactName).toBe('iPollo-${version}-${os}-${arch}-unsigned.${ext}')
   })
 
+  it('keeps the Linux AppImage runtime on the filesystem for optional Office engine resolution', async () => {
+    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+    const config = createElectronBuilderConfig({
+      DSH_DESKTOP_APP_ID: 'com.example.installer',
+      DSH_DESKTOP_TARGET_PLATFORM: 'linux',
+      DSH_DESKTOP_TARGET_ARCH: 'x64',
+      DSH_DESKTOP_UNSIGNED: '1',
+    }, 'linux', 'x64')
+    expect(config.linux.target).toEqual(['AppImage'])
+    expect(config.extraResources.map(entry => entry.to)).toEqual(expect.arrayContaining(['dsh', 'dsh/node_modules']))
+    expect(config.files.some(entry => typeof entry === 'object' && entry.to === 'dsh')).toBe(false)
+  })
+
   it('enables explicit product update feeds for unsigned Windows without enabling unsigned Mac updates', async () => {
     const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     const env = {

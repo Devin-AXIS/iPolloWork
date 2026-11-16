@@ -1,4 +1,11 @@
-import type { DesktopAutoUpdateTarget } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
+interface DesktopTargetPlatforms {
+  'mac-arm64': { readonly platform: 'darwin', readonly arch: 'arm64' }
+  'mac-x64': { readonly platform: 'darwin', readonly arch: 'x64' }
+  'win-x64': { readonly platform: 'win32', readonly arch: 'x64' }
+  'linux-x64': { readonly platform: 'linux', readonly arch: 'x64' }
+}
+
+export type DesktopBuildTarget = keyof DesktopTargetPlatforms
 
 /** Mutable target directories plus shared download and package caches. */
 export interface DesktopTargetBuildPaths {
@@ -29,7 +36,7 @@ export function resolveDesktopBuildTarget(
   env?: NodeJS.ProcessEnv,
   hostPlatform?: NodeJS.Platform,
   hostArch?: string,
-): DesktopAutoUpdateTarget
+): DesktopBuildTarget
 
 /**
  * Return the mutable preparation and artifact directories owned by one release target.
@@ -37,7 +44,7 @@ export function resolveDesktopBuildTarget(
  * @param environment - Packaging environment with an optional absolute cache directory.
  * @returns Target paths plus shared download and package caches.
  */
-export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, environment?: NodeJS.ProcessEnv): DesktopTargetBuildPaths
+export function desktopTargetBuildPaths(target: DesktopBuildTarget, environment?: NodeJS.ProcessEnv): DesktopTargetBuildPaths
 
 /**
  * Return the platform and architecture of the payload one release target prepares.
@@ -45,10 +52,7 @@ export function desktopTargetBuildPaths(target: DesktopAutoUpdateTarget, environ
  * @param target - Supported Desktop target name.
  * @returns Platform and architecture of the prepared payload.
  */
-export function desktopTargetPlatform(target: DesktopAutoUpdateTarget): {
-  readonly platform: 'darwin' | 'win32'
-  readonly arch: 'arm64' | 'x64'
-}
+export function desktopTargetPlatform<Target extends DesktopBuildTarget>(target: Target): DesktopTargetPlatforms[Target]
 
 /**
  * Resolve the paths owned by the target selected in a packaging environment.
