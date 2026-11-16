@@ -10,15 +10,29 @@ on:
         description: Build ad-hoc signed Mac DMGs when Developer ID signing is unavailable
         type: boolean
         default: false
+      signed_macos:
+        description: Build Developer ID signed and notarized Mac installers and update ZIPs
+        type: boolean
+        default: true
+      windows:
+        description: Build the Windows x64 installer and its update files
+        type: boolean
+        default: true
+      source_ref:
+        description: Optional immutable commit for rebuilding an existing draft
+        type: string
 permissions:
   contents: write
   actions: write
 jobs:
   windows:
+    if: inputs.windows
     runs-on: windows-2025
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
@@ -92,7 +106,7 @@ jobs:
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
 
   macos:
-    if: inputs.unsigned_macos
+    if: inputs.signed_macos || inputs.unsigned_macos
     strategy:
       fail-fast: false
       matrix:
@@ -106,8 +120,11 @@ jobs:
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
       PACKAGE_TARGET: ${{ matrix.target }}
+      SIGNED_MACOS: ${{ inputs.signed_macos }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
@@ -115,25 +132,103 @@ jobs:
         run: |
           npm run setup:build
           npm run build
+      - name: Prepare Apple signing configuration
+        if: inputs.signed_macos
+        env:
+          CERTIFICATE_P12: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for required in CERTIFICATE_P12 NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER; do
+            if [[ -z "${!required}" ]]; then
+              echo "Missing signing configuration $required" >&2
+              exit 1
+            fi
+          done
+          export MAC_CERT_FILE="$RUNNER_TEMP/ipollo-signing.p12"
+          export MAC_NOTARY_FILE="$RUNNER_TEMP/ipollo-notary.p8"
+          printf '%s' "$CERTIFICATE_P12" | base64 -D > "$MAC_CERT_FILE"
+          printf '%s' "$NOTARY_KEY_P8" | base64 -D > "$MAC_NOTARY_FILE"
+          inspect="$RUNNER_TEMP/ipollo-certificate-inspection.keychain-db"
+          trap 'security delete-keychain "$inspect" >/dev/null 2>&1 || true' EXIT
+          inspection_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$inspection_password" "$inspect"
+          security unlock-keychain -p "$inspection_password" "$inspect"
+          security import "$MAC_CERT_FILE" -k "$inspect" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          export MAC_IDENTITY
+          MAC_IDENTITY="$(security find-identity -p codesigning "$inspect" | sed -nE 's/^[^"]*"(Developer ID Application: [^"]+)"[^"]*$/\1/p' | sort -u)"
+          export MAC_TEAM
+          MAC_TEAM="$(printf '%s\n' "$MAC_IDENTITY" | sed -nE 's/^Developer ID Application: .+ \(([A-Z0-9]{10})\)$/\1/p')"
+          if [[ ! "$MAC_TEAM" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo 'Expected one Developer ID Application identity' >&2
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs'
+          import { parseEnv } from 'node:util'
+          const values = {
+            DSH_DESKTOP_APP_ID: 'com.deepseek.dsh',
+            DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+            DSH_DESKTOP_UPDATE_CHANNEL: 'stable',
+            DSH_DESKTOP_UPDATE_URL: 'https://github.com/' + process.env.GITHUB_REPOSITORY + '/releases/latest/download',
+            DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://cloud.ipollo.net',
+            DSH_DESKTOP_MACOS_SIGNING_IDENTITY: process.env.MAC_IDENTITY,
+            DSH_DESKTOP_MACOS_TEAM_ID: process.env.MAC_TEAM,
+            CSC_LINK: process.env.MAC_CERT_FILE,
+            CSC_KEY_PASSWORD: process.env.CERTIFICATE_PASSWORD ?? '',
+            APPLE_API_KEY: process.env.MAC_NOTARY_FILE,
+            APPLE_API_KEY_ID: process.env.NOTARY_KEY_ID,
+            APPLE_API_ISSUER: process.env.NOTARY_ISSUER,
+          }
+          const lines = Object.entries(values).map(([key, value]) => {
+            const quote = ["'", '"', String.fromCharCode(96)].find(character => !value.includes(character))
+            if (!quote || /[\r\n]/u.test(value)) throw new Error('Invalid signing setting ' + key)
+            const line = key + '=' + quote + value + quote
+            if (parseEnv(line)[key] !== value) throw new Error('Could not encode signing setting ' + key)
+            return line
+          })
+          writeFileSync('integrations/desktop/.env.macos', lines.join('\n') + '\n', { mode: 0o600 })
+          NODE
       - name: Build and verify macOS DMG
         run: |
           version="${RELEASE_TAG#v}"
-          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --unsigned --build-version "$version"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          args=()
+          if [[ "$SIGNED_MACOS" != true ]]; then args+=(--unsigned); fi
+          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$version" "${args[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: iPollo-${{ matrix.target }}
-          path: integrations/desktop/.desktop-build/targets/${{ matrix.target }}/unsigned-artifacts/*.dmg
+          path: |
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/${{ inputs.signed_macos && 'artifacts' || 'unsigned-artifacts' }}/*.dmg
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/${{ inputs.signed_macos && 'artifacts' || 'unsigned-artifacts' }}/*.zip
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/${{ inputs.signed_macos && 'artifacts' || 'unsigned-artifacts' }}/*.zip.blockmap
           if-no-files-found: error
       - name: Publish verified DMG
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           shopt -s nullglob
-          files=(integrations/desktop/.desktop-build/targets/"$PACKAGE_TARGET"/unsigned-artifacts/*.dmg)
+          directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/unsigned-artifacts"
+          suffix=-unsigned
+          if [[ "$SIGNED_MACOS" == true ]]; then
+            directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts"
+            suffix=
+            zip=("$directory"/*.zip)
+            if (( ${#zip[@]} != 1 )); then
+              echo 'Expected exactly one notarized update ZIP' >&2
+              exit 1
+            fi
+          fi
+          files=("$directory"/*.dmg)
           if (( ${#files[@]} != 1 )); then
             echo 'Expected exactly one verified DMG' >&2
             exit 1
           fi
-          asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}-unsigned.dmg"
+          asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}$suffix.dmg"
           cp "${files[0]}" "$asset"
-          gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload "$RELEASE_TAG" "$asset" "$directory"/*.zip "$directory"/*.zip.blockmap --repo "$GITHUB_REPOSITORY" --clobber
