@@ -200,9 +200,6 @@ jobs:
             })
           })
           NODE
-      - name: Prepare signed Computer Use helpers
-        if: inputs.signed_macos
-        run: node integrations/desktop/run.mjs prepare-cua-helper.ts
       - name: Build and verify macOS DMG
         run: |
           version="${RELEASE_TAG#v}"
