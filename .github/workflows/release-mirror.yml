@@ -55,6 +55,8 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets
           node integrations/tooling/release-mirror.mjs manifest release.json release-assets
+      - name: Configure OSS-compatible addressing
+        run: aws configure set default.s3.addressing_style virtual
       - name: Copy exact bytes to mainland storage
         shell: bash
         run: |
