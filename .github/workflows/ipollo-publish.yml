@@ -29,7 +29,8 @@ jobs:
           node-version: '24.15.0'
       - name: Require a numeric draft and a version newer than Latest
         run: |
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
+          release_api=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq .apiUrl)
+          gh api "$release_api" > release.json
           gh api "repos/$GITHUB_REPOSITORY/releases/latest" > previous-release.json
           node integrations/tooling/release-publication.mjs check release.json previous-release.json
       - name: Download and verify every release asset

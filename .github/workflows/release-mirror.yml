@@ -52,7 +52,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir release-assets
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
+          release_api=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq .apiUrl)
+          gh api "$release_api" > release.json
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets
           node integrations/tooling/release-mirror.mjs manifest release.json release-assets
       - name: Configure OSS-compatible addressing
