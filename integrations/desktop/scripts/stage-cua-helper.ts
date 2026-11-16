@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { execFileSync } from 'node:child_process'
 import { x, c } from 'tar'
 import { readCuaApplication } from '../../../.upstream/dsh/scripts/cua-helper/payload.ts'
+import { verifyMacOSStapledTicket } from './verify-macos-signature.mjs'
 
 /**
  * Stage both notarized helper architectures; missing payloads fail before an installer is created.
@@ -17,7 +18,7 @@ export async function stageCuaHelper(archive: string, payload: string): Promise<
     if (!existsSync(join(directory, 'current.json'))) throw new Error(`Desktop CUA helper missing for ${arch}; build and notarize the native helper before packaging`)
     const { application: app } = readCuaApplication(directory)
     execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', app], { stdio: 'pipe' })
-    execFileSync('/usr/bin/xcrun', ['stapler', 'validate', app], { stdio: 'pipe' })
+    verifyMacOSStapledTicket(app)
   }
   const temp = mkdtempSync(join(tmpdir(), 'ipollo-cua-pack-'))
   try {

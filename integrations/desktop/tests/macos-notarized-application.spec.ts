@@ -2,7 +2,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { verifyMacOSNotarizedApplication } from '../scripts/verify-macos-signature.mjs'
+import { verifyMacOSNotarizedApplication, verifyMacOSStapledTicket } from '../scripts/verify-macos-signature.mjs'
 
 vi.mock('node:child_process', async importOriginal => ({
   ...await importOriginal<typeof import('node:child_process')>(),
@@ -21,6 +21,21 @@ const commands = [
 afterEach(() => { vi.resetAllMocks() })
 
 describe('notarized application qualification', () => {
+  it('retries the ticket once after a CloudKit failure and rejects a subsequent invalid ticket', () => {
+    const wait = vi.spyOn(Atomics, 'wait').mockReturnValue('timed-out')
+    const failure = { pid: 1, output: [], stdout: '', stderr: '', signal: null }
+    vi.mocked(spawnSync)
+      .mockReturnValueOnce({ ...failure, status: 68 })
+      .mockReturnValueOnce({ ...failure, status: 65 })
+    try {
+      expect(() => verifyMacOSStapledTicket(appPath)).toThrow('exited with 65')
+      expect(wait).toHaveBeenCalledTimes(1)
+      expect(spawnSync).toHaveBeenCalledTimes(2)
+    } finally {
+      wait.mockRestore()
+    }
+  })
+
   it.each([undefined, 0, 1, 2, 3])('stops at failed command %s or verifies every qualification', (failedCommand) => {
     let index = 0
     vi.mocked(spawnSync).mockImplementation(() => ({

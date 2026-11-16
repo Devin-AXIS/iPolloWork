@@ -43,6 +43,9 @@ export function verifyMacOSRuntimeCode(path: string, expected: MacOSSigningEnvir
  */
 export function verifyMacOSSignature(appPath: string, expected: MacOSSigningEnvironment): void
 
+/** Check the stapled ticket on an application or disk image. */
+export function verifyMacOSStapledTicket(path: string): void
+
 /**
  * Verify an independently distributed application's signature, ticket, and Gatekeeper acceptance.
  * @param appPath - Path to the stapled `.app` directory.

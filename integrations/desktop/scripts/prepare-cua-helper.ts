@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { loadDesktopPackageEnvironment } from './desktop-package-environment.mjs'
 import { resolveMacOSNotarizationEnvironment, resolveMacOSSigningEnvironment } from './desktop-release-environment.mjs'
 import { notarizeMacOS } from './notarize-macos.mjs'
+import { verifyMacOSStapledTicket } from './verify-macos-signature.mjs'
 import { readCuaApplication, sealCuaApplication } from '../../../.upstream/dsh/scripts/cua-helper/payload.ts'
 
 const root = resolve(import.meta.dirname, '../../..')
@@ -20,7 +21,7 @@ for (const arch of ['arm64', 'x64'] as const) {
   let application: string | undefined
   if (existsSync(join(directory, 'current.json'))) {
     application = readCuaApplication(directory).application
-    try { execFileSync('/usr/bin/xcrun', ['stapler', 'validate', application], { stdio: 'pipe' }) }
+    try { verifyMacOSStapledTicket(application) }
     catch { application = undefined }
   }
   if (application === undefined) {

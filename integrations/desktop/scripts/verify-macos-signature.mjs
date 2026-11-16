@@ -43,10 +43,17 @@ export function assertMacOSRuntimeSignatureDetails(details, expected) {
  * @param {string} command - Absolute executable path.
  * @param {readonly string[]} args - Tool arguments.
  * @param {string} label - Stable diagnostic name.
+ * @param {readonly number[]} [networkRetryDelays] - Delays for retrying a stapler CloudKit connection failure.
  * @returns {string} Combined stdout and stderr.
  */
-function runAppleCommand(command, args, label) {
-  const result = spawnSync(command, args, { encoding: 'utf8' })
+function runAppleCommand(command, args, label, networkRetryDelays = []) {
+  let result = spawnSync(command, args, { encoding: 'utf8' })
+  for (const delay of networkRetryDelays) {
+    if (result.status !== 68) break
+    process.stderr.write(`desktop macOS signing: ${label} could not reach CloudKit; retrying in ${delay / 1000}s\n`)
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, delay)
+    result = spawnSync(command, args, { encoding: 'utf8' })
+  }
   if (result.error !== undefined) {
     throw new Error(`desktop macOS signing: could not execute ${label}: ${result.error.message}`)
   }
@@ -154,6 +161,15 @@ export function verifyMacOSSignature(appPath, expected) {
 }
 
 /**
+ * Validate the existing Apple ticket, retrying only CloudKit connection failures.
+ * @param {string} path - Path to the stapled application or disk image.
+ * @returns {void}
+ */
+export function verifyMacOSStapledTicket(path) {
+  runAppleCommand('/usr/bin/xcrun', ['stapler', 'validate', path], 'stapler validate', [5000, 15000, 30000, 60000])
+}
+
+/**
  * Verify an independently distributed application's signature, ticket, and Gatekeeper acceptance.
  * @param {string} appPath - Path to the stapled `.app` directory.
  * @param {{ signingIdentity: string, teamId: string }} expected - Public release identity.
@@ -161,7 +177,7 @@ export function verifyMacOSSignature(appPath, expected) {
  */
 export function verifyMacOSNotarizedApplication(appPath, expected) {
   verifyMacOSSignature(appPath, expected)
-  runAppleCommand('/usr/bin/xcrun', ['stapler', 'validate', appPath], 'stapler validate')
+  verifyMacOSStapledTicket(appPath)
   runAppleCommand('/usr/sbin/spctl', ['--assess', '--type', 'execute', '--verbose=4', appPath], 'spctl')
 }
 
@@ -173,7 +189,7 @@ export function verifyMacOSNotarizedApplication(appPath, expected) {
  */
 export function verifyMacOSDiskImage(diskImagePath, expected) {
   verifyMacOSDiskImageSignature(diskImagePath, expected)
-  runAppleCommand('/usr/bin/xcrun', ['stapler', 'validate', diskImagePath], 'stapler validate')
+  verifyMacOSStapledTicket(diskImagePath)
   runAppleCommand('/usr/sbin/spctl', ['--assess', '--type', 'install', '--verbose=4', diskImagePath], 'spctl')
 }
 
