@@ -10,7 +10,7 @@ on:
         description: Installer platform
         type: choice
         default: windows
-        options: [windows, linux, windows-and-linux, macos]
+        options: [windows, linux, windows-and-linux, macos, macos-intel]
 permissions:
   contents: write
 jobs:
@@ -104,15 +104,11 @@ jobs:
           test -f "$1"
           gh release upload "$RELEASE_TAG" "$1" --repo "$GITHUB_REPOSITORY"
   macos:
-    if: inputs.target == 'macos'
+    if: inputs.target == 'macos' || inputs.target == 'macos-intel'
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: mac-arm64
-            runner: macos-15
-          - target: mac-x64
-            runner: macos-15-intel
+        include: ${{ fromJSON(inputs.target == 'macos-intel' && '[{"target":"mac-x64","runner":"macos-15-intel"}]' || '[{"target":"mac-arm64","runner":"macos-15"},{"target":"mac-x64","runner":"macos-15-intel"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
