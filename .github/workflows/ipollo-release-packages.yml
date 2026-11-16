@@ -10,6 +10,11 @@ on:
         description: Build Developer ID signed and notarized Mac installers and update ZIPs
         type: boolean
         default: true
+      macos_target:
+        description: Build both Mac architectures or retry one verified packaging target
+        type: choice
+        options: [both, mac-arm64, mac-x64]
+        default: both
       windows:
         description: Build the Windows x64 installer and its update files
         type: boolean
@@ -106,12 +111,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: mac-arm64
-            runner: macos-15
-          - target: mac-x64
-            runner: macos-15-intel
-    runs-on: ${{ matrix.runner }}
+        target: ${{ fromJSON(inputs.macos_target == 'both' && '["mac-arm64","mac-x64"]' || inputs.macos_target == 'mac-arm64' && '["mac-arm64"]' || '["mac-x64"]') }}
+    runs-on: ${{ matrix.target == 'mac-arm64' && 'macos-15' || 'macos-15-intel' }}
     timeout-minutes: 120
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
@@ -148,6 +149,22 @@ jobs:
           destination="integrations/desktop/.desktop-build/cua-helper/native"
           mkdir -p "$destination"
           ditto "$source" "$destination/bin"
+          for arch in arm64 x64; do
+            architecture="$destination/bin/darwin-$arch"
+            receipt="$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).bundle)' "$architecture/current.json")"
+            [[ "$receipt" =~ ^[a-f0-9]{64}$ ]]
+            helper="$architecture/$receipt/DSH Computer Use.app"
+            /usr/bin/codesign --verify --deep --strict "$helper"
+            for attempt in 1 2 3 4; do
+              if /usr/bin/xcrun stapler validate "$helper"; then
+                break
+              else
+                result=$?
+                if (( result != 68 || attempt == 4 )); then exit "$result"; fi
+              fi
+              sleep "$((attempt * 15))"
+            done
+          done
           printf 'reused=true\n' >> "$GITHUB_OUTPUT"
       - name: Prepare pinned runtime and product
         run: |
@@ -229,6 +246,7 @@ jobs:
           NODE
       - name: Build and verify macOS DMG
         run: |
+          set -euo pipefail
           version="${RELEASE_TAG#v}"
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
           node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$version"
