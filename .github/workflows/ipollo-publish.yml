@@ -1,0 +1,55 @@
+name: Publish verified iPolloWork release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Complete numeric draft release, for example v1.0.3
+        required: true
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ipollo-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Require a numeric draft and a version newer than Latest
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" > release.json
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > previous-release.json
+          node integrations/tooling/release-publication.mjs check release.json previous-release.json
+      - name: Download and verify every release asset
+        run: |
+          mkdir release-assets
+          gh release download "$RELEASE_TAG" --dir release-assets
+          node integrations/tooling/release-mirror.mjs manifest release.json release-assets
+          node integrations/tooling/release-publication.mjs prepare release.json release-assets
+      - name: Attach verified update feeds and checksums
+        run: gh release upload "$RELEASE_TAG" release-assets/stable-mac.yml release-assets/stable.yml release-assets/IPOLLO-SHA256SUMS.txt --clobber
+      - name: Publish Latest
+        run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
+      - name: Verify public update feeds and every referenced download
+        run: node integrations/tooling/release-publication.mjs verify release.json "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/" release-assets
+      - name: Restore the previous Latest if public verification fails
+        if: failure()
+        run: |
+          if test -f previous-release.json; then
+            previous=$(node -p 'JSON.parse(require("fs").readFileSync("previous-release.json", "utf8")).tag_name')
+            gh release edit "$previous" --latest
+          fi
+      - name: Synchronize exact release bytes to the mainland mirror
+        run: gh workflow run release-mirror.yml --ref main -f "release_tag=$RELEASE_TAG" -f publish_draft=false

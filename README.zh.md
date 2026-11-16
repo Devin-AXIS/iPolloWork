@@ -100,3 +100,5 @@ iPolloWork 自有代码使用原有的 [iPolloWork Source Available License](LIC
 在 GitHub 的 `release-mirror` environment 中配置一次：变量 `IPOLLO_MIRROR_S3_ENDPOINT`、`IPOLLO_MIRROR_BUCKET`、`IPOLLO_MIRROR_PUBLIC_URL`、`IPOLLO_MIRROR_REGION`；密钥 `IPOLLO_MIRROR_ACCESS_KEY_ID`、`IPOLLO_MIRROR_SECRET_ACCESS_KEY`。公开地址须通过 HTTPS 直接提供存储桶中的 `releases/<tag>/<filename>`，不经过跳转。使用专用大陆存储桶，并把写权限限制在此路径。缺少配置会明确失败；未配置的流程不代表大陆镜像已经上线。
 
 桌面发布版本仅使用三段数字（例如 `1.0.2`）。GitHub Latest 必须同时包含 `stable-mac.yml`、`stable.yml` 及其中引用的 ZIP／安装器；仅修改发布标题无法通知已安装的客户端。发布前使用 `integrations/tooling/release-update-feed.mjs` 生成并验证更新清单。
+
+固定发布入口为 **Actions → Publish verified iPolloWork release**（`ipollo-publish.yml`）。先将已签名公证的 Apple Silicon／Intel DMG、更新 ZIP、blockmap、干净构建记录、Windows 安装器及当前设计／套件插件上传到纯数字版本草稿，再输入该标签启动流程。流程会拒绝缺包和旧版本，逐个核对 GitHub 下载文件的哈希，生成两个更新索引及校验文件，发布 Latest，并检查公开更新索引和下载地址。公开检查失败会恢复上一版 Latest。镜像流程接收同一批最终文件，不重新构建。不要手动发布草稿，也不要把带测试后缀的版本设为 Latest。
