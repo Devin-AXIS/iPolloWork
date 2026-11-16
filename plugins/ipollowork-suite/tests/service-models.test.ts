@@ -1,5 +1,5 @@
 import test from "node:test";
-import { ReasoningEffortId } from "@deepseek-ai/dsh-llm";
+import { ReasoningEffortId, ToolCallId, createAssistantMessage, createToolResultMessage } from "@deepseek-ai/dsh-llm";
 import assert from "node:assert/strict";
 import { Context } from "@deepseek-ai/cordis";
 import LlmRuntime from "@deepseek-ai/dsh-llm";
@@ -210,4 +210,55 @@ test('cloud source choices reject personal keys before storing credentials',asyn
  assert.deepEqual(await services.choices(),{});
  await assert.rejects(services.choose('deepseek',{source:'own'}),{code:'IPW_CLOUD_MODEL_FORBIDDEN'});
  assert.equal(writes,0);
+});
+
+test('official vision models read durable images through attachments mounted after adapter registration', async () => {
+  const { default: WebServer } = await import('@deepseek-ai/dsh-host-webserver');
+  const { LocalAttachmentStore } = await import('@deepseek-ai/dsh-attachment-local');
+  const { mkdtemp, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const home = await mkdtemp(join(tmpdir(), 'ipw-vision-'));
+  const ctx = new Context();
+  await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 });
+  await ctx.plugin(LlmRuntime);
+  const credentials: CredentialStore = {
+    readRecord: async key => key === 'ipollowork-suite/account' ? { kind: 'grant', payload: { version: 1, origin: 'https://accounts.test', token: 'test-account' } } : undefined,
+    modifyRecord: async () => undefined, deleteRecord: async () => {},
+  };
+  const captured: { payload?: { messages: { content: unknown }[] } } = {};
+  const account = new AccountService(credentials, resolveConfig({ accountOrigin: 'https://accounts.test' }), new AbortController().signal, async (url, init) => {
+    if (String(url).endsWith('/services')) return Response.json({ items: [{ id: 'vision', title: 'Vision', provider: 'test', capabilities: ['chat'], origin: 'https://upstream.test', basePath: '/v1', available: true, routes: [], models: [{ id: 'vision-model', name: 'Vision', contextWindow: 32768, maxTokens: 2048, inputModalities: ['text','image'] }] }], points: 10 });
+    const envelope = JSON.parse(String(init?.body));
+    captured.payload = JSON.parse(Buffer.from(envelope.body, 'base64').toString());
+    return new Response('data: '+JSON.stringify({id:'vision-test',object:'chat.completion.chunk',created:1,model:'vision-model',choices:[{index:0,delta:{role:'assistant',content:'I can see the screenshot.'},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({id:'vision-test',object:'chat.completion.chunk',created:1,model:'vision-model',choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:12,completion_tokens:6,total_tokens:18}})+'\n\ndata: [DONE]\n\n',{headers:{'Content-Type':'text/event-stream'}});
+  });
+  let refresh = async () => {};
+  await ctx.plugin({ inject: ['llm', 'webServer'], apply(scope: Context) {
+    refresh = mountServiceModels(scope, {getOrigin:()=>scope.webServer.getOrigin(),register:route=>scope.webServer.register(route)},new Services(account,credentials,new AbortController().signal),account);
+  }});
+  try {
+    await refresh();
+    const attachments = new LocalAttachmentStore(ctx, { dshHome: home });
+    const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVQImWNgZGIGAAAOAAeCcsnOAAAAAElFTkSuQmCC','base64');
+    const ref = await attachments.saveImage({data:bytes,mediaType:'image/png'});
+    ctx.set('attachments',attachments);
+    const messages = [{role:'user' as const,content:[{type:'text' as const,text:'Inspect this screenshot'},{type:'image' as const,attachment:ref}]}];
+    const toolMessages = [
+      {role:'user' as const,content:[{type:'text' as const,text:'Inspect the generated page'}]},
+      createAssistantMessage({source:{provider:'ipollo-vision',model:'vision-model'},content:[{type:'tool-call',id:ToolCallId('screenshot-call'),name:'read_image',arguments:'{}'}]}),
+      createToolResultMessage({callId:ToolCallId('screenshot-call'),isError:false,content:[{type:'image',attachment:ref}]}),
+    ];
+    for (const prepared of [false,true]) for (const history of [messages,toolMessages]) {
+
+      const chunks=[];
+      const options={provider:'ipollo-vision',model:'vision-model',messages:history};
+      const stream=prepared?(await ctx.llm.prepareCall({provider:'ipollo-vision',model:'vision-model'})).stream(options):ctx.llm.stream(options);
+      for await (const chunk of stream) chunks.push(chunk);
+      const finish=chunks.find(chunk=>chunk.type==='finish');
+      assert.equal(finish?.reason.kind,'stop',JSON.stringify(finish));
+      assert.ok(JSON.stringify(captured.payload?.messages).includes('data:image/png;base64,'));
+      assert.ok(!JSON.stringify(captured.payload).includes(home),'host paths must not be sent as image URLs');
+    }
+  } finally { await ctx.fiber.dispose(); await rm(home,{recursive:true,force:true}); }
 });

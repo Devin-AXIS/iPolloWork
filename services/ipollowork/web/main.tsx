@@ -56,8 +56,10 @@ import { StorageQuota } from "./storage.js";
 import { Connect, DataApps } from "./data-apps.js";
 
 function Auth({ done }: { done: () => void }) {
+  const inviteToken = location.pathname.startsWith("/invite/") ? location.pathname.split("/")[2] : null;
+  const invitation = useData<{ organization: string; space: string | null }>(inviteToken ? "/api/invitations/" + encodeURIComponent(inviteToken) : "/api/health");
   const [register, setRegister] = useState(false),
-    [reset, setReset] = useState(false),
+    [reset, setReset] = useState(location.pathname === "/forgot-password"),
     [message, setMessage] = useState("");
   const [reveal, setReveal] = useState(false),
     [busy, setBusy] = useState(false),
@@ -74,6 +76,7 @@ function Auth({ done }: { done: () => void }) {
         name: email.split("@")[0] || email,
         email,
         password: value(form, "password"),
+        callbackURL: location.href,
       });
       done();
     } catch (e) {
@@ -90,7 +93,9 @@ function Auth({ done }: { done: () => void }) {
           <img src="/mark.svg" alt="iPollo" width="22" />
         </span>
         <h1>{register ? "创建你的账号" : "欢迎回来"}</h1>
-        <p>一个账号，连接官方模型、组织空间和积分</p>
+        <p>{inviteToken ? invitation.data?.organization ? `加入「${invitation.data.organization}」${invitation.data.space ? "的「" + invitation.data.space + "」空间" : ""}，请使用受邀邮箱登录或注册。` : invitation.error ? "邀请已失效，请联系管理员获取新链接。" : "正在检查组织邀请…" : "一个账号，连接官方模型、组织空间和积分"}</p>
+        <Status error={invitation.error} />
+        {register && inviteToken && <p>使用受邀邮箱注册后，即可接受邀请，无需发送邮件。</p>}
         <div className="segmented" role="group" aria-label="账号">
           <button
             type="button"
@@ -131,7 +136,7 @@ function Auth({ done }: { done: () => void }) {
               name="password"
               type={reveal ? "text" : "password"}
               placeholder={register ? "密码，至少 10 位" : "密码"}
-              minLength={10}
+              minLength={register ? 10 : undefined}
               required
               autoComplete={register ? "new-password" : "current-password"}
               aria-label="密码"
@@ -217,6 +222,17 @@ function ResetPassword() {
       </div>
     </main>
   );
+}
+function InvitationJoin({ user, invite, done }: { user: User; invite: string; done: () => void }) {
+  const [joined, setJoined] = useState(false);
+  return <section className="panel invite">
+    <h2>加入组织空间</h2>
+    <p>当前账号：{user.email}。请确认与受邀邮箱一致。</p>
+    {joined ? <p role="status">已加入，可以返回 iPolloWork 刷新组织列表。</p> : <ActionForm label="接受邀请" submit={async () => {
+      await api("/api/v1/invitations/" + encodeURIComponent(invite) + "/accept", {});
+      setJoined(true); done();
+    }}>{null}</ActionForm>}
+  </section>;
 }
 const navigation = [
   { id: "overview", title: "概览", icon: LayoutDashboard },
@@ -422,7 +438,6 @@ function App() {
   const session = useData<{ user: User } | null>("/api/auth/get-session"),
     [page, setPage] = useState("overview"),
     [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark");
-  const [inviteMessage, setInviteMessage] = useState("");
   React.useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("theme", dark ? "dark" : "light");
@@ -521,47 +536,7 @@ function App() {
               </p>
             </div>
           </div>
-          {invite && (
-            <section className="panel invite">
-              <h2>你收到了一份组织邀请</h2>
-              <p>请使用被邀请的邮箱登录：{user.email}</p>
-              <ActionForm
-                label="接受邀请"
-                submit={async () => {
-                  await api(
-                    "/api/v1/invitations/" +
-                      encodeURIComponent(invite) +
-                      "/accept",
-                    {},
-                  );
-                  setInviteMessage("已加入组织");
-                  setPage("enterprises");
-                }}
-              >
-                {!user.emailVerified && (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        await api("/api/auth/send-verification-email", {
-                          email: user.email,
-                          callbackURL: location.href,
-                        });
-                        setInviteMessage("验证邮件已发送");
-                      } catch (e) {
-                        setInviteMessage(
-                          e instanceof Error ? e.message : "发送失败",
-                        );
-                      }
-                    }}
-                  >
-                    发送验证邮件
-                  </button>
-                )}
-              </ActionForm>
-              <p role="status">{inviteMessage}</p>
-            </section>
-          )}
+          {invite && <InvitationJoin user={user} invite={invite} done={() => setPage("enterprises")} />}
           {shared ? (
             <SharePage id={shared} />
           ) : selected.id === "overview" ? (

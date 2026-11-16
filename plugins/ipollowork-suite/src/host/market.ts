@@ -32,7 +32,7 @@ const bundledReleaseSchema = z.object({
 }).strict()
 
 /** Resolve verified, suite-carried releases only for the suite's default catalog. */
-async function bundledInstallTargets(catalogPath: string, cacheDirectory?: string, downloadOnDemand = false): Promise<ReadonlyMap<string, string>> {
+async function bundledInstallTargets(catalogPath: string, cacheDirectory?: string, _downloadOnDemand = false): Promise<ReadonlyMap<string, string>> {
   const defaultCatalog = fileURLToPath(new URL('../../catalog/index.json', import.meta.url))
   if (resolve(catalogPath) !== defaultCatalog) return new Map()
   try {
@@ -41,10 +41,6 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
     for (const release of releases.plugins) {
       const key = `${release.name}@${release.version}`
       if (targets.has(key)) throw new Error('Duplicate bundled release')
-      if (downloadOnDemand) {
-        targets.set(key, `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/${release.file}`)
-        continue
-      }
       let file = fileURLToPath(new URL(`../../catalog/packages/${release.file}`, import.meta.url))
       let bytes: Buffer
       try { bytes = await readFile(file) }

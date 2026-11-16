@@ -309,6 +309,9 @@ export class EnterpriseService {
         name: string(r.name),
       })),
       invitations: result.invitations.map((r) => ({
+        projectId: nullableString(r.project_id),
+        projectRole: r.project_role as "view" | "participate" | "maintain" | null,
+        departmentId: nullableString(r.department_id),
         id: string(r.id),
         email: string(r.email),
         role: string(r.role),
@@ -526,6 +529,8 @@ export class EnterpriseService {
               email: z.email(),
               role: z.enum(["admin", "member"]),
               departmentId: id.nullable(),
+              projectId: id.optional(),
+              projectRole: z.enum(["view", "participate", "maintain"]).optional(),
             })
             .parse(input),
         );

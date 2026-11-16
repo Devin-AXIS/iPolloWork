@@ -57,15 +57,11 @@ git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git
 cd iPolloWork
 npm run setup:build
 npm run build
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$(pwd)/plugins/ipollowork-suite"
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts web
+npm start
 ```
 
-In Windows PowerShell, use the same commands but replace the plugin-install command with:
+The same commands work in Windows PowerShell. `npm start` uses the compiled pinned DSH launcher, preserves the profile, and configures the reviewed Studio dependency builds.
 
-```powershell
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$((Get-Location).Path)/plugins/ipollowork-suite"
-```
 
 Open the local address printed by the launcher. The suite adds iPolloWork's account, agents and plugin views to the native Web UI. Sign in for configured account services and organization features; local model providers keep their own credentials. Do not paste an account or provider key into a project page.
 

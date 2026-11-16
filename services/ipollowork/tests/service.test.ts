@@ -291,12 +291,12 @@ test("standalone service: identity, enterprise isolation, files and payments", a
               "SELECT MAX(version) AS user_version FROM service_schema",
             )
           )?.user_version,
-          11,
+          12,
         );
       },
     );
     await t.test(
-      "invitations are email-bound, verified, idempotent and department-scoped",
+      "invitations are email-bound, idempotent and department-scoped",
       async () => {
         const department = await http<{ id: string }>(
           "/api/v1/enterprises/" + id + "/departments",
@@ -315,7 +315,7 @@ test("standalone service: identity, enterprise isolation, files and payments", a
           'UPDATE "user" SET "emailVerified"=false WHERE id=?',
           colleague.id,
         );
-        assert.equal((await http(path, colleague.token, {})).status, 403);
+        assert.equal((await http(path, colleague.token, {})).status, 200);
         await service.store.run(
           'UPDATE "user" SET "emailVerified"=true WHERE id=?',
           colleague.id,

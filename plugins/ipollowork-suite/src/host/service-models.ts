@@ -1,6 +1,6 @@
 /** Official chat services mount through DSH's existing pi-ai adapter. */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { resolveRetryPolicy, ACCOUNT_QUOTA_EXCEEDED_CODE, type GenerateOptions, type StreamChunk, type PreparedAdapterCall } from "@deepseek-ai/dsh-llm";
+import { resolveImageAttachmentAccess, resolveRetryPolicy, ACCOUNT_QUOTA_EXCEEDED_CODE, type GenerateOptions, type StreamChunk, type PreparedAdapterCall } from "@deepseek-ai/dsh-llm";
 import { SuiteError } from "./errors.ts";
 import {
   createProvider,
@@ -71,6 +71,12 @@ export function mountServiceModels(
   const adapter = new OfficialModelAdapter({
     profiles: () => profiles,
     resolveApiKey: async () => token,
+    resolveAttachments: () => ctx.get("attachments"),
+    resolveImageAccess: (attachments, ref) => resolveImageAttachmentAccess(
+      attachments,
+      hostPath => ctx.get("fs")?.processPathFromHostPath(hostPath),
+      ref,
+    ),
     auth: {
       credentials: new InMemoryCredentialStore(),
       authContext: defaultProviderAuthContext(),

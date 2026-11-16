@@ -206,8 +206,8 @@ export function apply(ctx) {
       const market = await fetch(new URL('/ipollowork-suite/catalog', ready.url), { headers: { cookie } })
       const catalog = await market.json() as { items?: { name: string; installed: boolean; spec: string }[] }
       const studios = catalog.items?.filter(item => item.name === 'deepseek-idesign' || item.name === 'deepseek-ivideo')
-      if (!market.ok || studios?.length !== 2 || studios.some(item => item.installed || !item.spec.startsWith('https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/'))) {
-        throw new Error('desktop runtime: Studio plugins must be available for download without being preinstalled')
+      if (!market.ok || studios?.length !== 2 || studios.some(item => item.installed || !item.spec.startsWith('file:'))) {
+        throw new Error('desktop runtime: Studio plugins must have checked local installation archives without being preinstalled')
       }
       const anonymous = await fetch(new URL('/ipollowork-suite/account', ready.url))
       const foreignOrigin = await fetch(new URL('/ipollowork-suite/account', ready.url), {

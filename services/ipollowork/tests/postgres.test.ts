@@ -224,10 +224,11 @@ test("schema seven removes the old per-account running-request constraint", asyn
     await service.store.run("DROP INDEX service_calls_user_created; DROP INDEX orders_wechat_merchant");
     await service.store.run('DROP TABLE app_data_files; DROP TABLE cloud_runtime_leases');
     await service.store.run('ALTER TABLE projects DROP COLUMN creation_key, DROP COLUMN execution_mode');
+    await service.store.run("ALTER TABLE invitations DROP COLUMN project_id, DROP COLUMN project_role");
     await migrate(service.store, config);
     await migrate(service.store, config);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM pg_indexes WHERE schemaname=current_schema() AND indexname='service_calls_one_running'"))?.total, 0);
-    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 11);
+    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 12);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM information_schema.columns WHERE table_schema=current_schema() AND ((table_name='plans' AND column_name IN ('daily_points','weekly_points')) OR (table_name='orders' AND column_name='checkout'))"))?.total, 3);
   } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });
