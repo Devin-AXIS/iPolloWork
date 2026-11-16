@@ -10,7 +10,7 @@ on:
         description: Installer platform
         type: choice
         default: windows
-        options: [windows, linux, windows-and-linux]
+        options: [windows, linux, windows-and-linux, macos]
 permissions:
   contents: write
 jobs:
@@ -100,6 +100,116 @@ jobs:
           version=$(node -p 'require("./package.json").version')
           test "$RELEASE_TAG" = "v$version"
           set -- integrations/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/website-installers/*.AppImage
+          test "$#" -eq 1
+          test -f "$1"
+          gh release upload "$RELEASE_TAG" "$1" --repo "$GITHUB_REPOSITORY"
+  macos:
+    if: inputs.target == 'macos'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: mac-arm64
+            runner: macos-15
+          - target: mac-x64
+            runner: macos-15-intel
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Prepare pinned runtime and product
+        run: |
+          npm run setup:build
+          npm run build
+      - name: Build and notarize macOS installer
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          APPLE_CODESIGN_CERT_P12_BASE64: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
+          APPLE_CODESIGN_CERT_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
+          APPLE_NOTARY_API_KEY_P8_BASE64: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          APPLE_NOTARY_API_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          APPLE_NOTARY_API_ISSUER_ID: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          : "${APPLE_CODESIGN_CERT_P12_BASE64:?Missing Apple signing certificate}"
+          : "${APPLE_NOTARY_API_KEY_P8_BASE64:?Missing Apple notarization key}"
+          : "${APPLE_NOTARY_API_KEY_ID:?Missing Apple notarization key ID}"
+          : "${APPLE_NOTARY_API_ISSUER_ID:?Missing Apple notarization issuer}"
+          signing=$(mktemp -d "$RUNNER_TEMP/ipollo-signing.XXXXXX")
+          keychain="$signing/ci.keychain-db"
+          cleanup() {
+            security delete-keychain "$keychain" >/dev/null 2>&1 || true
+            rm -f "$signing/identity.p12" "$signing/AuthKey.p8" integrations/desktop/.env.macos
+          }
+          trap cleanup EXIT
+          printf '%s' "$APPLE_CODESIGN_CERT_P12_BASE64" | base64 --decode > "$signing/identity.p12"
+          printf '%s' "$APPLE_NOTARY_API_KEY_P8_BASE64" | base64 --decode > "$signing/AuthKey.p8"
+          password=$(openssl rand -hex 24)
+          security create-keychain -p "$password" "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security set-keychain-settings "$keychain"
+          security import "$signing/identity.p12" -k "$keychain" -P "$APPLE_CODESIGN_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain"
+          identity=$(security find-identity -v -p codesigning "$keychain" | sed -En 's/^[[:space:]]*[0-9]+\) [[:xdigit:]]+ "Developer ID Application: (.* \([A-Z0-9]{10}\))"$/\1/p')
+          if [[ -z "$identity" || "$identity" == *$'\n'* ]]; then
+            echo 'Expected one valid Developer ID Application identity' >&2
+            exit 1
+          fi
+          export IPOLLO_SIGNING_DIR="$signing" IPOLLO_SIGNING_IDENTITY="$identity"
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          import { parseEnv } from 'node:util'
+          const env = process.env
+          const identity = env.IPOLLO_SIGNING_IDENTITY
+          const fields = {
+            DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
+            DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+            DSH_DESKTOP_UPDATE_URL: 'https://github.com/Devin-AXIS/iPolloWork/releases/latest/download',
+            DSH_DESKTOP_UPDATE_CHANNEL: 'stable',
+            DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://work.ipollo.net',
+            DSH_DESKTOP_MACOS_SIGNING_IDENTITY: identity,
+            DSH_DESKTOP_MACOS_TEAM_ID: identity.match(/\(([A-Z0-9]{10})\)$/)[1],
+            CSC_LINK: join(env.IPOLLO_SIGNING_DIR, 'identity.p12'),
+            CSC_KEY_PASSWORD: env.APPLE_CODESIGN_CERT_PASSWORD,
+            APPLE_API_KEY: join(env.IPOLLO_SIGNING_DIR, 'AuthKey.p8'),
+            APPLE_API_KEY_ID: env.APPLE_NOTARY_API_KEY_ID,
+            APPLE_API_ISSUER: env.APPLE_NOTARY_API_ISSUER_ID,
+          }
+          const settings = Object.entries(fields).map(([key, value]) => {
+            const quote = ['"', "'", '`'].find(candidate => !value.includes(candidate))
+            if (!quote) throw new Error('Cannot encode signing setting ' + key)
+            const line = key + '=' + quote + value + quote
+            if (parseEnv(line)[key] !== value) throw new Error('Cannot encode signing setting ' + key)
+            return line
+          }).join('\n')
+          writeFileSync('integrations/desktop/.env.macos', settings + '\n', { mode: 0o600 })
+          NODE
+          unset APPLE_CODESIGN_CERT_P12_BASE64 APPLE_CODESIGN_CERT_PASSWORD APPLE_NOTARY_API_KEY_P8_BASE64
+          node integrations/desktop/run.mjs prepare-cua-helper.ts
+          node integrations/desktop/run.mjs package-target.ts "$TARGET"
+          xcrun stapler validate integrations/desktop/.desktop-build/targets/"$TARGET"/artifacts/website-installers/*.dmg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: website-${{ matrix.target }}
+          path: integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/website-installers/*.dmg
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Publish notarized installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          version=$(node -p 'require("./package.json").version')
+          test "$RELEASE_TAG" = "v$version"
+          set -- integrations/desktop/.desktop-build/targets/"$TARGET"/artifacts/website-installers/*.dmg
           test "$#" -eq 1
           test -f "$1"
           gh release upload "$RELEASE_TAG" "$1" --repo "$GITHUB_REPOSITORY"
