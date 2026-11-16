@@ -1,6 +1,7 @@
 # Contributing to iPolloWork
 
-Read the [license](LICENSE) before using or contributing code. Describe bugs with the iPolloWork version, DSH version, operating system, reproduction steps and a redacted error message. Never include API keys, cookies, account tokens, private documents or complete session logs.
+Read the [license](LICENSE) before using or contributing code. Describe bugs with the
+iPolloWork version, DSH version, operating system, reproduction steps and a redacted error message. Never include API keys, cookies, account tokens, private documents or complete session logs.
 
 Run `npm run setup:build` to prepare the pinned official DSH dependency. Keep changes in `plugins/`, `services/` or the product-owned `integrations/` directories. Do not modify `.upstream/dsh`: new capabilities use official extension points or independent services. Propose missing upstream capabilities separately.
 

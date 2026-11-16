@@ -1,6 +1,7 @@
 # Security reports
 
-Do not publish credentials, private session contents or exploit details in a public issue. Report suspected vulnerabilities through the repository's private vulnerability reporting feature when available, or contact the repository owner privately before disclosing details.
+Do not publish credentials, private session contents or exploit details in a public issue.
+Report suspected vulnerabilities through the repository's private vulnerability reporting feature when available, or contact the repository owner privately before disclosing details.
 
 Include the affected iPolloWork and DSH versions, platform, reproduction steps, impact and any mitigation. Redact tokens and personal data. The project has no published response-time guarantee.
 

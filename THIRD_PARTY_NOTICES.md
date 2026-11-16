@@ -1,6 +1,7 @@
 # Third-party notices
 
-The iPolloWork license in [LICENSE](LICENSE) applies only to code and assets whose rights are owned or controlled by its licensor. Separately licensed portions keep their existing terms, including prior irrevocable MIT grants.
+The iPolloWork license in [LICENSE](LICENSE) applies only to code and assets whose rights
+are owned or controlled by its licensor. Separately licensed portions keep their existing terms, including prior irrevocable MIT grants.
 
 | Component | License and attribution |
 | --- | --- |
