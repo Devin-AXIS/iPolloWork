@@ -1,4 +1,4 @@
-/** Gate the standard GitHub publication path on complete, verified update payloads. */
+/** Gate GitHub publication on complete update payloads and website downloads. */
 import assert from 'node:assert/strict'
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -17,10 +17,22 @@ export function checkRelease(release, previous) {
     const index = next.findIndex((part, index) => part !== prior[index])
     assert.ok(index >= 0 && next[index] > prior[index], 'Release must be newer than Latest')
   }
+  const byName = new Map(release.assets.map(asset => [asset.name, asset]))
   for (const name of [
     ...['arm64', 'x64'].flatMap(arch => [`iPollo-${version}-mac-${arch}.dmg`, `iPollo-${version}-mac-${arch}.zip`, `iPollo-${version}-mac-${arch}.zip.blockmap`, `mac-${arch}-release.json`]),
     `iPollo-${version}-win-x64-unsigned.exe`,
-  ]) assert.ok(release.assets.some(asset => asset.name === name && asset.size > 0), `Missing release asset: ${name}`)
+  ]) assert.ok(byName.get(name)?.size > 0, `Missing release asset: ${name}`)
+  for (const [installer, filename] of [
+    [`iPollo-${version}-win-x64-unsigned.exe`, `ipollowork-win-x64-${version}-unsigned.exe`],
+    ...['arm64', 'x64'].map(arch => [`iPollo-${version}-mac-${arch}.dmg`, `ipollowork-mac-${arch}-${version}.dmg`]),
+  ]) {
+    const download = byName.get(filename)
+    const original = byName.get(installer)
+    assert.ok(download?.size > 0, `Missing website download: ${filename}`)
+    assert.equal(download.size, original.size, `Website download size mismatch: ${filename}`)
+    assert.match(download.digest ?? '', /^sha256:[a-f0-9]{64}$/, `Missing website download digest: ${filename}`)
+    assert.equal(download.digest, original.digest, `Website download digest mismatch: ${filename}`)
+  }
   for (const prefix of ['deepseek-idesign-', 'ipollo-dsh-suite-']) {
     assert.ok(release.assets.some(asset => asset.name.startsWith(prefix) && asset.name.endsWith('.tgz') && asset.size > 0), `Missing plugin package: ${prefix}`)
   }

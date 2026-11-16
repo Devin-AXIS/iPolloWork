@@ -7,7 +7,8 @@ const version = '1.0.3'
 const assets = [
   ...['arm64', 'x64'].flatMap(arch => [`iPollo-${version}-mac-${arch}.dmg`, `iPollo-${version}-mac-${arch}.zip`, `iPollo-${version}-mac-${arch}.zip.blockmap`, `mac-${arch}-release.json`]),
   `iPollo-${version}-win-x64-unsigned.exe`, 'deepseek-idesign-1.0.0-beta.30.tgz', 'ipollo-dsh-suite-0.1.34.tgz',
-].map(name => ({ name, size: 123, sha512: Buffer.alloc(64, 1).toString('base64') }))
+  `ipollowork-win-x64-${version}-unsigned.exe`, `ipollowork-mac-arm64-${version}.dmg`, `ipollowork-mac-x64-${version}.dmg`,
+].map(name => ({ name, size: 123, digest: 'sha256:' + 'a'.repeat(64), sha512: Buffer.alloc(64, 1).toString('base64') }))
 const release = { tag_name: `v${version}`, draft: true, prerelease: false, assets }
 
 test('publication rejects old versions, test releases and incomplete drafts', () => {
@@ -17,6 +18,9 @@ test('publication rejects old versions, test releases and incomplete drafts', ()
   assert.throws(() => checkRelease({ ...release, draft: false }, {}), /draft/)
   assert.throws(() => checkRelease({ ...release, prerelease: true }, {}), /prereleases/)
   for (const asset of assets) assert.throws(() => checkRelease({ ...release, assets: assets.filter(item => item !== asset) }, {}), /Missing/)
+  const mismatch = assets.map(asset => asset.name === `ipollowork-mac-arm64-${version}.dmg`
+    ? { ...asset, digest: 'sha256:' + 'b'.repeat(64) } : asset)
+  assert.throws(() => checkRelease({ ...release, assets: mismatch }, {}), /Website download digest mismatch/)
 })
 
 test('public verification rejects stale, altered or unavailable update payloads', async () => {
