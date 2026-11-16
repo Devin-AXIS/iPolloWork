@@ -50,7 +50,7 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
     setDepartmentName(''); setAddingDepartment(false); controller.notify(t.departmentAdded); await controller.load()
   }) }
   const invite = (e: FormEvent) => { e.preventDefault(); void task.run(async () => {
-    const result = await call<{ url: string }>('/organizations/' + enterpriseId + '/invitations', { email: email.trim(), role, departmentId: department })
+    const result = await call<{ url: string; delivery?: string }>('/organizations/' + enterpriseId + '/invitations', { email: email.trim(), role, departmentId: department })
     setLink({ email: email.trim(), url: result.url }); setEmail(''); controller.notify(t.inviteCreated); await controller.load()
   }) }
   return <div className={css.teamView}>
@@ -98,7 +98,7 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
           <span className={css.pendingAvatar} aria-hidden="true"><MailGlyph size={14}/></span>
           <span className={css.personText}><strong>{i.email}</strong><small>{expired ? t.expired : t.pending} · {roleName(i.role, t)} · {new Date(i.expiresAt).toLocaleDateString()}</small></span>
           <span className={css.personActions}>
-            <button type="button" className={css.quietButton} onClick={() => controller.open({ kind: 'invite', enterpriseId, email: i.email, role: i.role, replaces: i.id })}>{t.resend}</button>
+            <button type="button" className={css.quietButton} onClick={() => controller.open({ kind: 'invite', enterpriseId, email: i.email, role: i.role, departmentId: i.departmentId ?? null, ...(i.projectId ? { projectId: i.projectId } : {}), ...(i.projectRole ? { projectRole: i.projectRole } : {}), replaces: i.id })}>{t.resend}</button>
             <button type="button" className={css.quietButton} onClick={() => controller.open({ kind: 'confirm', title: t.revokeInviteTitle, description: t.revokeInviteBody, confirmLabel: t.revoke,
               run: async () => { await call('/organizations/' + enterpriseId + '/invitations/' + i.id, undefined, 'DELETE'); controller.notify(t.inviteRevoked); await controller.load() } })}>{t.revoke}</button>
           </span>
@@ -114,9 +114,10 @@ export function InviteDialog({ dialog, t, call, controller, departments }: { dia
   const task = useTask(t)
   const [email, setEmail] = useState(dialog.email ?? ''), [role, setRole] = useState(dialog.role === 'admin' ? 'admin' : 'member'), [department, setDepartment] = useState(dialog.departmentId ?? '')
   const [link, setLink] = useState('')
+  const [projectRole, setProjectRole] = useState(dialog.projectRole ?? 'view')
   const close = () => controller.open(null)
   const submit = (e: FormEvent) => { e.preventDefault(); void task.run(async () => {
-    const result = await call<{ url: string }>('/organizations/' + dialog.enterpriseId + '/invitations', { email, role, departmentId: department || null })
+    const result = await call<{ url: string; delivery?: string }>('/organizations/' + dialog.enterpriseId + '/invitations', { email, role: dialog.projectId ? "member" : role, departmentId: dialog.projectId ? null : department || null, projectId: dialog.projectId, projectRole })
     if (dialog.replaces) await call('/organizations/' + dialog.enterpriseId + '/invitations/' + dialog.replaces, undefined, 'DELETE')
     setLink(result.url); controller.notify(t.inviteCreated); await controller.load()
   }) }
@@ -125,10 +126,12 @@ export function InviteDialog({ dialog, t, call, controller, departments }: { dia
       <div className={css.dialogFooter}><Button variant="primary" onClick={close}>{t.close}</Button></div></div>
       : <form className={css.enterpriseForm} onSubmit={submit}>
         <Field label={t.email} hint={t.inviteHint}><input type="email" required autoFocus value={email} onChange={e => setEmail(e.target.value)} disabled={task.busy || !!dialog.replaces}/></Field>
-        <div className={css.enterpriseColumns}>
+        {dialog.projectId ? <Field label={t.role}><select value={projectRole} disabled={task.busy} onChange={e => setProjectRole(e.target.value as typeof projectRole)}>
+          <option value="view">{t.spaceView}</option><option value="participate">{t.spaceParticipate}</option><option value="maintain">{t.spaceMaintain}</option>
+        </select></Field> : <div className={css.enterpriseColumns}>
           <Field label={t.role}><select value={role} onChange={e => setRole(e.target.value)} disabled={task.busy}><option value="member">{t.member}</option><option value="admin">{t.admin}</option></select></Field>
           <Field label={t.department}><select value={department} onChange={e => setDepartment(e.target.value)} disabled={task.busy}><option value="">{t.unassigned}</option>{departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></Field>
-        </div>
+        </div>}
         <FormError message={task.error}/>
         <div className={css.dialogFooter}><Button variant="outline" type="button" disabled={task.busy} onClick={close}>{t.cancel}</Button><Button variant="primary" type="submit" disabled={task.busy}>{dialog.replaces ? t.resend : t.invite}</Button></div>
       </form>}

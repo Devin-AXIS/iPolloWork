@@ -14,6 +14,7 @@ import {
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { load, dump } from 'js-yaml'
 import {
   DESKTOP_HOST_PACKAGE,
   desktopCorePackageOverrides,
@@ -45,9 +46,7 @@ function workspaceFile(overrides: Readonly<Record<string, string>> = {}): string
     ? CORE_BUILD_PACKAGE
     : `${CORE_BUILD_PACKAGE}@${coreBuildSpec.replace('file:./', 'file:')}`
   // Bundled Studio packages pin these native dependency versions in their manifests.
-  const studioBuilds = overrides['deepseek-idesign'] || overrides['deepseek-ivideo']
-    ? '  "esbuild@0.25.12": true\n  "sharp@0.34.5": true\n  "onnxruntime-node@1.21.0": true\n  "onnxruntime-node@1.27.0": true\n'
-    : ''
+  const studioBuilds = '  "esbuild@0.25.12": true\n  "sharp@0.34.5": true\n  "onnxruntime-node@1.21.0": true\n  "onnxruntime-node@1.27.0": true\n'
   return `packages:\n  - .\n\n${overrideSection}${WORKSPACE_SETTINGS}allowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  ${JSON.stringify(coreBuildKey)}: true\n${studioBuilds}  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
 }
 
@@ -169,4 +168,13 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
  */
 export function createPluginProfile(projectDir: string, requiredBundles: readonly string[] = []): void {
   initProfile(projectDir, [...WEB_PROFILE.bundles, ...requiredBundles])
+  const path = join(projectDir, 'pnpm-workspace.yaml')
+  const original = readFileSync(path, 'utf8')
+  const config = load(original) as Record<string, unknown>
+  const existing = (config.allowBuilds ?? {}) as Record<string, boolean>
+  const defaults = { 'esbuild@0.25.12': true, 'sharp@0.34.5': true, 'onnxruntime-node@1.21.0': false, 'onnxruntime-node@1.27.0': false, protobufjs: false }
+  if (Object.keys(defaults).some(key => !(key in existing))) {
+    config.allowBuilds = { ...defaults, ...existing }
+    writeFileSync(path, dump(config), { mode: 0o600 })
+  }
 }

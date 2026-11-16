@@ -34,7 +34,7 @@ Install a built local checkout using `dsh plugin --profile <profile> add link:/a
 
 Override the `ipollowork-suite` row's `config` in the profile patch. Fields are `accountOrigin` (default `https://work.ipollo.net`), `catalogPath` (the bundled catalog by default), `requestTimeoutMs` (20000), `maxResponseBytes` (1048576), and `theme`, `market`, `account` (all true). Account services require HTTPS; HTTP is accepted only for loopback development. Changing the account origin never reuses another origin's saved credential.
 
-Edit `catalog/index.json` to curate the market. It keeps DSH format 1. Design (including PPT) and Video appear first in the default catalog under Creative. Their byte-identical tarballs download on demand from the pinned GitHub release (local source builds also support `catalog/packages/`); `catalog/bundled-releases.json` pins their versions and SHA-256 hashes. For this default catalog only, the Host verifies those files, copies them atomically into a retained content-addressed cache under DSH home, and supplies local `file:` specs to DSH's existing installer. The saved install source therefore survives suite upgrades or removal. No unpublished npm version is needed, and showing a card does not install or enable its plugin. Replace the tarballs and their checksum records together when updating a release. Custom `catalogPath` indexes retain their declared native npm/Git sources.
+Edit `catalog/index.json` to curate the market. It keeps DSH format 1. Design (including PPT) and Video appear first in the default catalog under Creative. Their checked tarballs ship in `catalog/packages/` in the suite and desktop builds; `catalog/bundled-releases.json` pins their versions and SHA-256 hashes. For this default catalog only, the Host verifies those files, copies them atomically into a retained content-addressed cache under DSH home, and supplies local `file:` specs to DSH's existing installer. The saved install source therefore survives suite upgrades or removal. No unpublished npm version is needed, and showing a card does not install or enable its plugin. Replace the tarballs and their checksum records together when updating a release. Custom `catalogPath` indexes retain their declared native npm/Git sources.
 
 Installed state always comes from DSH. The market opens DSH's existing install dialog and installed-bundle detail page. It never downloads or executes packages itself. The Enterprise tab reports that no enterprise catalog is connected.
 
@@ -171,8 +171,10 @@ Alibaba Agent Sandbox ships as an optional, disabled-by-default plugin component
 
 Cloud projects: [setup, lifecycle and validation limits](docs/cloud-projects.md).
 
-Optional resource archives can be prepared with `npm run pack:resources`, but they are not suite dependencies. The default installation downloads only the selected plugin.
 
-The dedicated iPollo desktop package omits both Studio archives and their resource dependencies. Its market lists pinned GitHub archive URLs without reading or downloading them; DSH downloads and installs the selected plugin only after the user chooses Install.
 
 Office onboarding and skipping setup retain the full agent preset list. Compact chat changes transcript and usage presentation without disabling coding view. Existing installations can enable coding view in Settings to restore PTC and Minimal modes.
+
+Official vision model channels resolve DSH’s durable attachment service at request time for both user images and tool-result screenshots. They preserve the native attachment and filesystem mapping rather than creating a separate image store.
+
+Source and desktop profile setup permits the pinned esbuild and sharp builds used by Studio, while skipping ONNX postinstall downloads: Studio uses the CPU provider already included in the package. Existing operator build policies are retained. First installation still needs npm dependencies; subsequent installs reuse the package-manager cache.

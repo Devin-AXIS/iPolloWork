@@ -34,7 +34,7 @@
 
 在 profile 补丁中覆盖 `ipollowork-suite` 行的 `config`。字段包括 `accountOrigin`（默认 `https://work.ipollo.net`）、`catalogPath`（默认使用内置目录）、`requestTimeoutMs`（20000）、`maxResponseBytes`（1048576），以及 `theme`、`market`、`account`（均为 true）。账号服务必须使用 HTTPS 来源；HTTP 仅供回环地址开发使用。切换账号服务来源时，不会复用其他来源已保存的凭据。
 
-编辑 `catalog/index.json` 维护市场，其格式保持为 DSH format 1。默认目录的 Creative 分类首先显示 Design（包含 PPT）和 Video。原样安装包通过固定版本的 `@ipollo/dsh-design-resources` 与 `@ipollo/dsh-video-resources` 依赖安装（本地源码构建也支持 `catalog/packages/`），`catalog/bundled-releases.json` 固定其版本与 SHA-256 哈希。仅对该默认目录，Host 会校验文件，将其原子复制到 DSH home 中按内容寻址的持久缓存，并向 DSH 现有安装器提供本地 `file:` 规格。保存的安装来源因此能够在套件升级或移除后继续使用，不需要未发布的 npm 版本；显示卡片不会安装或启用插件。更新版本时同时替换压缩包与校验记录。自定义 `catalogPath` 索引保留声明的原生 npm/Git 来源。
+编辑 `catalog/index.json` 维护市场，其格式保持为 DSH format 1。默认目录的 Creative 分类首先显示 Design（包含 PPT）和 Video。套件和桌面构建在 `catalog/packages/` 中携带经过校验的安装包，`catalog/bundled-releases.json` 固定其版本与 SHA-256 哈希。仅对该默认目录，Host 会校验文件，将其原子复制到 DSH home 中按内容寻址的持久缓存，并向 DSH 现有安装器提供本地 `file:` 规格。保存的安装来源因此能够在套件升级或移除后继续使用，不需要未发布的 npm 版本；显示卡片不会安装或启用插件。更新版本时同时替换压缩包与校验记录。自定义 `catalogPath` 索引保留声明的原生 npm/Git 来源。
 
 安装状态始终来自 DSH。市场打开 DSH 现有的安装对话框和已安装 Bundle 详情页，不自行下载或执行软件包。企业标签页会说明当前没有连接企业目录。
 
@@ -164,10 +164,11 @@ Design 发布会按工作区和文件复用原公开地址。新版本完整上�
 
 云端项目：[配置、生命周期与验证范围](docs/cloud-projects.zh.md)。
 
-可用 `npm run pack:resources` 单独准备资源包，但资源包不是套件依赖。默认流程仅在用户安装时下载选中的插件。
 
-iPollo 专用桌面主包不包含 Design、Video 安装压缩包和资源包依赖。插件市场只展示固定版本的 GitHub 下载地址，不提前读取或下载；用户点击安装后才由 DSH 下载并安装选中的插件。
 
-套件本身不依赖 Design/Video 资源包；没有本地插件压缩包时，目录返回固定 GitHub 下载地址，由用户安装时下载。
 
 首次引导的办公选项和跳过操作保留完整智能体预设列表；紧凑聊天只改变轨迹与用量展示，不再关闭编程视图。既有配置可在设置中开启“编程视图”恢复 PTC 和极简模式。
+
+官方视觉模型通道在请求时读取 DSH 的持久附件服务，支持用户图片及工具返回的截图。沿用原生附件和文件系统映射，不建立另一套图片存储。
+
+源码和桌面配置允许 Studio 使用的固定版本 esbuild、sharp 构建，跳过 ONNX 安装后的额外下载：Studio 使用包内已有的 CPU 后端。保留管理员已有构建策略。首次安装仍需获取 npm 依赖，后续安装复用包管理器缓存。

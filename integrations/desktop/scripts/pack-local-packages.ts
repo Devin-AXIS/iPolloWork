@@ -38,7 +38,7 @@ async function main(): Promise<void> {
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'integrations/desktop-host'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
-  // Desktop installs Studio through the market; its base suite must not pull archive dependencies.
+  // Keep checked Studio archives available to the market without installing either plugin by default.
   const suiteName = JSON.parse(readFileSync(resolve(root, 'plugins/ipollowork-suite/package.json'), 'utf8'))
   const suiteArchive = resolve(destination, `ipollo-dsh-suite-${suiteName.version}.tgz`)
   const staging = mkdtempSync(join(tmpdir(), 'ipollo-desktop-suite-'))
@@ -51,7 +51,6 @@ async function main(): Promise<void> {
       delete manifest.optionalDependencies?.[name]
     }
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
-    rmSync(join(staging, 'package/catalog/packages'), { recursive: true, force: true })
     await c({ gzip: true, file: suiteArchive, cwd: staging }, ['package'])
   } finally { rmSync(staging, { recursive: true, force: true }) }
   console.log(`desktop local pack: ${String(packed.length)} tarball(s) in ${destination}`)

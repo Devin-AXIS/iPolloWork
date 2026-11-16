@@ -56,15 +56,11 @@ git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git
 cd iPolloWork
 npm run setup:build
 npm run build
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$(pwd)/plugins/ipollowork-suite"
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts web
+npm start
 ```
 
-Windows PowerShell 使用相同命令，但将安装插件的一行替换为：
+Windows PowerShell 使用相同命令。`npm start` 使用编译后的固定版本 DSH 启动器，保留现有配置，并配置已审核的 Studio 依赖构建规则。
 
-```powershell
-node --import tsx/esm .upstream/dsh/apps/cli/src/bin.ts plugin --profile web add "link:$((Get-Location).Path)/plugins/ipollowork-suite"
-```
 
 打开启动器输出的本地地址。套件会在原生 Web 界面中加入 iPolloWork 的账号、智能体和插件页面。已配置的账号服务和组织功能需要登录；本地模型提供方继续使用各自的凭据。不要把账号或供应商 Key 粘贴进项目页面。
 

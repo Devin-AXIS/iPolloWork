@@ -256,11 +256,12 @@ function Enterprise({
                   "PATCH",
                 );
               else {
-                const response = await api<{ url: string }>(
+                const response = await api<{ url: string; delivery: string }>(
                   "/api/v1/enterprises/" + id + "/invitations",
                   body,
                 );
                 setLink(response.url);
+                setMessage("邀请链接已生成，请复制给对方。对方使用受邀邮箱登录或注册后即可加入。");
               }
               refresh();
             }}

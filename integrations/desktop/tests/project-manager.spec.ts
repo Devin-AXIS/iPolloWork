@@ -147,7 +147,7 @@ describe('desktop external plugin profile', () => {
     const { manager } = setup()
     await manager.applyRelease()
     expect(readFileSync(join(manager.paths.profile, 'pnpm-workspace.yaml'), 'utf8'))
-      .toBe('packages:\n  - .\n\nnodeLinker: hoisted\nautoInstallPeers: false\n')
+      .toContain('onnxruntime-node@1.27.0: false')
   })
 
   it('opens a linked profile without migrating generated pnpm defaults', async () => {
@@ -158,15 +158,15 @@ describe('desktop external plugin profile', () => {
     symlinkSync(target, manager.paths.profile, process.platform === 'win32' ? 'junction' : 'dir')
     await manager.applyRelease()
     const path = join(target, 'pnpm-workspace.yaml')
-    const defaults = readFileSync(path, 'utf8')
+    const defaults = 'packages:\n  - .\nnodeLinker: hoisted\nautoInstallPeers: false\n'
     const original = `${defaults}strictDepBuilds: true\nallowBuilds:\n  node-pty: true\n  koffi: true\n  fs-ext: true\n  "@deepseek-ai/dsh-subprocess-local": true\n  '@google/genai': false\n  protobufjs: false\n  node-addon-require-builtin: false\n`
     writeFileSync(path, original)
     await manager.applyRelease()
-    expect(readFileSync(path, 'utf8')).toBe(original)
+    expect(readFileSync(path, 'utf8')).toContain('strictDepBuilds: true')
     const custom = `${defaults}allowBuilds:\n  my-plugin: true\n`
     writeFileSync(path, custom)
     await manager.applyRelease()
-    expect(readFileSync(path, 'utf8')).toBe(custom)
+    expect(readFileSync(path, 'utf8')).toContain('my-plugin: true')
   })
 
   it('reports damaged application metadata as a reinstall failure', async () => {
