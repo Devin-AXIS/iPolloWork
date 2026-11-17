@@ -1,3 +1,4 @@
+import type { OrganizationMembers } from "./organization-members.js";
 import type { CloudProjects } from './cloud-projects.js';
 import { projectListings } from "./project-space.js";
 import { createHash, randomBytes } from "node:crypto";
@@ -23,7 +24,7 @@ const email = z.email().transform((v) => v.toLowerCase());
 const hash = (v: string) => createHash("sha256").update(v).digest("hex");
 
 /** Enterprise identity is an association on projects, not another workspace runtime. */
-export function mountEnterprise(app: App, store: Store, config: Config, cloud?: CloudProjects) {
+export function mountEnterprise(app: App, store: Store, config: Config, cloud?: CloudProjects, organizationMembers?: OrganizationMembers) {
   app.get("/api/v1/enterprises", async (c) => {
     const actor = c.get("actor");
     const items =
@@ -137,6 +138,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         target,
       );
       if (!result.changes) throw new ServiceError("MEMBER_NOT_FOUND", 404);
+      await organizationMembers?.event(id,target,"member.updated");
       await audit(store, actor, "member.update", target);
     });
     return c.json({ ok: true });
@@ -154,7 +156,9 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         id,
         target,
       );
+      await store.run("DELETE FROM settings WHERE split_part(key,'/',1)='member-service-key' AND split_part(key,'/',3)=? AND split_part(key,'/',2) IN (SELECT service_id FROM enterprise_services WHERE enterprise_id=?)", target, id);
       await dropAudience(store, id, "member", target);
+      await organizationMembers?.event(id,target,"member.removed");
       await audit(store, actor, "member.remove", target);
     });
     return c.json({ ok: true });
@@ -278,6 +282,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
           actor.id,
           invitation.id,
         );
+        await organizationMembers?.event(String(invitation.enterprise_id),actor.id,"member.joined");
         await audit(store, actor, "invitation.accept", String(invitation.id));
         return { enterpriseId: invitation.enterprise_id };
       }),

@@ -28,6 +28,7 @@ const choiceSchema = z.discriminatedUnion("source", [
     .strict(),
 ]);
 const serviceSchema = z.object({
+  credentialMode: z.enum(["shared", "member"]).default("shared"),
   id: z.string(),
   title: z.string(),
   provider: z.string(),
@@ -50,7 +51,7 @@ const serviceSchema = z.object({
     }),
   ),
   routes: z.array(
-    z.object({ method: z.string(), path: z.string(), points: z.number() }),
+    z.object({ method: z.string(), path: z.string(), points: z.number(), origin: z.string().optional() }),
   ),
   available: z.boolean(),
   enterprise: z
@@ -74,6 +75,11 @@ export class Services implements ServiceCenter {
     private signal: AbortSignal,
     private enabled = true,
   ) {}
+  async organizationProject(workspaceId: string, enterpriseId: string): Promise<string | null> {
+    const result = z.object({ items: z.array(z.object({ id: z.string(), native_id: z.string().nullable(), enterprise_id: z.string().nullable() })) }).parse(await this.account.request("/api/v1/projects"));
+    const project = result.items.find(item => item.native_id === workspaceId && item.enterprise_id === enterpriseId);
+    return project?.id ?? null;
+  }
   async choices(): Promise<Record<string, ServiceChoice>> {
     if(this.account.cloudOnly)return {};
     const record = await this.credentials.readRecord(KEY);
@@ -237,6 +243,16 @@ export class Services implements ServiceCenter {
         : candidates[0];
     };
     return {
+      organizationRequest: async (serviceId, projectId, path, init) => {
+        if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+        const service = (await this.catalog()).items.find(item => item.id === serviceId && item.enterprise && item.available);
+        if (!service) throw new SuiteError("IPW_SERVICE_UNAVAILABLE", 403);
+        const method = init?.method ?? "GET";
+        if (!matches(service, path, method) || (init?.destination && !service.routes.some(route => route.method === method && route.path === path && (route.origin ?? service.origin) === new URL(init.destination!).origin))) throw new SuiteError("IPW_SERVICE_ENDPOINT_MISMATCH", 403);
+        return this.account.execute(serviceId, { requestId: randomUUID(), path, method, ...(init?.destination ? {destination: init.destination} : {}), ...(init?.headers ? { headers: init.headers } : {}),
+          ...(init?.body === undefined ? {} : { body: Buffer.from(JSON.stringify(init.body)).toString("base64"), contentType: "application/json" }) },
+          AbortSignal.any([this.signal, ...(signal ? [signal] : [])]), projectId);
+      },
       ...(this.enabled && choices["aliyun-oss"]?.source !== "own"
         ? {
             publicationInfo: async (workspaceId: string, entry: string) =>

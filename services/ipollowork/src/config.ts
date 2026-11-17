@@ -44,6 +44,7 @@ const environment = z.object({
   UPLOAD_RESERVATION_MS: z.coerce.number().int().min(60000).default(3600000),
   STORAGE_CLEANUP_INTERVAL_MS: z.coerce.number().int().min(1000).default(60000),
   PAYMENT_FEE_BPS: z.coerce.number().int().min(0).max(5000).default(500),
+  USAGE_LIMITS_ENABLED: z.enum(["true", "false"]).default("false"),
   USAGE_UTC_OFFSET_MINUTES: z.coerce.number().int().min(-720).max(840).default(480),
   MINIMUM_MARGIN_BPS: z.coerce.number().int().min(0).max(9000).default(3000),
   MEMBERSHIP_OPERATING_RESERVE_FEN: z.coerce
@@ -117,6 +118,7 @@ export interface Config {
   storageCleanupIntervalMs: number;
   paymentFeeBps: number;
   usageUtcOffsetMinutes: number;
+  usageLimitsEnabled: boolean;
   minimumMarginBps: number;
   membershipOperatingReserveFen: number;
   appData?: AppDataConfig;
@@ -212,6 +214,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     storageCleanupIntervalMs: value.STORAGE_CLEANUP_INTERVAL_MS,
     paymentFeeBps: value.PAYMENT_FEE_BPS,
     usageUtcOffsetMinutes: value.USAGE_UTC_OFFSET_MINUTES,
+    usageLimitsEnabled: value.USAGE_LIMITS_ENABLED === "true",
     minimumMarginBps: value.MINIMUM_MARGIN_BPS,
     membershipOperatingReserveFen: value.MEMBERSHIP_OPERATING_RESERVE_FEN,
     appData: value.APP_DATA_DATABASE_URL

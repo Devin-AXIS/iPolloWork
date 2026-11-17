@@ -81,5 +81,18 @@ Published Design pages keep one public URL per owner, native workspace and entry
 
 Cloud/local project creation and the optional Alibaba execution server are described in [cloud projects](../../plugins/ipollowork-suite/docs/cloud-projects.md). Migration 10 adds project execution location and a single-writer lease; cloud execution is disabled until configured.
 
+Daily and weekly credit caps are currently disabled by default (`USAGE_LIMITS_ENABLED=false`); balances, metering and usage history remain active. Set the flag to `true` to enforce stored membership allowances again.
 
 Invitations currently use copyable links and send no email. Open the link, register or sign in with the invited email, then accept it; mailbox verification is not required. The link is a secret: possession plus a matching account email grants access, but does not prove mailbox ownership. Links expire, can be revoked, and cannot restore a removed member after acceptance. A space invitation grants only its selected view/participate/maintain role; existing organization-wide access still applies.
+
+Organization services accept `credentialMode: "shared" | "member"` (default shared). Authorized members PUT `{ "key": "..." }` to `/api/v1/enterprises/:id/services/:serviceId/credential`; an empty key deletes only their credential. Member-mode invocation requires an authorized `X-iPollo-Project` (cloud grants take precedence). Credentials reuse encrypted settings; no schema migration is needed. Routes may select `base: "origin"` for explicit host-relative integration endpoints; the default remains the configured service base path. Only allowlisted MCP transport headers are forwarded. Never expose provider credentials in client code.
+
+### Organization member administration
+
+Organization owners and administrators can batch-create up to 500 email-bound invitations from the organization Members page. Each batch is atomic and keeps previous invitations valid. Links are returned for the administrator to distribute, not automatically emailed; individual invitations still work.
+
+Optional member-change notifications are configured on the same page and disabled by default. Schema version 13 adds an organization-owned endpoint table and durable delivery queue. The signing secret is encrypted and shown only on creation or rotation. Verify `X-iPollo-Signature` as `sha256=` plus HMAC-SHA256 of `X-iPollo-Timestamp + "." + rawBody`; reject stale timestamps and deduplicate `X-iPollo-Delivery`. Payloads contain event ID/type, organization/user IDs, current role/department (null after removal) and creation time. Delivery is at least once with exponential retries capped at one hour. Only public HTTPS endpoints are accepted; redirects and private destinations are rejected. Back up PostgreSQL and the authentication secret before migration.
+
+## Curated plugin market
+
+`GET /api/market/catalog` publishes up to 200 curated native DSH references. Authenticated `GET /api/v1/market/manage` reports platform administration permission; `POST /api/v1/market/plugins` requires the platform `admin` role. Only HTTPS npm/Git sources and pinned SemVer releases are accepted, with full Git commit hashes for Git sources. References are stored in the existing `settings` table under `market.catalog`; PostgreSQL advisory transaction locks serialize additions, and the existing `audit` table records the actor. No third-party code is fetched or executed. Deploy alongside the updated suite to expose its administrator-only add form.

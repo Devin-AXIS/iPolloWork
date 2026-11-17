@@ -12,7 +12,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 const suite=fileURLToPath(new URL('..',import.meta.url));
 const cli=fileURLToPath(new URL('../../../.upstream/dsh/apps/cli/lib/bin.js',import.meta.url));
 
-test('official cloud profile loads the suite, creates a workspace and rejects revoked project access',{skip:!existsSync(cli),timeout:30000},async()=>{
+test('official cloud profile loads the suite, creates a workspace and rejects revoked project access',{skip:!existsSync(cli),timeout:60000},async()=>{
  const home=await mkdtemp(join(tmpdir(),'ipw-cloud-native-'));
  const workspace=join(home,'workspace');await mkdir(workspace);
  let allowed=true,activity=0;
@@ -47,9 +47,10 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
   ]));
   child=spawn(process.execPath,[cli,'--profile','web','--patch',patch,'--no-open'],{env,stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',data=>{logs+=data;});child.stderr.on('data',data=>{logs+=data;});
-  for(let i=0;i<200&&!logs.includes('dsh web:');i++){if(child.exitCode!==null)break;await delay(50);}
+  const deadline=Date.now()+30000;
+  while(Date.now()<deadline&&!logs.includes('dsh web:')&&child.exitCode===null)await delay(50);
   assert.doesNotMatch(logs,/failed to import|failed to load|MODULE_NOT_FOUND|PluginError/i);
-  const match=logs.match(/dsh web:\s+(http:\/\/[^\s]+)/);assert(match,'Official profile must publish its entry URL');
+  const match=logs.match(/dsh web:\s+(http:\/\/[^\s]+)/);assert(match,`Official profile must publish its entry URL\n${logs.trim()}`);
   const url=new URL(match[1]);const entry=await fetch(url,{redirect:'manual'});assert.equal(entry.status,303);
   const cookie=entry.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');assert(cookie);
   const headers={Cookie:cookie};

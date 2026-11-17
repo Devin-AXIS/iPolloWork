@@ -1,0 +1,66 @@
+{
+  "name": "@ipollo/dsh-operation-recorder",
+  "version": "0.2.0",
+  "private": false,
+  "type": "module",
+  "description": "Independent semantic operation recorder and portable Agent Skill compiler for iPolloWork.",
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm run build && npm test",
+    "pack:check": "npm pack --dry-run",
+    "link:workspace": "node scripts/link-workspace.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3",
+    "tsx": "^4.20.3"
+  },
+  "exports": {
+    ".": "./dist/host.js",
+    "./client": "./dist/client.js"
+  },
+  "files": [
+    "dist/host.js",
+    "dist/client.js",
+    "skills",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "NOTICE.txt",
+    "dist/native",
+    "dist/ui"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-client-ui-theme": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.3"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

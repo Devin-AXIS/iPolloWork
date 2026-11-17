@@ -102,3 +102,9 @@ iPolloWork 自有代码使用原有的 [iPolloWork Source Available License](LIC
 桌面发布版本仅使用三段数字（例如 `1.0.2`）。GitHub Latest 必须同时包含 `stable-mac.yml`、`stable.yml` 及其中引用的 ZIP／安装器；仅修改发布标题无法通知已安装的客户端。发布前使用 `integrations/tooling/release-update-feed.mjs` 生成并验证更新清单。
 
 固定发布入口为 **Actions → Publish verified iPolloWork release**（`ipollo-publish.yml`）。先将已签名公证的 Apple Silicon／Intel DMG、更新 ZIP、blockmap、干净构建记录、Windows 安装器及当前设计／套件插件上传到纯数字版本草稿，再输入该标签启动流程。流程会拒绝缺包和旧版本，逐个核对 GitHub 下载文件的哈希，生成两个更新索引及校验文件，发布 Latest，并检查公开更新索引和下载地址。公开检查失败会恢复上一版 Latest。镜像流程接收同一批最终文件，不重新构建。不要手动发布草稿，也不要把带测试后缀的版本设为 Latest。
+
+[Stage 适配插件](plugins/stage/README.zh.md)随完整桌面安装包交付。用户手动打开，首次关联已有 Stage 账号，并单独允许工作区的对话工具调用。Stage 编辑器与服务独立运行；平台官方模型按实际 Token 结算 Work 积分，不冻结余额。
+
+## 独立插件
+
+[数据标注实训云](plugins/data-annotation/README.zh.md)和[操作录制](plugins/operation-recorder/README.zh.md)分别打包为可独立安装的 DSH 插件，使用官方认证、工作区和插件生命周期，不修改 DSH 运行时。操作录制生成的 Skill 也可作为 DSH 插件安装。独立插件通过插件市场单独分发，不捆绑进 iPolloWork 主程序安装包。

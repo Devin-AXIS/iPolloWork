@@ -1,0 +1,77 @@
+{
+  "name": "@ipollo/dsh-data-annotation",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test service/*.test.ts tests/*.test.ts",
+    "check": "npm run typecheck && npm run build && npm test",
+    "pack:check": "npm pack --dry-run",
+    "link:workspace": "node scripts/link-workspace.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.5.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "esbuild": "^0.25.12",
+    "@labelu/audio-annotator-react": "1.9.3",
+    "@labelu/components-react": "1.8.3",
+    "@labelu/image": "1.5.2",
+    "@labelu/image-annotator-react": "2.5.3",
+    "@labelu/video-annotator-react": "1.5.3",
+    "i18next": "23.16.8",
+    "pdfjs-dist": "4.8.69",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+  },
+  "exports": {
+    ".": "./dist/host.js",
+    "./client": "./dist/client.js"
+  },
+  "files": [
+    "dist/host.js",
+    "dist/client.js",
+    "skills",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "NOTICE.txt",
+    "app/dist",
+    "service/dist",
+    "LICENSE-THIRD-PARTY.txt"
+  ],
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-skill": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3",
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-client-ui-theme": "0.2.2-rc.3"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-theme"
+      ]
+    }
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

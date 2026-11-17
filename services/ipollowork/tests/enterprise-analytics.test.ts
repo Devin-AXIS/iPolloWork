@@ -65,6 +65,6 @@ test("enterprise analytics isolates tenants, freezes department attribution and 
     assert.equal((await request({ page: 0 })).status, 400);
     const indexes = await service.store.all("SELECT indexname FROM pg_indexes WHERE schemaname=current_schema() AND indexname='service_calls_enterprise_time'");
     assert.equal(indexes.length, 1);
-    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 13);
+    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 14);
   } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });

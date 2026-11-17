@@ -1,6 +1,6 @@
 /** Browser entry: native slots compose the theme, market, and account modules. */
 import type { ClientContext } from './native.ts'
-import type { SuiteInfo, MarketState } from '../shared/types.ts'
+import type { SuiteInfo, MarketState, MarketEntry } from '../shared/types.ts'
 import { request } from './api.ts'
 import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
@@ -51,12 +51,17 @@ export async function apply(ctx: ClientContext): Promise<void> {
     mountAddPlugin(scope, installation.openManual)
     scope.effect(() => scope.remote.$on('plugin-manager/changed', installation.invalidate), 'ipollowork-market: bundle changes')
     scope.effect(() => scope.remote.$on('plugin-manager/install-state', installation.progress), 'ipollowork-market: install progress')
+    scope.effect(() => scope.remote.$on('credentials/record-updated', installation.invalidate), 'ipollowork-market: account changes')
     scope.effect(() => scope.on('connection/reset', installation.invalidate), 'ipollowork-market: reconnect')
     scope.slots.inject('shell.overlay', () => scope.slots.register({
       name: 'shell.overlay', id: 'ipollowork-market-install', inject: () => ({ installation, hooks: { labels } }),
     }, MarketInstallDialog))
     if (info.market) scope.slots.inject('plugins.tab', () => scope.slots.register({ name: 'plugins.tab', id: 'ipollowork-market', order: -10, label: () => copy(ctx).market,
-      inject: () => ({ load, installation, hooks: { labels } }),
+      inject: () => ({
+        load, installation, hooks: { labels },
+        discover: async (source: string) => (await request<{ entries: MarketEntry[] }>('/catalog/discover', { method: 'POST', body: JSON.stringify({ source, language: language(ctx) }) })).entries,
+        add: (entry: MarketEntry) => request<void>('/catalog/plugins', { method: 'POST', body: JSON.stringify(entry) }),
+      }),
     }, MarketPanel))
   })
   if (info.account) {

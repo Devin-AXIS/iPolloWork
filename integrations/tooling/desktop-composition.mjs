@@ -5,7 +5,8 @@ import { load, dump } from 'js-yaml'
 import { root } from './upstream.mjs'
 
 const patches = load(await readFile(join(root, 'plugins/ipollowork-suite/cordis.patch.yml'), 'utf8'))
-const entries = patches.flatMap(patch => patch.insert ?? [])
+const stage = load(await readFile(join(root, 'plugins/stage/cordis.patch.yml'), 'utf8'))
+const entries = [...patches, ...stage].flatMap(patch => patch.insert ?? [])
 if (!entries.some(entry => entry.id === 'ipollowork-suite')) throw new Error('Desktop composition requires the suite entry')
 await writeFile(join(root, 'integrations/desktop-host/application.yml'), dump(entries.map(entry => entry.id === 'ipollowork-suite'
   ? { ...entry, config: { ...entry.config, dedicatedDesktop: true } } : entry), { lineWidth: -1, noRefs: true }))

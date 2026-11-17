@@ -832,6 +832,7 @@ export function UsersPage() {
   );
 }
 const settingsLabels: Record<string, Record<string, string>> = {
+  stage: { enabled: "启用（true / false）", origin: "Stage HTTPS 服务地址", rates: "每百万 Token 积分及成本（JSON）" },
   stripe: { secretKey: "Secret key", webhookSecret: "Webhook secret" },
   alipay: { appId: "应用 App ID", sellerId: "收款商户 PID", privateKey: "应用私钥 PEM", publicKey: "支付宝公钥 PEM", sandbox: "沙箱（1 开启，0 关闭）" },
   wechat: { appId: "应用 App ID", merchantId: "商户号", merchantSerial: "商户证书序列号", privateKey: "商户私钥 PEM", apiV3Key: "API v3 密钥", platformKeyId: "微信支付公钥 ID", platformPublicKey: "微信支付公钥 PEM" },
@@ -867,6 +868,7 @@ export function SettingsPage() {
               <h2>
                 {
                   {
+                    stage: "Stage 官方通道与计费",
                     stripe: "Stripe 支付",
                     alipay: "支付宝",
                     wechat: "微信支付",
@@ -888,7 +890,7 @@ export function SettingsPage() {
               >
                 {Object.entries(fields).map(([field, label]) => (
                   <Field key={field} label={label}>
-                    {/privateKey|publicKey/i.test(field) ? (
+                    {/privateKey|publicKey|^rates$/i.test(field) ? (
                       <textarea
                         name={field}
                         rows={3}

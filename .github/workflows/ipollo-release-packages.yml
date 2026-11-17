@@ -59,6 +59,7 @@ jobs:
           DSH_DESKTOP_AUTO_UPDATE_ENV=production
           DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download
           DSH_DESKTOP_UPDATE_CHANNEL=stable
+          DSH_DESKTOP_WINDOWS_PACK_CONCURRENCY=1
           DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://cloud.ipollo.net
           '@ | Set-Content integrations/desktop/.env.windows
       - name: Validate numeric release version
@@ -262,6 +263,7 @@ jobs:
             DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://cloud.ipollo.net',
             DSH_DESKTOP_MACOS_SIGNING_IDENTITY: process.env.MAC_IDENTITY.replace(/^Developer ID Application: /, ''),
             DSH_DESKTOP_MACOS_TEAM_ID: process.env.MAC_TEAM,
+            DSH_DESKTOP_MACOS_PACK_CONCURRENCY: '1',
             CSC_LINK: process.env.MAC_CERT_FILE,
             CSC_KEY_PASSWORD: process.env.CERTIFICATE_PASSWORD ?? '',
             APPLE_API_KEY: process.env.MAC_NOTARY_FILE,
@@ -324,3 +326,26 @@ jobs:
           asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}.dmg"
           cp "${files[0]}" "$asset"
           gh release upload "$RELEASE_TAG" "$asset" "$directory"/*.dmg "$directory"/*.zip "$directory"/*.zip.blockmap "$directory"/*-release.json --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Attach checked plugin downloads
+        if: matrix.target == 'mac-arm64'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs'
+          import { join } from 'node:path'
+          import { createHash } from 'node:crypto'
+          import { execFileSync } from 'node:child_process'
+          const files=[]
+          for(const directory of ['ipollowork-suite','stage']) {
+            const manifest=JSON.parse(readFileSync(`plugins/${directory}/package.json`,'utf8'))
+            files.push(join('integrations/desktop/.desktop-build/targets/mac-arm64/packed/dsh',manifest.name.replace('@','').replace('/','-')+'-'+manifest.version+'.tgz'))
+          }
+          const catalog=JSON.parse(readFileSync('plugins/ipollowork-suite/catalog/bundled-releases.json','utf8'))
+          for(const plugin of catalog.plugins) {
+            const file=join('plugins/ipollowork-suite/catalog/packages',plugin.file)
+            if(createHash('sha256').update(readFileSync(file)).digest('hex')!==plugin.sha256)throw new Error('Plugin archive differs from the checked catalog')
+            files.push(file)
+          }
+          for(const file of files)execFileSync('gh',['release','upload',process.env.RELEASE_TAG,file,'--repo',process.env.GITHUB_REPOSITORY,'--clobber'],{stdio:'inherit'})
+          NODE

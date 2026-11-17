@@ -83,7 +83,7 @@ export function mountPayments(
   app.get("/api/v1/me/membership", async (c) => {
     const actor = c.get("actor");
     const [points, usage, memberships, plans, channels, history, pending] = await Promise.all([
-      wallet(store, actor.id), accountUsage(store, actor.id, config.usageUtcOffsetMinutes),
+      wallet(store, actor.id), accountUsage(store, actor.id, config.usageUtcOffsetMinutes, Date.now(), config.usageLimitsEnabled),
       store.all("SELECT p.id,p.name,MAX(e.expires_at) AS expires_at FROM entitlements e JOIN plans p ON p.id=e.plan_id WHERE e.user_id=? AND e.revoked_at IS NULL AND e.starts_at<=? AND e.expires_at>? AND p.kind='membership' GROUP BY p.id,p.name ORDER BY MAX(e.expires_at) DESC LIMIT 100", actor.id, now(), now()),
       store.all("SELECT * FROM plans WHERE enabled=1 AND kind='membership' ORDER BY amount,id LIMIT 200"),
       paymentChannels(settings, config),
@@ -91,7 +91,7 @@ export function mountPayments(
       store.one("SELECT id,checkout FROM orders WHERE user_id=? AND status='pending' AND checkout IS NOT NULL ORDER BY created_at DESC LIMIT 1", actor.id),
     ]);
     return c.json({ points, usage, history, memberships: memberships.map(p => ({ id: p.id, name: p.name, expiresAt: p.expires_at })),
-      plans: plans.map(p => ({ id: p.id, name: p.name, description: p.description, amount: p.amount, currency: p.currency, points: p.points, days: p.days, dailyPoints: p.daily_points, weeklyPoints: p.weekly_points, pointsCost: p.points_cost })),
+      plans: plans.map(p => ({ id: p.id, name: p.name, description: p.description, amount: p.amount, currency: p.currency, points: p.points, days: p.days, dailyPoints: config.usageLimitsEnabled ? p.daily_points : null, weeklyPoints: config.usageLimitsEnabled ? p.weekly_points : null, pointsCost: p.points_cost })),
       checkoutAvailable: channels.some(channel => channel.configured), channels,
       pendingOrder: pending ? { orderId: pending.id, ...JSON.parse(String(pending.checkout)) } : null,
     });

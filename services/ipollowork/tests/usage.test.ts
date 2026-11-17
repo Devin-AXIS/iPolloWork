@@ -34,7 +34,8 @@ test('daily and weekly caps reject before calling a provider and replay never sp
     await app.store.run('INSERT INTO entitlements(order_id,user_id,plan_id,starts_at,expires_at) VALUES(?,?,?, ?,?)', order, user.id, 'limits', Date.now()-1000, Date.now()+86400000);
     await app.store.transaction(() => ledgerEntry(app.store, user.id, 100, 'usage-fixture', 'Fixture'));
     let calls = 0;
-    const executor = new ExecutionService(app.store, app.settings, async () => { calls++; return Response.json({ ok: true }); });
+    const fetcher = async () => { calls++; return Response.json({ ok: true }); };
+    const executor = new ExecutionService(app.store, app.settings, fetcher, false, 480, true);
     await executor.save(actor, { id: 'budget', title: 'Budget', provider: 'fixture', keyId: 'budget', key: 'fixture-key', baseUrl: 'https://example.test', enabled: true, capabilities: ['chat'], routes: [{ method: 'POST', path: '/call', points: 4 }] });
     const request = () => ({ requestId: randomUUID(), method: 'POST', path: '/call', contentType: 'application/json', body: Buffer.from('{}').toString('base64') });
     const first = request();
@@ -49,7 +50,22 @@ test('daily and weekly caps reject before calling a provider and replay never sp
     await (await executor.invoke(actor, 'budget', first)).text();
     assert.equal(calls, 3);
     assert.equal((await wallet(app.store, user.id)).balance, 88);
-    assert.equal((await accountUsage(app.store, user.id, 480)).weekly.remaining, 0);
+    assert.equal((await accountUsage(app.store, user.id, 480, Date.now(), true)).weekly.remaining, 0);
+    // Default policy pauses existing caps while preserving billing and replay protection.
+    const uncapped = new ExecutionService(app.store, app.settings, fetcher);
+    await (await uncapped.invoke(actor, 'budget', request())).text();
+    const usage = await accountUsage(app.store, user.id, 480);
+    assert.equal(usage.daily.limit, null);
+    assert.equal(usage.weekly.limit, null);
+    assert.equal(usage.weekly.remaining, null);
+    assert.equal(usage.weekly.used, 16);
+    assert.equal((await wallet(app.store, user.id)).balance, 84);
+    await (await uncapped.invoke(actor, 'budget', first)).text();
+    assert.equal(calls, 4);
+    assert.equal((await wallet(app.store, user.id)).balance, 84);
+    await app.store.transaction(() => ledgerEntry(app.store, user.id, -84, 'empty-fixture', 'Fixture'));
+    await assert.rejects(uncapped.invoke(actor, 'budget', request()), { code: 'INSUFFICIENT_POINTS' });
+    assert.equal(calls, 4);
     await app.store.run('UPDATE entitlements SET revoked_at=? WHERE order_id=?', Date.now(), order);
     assert.equal((await accountUsage(app.store, user.id, 480)).daily.limit, null);
   } finally { await app.close(); await rm(dir, { recursive: true, force: true }); }
@@ -108,8 +124,8 @@ test('membership API exposes only the signed-in account and refuses unconfigured
     assert.equal(edited.status, 200);
     const dashboard = await app.app.request(config.origin+'/api/v1/me/membership', { headers });
     assert.equal(dashboard.status, 200);
-    const data = await dashboard.json() as { plans: { id: string; dailyPoints: number }[]; checkoutAvailable: boolean; memberships: unknown[] };
-    assert.equal(data.plans.find(p => p.id === plan.id)?.dailyPoints, 100);
+    const data = await dashboard.json() as { plans: { id: string; dailyPoints: number | null }[]; checkoutAvailable: boolean; memberships: unknown[] };
+    assert.equal(data.plans.find(p => p.id === plan.id)?.dailyPoints, null);
     assert.equal(data.checkoutAvailable, false);
     assert.deepEqual(data.memberships, []);
     assert.equal((await app.app.request(config.origin+'/api/v1/me/membership')).status, 401);

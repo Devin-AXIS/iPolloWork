@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { FsTargetKey, FsVersion } from "@deepseek-ai/dsh-fs";
 import {
   ProjectArchive,
@@ -13,7 +13,8 @@ import { linkProject } from "../src/host/project-context.ts";
 import { AccountService } from "../src/host/account.ts";
 import { resolveConfig } from "../src/host/config.ts";
 
-test("native deliveries stream in bounded ranges, retry safely and release with the suite", async () => {
+for (const legacy of [false, true]) test(`native deliveries stream in bounded ranges, retry safely and release with the suite${legacy ? " across the official domain migration" : ""}`, async () => {
+  const origin = legacy ? "https://cloud.ipollo.net" : "https://account.test";
   const dir = await mkdtemp(join(tmpdir(), "ipw-native-archive-"));
   const content = new Uint8Array(2_200_000).fill(65),
     reads: number[] = [],
@@ -36,8 +37,10 @@ test("native deliveries stream in bounded ranges, retry safely and release with 
         targetKey: FsTargetKey(resolve(options?.cwd ?? dir, path)),
         displayPath: path,
       }),
-      contains: (parent, child) =>
-        child.targetKey.startsWith(parent.targetKey + "/"),
+      contains: (parent, child) => {
+        const path = relative(parent.targetKey, child.targetKey);
+        return path !== ".." && !path.startsWith(".." + sep) && !isAbsolute(path);
+      },
       processPath: (target) => target.targetKey,
       stat: async () => ({
         type: "file",
@@ -57,16 +60,17 @@ test("native deliveries stream in bounded ranges, retry safely and release with 
         kind: "grant",
         payload: {
           version: 1,
-          origin: "https://account.test",
+          origin,
           token: "private-fixture",
         },
       }),
       modifyRecord: async () => {},
       deleteRecord: async () => {},
     },
-    resolveConfig({ accountOrigin: "https://account.test" }),
+    resolveConfig({ accountOrigin: origin }),
     new AbortController().signal,
     async (url, options) => {
+      assert.equal(new URL(String(url)).origin, origin);
       if (String(url).endsWith("/artifacts"))
         return Response.json({ policy: { outputs: true } });
       if (reject)
@@ -87,7 +91,7 @@ test("native deliveries stream in bounded ranges, retry safely and release with 
   const archive = new ProjectArchive(
     ctx,
     account,
-    "https://account.test",
+    origin,
     5_000_000,
     100,
   );
@@ -105,7 +109,7 @@ test("native deliveries stream in bounded ranges, retry safely and release with 
     },
   };
   try {
-    await linkProject(dir, "https://account.test", "project");
+    await linkProject(dir, legacy ? "https://work.ipollo.net" : origin, "project");
     observe(session, event);
     await archive.settled();
     assert.equal(archive.status("project")[0]?.state, "failed");

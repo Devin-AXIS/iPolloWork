@@ -1,3 +1,4 @@
+import { discoverMarket } from './market-discovery.ts';
 import type {} from './cloud/index.ts';
 import { z as cloudSchema } from 'zod';
 import { mountEnterpriseActivity } from "./enterprise-activity.ts";
@@ -12,7 +13,7 @@ import { pipeline } from "node:stream/promises";
 import semver from "semver";
 import { ZodError } from "zod";
 import packageInfo from "../../package.json" with { type: "json" };
-import type { CredentialStore } from "../shared/types.ts";
+import type { MarketEntry, CredentialStore } from "../shared/types.ts";
 import { membershipSchema, membershipOrderSchema, membershipCheckoutSchema } from "../shared/membership.ts";
 import { initializeAccountModel } from "./default-model.ts";
 import { mountServiceModels } from "./service-models.ts";
@@ -86,6 +87,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
   provide?(name: "ipolloData", value: IpolloData): void;
+  provide?(name: "ipolloStage", value: import('../shared/stage.ts').StageBridge): void;
   get?(name: "ipolloCloud"): unknown;
   get?(name: "liveshareShares"): NativeSharing | undefined;
   on(
@@ -253,6 +255,17 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   const lifetime = new AbortController();
   ctx.effect(() => () => lifetime.abort(), "ipollowork-suite: requests");
   const account = new AccountService(ctx.credentials, config, lifetime.signal);
+  if (config.account) ctx.provide?.("ipolloStage", {
+    request: async (action: string, input?: unknown, signal?: AbortSignal) => {
+      const paths = new Set(["status", "connect", "disconnect", "launch", "catalog", "document", "generate", "export", "task", "source"]);
+      if (!paths.has(action)) throw new SuiteError("IPW_INVALID_INPUT", 400);
+      return account.request("/api/v1/stage/" + action, input, action === "status" ? "GET" : "POST", signal,{timeoutMs:config.uploadTimeoutMs,maximum:12*1024*1024});
+    },
+    download:async(id:string,signal?:AbortSignal)=>{
+      if(!/^[a-f0-9]{32}$/.test(id))throw new SuiteError('IPW_INVALID_INPUT',400);
+      return account.transfer('/api/v1/stage/download/'+id,undefined,signal);
+    },
+  });
   ctx.inject?.(["tools", "sandboxPolicy"], scope => mountCapabilityTools(scope, account, config.uploadTimeoutMs));
   let refreshModels = async () => {};
   let refreshSkills = async () => {};
@@ -431,15 +444,41 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               });
               return;
             }
+            if (request.method === "POST" && path === "/catalog/discover" && config.market) {
+              const permission = cloudSchema.object({ canManage: cloudSchema.boolean() }).parse(await account.request('/api/v1/market/manage'));
+              if (!permission.canManage) throw new SuiteError('ADMIN_REQUIRED', 403);
+              const input = cloudSchema.object({ source: cloudSchema.string().trim().min(1).max(2048), language: cloudSchema.enum(['zh', 'en']).default('en') }).strict().parse(await body(request));
+              const entries = await discoverMarket(input.source, join(ctx.profileContext.home, 'cache', 'ipollowork-market-discovery'), input.language, runtimeVersion, lifetime.signal);
+              json(response, 200, { entries });
+              return;
+            }
+            if (request.method === "POST" && path === "/catalog/plugins" && config.market) {
+              const permission = cloudSchema.object({ canManage: cloudSchema.boolean() }).parse(await account.request('/api/v1/market/manage'));
+              if (!permission.canManage) throw new SuiteError('ADMIN_REQUIRED', 403);
+              // The account service checks permission again when persisting the validated entry.
+              const entry = await body(request, 65536) as MarketEntry;
+              if (!entry.description?.trim()) delete entry.description;
+              if (!entry.author?.trim()) delete entry.author;
+              const base = JSON.parse(await readFile(config.catalogPath, 'utf8'));
+              if (base.plugins.some((plugin: { name: string }) => plugin.name === entry.name)) throw new SuiteError('MARKET_DUPLICATE', 409);
+              const { parseMarketIndex } = await import('@deepseek-ai/dsh-plugin-market-index');
+              try { parseMarketIndex({ ...base, plugins: [entry] }, 'https://catalog.ipollowork.invalid/index.json'); }
+              catch { throw new SuiteError('IPW_INVALID_CATALOG', 400); }
+              json(response, 201, await account.request('/api/v1/market/plugins', entry));
+              return;
+            }
             if (
               request.method === "GET" &&
               path === "/catalog" &&
               config.market
             ) {
-              json(
-                response,
-                200,
-                await readMarket(
+              const [catalog, permission] = await Promise.all([
+                account.marketCatalog().catch(() => ({ plugins: [] })),
+                account.request('/api/v1/market/manage', undefined, undefined, AbortSignal.timeout(3000)).catch(() => ({ canManage: false })),
+              ]);
+              const curated = cloudSchema.object({ plugins: cloudSchema.array(cloudSchema.unknown()).max(200) }).parse(catalog);
+              const canManage = cloudSchema.object({ canManage: cloudSchema.boolean() }).parse(permission).canManage;
+              const state = await readMarket(
                   config.catalogPath,
                   ctx.pluginManager,
                   runtimeVersion,
@@ -447,8 +486,9 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                   config.maxResponseBytes,
                   join(ctx.profileContext.home, "cache", "ipollowork-market"),
                   config.dedicatedDesktop,
-                ),
-              );
+                  curated.plugins,
+                );
+              json(response, 200, { ...state, canManage });
               return;
             }
             if (request.method === "GET" && path === "/services") {

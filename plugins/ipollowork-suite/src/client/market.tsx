@@ -1,7 +1,8 @@
+import { MarketAdd } from './market-add.tsx'
 /** Native plugin-page tab. Installation and component management stay with DSH. */
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import { PluginArtworkDefault } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { MarketItem, MarketState } from '../shared/types.ts'
+import type { MarketEntry, MarketItem, MarketState } from '../shared/types.ts'
 import type { Labels } from './locale.ts'
 import type { MarketProps } from './native.ts'
 import { installPending, type MarketInstallation } from './market-installation.ts'
@@ -11,14 +12,17 @@ export interface MarketPanelProps extends MarketProps {
   useLabels<T>(selector: (value: Labels) => T): T
   load(signal: AbortSignal): Promise<MarketState>
   installation: MarketInstallation
+  discover?(source: string): Promise<MarketEntry[]>
+  add?(entry: MarketEntry): Promise<void>
 }
 
-export function MarketPanel({ useLabels, load, installation, openPackage }: MarketPanelProps) {
+export function MarketPanel({ useLabels, load, installation, openPackage, add, discover }: MarketPanelProps) {
   const t = useLabels(value => value)
   const { task, revision } = useSyncExternalStore(installation.subscribe, installation.getSnapshot)
   const [catalog, setCatalog] = useState<{ data: MarketState; revision: number } | null>(null)
   const data = catalog?.data
   const [error, setError] = useState(false)
+  const [adding, setAdding] = useState(false)
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
@@ -28,6 +32,10 @@ export function MarketPanel({ useLabels, load, installation, openPackage }: Mark
   const detailTitle = useRef<HTMLHeadingElement>(null)
   const returnFocus = useRef<string | null>(null)
   const cardButtons = useRef(new Map<string, HTMLButtonElement>())
+  useEffect(() => {
+    window.addEventListener('focus', installation.invalidate)
+    return () => window.removeEventListener('focus', installation.invalidate)
+  }, [installation])
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
@@ -69,7 +77,13 @@ export function MarketPanel({ useLabels, load, installation, openPackage }: Mark
     {selected ? <PluginDetailPage item={selected} t={t} titleRef={detailTitle}
       onBack={() => setSelectedName(null)} action={action(selected)} onOpenComponents={() => openPackage(selected.name)}/>
       : <>
-      <div className={css.heading}><div><h1>{t.market}</h1><p>{t.intro}</p></div><button className={css.secondary} onClick={installation.invalidate} disabled={loading}>{t.refresh}</button></div>
+      <div className={css.heading}>
+        <div><h1>{t.market}</h1><p>{t.intro}</p></div>
+        <div className={css.marketAdminActions}>
+          <button className={css.secondary} onClick={installation.invalidate} disabled={loading}>{t.refresh}</button>
+          {data?.canManage && !enterprise && add && discover && <button className={css.primary} onClick={() => setAdding(true)}>{t.marketAdd}</button>}
+        </div>
+      </div>
       <div className={css.toolbar}>
         <div className={css.segmented} role="group" aria-label={t.market}>
           <button aria-pressed={!enterprise} onClick={() => setEnterprise(false)}>{t.public}</button><button aria-pressed={enterprise} onClick={() => setEnterprise(true)}>{t.enterprise}</button>
@@ -97,6 +111,7 @@ export function MarketPanel({ useLabels, load, installation, openPackage }: Mark
         {!items.length && !error && <p className={css.empty}>{t.empty}</p>}
       </div>}
     </>}
+    {adding && data?.canManage && add && discover && <MarketAdd t={t} discover={discover} close={() => setAdding(false)} save={async entry => { await add(entry); installation.invalidate() }}/>}
   </section>
 }
 

@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-stage
+      name: '@ipollo/dsh-stage'

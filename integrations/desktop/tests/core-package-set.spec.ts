@@ -64,7 +64,7 @@ describe('desktop core package set', () => {
     const release = { schemaVersion: 1 as const, version: '1.2.3', hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION, nodeVersion: '24.15.0', pnpmVersion: '11.28.5' }
     createRuntimeProjectMetadata(root, release)
     const workspace = join(root, 'pnpm-workspace.yaml')
-    expect(readFileSync(workspace, 'utf8')).toContain('esbuild@0.25.12')
+    expect(readFileSync(workspace, 'utf8')).not.toContain('esbuild@0.25.12')
     const body = Buffer.from('studio')
     const studio = record('deepseek-idesign', 'design.tgz', body, '1.0.0-beta.20.ipollo.1')
     writeFileSync(join(root, DESKTOP_PACKAGES_DIR, studio.file), body)

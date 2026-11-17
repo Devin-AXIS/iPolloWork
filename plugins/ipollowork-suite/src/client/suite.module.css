@@ -677,3 +677,24 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .analyticsPages { display:flex;align-items:center;justify-content:flex-end;gap:12px;font-size:12px; }
 
 .currentVersion { padding: 16px 0; color: var(--dsw-alias-label-primary); font-size: 14px; line-height: 22px; overflow-wrap: anywhere; }
+
+/* Administrator-only market form; ordinary catalog layout is unchanged. */
+.marketAdminActions { display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap; }
+.marketDialog { width:min(640px,100%);max-height:100%;margin:0;padding:0 0 24px; }
+.marketDialogContent { min-height:0;overflow:auto;overscroll-behavior:contain;flex:1 1 auto; }
+.marketDialog > :last-child { flex-shrink:0; }
+.marketForm fieldset { display:grid;grid-template-columns:1fr 1fr;gap:14px;border:0;padding:0;margin:0 0 16px;min-width:0; }
+.marketForm label { display:flex;flex-direction:column;gap:6px;font-size:13px;min-width:0; }
+.marketForm input,.marketForm select,.marketForm textarea { box-sizing:border-box;width:100%;min-width:0; }
+.marketForm textarea { font:inherit;color:inherit;background:var(--ipw-muted-surface,var(--dsw-alias-bg-base));border:0;border-radius:8px;padding:9px 12px;resize:vertical; }
+.marketWide { grid-column:1 / -1; }
+@media (max-width:480px) { .marketForm fieldset { grid-template-columns:1fr; }.marketDialog { max-height:100%; } }
+
+.marketForm > label { display:flex;flex-direction:column;gap:8px; }
+.marketForm details { margin-top:16px; }
+.marketForm summary { cursor:pointer;font-size:13px;color:var(--ipw-muted);margin-bottom:12px; }
+.marketImportSource { display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px; }
+.marketImportSource button { flex-shrink:0;white-space:nowrap; }
+.marketImportSource span { min-width:0;overflow-wrap:anywhere;font-size:12px;color:var(--ipw-muted); }
+.marketImportPreview { padding:16px 0 4px; }
+.marketImportPreview .cardMeta { overflow-wrap:anywhere; }

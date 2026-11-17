@@ -1,0 +1,3 @@
+iPolloWork Operation Recorder — migrated from ipollowork-operation-recorder-plugin 0.3.0.
+Copyright iPolloWork contributors. See LICENSE.
+Native dependency notices: native/THIRD-PARTY-NOTICES.txt (copied into the distribution).

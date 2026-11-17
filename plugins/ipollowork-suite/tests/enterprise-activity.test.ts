@@ -8,7 +8,8 @@ import { resolveConfig } from '../src/host/config.ts';
 import { linkProject } from '../src/host/project-context.ts';
 import { mountEnterpriseActivity, type ActivityScope } from '../src/host/enterprise-activity.ts';
 
-test('enterprise activity reports bounded metadata and detaches without leaking arguments or results', {timeout:10000}, async () => {
+for (const legacy of [false, true]) test(`enterprise activity reports bounded metadata and detaches without leaking arguments or results${legacy ? ' across the official domain migration' : ''}`, {timeout:10000}, async () => {
+  const origin = legacy ? 'https://cloud.ipollo.net' : 'https://account.test';
   const dir = await mkdtemp(join(tmpdir(), 'ipw-activity-'));
   const sent: unknown[] = [];
   let reported: () => void = () => {};
@@ -21,19 +22,19 @@ test('enterprise activity reports bounded metadata and detaches without leaking 
     logger: { warn: () => {} },
   };
   const account = new AccountService({
-    readRecord: async () => ({kind: 'grant', payload: {version: 1, origin: 'https://account.test', token: 'private-fixture'}}),
+    readRecord: async () => ({kind: 'grant', payload: {version: 1, origin, token: 'private-fixture'}}),
     modifyRecord: async () => {}, deleteRecord: async () => {},
-  }, resolveConfig({accountOrigin: 'https://account.test'}), new AbortController().signal, async (url, init) => {
+  }, resolveConfig({accountOrigin: origin}), new AbortController().signal, async (url, init) => {
     if (String(url).endsWith('/get-session')) return Response.json({user:{id:'me',name:'Me',email:'me@example.test'}});
     if (String(url).endsWith('/me/summary')) return Response.json({points:{balance:0}});
-    assert.equal(String(url), 'https://account.test/api/v1/projects/project/activity');
+    assert.equal(String(url), origin + '/api/v1/projects/project/activity');
     sent.push(JSON.parse(String(init?.body)));
     reported();
     return Response.json({recorded: true});
   });
   try {
-    await linkProject(dir, 'https://account.test', 'project');
-    mountEnterpriseActivity(scope, account, 'https://account.test', 2);
+    await linkProject(dir, legacy ? 'https://work.ipollo.net' : origin, 'project');
+    mountEnterpriseActivity(scope, account, origin, 2);
     const exec = { name: 'skill', arguments: {name: 'research', secret: 'do-not-send'}, callId: 'c1', agent: {session: {id: 's1', header: {cwd: dir}}} };
     handler(exec, {isError: false});
     await report;

@@ -10,3 +10,7 @@ export class AppDataRejection extends SuiteError {
     this.message = `${code}: ${reason}`
   }
 }
+/** Stage returns validated, account-owned explanations rather than provider diagnostics. */
+export class StageRejection extends SuiteError {
+  constructor(code:string,status:number,readonly reason:string){super(code,status);this.message=`${code}: ${reason}`;}
+}

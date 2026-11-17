@@ -1,3 +1,6 @@
+import { mountMarket } from './market.js';
+import { StageService, validateStageSettings } from './stage.js';
+import { OrganizationMembers } from "./organization-members.js";
 import { AppDataFiles } from './app-data-files.js';
 import { CloudProjects, cloudGrantAllows, mountCloudProjects } from './cloud-projects.js';
 import { ExecutionService, mountExecution } from "./execution.js";
@@ -37,6 +40,7 @@ import { mountEnterpriseAnalytics } from "./enterprise-analytics.js";
 import { mountAppData } from "./app-data-http.js";
 
 export const settingFields: Record<string, readonly string[]> = {
+  stage: ["enabled", "origin", "rates"],
   cloud: ["enabled", "gatewayOrigin", "gatewayKey", "ttlSeconds", "grantTtlSeconds", "leaseGraceSeconds"],
   stripe: ["secretKey", "webhookSecret"],
   alipay: ["appId", "sellerId", "privateKey", "publicKey", "sandbox"],
@@ -78,10 +82,12 @@ export async function createService(config: Config) {
         ? new AppData(dataStore, store, config.appData, config.origin, { secret: config.secret, publicationOrigin: config.publicationOrigin })
         : undefined;
     const settings = new Settings(store, config.secret);
+    const organizationMembers = new OrganizationMembers(store, settings, config.origin);
     const cloud = new CloudProjects(store, settings, config);
     const storage = new Storage(store, settings, config);
     const appFiles=appData?new AppDataFiles(store,appData,storage,config.storageCleanupIntervalMs):undefined;
     const app: App = new Hono();
+    const stage = new StageService(store, settings, config.origin);
     const relay = new LiveshareRelay(store, config);
     const accountHeaders = secureHeaders({
       contentSecurityPolicy: {
@@ -153,6 +159,7 @@ export async function createService(config: Config) {
         database: "postgresql",
       }),
     );
+    stage.mountPublic(app);
     app.get("/.well-known/ipollowork", (c) =>
       c.json({
         service: "ipollowork-services",
@@ -244,6 +251,8 @@ export async function createService(config: Config) {
           await relay.refresh();
       }
     });
+    mountMarket(app, store, settings);
+    stage.mount(app);
     const summary = async (userId: string) => ({
       points: await wallet(store, userId),
       entitlements: await store.all(
@@ -389,6 +398,7 @@ export async function createService(config: Config) {
         Object.entries(input).filter(([, v]) => v !== "••••••••"),
       );
       await store.transaction(async () => {
+        if(group==='stage')validateStageSettings({...await settings.get(group),...values});
         await settings.set(group, values);
         await audit(store, actor, "settings.update", group);
       });
@@ -402,6 +412,7 @@ export async function createService(config: Config) {
         new URL(config.origin).hostname,
       ),
       config.usageUtcOffsetMinutes,
+      config.usageLimitsEnabled,
     );
     await execution.recover();
     mountExecution(app, execution);
@@ -409,7 +420,9 @@ export async function createService(config: Config) {
     mountAccessKeys(app, auth);
     mountEnterpriseAssets(app, store, storage, config);
     mountEnterpriseMcp(app, store, settings, config.secret);
-    mountEnterprise(app, store, config, cloud);
+    mountEnterprise(app, store, config, cloud, organizationMembers);
+    organizationMembers.mount(app);
+    organizationMembers.start();
     mountCloudProjects(app, cloud);
     mountEnterpriseAnalytics(app, store);
     mountProjectSpace(app, store, storage, config);
@@ -434,6 +447,7 @@ export async function createService(config: Config) {
     app.get("*", serveStatic({ root: webRoot, path: "index.html" }));
     appFiles?.start();
     storage.start();
+    stage.start();
     appData?.start();
     return {
       app,
@@ -445,6 +459,8 @@ export async function createService(config: Config) {
       appData,
       appFiles,
       close: async () => {
+        await stage.close();
+        await organizationMembers.close();
         await appFiles?.close();
         await storage.close();
         await relay.close();

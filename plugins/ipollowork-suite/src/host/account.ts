@@ -5,7 +5,7 @@ import type {
   CredentialStore,
 } from "../shared/types.ts";
 import type { ResolvedConfig } from "./config.ts";
-import { AppDataRejection, SuiteError } from "./errors.ts";
+import { AppDataRejection, StageRejection, SuiteError } from "./errors.ts";
 
 const KEY = "ipollowork-suite/account";
 type Grant = { version: 1; origin: string; token: string };
@@ -79,6 +79,7 @@ export class AccountService {
     method?: string,
     signal?: AbortSignal,
     timeoutMs = this.config.requestTimeoutMs,
+    maximum=this.config.maxResponseBytes,
   ): Promise<unknown> {
     let response: Response;
     try {
@@ -103,7 +104,7 @@ export class AccountService {
     }
     if (!response.ok) {
       if (path.startsWith("/api/data/v1/")) {
-        const data = await readJson(response, this.config.maxResponseBytes);
+        const data = await readJson(response, maximum);
         const code =
           object(data) && typeof data.code === "string" && /^[A-Z_]+$/.test(data.code)
             ? data.code
@@ -115,13 +116,14 @@ export class AccountService {
         throw new AppDataRejection(code, response.status, reason);
       }
       if (path.startsWith("/api/v1/")) {
-        const data = await readJson(response, this.config.maxResponseBytes);
+        const data = await readJson(response, maximum);
         const code =
           object(data) &&
           typeof data.code === "string" &&
           /^[A-Z_]+$/.test(data.code)
             ? data.code
             : "IPW_ACCOUNT_UNAVAILABLE";
+        if(path.startsWith('/api/v1/stage/')&&object(data)&&typeof data.error==='string')throw new StageRejection(code,response.status,data.error.slice(0,500));
         throw new SuiteError(code, response.status);
       }
       await response.body?.cancel();
@@ -137,7 +139,11 @@ export class AccountService {
         response.status === 401 || response.status === 403 ? 401 : 502,
       );
     }
-    return readJson(response, this.config.maxResponseBytes);
+    return readJson(response, maximum);
+  }
+  /** Public discovery metadata; no credential is sent. */
+  async marketCatalog(): Promise<unknown> {
+    return this.send('/api/market/catalog', undefined, undefined, undefined, undefined, 3000);
   }
   /** Call an account-owned business endpoint with the saved, origin-bound grant; `signal` cancels only this call. */
   async request(
@@ -145,10 +151,15 @@ export class AccountService {
     body?: unknown,
     method?: string,
     signal?: AbortSignal,
+    options?:{timeoutMs?:number;maximum?:number},
   ): Promise<unknown> {
+    const revision=this.revision;
     const grant = await this.grant();
+    if(revision!==this.revision)throw new SuiteError("IPW_ACCOUNT_CHANGED",409);
     if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
-    return this.send(path, grant.token, body, method, signal);
+    const result=await this.send(path, grant.token, body, method, signal,options?.timeoutMs,options?.maximum);
+    if(revision!==this.revision)throw new SuiteError('IPW_ACCOUNT_CHANGED',409);
+    return result;
   }
   /** Forward the native MCP transport through the member's account grant. */
   async connectEnterpriseMcp(
@@ -280,7 +291,7 @@ export class AccountService {
     return value;
   }
   /** Transfer selected files through the Host; credentials never reach the browser. */
-  async transfer(path: string, form?: FormData): Promise<Response> {
+  async transfer(path: string, form?: FormData, signal?:AbortSignal): Promise<Response> {
     const revision = this.revision;
     const grant = await this.grant();
     if (revision !== this.revision)
@@ -293,9 +304,11 @@ export class AccountService {
       signal: AbortSignal.any([
         this.signal,
         AbortSignal.timeout(this.config.uploadTimeoutMs),
+        ...(signal?[signal]:[]),
       ]),
       ...(form ? { body: form } : {}),
     });
+    if(revision!==this.revision){await response.body?.cancel();throw new SuiteError("IPW_ACCOUNT_CHANGED",409);}
     if (!response.ok) {
       await response.body?.cancel();
       throw new SuiteError("IPW_FILE_TRANSFER_FAILED", response.status);
@@ -307,6 +320,7 @@ export class AccountService {
     id: string,
     input: unknown,
     signal: AbortSignal,
+    projectId?: string,
   ): Promise<Response> {
     const revision = this.revision;
     const grant = await this.grant();
@@ -324,6 +338,7 @@ export class AccountService {
         headers: {
           Authorization: "Bearer " + grant.token,
           "Content-Type": "application/json",
+          ...(projectId ? { "X-iPollo-Project": projectId } : {}),
         },
         body: JSON.stringify(input),
         signal: AbortSignal.any([this.signal, signal]),

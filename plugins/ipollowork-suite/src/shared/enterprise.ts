@@ -225,10 +225,11 @@ export interface EnterpriseModelEntry {
 }
 /** An enterprise-owned model connection; the key never leaves the account service. */
 export interface EnterpriseModel {
+  credentialMode?: "shared" | "member" | undefined;
   category?: ServiceCategory | undefined;
   vendor?: string | undefined;
   routes?:
-    | { method: "GET" | "POST"; path: string; points: number; jobField?:string|undefined; jobResultField?:string|undefined }[]
+    | { method: "GET" | "POST"; path: string; points: number; base?: "service" | "origin" | undefined; origin?: string | undefined; jobField?:string|undefined; jobResultField?:string|undefined }[]
     | undefined;
   id: string;
   title: string;

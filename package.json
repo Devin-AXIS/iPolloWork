@@ -1,13 +1,12 @@
 {
   "name": "@ipollo/work",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.5",
   "engines": {
     "node": ">=24.9.0"
   },
-
   "scripts": {
     "setup": "node integrations/tooling/setup.mjs",
     "setup:build": "node integrations/tooling/setup.mjs --build --plugins",
