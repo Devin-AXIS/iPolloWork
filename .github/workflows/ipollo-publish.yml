@@ -6,6 +6,10 @@ on:
       release_tag:
         description: Complete numeric draft release, for example v1.0.3
         required: true
+      mirror:
+        description: Also dispatch synchronization to configured mainland storage
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -37,7 +41,6 @@ jobs:
         run: |
           mkdir release-assets
           gh release download "$RELEASE_TAG" --dir release-assets
-          node integrations/tooling/release-mirror.mjs manifest release.json release-assets
           node integrations/tooling/release-publication.mjs prepare release.json release-assets
       - name: Attach verified update feeds and checksums
         run: gh release upload "$RELEASE_TAG" release-assets/stable-mac.yml release-assets/stable.yml release-assets/IPOLLO-SHA256SUMS.txt --clobber
@@ -53,4 +56,5 @@ jobs:
             gh release edit "$previous" --latest
           fi
       - name: Synchronize exact release bytes to the mainland mirror
+        if: inputs.mirror
         run: gh workflow run release-mirror.yml --ref main -f "release_tag=$RELEASE_TAG" -f publish_draft=false

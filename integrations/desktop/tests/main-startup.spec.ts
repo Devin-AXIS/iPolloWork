@@ -536,6 +536,27 @@ describe('desktop main startup', () => {
     expect(await invoke(DESKTOP_IPC.updatesChannelGet, 'app')).toMatchObject({ channel: 'stable' })
   })
 
+  it('uses stable for an official installer even with a saved nightly preference', async () => {
+    configureTestAuthPopup(false)
+    const path = join(harness.app.getPath('userData'), 'desktop', 'settings.json')
+    const saved = '{"updates":{"channel":"nightly","allowTestAuthPopupWindow":false}}'
+    writeFileSync(path, saved)
+    const resourcesPath = join(harness.app.getPath('userData'), 'resources')
+    mkdirSync(resourcesPath)
+    writeFileSync(join(resourcesPath, 'app-update.yml'),
+      'provider: generic\nurl: https://github.com/Devin-AXIS/iPolloWork/releases/latest/download/\nchannel: stable\n')
+    vi.stubGlobal('process', { ...process, resourcesPath })
+    await readyForUpdate()
+    const state = { channel: 'stable', packagedChannel: 'stable', changing: false }
+    expect(await invoke(DESKTOP_IPC.updatesChannelGet, 'app')).toEqual(state)
+    expect(harness.windows[0]!.options.webPreferences?.additionalArguments).toContain('--ipollo-fixed-update-channel')
+    expect(await invoke(DESKTOP_IPC.updatesChannelSet, 'app', 'nightly')).toEqual({ kind: 'failed', reason: 'apply', state })
+    expect(await invoke(DESKTOP_IPC.updatesChannelSet, 'app', 'stable')).toEqual({ kind: 'unchanged', state })
+    expect(readFileSync(path, 'utf8')).toBe(saved)
+    await invoke(DESKTOP_IPC.updatesOpen, 'app')
+    expect(harness.updateCheck).toHaveBeenCalledWith(true)
+  })
+
   it('reports a corrupt document without replacing it or pretending a UI save succeeded', async () => {
     await readyForUpdate()
     const path = join(harness.app.getPath('userData'), 'desktop', 'settings.json')
@@ -1390,6 +1411,7 @@ describe('desktop main startup', () => {
     expect(window.setTitleBarOverlay).toHaveBeenLastCalledWith({ color: '#fff', symbolColor: '#000' })
     expect(harness.handlers.has('dsh-desktop:windows-menu')).toBe(false)
     const version = harness.handlers.get(DESKTOP_IPC.appVersion)!
+    expect(window.options.webPreferences?.additionalArguments).toContain(`--ipollo-app-version=${harness.app.getVersion()}`)
     expect(version(event)).toBe(harness.app.getVersion())
     expect(() => version({ ...event, sender: {} })).toThrow('unowned renderer')
   })

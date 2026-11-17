@@ -194,6 +194,15 @@ type CallRow = Row & {
   response_type: string | null;
   response_body: string | null;
 };
+
+function isBase64Body(value: string): boolean {
+  if (value.length % 4 !== 0) return false;
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  // Scan the alphabet once. A repeated four-character group can exhaust the
+  // regex stack well below the request limit when chat history includes images.
+  return !/[^A-Za-z0-9+/]/.test(value.slice(0, value.length - padding));
+}
+
 const requestSchema = z
   .object({
     requestId: z.uuid(),
@@ -201,8 +210,8 @@ const requestSchema = z
     method: z.enum(["GET", "POST"]),
     body: z
       .string()
-      .max(24 * 1024 * 1024)
-      .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)
+      .max(24 * 1024 * 1024, { abort: true })
+      .refine(isBase64Body, "Expected standard Base64")
       .optional(),
     destination: z.url().optional(),
     headers: z.record(z.enum(["accept", "mcp-session-id", "mcp-protocol-version", "last-event-id"]), z.string().max(2048).refine(v => !/[\r\n]/.test(v))).optional(),

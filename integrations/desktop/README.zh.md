@@ -8,11 +8,11 @@
 
 DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源码版本构建，不修改 `packages/` 或 `apps/`。同版本号的 npm 发布包早于源码中的认证 API，因此不能混入桌面版。沿用官方 ASAR 布局：JavaScript 和资源位于 `app.asar/dsh`，仅原生可执行文件及需要物理路径的资源放在归档外。CLI、Host 和运行验证使用同一布局。
 
-在仓库根目录执行 `npm run setup:build`，然后运行 `node integrations/desktop/run.mjs package-target.ts mac-arm64 --dir --unsigned`。输出位于 `.desktop-build/`。本包使用校验后的官方依赖缓存，不单独执行 npm 安装。正式签名发行还需配置对应平台的签名环境。
+本地生成未签名的 macOS 应用目录时，在仓库根目录执行 `node integrations/tooling/setup.mjs --plugins` 安装依赖，再运行 `node integrations/desktop/run.mjs package-target.ts mac-arm64 --dir --unsigned`。输出位于 `.desktop-build/`。正式签名发行还需配置对应平台的签名环境。
 
 不提供旧版 iPolloWork profile 转换或降级层。文件和账户凭据仍由配置的 DSH home 管理。`LICENSE` 保留原 DeepSeek Harness MIT 许可证；产品修改独立维护于本目录，不进入官方应用源码树。
 
-执行 `npm run setup:build` 和 `npm run build` 后，在对应平台的构建机上从仓库根目录运行以下命令，即可生成官网识别的安装包。
+在对应平台的构建机上，从仓库根目录执行 `node integrations/tooling/setup.mjs --plugins`，再运行下表命令。打包命令负责构建和验证固定版本的运行时及产品。
 
 | 目标 | 命令 | 官网识别的文件 |
 | --- | --- | --- |
@@ -21,17 +21,17 @@ DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源
 | macOS Intel | `npm run package:desktop:mac:x64` | `ipollowork-mac-x64-<版本>.dmg` |
 | Linux x64 | `npm run package:desktop:linux:x64` | `ipollowork-linux-x86_64-<版本>.AppImage` |
 
-官网安装包位于打包输出的 `website-installers/` 目录。将它和原有更新文件一起附加到对应版本的 GitHub Release。Windows 命令可附加 `-- --unsigned`，此时文件名保留 `-unsigned`。macOS 官方下载包须完成公证。Linux AppImage 使用当前固定版本的 iPollo 运行时，可独立分发，不接入桌面自动更新源。
+官网安装包位于打包输出的 `website-installers/` 目录。Windows 命令可附加 `-- --unsigned`，此时文件名保留 `-unsigned`。macOS 下载包须完成公证。Linux AppImage 使用当前固定版本的 iPollo 运行时，可独立分发。
 
 ## 产品版本
 
-当前产品发行版为 **iPollo 1.0.1**（安装包元数据为 `1.0.1`）。产品与桌面端清单使用相同版本；内置 DSH 运行时保留 `integrations/runtime/upstream.json` 中固定的版本。后续补丁版本依次使用 `1.0.1`、`1.0.2`，展示名称可写为 `1.0.01`、`1.0.02`。安装包元数据不得使用前导零，因为更新器要求标准语义化版本号。
+通用设置和关于界面显示 Electron 安装包版本。正式打包时，这个版本由发行标签决定。内置 DSH 运行时独立跟随 `integrations/runtime/upstream.json` 中固定的版本。
 
-Windows x64 未签名安装包通过 `.github/workflows/ipollo-release-packages.yml` 在 GitHub 托管的 Windows 构建机生成；工作流先验证打包后的运行时，再上传到已有发行版。
+在目标提交上建一个纯数字版本的草稿，例如 `v1.0.5`，然后运行 `ipollo-release-packages.yml`。工作流验证打包后的运行时，并为每个平台附上一份安装包，同时上传 macOS 更新 ZIP、blockmap 和 macOS 构建记录。运行 `ipollo-publish.yml` 校验文件、生成稳定版更新清单和校验和，再发布草稿。已配置国内存储时可开启镜像选项。
 
 iPollo 签名发行设置 `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` 和 `DSH_DESKTOP_UPDATE_CHANNEL=stable`。安装包中的更新器不得指向上游 DSH 下载服务；两个 Mac 架构共用包含各自 ZIP 条目的更新清单。
 
-Design 和 Video 由用户在插件市场按需安装。桌面主包仅包含套件和官方运行时依赖，不预装创作插件、不携带其安装压缩包或资源包依赖。专用桌面的插件市场仅在用户安装时从 GitHub 下载固定版本。设计和视频插件各自在自己的仓库构建、发版；客户端发行流程不得构建或发布它们的插件安装包。
+Design 和 Video 由用户在插件市场按需安装。套件携带经过校验的插件市场归档，供安装时使用。各插件在自己的源码仓库构建，桌面发行无需单独附加这些归档。
 
 macOS 打包前执行 `node integrations/desktop/run.mjs prepare-cua-helper.ts`，在固定上游源码目录外编译两个架构的官方电脑操作辅助程序并签名、公证；缺失辅助程序时禁止打包。桌面启动时，仅当独立目录缺少模型文件，才从共享 `~/.dsh` 缓存复用 SHA-256 校验通过的 SenseVoice 模型；不会覆盖已有模型。
 

@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os'
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { x, c } from 'tar'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { parseArgs } from 'node:util'
 import {
   readClientBuildRecord,
@@ -45,6 +46,14 @@ async function main(): Promise<void> {
   const staging = mkdtempSync(join(tmpdir(), 'ipollo-desktop-suite-'))
   try {
     await x({ file: suiteArchive, cwd: staging })
+    const catalog = join(staging, 'package/catalog')
+    const releases = JSON.parse(readFileSync(join(catalog, 'bundled-releases.json'), 'utf8')) as {
+      plugins: { file: string; sha256: string }[]
+    }
+    for (const { file, sha256 } of releases.plugins) {
+      const actual = createHash('sha256').update(readFileSync(join(catalog, 'packages', file))).digest('hex')
+      if (actual !== sha256) throw new Error(`desktop local pack: catalog archive checksum mismatch: ${file}`)
+    }
     const manifestPath = join(staging, 'package/package.json')
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
     for (const name of ['@ipollo/dsh-design-resources', '@ipollo/dsh-video-resources', 'deepseek-idesign', 'deepseek-ivideo']) {

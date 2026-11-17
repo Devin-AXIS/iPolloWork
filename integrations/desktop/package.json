@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/desktop",
   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "license": "SEE LICENSE IN LICENSE",
   "author": {

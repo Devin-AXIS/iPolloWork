@@ -6,7 +6,7 @@ import { reuseSpeechCache } from './speech-cache.ts'
 import { installFileActions } from './file-actions.ts'
 import { configurationFailure, channelSaveFailure, configurationMessage } from './update-configuration.ts'
 import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
-import { DesktopUpdateSettings } from './update-settings.ts'
+import { DesktopUpdateSettings, type DesktopUpdateSettingsResult } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
@@ -38,12 +38,12 @@ import { installDesktopFileDrag } from './file-drag.ts'
 import { installDesktopDirectoryPicker } from './directory-picker.ts'
 import { installMicrophonePermissions } from './microphone-permissions.ts'
 import { DesktopBackendController } from './backend-controller.ts'
-import { DESKTOP_IPC, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
+import { DESKTOP_FIXED_UPDATE_CHANNEL_ARGUMENT, DESKTOP_IPC, DESKTOP_VERSION_ARGUMENT, SCHEME, assertDesktopSender, type DesktopUpdateState } from './ipc.ts'
 import { readDeviceInfo } from './device-info.ts'
 import { desktopUpdateReadyConfirmation, formatDesktopMessage, resolveDesktopLocale, resolveDesktopStartupLocale } from './locale.ts'
 import type { DesktopMessages } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
-import { desktopUpdateChannel } from './update-channel.ts'
+import { desktopUpdateChannel, fixedDesktopUpdateChannel } from './update-channel.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
@@ -272,7 +272,7 @@ function platformLoginUrl(authorizeUrl: string): string {
   return url.href
 }
 
-function createWindow(preload: string, applicationIconPath: string): BrowserWindow {
+function createWindow(preload: string, applicationIconPath: string, fixedUpdateChannel: boolean): BrowserWindow {
   const window = new BrowserWindow({
     width: 1280,
     height: 820,
@@ -299,6 +299,10 @@ function createWindow(preload: string, applicationIconPath: string): BrowserWind
     } : {}),
     webPreferences: {
       preload,
+      additionalArguments: [
+        DESKTOP_VERSION_ARGUMENT + app.getVersion(),
+        ...(fixedUpdateChannel ? [DESKTOP_FIXED_UPDATE_CHANNEL_ARGUMENT] : []),
+      ],
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: true,
@@ -708,9 +712,16 @@ async function main(): Promise<void> {
   }
 
   const manifest: unknown = JSON.parse(await readFile(join(app.getAppPath(), 'package.json'), 'utf8'))
-  const packagedChannel = desktopUpdateChannel(manifest)
+  const defaultChannel = desktopUpdateChannel(manifest)
+  const fixedChannel = app.isPackaged
+    ? await fixedDesktopUpdateChannel(join(process.resourcesPath, 'app-update.yml'))
+    : undefined
+  const packagedChannel = fixedChannel ?? defaultChannel
   const channelSettings = new DesktopUpdateSettings(app.getPath('userData'), packagedChannel)
-  const initialChannel = await channelSettings.load()
+  const loadChannel = async (): Promise<DesktopUpdateSettingsResult> => fixedChannel === undefined
+    ? channelSettings.load()
+    : { kind: 'ready', channel: fixedChannel }
+  const initialChannel = await loadChannel()
   channelState = { channel: initialChannel.kind === 'ready' ? initialChannel.channel : null,
     packagedChannel, changing: false,
     ...(initialChannel.kind === 'error' ? { error: configurationFailure(initialChannel.error) } : {}) }
@@ -927,6 +938,11 @@ async function main(): Promise<void> {
     assertProductSender(event)
     if (!isDesktopUpdateChannel(channel)) throw new Error('desktop update: unsupported channel')
     if (channelState === undefined) throw new Error('desktop update: settings are not initialized')
+    if (fixedChannel !== undefined) {
+      return channel === fixedChannel
+        ? { kind: 'unchanged', state: channelState }
+        : { kind: 'failed', state: channelState, reason: 'apply' }
+    }
     channelRequests++
     publishChannel({ ...channelState, changing: true })
     try {
@@ -995,7 +1011,7 @@ async function main(): Promise<void> {
               channelRequests++
               publishChannel({ ...channelState, changing: true })
               try {
-                const loaded = await channelSettings.load()
+                const loaded = await loadChannel()
                 if (loaded.kind === 'error') {
                   publishChannel({ ...channelState, changing: true, error: configurationFailure(loaded.error) })
                   return false
@@ -1307,7 +1323,7 @@ async function main(): Promise<void> {
     }
   }
   const createMainWindow = (): BrowserWindow => {
-    const window = createWindow(appPreload, applicationIconPath)
+    const window = createWindow(appPreload, applicationIconPath, fixedChannel !== undefined)
     mainWindow = window
     browserGuests.bind(window, (guest, name) => shortcuts.attachGuest(window, guest, name))
     shortcuts.attach(window)

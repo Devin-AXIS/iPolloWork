@@ -4,12 +4,13 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createManifest } from './release-mirror.mjs'
-import { numericReleaseVersion, hashReleaseAsset, updateFeeds } from './release-update-feed.mjs'
+import { numericReleaseVersion, hashReleaseAsset, updateFeeds, windowsUpdateFilename } from './release-update-feed.mjs'
 
 export function checkRelease(release, previous) {
   const version = numericReleaseVersion(release.tag_name)
   assert.equal(release.draft, true, 'Publication must start from a draft')
   assert.equal(release.prerelease, false, 'Formal releases cannot be prereleases')
+  assert.match(release.target_commitish ?? '', /^[a-f0-9]{40}$/, 'Draft must point at the packaged commit')
   const prior = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(previous.tag_name)
     ? numericReleaseVersion(previous.tag_name).split('.').map(Number) : null
   if (prior) {
@@ -18,24 +19,14 @@ export function checkRelease(release, previous) {
     assert.ok(index >= 0 && next[index] > prior[index], 'Release must be newer than Latest')
   }
   const byName = new Map(release.assets.map(asset => [asset.name, asset]))
+  const windows = windowsUpdateFilename(version)
   for (const name of [
-    ...['arm64', 'x64'].flatMap(arch => [`iPollo-${version}-mac-${arch}.dmg`, `iPollo-${version}-mac-${arch}.zip`, `iPollo-${version}-mac-${arch}.zip.blockmap`, `mac-${arch}-release.json`]),
-    `iPollo-${version}-win-x64-unsigned.exe`,
+    ...['arm64', 'x64'].flatMap(arch => [
+      `ipollowork-mac-${arch}-${version}.dmg`, `iPollo-${version}-mac-${arch}.zip`,
+      `iPollo-${version}-mac-${arch}.zip.blockmap`, `mac-${arch}-release.json`,
+    ]),
+    windows, `${windows}.blockmap`, `ipollowork-linux-x86_64-${version}.AppImage`,
   ]) assert.ok(byName.get(name)?.size > 0, `Missing release asset: ${name}`)
-  for (const [installer, filename] of [
-    [`iPollo-${version}-win-x64-unsigned.exe`, `ipollowork-win-x64-${version}-unsigned.exe`],
-    ...['arm64', 'x64'].map(arch => [`iPollo-${version}-mac-${arch}.dmg`, `ipollowork-mac-${arch}-${version}.dmg`]),
-  ]) {
-    const download = byName.get(filename)
-    const original = byName.get(installer)
-    assert.ok(download?.size > 0, `Missing website download: ${filename}`)
-    assert.equal(download.size, original.size, `Website download size mismatch: ${filename}`)
-    assert.match(download.digest ?? '', /^sha256:[a-f0-9]{64}$/, `Missing website download digest: ${filename}`)
-    assert.equal(download.digest, original.digest, `Website download digest mismatch: ${filename}`)
-  }
-  for (const prefix of ['deepseek-idesign-', 'ipollo-dsh-suite-']) {
-    assert.ok(release.assets.some(asset => asset.name.startsWith(prefix) && asset.name.endsWith('.tgz') && asset.size > 0), `Missing plugin package: ${prefix}`)
-  }
   return version
 }
 
@@ -44,6 +35,7 @@ export async function prepareRelease(release, directory) {
   const manifest = await createManifest(release, directory)
   for (const arch of ['arm64', 'x64']) {
     const record = JSON.parse(await readFile(join(directory, `mac-${arch}-release.json`), 'utf8'))
+    assert.equal(record.commit, release.target_commitish, 'Mac build commit mismatch')
     assert.equal(record.version, version, 'Mac build version mismatch')
     assert.equal(record.target, `mac-${arch}`)
     assert.equal(record.dirty, false, 'Mac build must come from a clean checkout')
@@ -79,7 +71,7 @@ export async function verifyPublishedRelease(release, origin, fetcher = fetch, e
     assert.equal(feed.version, version, `Stale update feed: ${name}`)
     const expected = name === 'stable-mac.yml'
       ? [`iPollo-${version}-mac-arm64.zip`, `iPollo-${version}-mac-x64.zip`]
-      : [`iPollo-${version}-win-x64-unsigned.exe`]
+      : [windowsUpdateFilename(version)]
     assert.deepEqual(feed.files.map(file => file.url).sort(), expected.sort())
     for (const file of feed.files) {
       assert.ok(/^[A-Za-z0-9+/]{86}==$/.test(file.sha512), 'Invalid update digest')

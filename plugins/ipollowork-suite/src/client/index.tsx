@@ -27,6 +27,7 @@ export const inject = ['slots', 'theme', 'locale', 'remote', 'layout', 'uiWorksp
 export async function apply(ctx: ClientContext): Promise<void> {
   // Shared pages use their scoped native services; the owner's account UI must not be mounted there.
   if ('__DSH_LIVESHARE_VIEWER__' in globalThis) return
+  mountCurrentVersion(ctx)
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort(), 'ipollowork-suite: client requests')
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/ipollowork-suite/assets/client.css'
@@ -42,7 +43,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
   mountCoordinator(ctx)
   mountIm(ctx)
   if (info.theme) mountTheme(ctx)
-  mountCurrentVersion(ctx)
   ctx.inject(['remote.pluginManager'], scope => {
     const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
     const marketLifetime = new AbortController()

@@ -8,6 +8,9 @@ import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
 
+export const DESKTOP_VERSION_ARGUMENT = '--ipollo-app-version='
+export const DESKTOP_FIXED_UPDATE_CHANNEL_ARGUMENT = '--ipollo-fixed-update-channel'
+
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
   fileSave: 'dsh-desktop:file-save',
@@ -93,6 +96,7 @@ export interface DesktopUpdatePresentation {
 export interface DshDesktopProductApi {
   readonly fileActions: DesktopFileActions
   readonly protocolVersion: 1
+  readonly version?: string
   readonly appVersion: () => Promise<string>
   readonly browser: DesktopBrowserBridge
   readonly fileDrag: DesktopFileDrag
@@ -104,7 +108,7 @@ export interface DshDesktopProductApi {
    */
   deviceInfo(): Promise<string>
   readonly updates: {
-    readonly channels: DesktopChannelBridge
+    readonly channels?: DesktopChannelBridge
     status(): Promise<DesktopUpdatePresentation>
     open(): Promise<void>
     subscribe(listener: (state: DesktopUpdatePresentation) => void): () => void

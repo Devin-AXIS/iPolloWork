@@ -5,7 +5,7 @@ import { numericReleaseVersion, updateFeeds } from '../release-update-feed.mjs'
 test('release feed requires numeric versions and complete Mac/Windows assets', () => {
   assert.equal(numericReleaseVersion('v1.0.2'), '1.0.2')
   for (const value of ['1.0.2-test.1', '1.0.2-beta', '1.0', '../1.0.2', '01.0.2']) assert.throws(() => numericReleaseVersion(value))
-  const names = ['iPollo-1.0.2-mac-arm64.zip', 'iPollo-1.0.2-mac-x64.zip', 'iPollo-1.0.2-win-x64-unsigned.exe']
+  const names = ['iPollo-1.0.2-mac-arm64.zip', 'iPollo-1.0.2-mac-x64.zip', 'ipollowork-win-x64-1.0.2-unsigned.exe']
   const assets = names.map(name => ({ name, size: 1234, sha512: Buffer.alloc(64, 1).toString('base64') }))
   assert.throws(() => updateFeeds('1.0.2', assets.slice(0, 1)), /Missing/)
   const feeds = updateFeeds('1.0.2', assets)

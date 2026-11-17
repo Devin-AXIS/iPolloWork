@@ -1,14 +1,81 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { createService } from "../src/app.js";
 import { testConfig as loadConfig } from "./database.js";
 import { ExecutionService } from "../src/execution.js";
 import { ledgerEntry, wallet } from "../src/domain.js";
 import type { Actor } from "../src/auth.js";
+
+test("the model gateway forwards large screenshot histories and rejects invalid Base64", async () => {
+  const received: { path: string | undefined; hash: string }[] = [];
+  const upstream = createServer(async (req, res) => {
+    const hash = createHash("sha256");
+    for await (const chunk of req) hash.update(chunk);
+    received.push({ path: req.url, hash: hash.digest("hex") });
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" } }] }));
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert(address && typeof address !== "string");
+  const dir = await mkdtemp(join(tmpdir(), "ipw-screenshot-history-"));
+  try {
+    const app = await createService(await loadConfig({ DATA_DIR: dir, SERVICE_ORIGIN: "http://localhost:4785" }));
+    try {
+      const caller = await app.auth.api.signUpEmail({ body: {
+        email: "screenshots@example.test", name: "Screenshot test", password: "Valid-password-2026",
+      } });
+      assert(caller.token);
+      const actor: Actor = { id: caller.user.id, email: caller.user.email, name: caller.user.name, role: "admin" };
+      const executor = new ExecutionService(app.store, app.settings);
+      await executor.save(actor, {
+        id: "vision-fixture", title: "Vision fixture", provider: "test", keyId: "vision-test", key: "fixture-key",
+        baseUrl: `http://127.0.0.1:${address.port}/v1`, capabilities: ["chat"], enabled: true,
+        routes: [{ method: "POST", path: "/chat/completions", points: 0 }],
+      });
+      const invoke = (body: string) => {
+        const envelope = JSON.stringify({ requestId: randomUUID(), method: "POST", path: "/chat/completions",
+          contentType: "application/json", body });
+        return app.app.request("/api/v1/services/vision-fixture/invoke", {
+          method: "POST",
+          headers: { authorization: `Bearer ${caller.token}`, "content-type": "application/json",
+            "content-length": String(Buffer.byteLength(envelope)) },
+          body: envelope,
+        });
+      };
+      const screenshot = "data:image/jpeg;base64," + Buffer.alloc(400 * 1024).toString("base64");
+      const payload = JSON.stringify({ model: "deepseek-flash", messages: Array.from({ length: 21 }, () => ({
+        role: "user", content: [{ type: "image_url", image_url: { url: screenshot } }],
+      })) });
+      const response = await invoke(Buffer.from(payload).toString("base64"));
+      assert.equal(response.status, 200, await response.clone().text());
+      assert.equal((await response.json()).choices[0].message.content, "OK");
+      assert.deepEqual(received, [{ path: "/v1/chat/completions", hash: createHash("sha256").update(payload).digest("hex") }]);
+
+      for (const body of ["abc", "ab=c", "a===", "ab-_", "abcd\n"]) {
+        const invalid = await invoke(body);
+        assert.equal(invalid.status, 400);
+        assert.equal((await invalid.json()).code, "INVALID_INPUT");
+      }
+      const oversized = await invoke("A".repeat(25 * 1024 * 1024));
+      assert.equal(oversized.status, 413);
+      await oversized.body?.cancel();
+      assert.equal(received.length, 1);
+    } finally {
+      await app.close();
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await new Promise<void>((resolve, reject) => upstream.close(error => error ? reject(error) : resolve()));
+  }
+});
 
 test("official execution shares server credentials, enforces plans and settles each receipt once", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-execution-"));
