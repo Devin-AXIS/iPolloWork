@@ -97,6 +97,34 @@
 :global(body[data-ipw-suite] header[data-window-drag]:has([data-conversation-header-leading])) { border-bottom: 0; }
 :global(body[data-ipw-suite] [data-slot='conversation.session.header'] [role='tab']) { border: 0; box-shadow: none; }
 :global(body[data-ipw-suite] [data-slot='conversation.session.header'] [role='tab'][aria-selected='true']) { background: var(--ipw-muted-surface); border-radius: 8px; }
+
+/* Global panels without their own drag row use the same top clearance as the
+   DSH chrome. Keep the strip outside the panel's scrollable content. */
+:global(html[data-platform='darwin']:where(:not([data-fullscreen])) [data-global-panel]:where(:not(:has([data-window-drag]))))::before {
+  content: '';
+  flex: 0 0 var(--dsh-frame-top-clearance, 48px);
+  -webkit-app-region: drag;
+}
+:global(html[data-platform='darwin'] [inert] [data-global-panel])::before {
+  -webkit-app-region: initial;
+}
+:global(html[data-platform='darwin']:not([data-fullscreen]) [data-global-panel]:not(:has([data-window-drag]))) :is(.enterprisePage, .agentPage) {
+  min-height: 0;
+  padding-top: 0;
+}
+:global(html[data-platform='darwin']:not([data-fullscreen]) header[data-window-drag]:has([data-conversation-header-leading])) {
+  min-height: var(--dsh-frame-top-clearance, 48px);
+}
+
+/* The settings portal subtracts the entire window from the underlying native
+   drag regions. Restore its empty top strip above the settings dialog. */
+:global(html[data-platform='darwin']:not([data-fullscreen]) body > :has(> [data-shortcut-modal='settings']):not([inert]))::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: var(--dsh-frame-top-clearance, 48px);
+  -webkit-app-region: drag;
+}
 :global(body[data-ipw-suite] [data-conversation-region='composer']) { --dsw-elevation-stroke-color: transparent; }
 :global(body[data-ipw-suite] [data-composer-input]) { font-weight: 400; }
 /* Native quote data and removal stay with DSH; the suite owns only the chip presentation. */
