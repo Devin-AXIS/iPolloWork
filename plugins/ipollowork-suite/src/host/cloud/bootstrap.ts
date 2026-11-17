@@ -1,5 +1,6 @@
 /** Enforce live project authorization around the official DSH transport. */
 import type { Duplex } from 'node:stream';
+import { isAbsolute } from 'node:path';
 import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-host-webserver';
 import type {} from '@deepseek-ai/dsh-agent';
@@ -13,7 +14,7 @@ import { SuiteError } from '../errors.ts';
 export const name='ipollowork-cloud-bootstrap';
 export const inject=['webServer','agents','sessionController','workspaceRegistry','llm'];
 export const Config=schema.object({accountOrigin:schema.string().required(),workspace:schema.string(),heartbeatMs:schema.number(),authorizationTimeoutMs:schema.number()});
-const settingsSchema=z.object({accountOrigin:z.url(),workspace:z.string().startsWith('/').default('/mnt/project/workspace'),heartbeatMs:z.number().int().min(1000).max(60000).default(15000),authorizationTimeoutMs:z.number().int().min(1000).max(60000).default(15000)}).strict();
+const settingsSchema=z.object({accountOrigin:z.url(),workspace:z.string().refine(isAbsolute,'Workspace path must be absolute').default('/mnt/project/workspace'),heartbeatMs:z.number().int().min(1000).max(60000).default(15000),authorizationTimeoutMs:z.number().int().min(1000).max(60000).default(15000)}).strict();
 export async function apply(ctx:Context,config:z.input<typeof settingsSchema>):Promise<void> {
   const input=settingsSchema.parse(config);
   const origin=resolveConfig({accountOrigin:input.accountOrigin}).accountOrigin;

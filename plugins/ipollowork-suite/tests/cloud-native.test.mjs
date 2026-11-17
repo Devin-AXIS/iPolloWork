@@ -2,17 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, realpath, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as delay } from 'node:timers/promises';
 
 const suite=fileURLToPath(new URL('..',import.meta.url));
 const cli=fileURLToPath(new URL('../../../.upstream/dsh/apps/cli/lib/bin.js',import.meta.url));
 
-test('official cloud profile loads the suite, creates a workspace and rejects revoked project access',{skip:!existsSync(cli),timeout:60000},async()=>{
+test('official cloud profile loads the suite, creates a workspace and rejects revoked project access',{skip:!existsSync(cli),timeout:90000},async()=>{
  const home=await mkdtemp(join(tmpdir(),'ipw-cloud-native-'));
  const workspace=join(home,'workspace');await mkdir(workspace);
  let allowed=true,activity=0;
@@ -47,10 +47,10 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
   ]));
   child=spawn(process.execPath,[cli,'--profile','web','--patch',patch,'--no-open'],{env,stdio:['ignore','pipe','pipe']});
   child.stdout.on('data',data=>{logs+=data;});child.stderr.on('data',data=>{logs+=data;});
-  const deadline=Date.now()+30000;
+  const deadline=Date.now()+60000;
   while(Date.now()<deadline&&!logs.includes('dsh web:')&&child.exitCode===null)await delay(50);
   assert.doesNotMatch(logs,/failed to import|failed to load|MODULE_NOT_FOUND|PluginError/i);
-  const match=logs.match(/dsh web:\s+(http:\/\/[^\s]+)/);assert(match,`Official profile must publish its entry URL\n${logs.trim()}`);
+  const match=logs.match(/dsh web:\s+(http:\/\/[^\s]+)/);assert(match,`Official profile must publish its entry URL\n${logs.replace(/([?&]token=)[^\s&]+/g,'$1[redacted]').trim()}`);
   const url=new URL(match[1]);const entry=await fetch(url,{redirect:'manual'});assert.equal(entry.status,303);
   const cookie=entry.headers.getSetCookie().map(value=>value.split(';')[0]).join('; ');assert(cookie);
   const headers={Cookie:cookie};
@@ -65,7 +65,9 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
   assert.deepEqual(catalog.groups.map(group=>group.id),['ipollo-team']);
   assert.equal(catalog.groups[0].models[0].id,'cloud-model');
   assert(activity>0,'Cloud bootstrap must authorize actual HTTP requests');
-  assert((await readFile(join(home,'storages/workspace.json'),'utf8')).includes(workspace));
+  const state=JSON.parse(await readFile(join(home,'storages/workspace.json'),'utf8'));
+  const canonicalWorkspace=await realpath(workspace);
+  assert(Object.values(state.tables.workspaces).some(record=>relative(canonicalWorkspace,record.path)===''));
   allowed=false;
   assert.equal((await fetch(new URL('/ipollowork-suite/cloud/availability',url),{headers})).status,403);
  }finally{

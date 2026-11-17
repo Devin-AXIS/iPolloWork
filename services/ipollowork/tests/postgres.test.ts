@@ -226,7 +226,6 @@ test("schema seven removes the old per-account running-request constraint", asyn
     await service.store.run('DROP TABLE app_data_files; DROP TABLE cloud_runtime_leases');
     await service.store.run('ALTER TABLE projects DROP COLUMN creation_key, DROP COLUMN execution_mode');
     await service.store.run("ALTER TABLE invitations DROP COLUMN project_id, DROP COLUMN project_role");
-    await service.store.run("DROP TABLE organization_notification_deliveries, organization_notifications");
     await service.store.run("DROP TABLE enterprise_mcp; ALTER TABLE projects DROP COLUMN deleted_at");
     await service.store.run(
       "ALTER TABLE enterprise_grants DROP CONSTRAINT enterprise_grants_asset_kind_check; " +

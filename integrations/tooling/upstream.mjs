@@ -27,11 +27,15 @@ export function run(command, args, options = {}) {
 export async function verifySource() {
   const record = JSON.parse(await readFile(inventory, 'utf8'))
   if (record.revision !== pin.sourceRevision || record.archive !== pin.sourceArchiveSha256) throw new Error('DSH cache does not match the pinned release; run npm run setup')
-  for (const [path, hash] of Object.entries(record.files)) {
-    if (digest(await readFile(join(upstreamRoot, path))) !== hash) throw new Error(`Official DSH source was modified: ${path}`)
-  }
+  await verifyArchivedFiles(upstreamRoot, record.files)
   const manifest = JSON.parse(await readFile(join(upstreamRoot, 'package.json'), 'utf8'))
   if (manifest.version !== pin.npmVersion || manifest.packageManager !== pin.packageManager) throw new Error('DSH source version does not match the pin')
+}
+
+export async function verifyArchivedFiles(directory, files) {
+  for (const [path, hash] of Object.entries(files)) {
+    if (digest(await readFile(join(directory, path))) !== hash) throw new Error(`Official DSH source was modified: ${path}`)
+  }
 }
 
 /** Fetch a hash-pinned archive and materialize immutable official source in the local cache. */
