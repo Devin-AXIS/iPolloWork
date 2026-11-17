@@ -42,9 +42,9 @@ export async function accountUsage(store: Store, userId: string, offsetMinutes: 
   const row = await store.one(`SELECT
     COALESCE(SUM(points) FILTER (WHERE created_at>=?),0) AS daily,
     COALESCE(SUM(points),0) AS weekly,
-    COALESCE(SUM(points) FILTER (WHERE created_at>=? AND (state<>'succeeded' OR (billing_snapshot IS NOT NULL AND NOT billing_settled))),0) AS daily_reserved,
-    COALESCE(SUM(points) FILTER (WHERE state<>'succeeded' OR (billing_snapshot IS NOT NULL AND NOT billing_settled)),0) AS weekly_reserved
-    FROM service_calls WHERE user_id=? AND created_at>=? AND state<>'failed'`, period.day, period.day, userId, period.week);
+    COALESCE(SUM(points) FILTER (WHERE created_at>=? AND (state NOT IN ('succeeded','failed') OR (billing_snapshot IS NOT NULL AND NOT billing_settled))),0) AS daily_reserved,
+    COALESCE(SUM(points) FILTER (WHERE state NOT IN ('succeeded','failed') OR (billing_snapshot IS NOT NULL AND NOT billing_settled)),0) AS weekly_reserved
+    FROM service_calls WHERE user_id=? AND created_at>=? AND (state<>'failed' OR (service_id='ipollo-stage' AND billing_settled))`, period.day, period.day, userId, period.week);
   const window = (used: number, reserved: number, limit: number | null, resetsAt: number) => ({
     used, reserved, limit, remaining: limit === null ? null : Math.max(0, limit - used), resetsAt,
   });
@@ -73,7 +73,7 @@ export async function requireUsageBudget(store: Store, userId: string, points: n
 export async function recentUsage(store: Store, userId: string, offsetMinutes: number, timestamp = Date.now()) {
   const { day } = usagePeriods(timestamp, offsetMinutes);
   const start = day - 6 * dayMs;
-  const rows = await store.all("SELECT FLOOR((created_at+?)/86400000) AS day,SUM(points) AS used FROM service_calls WHERE user_id=? AND created_at>=? AND state<>'failed' GROUP BY 1", offsetMinutes * 60000, userId, start);
+  const rows = await store.all("SELECT FLOOR((created_at+?)/86400000) AS day,SUM(points) AS used FROM service_calls WHERE user_id=? AND created_at>=? AND (state<>'failed' OR (service_id='ipollo-stage' AND billing_settled)) GROUP BY 1", offsetMinutes * 60000, userId, start);
   return Array.from({ length: 7 }, (_, index) => {
     const at = start + index * dayMs;
     return { date: new Date(at + offsetMinutes * 60000).toISOString().slice(0, 10), used: Number(rows.find(row => Number(row.day) === Math.floor((at + offsetMinutes * 60000) / dayMs))?.used ?? 0) };

@@ -10,6 +10,7 @@ import { ledgerEntry, wallet } from '../src/domain.js';
 import { testConfig } from './database.js';
 import type { Actor } from '../src/auth.js';
 import { ExecutionService } from '../src/execution.js';
+import { accountUsage, recentUsage } from '../src/usage.js';
 
 test('Stage authorization is one-use and origin-bound; actual token settlement never freezes points or bills twice',async()=>{
  const directory=await mkdtemp(join(tmpdir(),'ipw-stage-'));
@@ -60,6 +61,16 @@ test('Stage authorization is one-use and origin-bound; actual token settlement n
   assert.equal((await app.store.all("SELECT key FROM settings WHERE key LIKE 'stage-revoke/%'")).length,1);
   await bridge.reconcile();
   assert.equal((await app.store.all("SELECT key FROM settings WHERE key LIKE 'stage-revoke/%'")).length,0);
+  await app.store.transaction(()=>ledgerEntry(app.store,user.id,100,'refill/'+user.id,'Fixture'));
+  const reconnect=new URL((await bridge.connect(actor)).url).searchParams.get('state')!;
+  await bridge.callback(reconnect,'d'.repeat(43));
+  const failedId=randomUUID();
+  await bridge.begin(user.id,exchange.billing_token,{requestId:failedId,model:'official:model'});
+  await bridge.settle(user.id,exchange.billing_token,{requestId:failedId,status:'failed',calls:[{model:'official:model',input:1,output:1}]});
+  const usage=await accountUsage(app.store,user.id,480);
+  assert.equal(usage.daily.used,14,'measured partial failure is still actual usage');
+  assert.equal(usage.daily.reserved,0,'a settled failed generation cannot appear as frozen points');
+  assert.equal((await recentUsage(app.store,user.id,480)).at(-1)?.used,14);
  }finally{await app.close();await rm(directory,{recursive:true,force:true});}
 });
 
