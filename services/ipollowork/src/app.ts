@@ -28,6 +28,7 @@ import { mountProjectSpace } from "./project-space.js";
 import { mountProjectArchive } from "./project-archive.js";
 import { mountCollaboration } from "./collaboration.js";
 import { mountEnterprise } from "./enterprise.js";
+import { mountOrganizationPublications } from "./organization-publications.js";
 import { mountPayments } from "./payments.js";
 import { mountEnterpriseAssets } from "./enterprise-assets.js";
 import { mountEnterpriseMcp } from "./enterprise-mcp.js";
@@ -188,7 +189,7 @@ export async function createService(config: Config) {
       // Native Work sends JSON credentials without cookies or a browser Origin.
       // Cookie-bearing and explicit cross-origin requests still use Better Auth's checks.
       if (
-        ["/api/auth/sign-in/email", "/api/auth/sign-up/email"].includes(
+        ["/api/auth/sign-in/email", "/api/auth/sign-up/email", "/api/auth/request-password-reset"].includes(
           c.req.path,
         ) &&
         c.req.method === "POST" &&
@@ -205,13 +206,13 @@ export async function createService(config: Config) {
     app.get("/api/invitations/:token", async (c) => {
       c.header("Cache-Control", "no-store");
       const token = c.req.param("token");
-      if (!/^[A-Za-z0-9_-]{43}$/.test(token)) throw new ServiceError("INVITATION_EXPIRED", 404, "邀请不存在或已失效");
+      if (!/^(?:ipw_)?[A-Za-z0-9_-]{43}$/.test(token)) throw new ServiceError("INVITATION_EXPIRED", 404, "邀请不存在或已失效");
       const invitation = await store.one(
-        "SELECT e.name,i.expires_at,p.title AS project_title FROM invitations i JOIN enterprises e ON e.id=i.enterprise_id LEFT JOIN projects p ON p.id=i.project_id WHERE i.token_hash=? AND i.revoked_at IS NULL AND i.accepted_by IS NULL AND i.expires_at>?",
+        "SELECT e.name,i.expires_at,i.email IS NOT NULL AS email_bound,p.title AS project_title FROM invitations i JOIN enterprises e ON e.id=i.enterprise_id LEFT JOIN projects p ON p.id=i.project_id WHERE i.token_hash=? AND i.revoked_at IS NULL AND i.accepted_by IS NULL AND (i.expires_at IS NULL OR i.expires_at>?)",
         createHash("sha256").update(token).digest("hex"), now(),
       );
       if (!invitation) throw new ServiceError("INVITATION_EXPIRED", 404, "邀请不存在或已失效");
-      return c.json({ organization: invitation.name, space: invitation.project_title, expiresAt: invitation.expires_at });
+      return c.json({ organization: invitation.name, space: invitation.project_title, expiresAt: invitation.expires_at, emailBound: invitation.email_bound });
     });
     app.use("/api/v1/*", async (c, next) => {
       c.header("Cache-Control", "no-store");
@@ -261,7 +262,7 @@ export async function createService(config: Config) {
         now(),
       ),
       enterprises: await store.all(
-        "SELECT e.id,e.name,m.role FROM enterprises e JOIN members m ON m.enterprise_id=e.id WHERE m.user_id=? LIMIT 200",
+        "SELECT e.id,e.name,m.role FROM enterprises e JOIN members m ON m.enterprise_id=e.id WHERE m.user_id=? AND m.status='active' LIMIT 200",
         userId,
       ),
     });
@@ -419,8 +420,9 @@ export async function createService(config: Config) {
     mountCapabilities(app, new Capabilities(execution, store));
     mountAccessKeys(app, auth);
     mountEnterpriseAssets(app, store, storage, config);
-    mountEnterpriseMcp(app, store, settings, config.secret);
+    mountEnterpriseMcp(app, store, settings, config.secret, undefined, config.origin);
     mountEnterprise(app, store, config, cloud, organizationMembers);
+    mountOrganizationPublications(app, store);
     organizationMembers.mount(app);
     organizationMembers.start();
     mountCloudProjects(app, cloud);

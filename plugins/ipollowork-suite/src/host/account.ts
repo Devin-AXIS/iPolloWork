@@ -126,12 +126,19 @@ export class AccountService {
         if(path.startsWith('/api/v1/stage/')&&object(data)&&typeof data.error==='string')throw new StageRejection(code,response.status,data.error.slice(0,500));
         throw new SuiteError(code, response.status);
       }
-      await response.body?.cancel();
-      if (
-        path === "/api/auth/sign-up/email" &&
-        [400, 409, 422].includes(response.status)
-      )
+      if (path === "/api/auth/sign-up/email" && [400, 409, 422].includes(response.status)) {
+        const failure = await readJson(response, maximum).catch(() => undefined);
+        if (object(failure) && failure.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL")
+          throw new SuiteError("IPW_EMAIL_IN_USE", 409);
         throw new SuiteError("IPW_REGISTRATION_REJECTED", 400);
+      }
+      if (path === "/api/auth/sign-in/email" && [400, 401].includes(response.status)) {
+        const failure = await readJson(response, maximum).catch(() => undefined);
+        if (object(failure) && ["INVALID_EMAIL_OR_PASSWORD", "INVALID_EMAIL"].some(code => failure.code === code))
+          throw new SuiteError("IPW_INVALID_LOGIN", 401);
+        throw new SuiteError("IPW_SIGN_IN_REQUIRED", response.status);
+      }
+      await response.body?.cancel();
       throw new SuiteError(
         response.status === 401 || response.status === 403
           ? "IPW_SIGN_IN_REQUIRED"
@@ -374,23 +381,35 @@ export class AccountService {
     if (value.origin !== this.config.accountOrigin) return undefined;
     return { version: 1, origin: value.origin, token: value.token };
   }
-  /** Return only account identity and points; never the token or upstream session. */
-  async state(): Promise<HostAccountState> {
-    const grant = await this.grant();
-    if (!grant)
-      return { status: "anonymous", origin: this.config.accountOrigin };
+  private async sessionUser(grant: Grant): Promise<AccountUser | null> {
     let session: unknown;
     try {
       session = await this.send("/api/auth/get-session", grant.token);
     } catch (error) {
       if (error instanceof SuiteError && error.status === 401)
-        return { status: "anonymous", origin: this.config.accountOrigin };
+        return null;
       throw error;
     }
-    if (session === null)
-      return { status: "anonymous", origin: this.config.accountOrigin };
+    if (session === null) return null;
     if (!object(session)) throw new SuiteError("IPW_INVALID_RESPONSE", 502);
-    const user = userOf(session.user);
+    return userOf(session.user);
+  }
+
+  /** Read the account identity without requesting its points balance. */
+  async user(): Promise<AccountUser | null> {
+    const revision = this.revision;
+    const grant = await this.grant();
+    const user = grant ? await this.sessionUser(grant) : null;
+    if (revision !== this.revision) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    return user;
+  }
+
+  /** Return only account identity and points; never the token or upstream session. */
+  async state(): Promise<HostAccountState> {
+    const grant = await this.grant();
+    const user = grant ? await this.sessionUser(grant) : null;
+    if (!grant || !user)
+      return { status: "anonymous", origin: this.config.accountOrigin };
     let points: number | null = null;
     try {
       const summary = await this.send("/api/v1/me/summary", grant.token);
@@ -482,9 +501,9 @@ export class AccountService {
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
       throw new SuiteError("IPW_INVALID_LOGIN");
     await this.send("/api/auth/request-password-reset", undefined, {
-      email,
+      email: email.toLowerCase(),
       redirectTo: new URL("/reset-password", this.config.accountOrigin).href,
-    });
+    }, undefined, undefined, 20000);
   }
 
   /** Disconnect only this suite's local account. DSH provider credentials are untouched. */

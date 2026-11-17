@@ -232,8 +232,30 @@ jobs:
             done
           done
           printf 'reused=true\n' >> "$GITHUB_OUTPUT"
+      - name: Set Intel pnpm store path
+        if: matrix.target == 'mac-x64'
+        run: echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TEMP/ipollo-intel-pnpm-store" >> "$GITHUB_ENV"
+      - name: Restore Intel build dependencies
+        if: matrix.target == 'mac-x64'
+        id: intel_deps
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: |
+            ${{ runner.temp }}/ipollo-intel-pnpm-store
+            ~/.npm/_cacache
+          key: ipollo-intel-deps-v1-node24.15.0-${{ hashFiles('integrations/runtime/upstream.json', 'integrations/publisher/package-lock.json', 'plugins/ipollowork-suite/package-lock.json', 'plugins/stage/package-lock.json') }}
       - name: Install pinned build dependencies
         run: node integrations/tooling/setup.mjs --plugins
+      - name: Save Intel build dependencies
+        if: matrix.target == 'mac-x64' && steps.intel_deps.outputs.cache-primary-key != '' && steps.intel_deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            ${{ runner.temp }}/ipollo-intel-pnpm-store
+            ~/.npm/_cacache
+          key: ${{ steps.intel_deps.outputs.cache-primary-key }}
       - name: Prepare Apple signing configuration
         env:
           CERTIFICATE_P12: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}

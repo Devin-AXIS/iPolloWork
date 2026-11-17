@@ -1,16 +1,24 @@
-# Enterprise assets
+# Organization resources
 
-The enterprise page shows member, department, file package, skill and model counts above its tabs. Owners and administrators invite colleagues from the page header.
+Organization Space and the Work account dashboard use the same organization records and membership. The built-in Work features from iPolloOS are implemented in the account service. The desktop sidebar opens the organization directly.
 
+| Requirement | Current behavior |
+| --- | --- |
+| Join with a service address and invitation code | Under Members, an administrator generates a single-use employee code or downloads the CSV template and imports a roster. Employee codes never expire by default. An administrator can change the expiration of an unused code in the member list. Redeeming a code adds an ordinary member to the existing organization. Existing email-bound invitations keep their original rules. |
+| Simple roles and membership | Ordinary members and administrators are the two displayed roles. Administrators edit names, unique employee numbers, department assignment and membership status. Suspension pauses access without deleting membership or assignments. The affected member receives a desktop notice and can review changes under Membership notices, including after suspension. |
+| Departments and permissions | Departments can have a parent. Administrators can grant resources to all members, individuals or departments, with an option to include descendants. |
+| Templates, plugins and Skills | The organization accepts versioned HTML templates, exact DSH package references and Markdown Skills. Members submit versions. Administrators approve, publish, change access or unpublish while keeping the version history. Template previews run in a sandbox. Approved and granted Skills enter the DSH skill registry. Shared plugin installation uses the native Plugin Manager, which inspects the package and requests confirmation. |
+| MCP | Administrators publish, edit, enable and revoke MCP entries and control access. An MCP entry can use a server key or require each member to sign in through OAuth with PKCE. DSH loads the authorized tool through the existing organization service proxy. The desktop MCP page offers organization resources, the native personal settings and the iPolloCloud public catalog. A public OAuth entry added to an organization needs its provider OAuth URLs and a public client ID configured by an administrator. |
+| Collaboration, activity and settings | Organization Space lists the native DSH conversations that are shared with the current account. Administrators see organization activity and edit the name, description and logo. |
+
+## November 13 verification
+
+Work commits 884d31cf21, e108fda087, 349dc900a8 and f3f6d38846 and the iPolloOS Work service commit e7991db were the migration references. The Work account service owns the CSV invitation, employee directory, review and authorization flows, with role descriptions localized at the client. The organization view uses native DSH collaboration and keeps the existing model and stream error guidance. OS control-plane accounts, device operations and model deployment remain OS functions. The migration adds PostgreSQL schema version 15.
 ## Access
 
-File packages, skills and enterprise models each have one audience: everyone, or chosen departments and members. Owners and administrators can always use every asset. The account service stores audiences in `enterprise_grants` and checks them on every read, download and model call; the browser only displays them. A new asset is available to everyone until its audience is narrowed. Deleting a department unassigns its members and removes its grants; removing a member removes their individual grants.
+Skills and enterprise models each have one audience: everyone, or chosen departments and members. Owners and administrators can always use every asset. The account service stores audiences in `enterprise_grants` and checks them on reads and model calls. A new asset is available to everyone until its audience is narrowed. Deleting a department unassigns its members and removes its grants; removing a member removes their individual grants.
 
-The Departments tab lists departments on the left. The selected department shows its members, which can be added or removed in place, and one switch per file package, skill and model. A switch adds or removes that department from the asset's audience. Assets available to everyone show a locked switch.
-
-## File packages
-
-A package groups files of up to 24 MB each. Managers create packages, upload files by drag and drop, remove files and choose the audience. Members with access list and download files through the suite Host, which relays the account service's private storage. Members cannot upload.
+The Departments tab lists departments on the left. The selected department shows its members and one switch per skill and model. A switch adds or removes that department from the asset's audience. Assets available to everyone show a locked switch.
 
 ## Skills
 

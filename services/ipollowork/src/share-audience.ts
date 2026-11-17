@@ -67,7 +67,7 @@ export async function resolveShareAudience(
   if (audience.kind === "members") {
     const placeholders = audience.userIds.map(() => "?").join(",");
     const count = await store.one(
-      `SELECT COUNT(*) AS n FROM members m JOIN "user" u ON u.id=m.user_id WHERE m.enterprise_id=? AND m.user_id IN (${placeholders}) AND COALESCE(u.banned,false)=false`,
+      `SELECT COUNT(*) AS n FROM members m JOIN "user" u ON u.id=m.user_id WHERE m.enterprise_id=? AND m.status='active' AND m.user_id IN (${placeholders}) AND COALESCE(u.banned,false)=false`,
       audience.enterpriseId,
       ...audience.userIds,
     );
@@ -118,7 +118,7 @@ export async function audienceAllows(
     return !!role && (share.mode !== "write" || role !== "view");
   }
   const member = await store.one(
-    "SELECT department_id FROM members WHERE enterprise_id=? AND user_id=?",
+    "SELECT department_id FROM members WHERE enterprise_id=? AND user_id=? AND status='active'",
     audience.enterpriseId,
     actor.id,
   );

@@ -147,3 +147,14 @@ it('uses the iPolloWork account service without returning the session grant', as
   expect(requests[0]?.init?.headers).toMatchObject({ cookie })
   expect(JSON.stringify(await backend.read())).not.toContain('not-exposed')
 })
+
+it.each([
+  [401, 'IPW_SIGN_IN_REQUIRED', { ok: false, reason: 'invalid-credentials' }],
+  [400, 'IPW_INVALID_LOGIN', { ok: false, reason: 'invalid-credentials' }],
+  [401, 'UNRELATED_ERROR', { ok: false }],
+  [502, 'IPW_ACCOUNT_UNAVAILABLE', { ok: false }],
+] as const)('returns a safe sign-in result for HTTP %s with %s', async (status, error, expected) => {
+  const backend = connectDesktopWelcome(url, cookie,
+    async () => Response.json({ error, message: 'private diagnostic' }, { status }), 'ipollo')
+  expect(await backend.signInAccount?.('member@example.test', 'test-password')).toEqual(expected)
+})

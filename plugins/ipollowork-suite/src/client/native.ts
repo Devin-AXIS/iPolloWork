@@ -2,6 +2,7 @@
 import type { ComponentType } from 'react'
 import type { ClientRemote, PluginInstallProgress } from '@deepseek-ai/dsh-api-remotes/client'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 export interface NativeSessionBinding { readonly sessionId:string; readonly ctx:object }
 /** Credential-free result supplied to the optional native sharing hook. */
 interface SharingPreparation { readonly connected?:boolean; readonly error?:string }
@@ -58,10 +59,8 @@ export interface ClientContext {
   sessions: {
     create(options:{workspaceId:string;sessionId:string}):Promise<string>;
     using<T>(id:string,options:{source:string},operation:(ref:{binding:NativeSessionBinding})=>Promise<T>):Promise<T>;
-    list: {
-    getSnapshot(): { byId: Record<string, { retainedBy: { mainView?: number }; projectionValues: { agentPreset?: string | null } }> };
-    subscribe(listener: () => void): () => void;
-  } };
+    list: ISessions['list'];
+  };
 }
 type ContextMenuTarget = { workspaceId?: string; sessionId?: Parameters<IWorkspaces['archiveSession']>[0]; displayTitle?: string };
 export interface MarketProps {

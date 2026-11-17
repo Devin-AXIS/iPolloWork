@@ -211,11 +211,29 @@ test("concurrent membership payments stack both terms when no credits are grante
 });
 
 
+async function removeOrganizationSpaceMigration(store: {run(sql:string):Promise<unknown>}) {
+  await store.run(`
+    DROP TABLE enterprise_mcp_oauth_pending, organization_member_notices,
+      organization_publication_versions, organization_publications;
+    ALTER TABLE enterprises DROP COLUMN description, DROP COLUMN logo, DROP COLUMN tab_order;
+    ALTER TABLE departments DROP COLUMN parent_id;
+    ALTER TABLE members DROP COLUMN employee_number, DROP COLUMN display_name, DROP COLUMN status;
+    ALTER TABLE invitations ALTER COLUMN email SET NOT NULL, ALTER COLUMN expires_at SET NOT NULL, DROP COLUMN invitee_name, DROP COLUMN employee_number;
+    ALTER TABLE audit DROP COLUMN enterprise_id;
+    ALTER TABLE enterprise_mcp DROP COLUMN enabled, DROP COLUMN oauth_config;
+    ALTER TABLE enterprise_grants DROP CONSTRAINT enterprise_grants_audience_kind_check;
+    ALTER TABLE enterprise_grants ADD CONSTRAINT enterprise_grants_audience_kind_check
+      CHECK(audience_kind IN ('all','department','member'));
+    DELETE FROM service_schema WHERE version>=15;
+  `);
+}
+
 test("schema seven removes the old per-account running-request constraint", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-parallel-migration-"));
   const config = await testConfig({ DATA_DIR: dir, SERVICE_ORIGIN: "http://localhost:4785" });
   const service = await createService(config);
   try {
+    await removeOrganizationSpaceMigration(service.store);
     await service.store.run("DROP TABLE organization_notification_deliveries; DROP TABLE organization_notifications");
     await service.store.run("DELETE FROM service_schema WHERE version>=7");
     await service.store.run("DROP TABLE enterprise_activity; DROP INDEX service_calls_enterprise_time; ALTER TABLE service_calls DROP COLUMN enterprise_id, DROP COLUMN department_id, DROP COLUMN model_id, DROP COLUMN is_job_poll, DROP COLUMN input_tokens, DROP COLUMN output_tokens");
@@ -234,7 +252,7 @@ test("schema seven removes the old per-account running-request constraint", asyn
     await migrate(service.store, config);
     await migrate(service.store, config);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM pg_indexes WHERE schemaname=current_schema() AND indexname='service_calls_one_running'"))?.total, 0);
-    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 14);
+    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 17);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM information_schema.columns WHERE table_schema=current_schema() AND ((table_name='plans' AND column_name IN ('daily_points','weekly_points')) OR (table_name='orders' AND column_name='checkout'))"))?.total, 3);
   } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });
@@ -249,6 +267,7 @@ for (const history of ["mcp", "notifications"] as const) {
         body: { name: "Owner", email: "schema-owner@example.test", password: "Migration-fixture-password" },
       });
       await service.store.run("INSERT INTO enterprises VALUES('org','Fixture',?,1)", user.id);
+      await removeOrganizationSpaceMigration(service.store);
       await service.store.run("DELETE FROM service_schema WHERE version=14");
       if (history === "mcp") {
         await service.store.run("DROP TABLE organization_notification_deliveries, organization_notifications");
@@ -263,7 +282,7 @@ for (const history of ["mcp", "notifications"] as const) {
       }
       await migrate(service.store, config);
       await migrate(service.store, config);
-      assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 14);
+      assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 17);
       assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM enterprise_mcp"))?.total, history === "mcp" ? 1 : 0);
       assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM organization_notifications"))?.total, history === "notifications" ? 1 : 0);
       assert.equal((await service.store.one("SELECT name FROM enterprises WHERE id='org'"))?.name, "Fixture");

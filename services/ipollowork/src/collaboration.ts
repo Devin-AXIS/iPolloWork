@@ -21,7 +21,7 @@ const selection = `SELECT w.*,p.title AS project_title,p.enterprise_id,e.name AS
  FROM project_work w JOIN projects p ON p.id=w.project_id JOIN shares s ON s.id=w.source_share_id
  JOIN "user" u ON u.id=w.owner_id LEFT JOIN enterprises e ON e.id=p.enterprise_id
  LEFT JOIN work_revisions r ON r.work_id=w.id AND r.version=(SELECT MAX(v.version) FROM work_revisions v WHERE v.work_id=w.id)`;
-const visible = `(?='admin' OR p.owner_id=? OR EXISTS(SELECT 1 FROM members m WHERE m.enterprise_id=p.enterprise_id AND m.user_id=?))
+const visible = `(?='admin' OR p.owner_id=? OR EXISTS(SELECT 1 FROM members m WHERE m.enterprise_id=p.enterprise_id AND m.user_id=? AND m.status='active'))
  AND (?='admin' OR w.owner_id=? OR r.version IS NOT NULL OR (s.revoked_at IS NULL AND
  (s.owner_id=? OR s.visibility='enterprise' OR EXISTS(SELECT 1 FROM share_members sm WHERE sm.share_id=s.id AND sm.user_id=?))))`;
 async function list(store: Store, actor: Actor, projectId?: string) {

@@ -88,6 +88,8 @@ const en = {
   passwordHint: "Password, at least 10 characters",
   requestPasswordReset: "Send password reset email",
   passwordResetSent: "If an account exists for this email, a reset link will arrive shortly.",
+  passwordResetFailed: "The reset email service is temporarily unavailable. Please try again later.",
+  emailInUse: "This email is already registered. Sign in or reset your password.",
   registrationError:
     "Could not create the account. Check your details or sign in to an existing account.",
   points: "Available points",
@@ -220,6 +222,8 @@ const zh: typeof en = {
   passwordHint: "密码，至少 10 位",
   requestPasswordReset: "发送密码重置邮件",
   passwordResetSent: "如果该邮箱已注册，你将收到密码重置邮件。",
+  passwordResetFailed: "暂时无法发送密码重置邮件，请稍后重试。",
+  emailInUse: "该邮箱已注册，请登录或重置密码。",
   registrationError: "注册失败，请检查填写信息，或尝试登录已有账号",
   points: "可用积分",
   unavailable: "暂时无法读取",

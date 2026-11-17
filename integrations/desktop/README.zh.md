@@ -12,6 +12,8 @@ DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源
 
 不提供旧版 iPolloWork profile 转换或降级层。文件和账户凭据仍由配置的 DSH home 管理。`LICENSE` 保留原 DeepSeek Harness MIT 许可证；产品修改独立维护于本目录，不进入官方应用源码树。
 
+Windows 本机已准备好的 Jovan 开发版，可用 `powershell -NoProfile -File integrations/desktop/scripts/start-local-hot.ps1` 启动。第一次请让开发版保持运行，以便启动器记录原有配置。启动器默认使用开发版自带的 Node.js，也可以通过 `-NodeExecutable` 指定。它沿用原 DSH home 和 Electron 用户目录，每次启动构建 Work 套件，运行时保存源码则自动重建，由 DSH 原生热重载接手。传入 `-Restart` 会重启当前开发版，否则会激活已有的热更新窗口。Electron 外壳及 DSH 运行时有改动时仍走原有构建和重启流程。
+
 在对应平台的构建机上，从仓库根目录执行 `node integrations/tooling/setup.mjs --plugins`，再运行下表命令。打包命令负责构建和验证固定版本的运行时及产品。
 
 | 目标 | 命令 | 官网识别的文件 |

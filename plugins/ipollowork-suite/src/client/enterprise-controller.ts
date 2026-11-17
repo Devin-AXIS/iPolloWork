@@ -1,21 +1,17 @@
-import type { EnterpriseCatalog } from "../shared/enterprise.ts";
+import type { EnterpriseCatalog, EnterpriseTab } from "../shared/enterprise.ts";
+export type { EnterpriseTab } from "../shared/enterprise.ts";
 import { request } from "./api.ts";
 
 /** Short forms and native-entry actions; detail records open as page views instead. */
 export type EnterpriseDialog =
-  | { kind: "create" | "join" }
+  | { kind: "create" | "joinService" }
   | { kind: "createProject"; enterpriseId: string }
   | { kind: "assign"; projectId: string }
   | { kind: "continue"; shareId?: string; workId?: string }
   | {
-      kind: "invite";
+      kind: "joinCode";
       enterpriseId: string;
-      email?: string;
-      role?: string;
-      departmentId?: string | null;
-      replaces?: string;
       projectId?: string;
-      projectRole?: "view" | "participate" | "maintain";
     }
   | { kind: "member"; enterpriseId: string; userId: string }
   | {
@@ -30,15 +26,6 @@ export type EnterpriseView =
   | { kind: "project"; id: string }
   | { kind: "work"; id: string }
   | { kind: "share"; id: string };
-export type EnterpriseTab =
-  | "analytics"
-  | "projects"
-  | "members"
-  | "departments"
-  | "files"
-  | "skills"
-  | "mcp"
-  | "models";
 export interface EnterpriseToast {
   id: number;
   text: string;
@@ -84,7 +71,7 @@ export class EnterpriseController {
     dialog: null,
     signedIn: false,
     enterpriseId: remembered(),
-    tab: "analytics",
+    tab: "projects",
     views: [],
     toast: null,
     revision: 0,
@@ -121,6 +108,7 @@ export class EnterpriseController {
       dialog: null,
       signedIn,
       views: [],
+      toast: null,
     });
     if (signedIn) void this.load();
   }
@@ -150,6 +138,7 @@ export class EnterpriseController {
           loading: false,
           error:
             error instanceof Error ? error.message : "IPW_ACCOUNT_UNAVAILABLE",
+          revision: this.state.catalog ? this.state.revision + 1 : this.state.revision,
         });
     }
   };

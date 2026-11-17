@@ -835,8 +835,8 @@ function AccessDialog({
           </select>
           <p className={css.muted}>{c.accessHint}</p>
           <Button variant="outline" type="button" disabled={task.busy || !org.data.canManage} onClick={() => {
-            close(); view.controller.open({ kind: "invite", enterpriseId: space.project.enterpriseId!, projectId: space.project.id });
-          }}>{view.t.inviteByEmail}</Button>
+            close(); view.controller.open({ kind: "joinCode", enterpriseId: space.project.enterpriseId!, projectId: space.project.id });
+          }}>{view.t.createJoinCode}</Button>
           <div className={css.enterpriseList}>
             {org.data.departments.map((d) => (
               <Row

@@ -3,6 +3,7 @@ import type { ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/typ
 
 import { randomUUID } from 'node:crypto'
 import { desktopAccountBackend, type DesktopAccountBackend } from './account-backend.ts'
+import type { WelcomeAccountResult, WelcomeSaveResult } from './welcome-api.ts'
 
 /** Metadata needed before the native entry or workspace becomes visible. */
 export interface WelcomeState {
@@ -20,9 +21,10 @@ export interface DesktopWelcomeBackend {
   analyticsEnabled(): Promise<boolean>
   readonly account: DesktopAccountBackend
   /** Submit credentials to the owned iPolloWork Host and return no credential material. */
-  signInAccount?(email: string, password: string): Promise<{ ok: boolean }>
+  signInAccount?(email: string, password: string): Promise<WelcomeAccountResult>
   /** Register through the owned iPolloWork service without returning its session grant. */
-  signUpAccount?(name: string, email: string, password: string): Promise<{ ok: boolean }>
+  signUpAccount?(name: string, email: string, password: string): Promise<WelcomeAccountResult>
+  requestPasswordReset?(email: string): Promise<WelcomeSaveResult>
   /** @param event - desktop-owned fields. @returns after local Host intake. */
   report(event: ProductEvent): Promise<void>
   /** @returns Configured-key presence and the shared language and theme preferences, without credential values. */
@@ -75,15 +77,28 @@ export function connectDesktopWelcome(
     return envelope.result.value
   }
   const account = desktopAccountBackend(origin, invoke, cookie)
-  const suiteAccount = async (body?: { email: string; password: string; name?: string }): Promise<boolean> => {
-    const response = await send(new URL(body === undefined ? '/ipollowork-suite/account' : body.name === undefined ? '/ipollowork-suite/account/sign-in' : '/ipollowork-suite/account/sign-up', origin).href, {
+  const suiteAccount = async (body?: { email: string; password: string; name?: string }): Promise<WelcomeAccountResult> => {
+    const action = body === undefined ? '' : body.name === undefined ? '/sign-in' : '/sign-up'
+    const response = await send(new URL('/ipollowork-suite/account' + action, origin).href, {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error',
       headers: { cookie, 'content-type': 'application/json' },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    if (!response.ok) return false
+    if (!response.ok) {
+      if (action === '/sign-in' && (response.status === 401 || response.status === 400)) {
+        const failure: unknown = await response.json()
+        if (record(failure) && (failure.error === 'IPW_INVALID_LOGIN' || (response.status === 401 && failure.error === 'IPW_SIGN_IN_REQUIRED'))) {
+          return { ok: false, reason: 'invalid-credentials' }
+        }
+      }
+      if (action === '/sign-up' && response.status === 409) {
+        const failure: unknown = await response.json()
+        if (record(failure) && failure.error === 'IPW_EMAIL_IN_USE') return { ok: false, reason: 'email-in-use' }
+      }
+      return { ok: false }
+    }
     const value: unknown = await response.json()
-    return record(value) && value.status === 'signed-in'
+    return record(value) && value.status === 'signed-in' ? { ok: true } : { ok: false }
   }
   const settingsAndReference = async () => {
     const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
@@ -138,7 +153,7 @@ export function connectDesktopWelcome(
     }
     if (ref !== undefined && !record(states[ref])) throw new Error('desktop welcome: missing credential metadata')
     return {
-      loggedIn: accountMode === 'ipollo' ? await suiteAccount() : (await account.state()).status === 'credential-stored',
+      loggedIn: accountMode === 'ipollo' ? (await suiteAccount()).ok : (await account.state()).status === 'credential-stored',
       hasApiKey: Object.values(states).some(value => record(value) && value.configured === true),
       writable: ref !== undefined && record(states[ref]) && states[ref].writable === true,
       localePreference: localePreference(namespaces),
@@ -150,12 +165,23 @@ export function connectDesktopWelcome(
     read,
     ...(accountMode === 'ipollo' ? {
       async signUpAccount(name: string, email: string, password: string) {
-        try { return { ok: await suiteAccount({ name, email, password }) } }
+        try { return await suiteAccount({ name, email, password }) }
         catch (_error) { return { ok: false } }
       },
       async signInAccount(email: string, password: string) {
-        try { return { ok: await suiteAccount({ email, password }) } }
+        try { return await suiteAccount({ email, password }) }
         catch (_error) { return { ok: false } }
+      },
+      async requestPasswordReset(email: string) {
+        try {
+          const response = await send(new URL('/ipollowork-suite/account/request-password-reset', origin).href, {
+            method: 'POST', redirect: 'error', headers: { cookie, 'content-type': 'application/json' },
+            body: JSON.stringify({ email }), signal: AbortSignal.timeout(25000),
+          })
+          if (!response.ok) { await response.body?.cancel(); return { ok: false } }
+          const result: unknown = await response.json()
+          return record(result) && result.ok === true ? { ok: true } : { ok: false }
+        } catch { return { ok: false } }
       },
     } : {}),
     async analyticsEnabled() {

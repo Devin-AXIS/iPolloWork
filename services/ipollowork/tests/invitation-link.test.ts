@@ -9,12 +9,13 @@ import { testConfig } from "./database.js";
 
 test("link invitation lifecycle: register without mail, accept and enforce isolation", async () => {
   const messages: { to: string; template: string; url: string }[] = [];
+  let mailStatus = 200;
   const mailbox = createServer(async (req, res) => {
     assert.equal(req.headers.authorization, "Bearer test-mail-token");
     let body = "";
     for await (const chunk of req) body += chunk;
     messages.push(JSON.parse(body));
-    res.writeHead(200).end();
+    res.writeHead(mailStatus).end();
   });
   await new Promise<void>(resolve => mailbox.listen(0, "127.0.0.1", resolve));
   const address = mailbox.address();
@@ -39,6 +40,12 @@ test("link invitation lifecycle: register without mail, accept and enforce isola
   };
   try {
     const owner = await signup("owner@mail.test");
+    const duplicate = await request("/api/auth/sign-up/email", undefined, { name: "Duplicate", email: "OWNER@mail.test", password: "Long-Test-Password-2026" });
+    assert.equal(duplicate.status, 422);
+    assert.equal(duplicate.data.code, "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL");
+    const rejected = await request("/api/auth/sign-in/email", undefined, { email: "owner@mail.test", password: "Incorrect-Test-Password" });
+    assert.equal(rejected.status, 401);
+    assert.equal(rejected.data.code, "INVALID_EMAIL_OR_PASSWORD");
     const org = await request("/api/v1/enterprises", owner.token, { name: "受邀组织" });
     const orgId = org.data.id;
     const other = await request("/api/v1/enterprises", owner.token, { name: "隔离组织" });
@@ -93,6 +100,14 @@ test("link invitation lifecycle: register without mail, accept and enforce isola
     const resetToken = new URL(resetMail.url).pathname.split('/').pop();
     assert.equal((await request("/api/auth/reset-password", undefined, { token: resetToken, newPassword: "Changed-Test-Password-2026" })).status, 200);
     assert.equal((await request("/api/auth/sign-in/email", undefined, { email: "guest@mail.test", password: "Changed-Test-Password-2026" })).status, 200);
+    mailStatus = 502;
+    const stalled = await service.app.request(config.origin + "/api/auth/request-password-reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "guest@mail.test", redirectTo: config.origin + "/reset-password" }),
+    });
+    assert.equal(stalled.status, 503);
+    assert.equal((await stalled.json()).code, "MAIL_DELIVERY_FAILED");
   } finally {
     await service.close();
     await new Promise<void>((resolve, reject) => mailbox.close(error => error ? reject(error) : resolve()));

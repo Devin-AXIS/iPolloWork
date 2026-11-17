@@ -10,8 +10,8 @@ const environment = z.object({
   SERVICE_ORIGIN: z.url().default("http://localhost:4785"),
   DATA_DIR: z.string().default("./data"),
   AUTH_SECRET: z.string().optional(),
-  MAIL_WEBHOOK_URL: z.url().optional(),
-  MAIL_WEBHOOK_TOKEN: z.string().optional(),
+  MAIL_WEBHOOK_URL: z.preprocess(value => value === "" ? undefined : value, z.url().optional()),
+  MAIL_WEBHOOK_TOKEN: z.string().min(1).optional().or(z.literal("").transform(() => undefined)),
   TRUSTED_PROXY_IPS: z.string().default(""),
   DATABASE_URL: z
     .url()

@@ -357,7 +357,7 @@ export class ExecutionService {
       ServiceRow & { enterprise_id: string; enterprise_name: string }
     >(
       `SELECT s.*,es.enterprise_id,e.name AS enterprise_name FROM execution_services s JOIN enterprise_services es ON es.service_id=s.id JOIN enterprises e ON e.id=es.enterprise_id
-       JOIN members m ON m.enterprise_id=es.enterprise_id AND m.user_id=? WHERE s.enabled=1 AND (m.role IN('owner','admin') OR ${grantedTo("s.id")}) ORDER BY s.created_at,s.id LIMIT 200`,
+       JOIN members m ON m.enterprise_id=es.enterprise_id AND m.user_id=? AND m.status='active' WHERE s.enabled=1 AND (m.role IN('owner','admin') OR ${grantedTo("s.id")}) ORDER BY s.created_at,s.id LIMIT 200`,
       actor.id,
       "service",
     );
@@ -378,7 +378,7 @@ export class ExecutionService {
       const current = await this.store.one<ServiceRow>("SELECT * FROM execution_services WHERE id=? FOR UPDATE", serviceId);
       if (!current || definition(current).credentialMode !== "member") throw new ServiceError("SERVICE_CREDENTIAL_MODE", 409);
       // Serialize with member removal; never leave a new credential after departure.
-      const member = await this.store.one("SELECT user_id FROM members WHERE enterprise_id=? AND user_id=? FOR UPDATE", enterpriseId, actor.id);
+      const member = await this.store.one("SELECT user_id FROM members WHERE enterprise_id=? AND user_id=? AND status='active' FOR UPDATE", enterpriseId, actor.id);
       if (!member) throw new ServiceError("ENTERPRISE_FORBIDDEN", 403);
       await requireUse(this.store, actor, enterpriseId, "service", serviceId);
       if (key) await this.settings.set(name, { key });

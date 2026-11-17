@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
 import { build } from 'esbuild'
-import { mkdir, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdir, readFile, rename, writeFile, rm } from 'node:fs/promises'
 import { larkSdkHandshakePatch } from '../vendor/dsh-im/plugin-src/host/lark-sdk-handshake-patch.mjs'
 
 await mkdir('lib', { recursive: true })
@@ -31,6 +31,12 @@ const browser = await build({ entryPoints: ['src/client/index.tsx'], outfile: 'l
 const js = browser.outputFiles.find(file => file.path.endsWith('.cjs'))
 const css = browser.outputFiles.find(file => file.path.endsWith('.css'))
 if (!js || !css) throw new Error('The client build must produce JavaScript and CSS')
-await writeFile('lib/client.js', `window.__ModuleLoader__.load({id:'@ipollo/dsh-suite',factory(require){const module={exports:{}};const exports=module.exports;\n${js.text}\nreturn module.exports;}});\n`)
-await writeFile('lib/client.css', css.contents)
+// The official client HMR watcher treats replacement of client.js as the completed build.
+async function publishClientFile(filename, contents) {
+  const temporary = `${filename}.build-${process.pid}`
+  try { await writeFile(temporary, contents); await rename(temporary, filename) }
+  finally { await rm(temporary, { force: true }) }
+}
+await publishClientFile('lib/client.css', css.contents)
+await publishClientFile('lib/client.js', `window.__ModuleLoader__.load({id:'@ipollo/dsh-suite',factory(require){const module={exports:{}};const exports=module.exports;\n${js.text}\nreturn module.exports;}});\n`)
 JSON.parse(await readFile('catalog/index.json', 'utf8'))

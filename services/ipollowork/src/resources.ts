@@ -26,7 +26,7 @@ export function mountResources(
       kind = c.req.query("kind") ?? "skill",
       enterprise = c.req.query("enterpriseId") ?? "";
     const items = await store.all(
-      "SELECT id,title,description,kind,version,visibility,enterprise_id,bytes,created_at FROM resources r WHERE kind=? AND (?='' OR enterprise_id=?) AND position(lower(?) in lower(title||' '||description))>0 AND (owner_id=? OR visibility='public' OR ?='admin' OR (visibility='enterprise' AND EXISTS(SELECT 1 FROM members m WHERE m.enterprise_id=r.enterprise_id AND m.user_id=?))) ORDER BY created_at DESC LIMIT 200",
+      "SELECT id,title,description,kind,version,visibility,enterprise_id,bytes,created_at FROM resources r WHERE kind=? AND (?='' OR enterprise_id=?) AND position(lower(?) in lower(title||' '||description))>0 AND ((r.enterprise_id IS NULL AND r.owner_id=?) OR r.visibility='public' OR ?='admin' OR EXISTS(SELECT 1 FROM members m WHERE m.enterprise_id=r.enterprise_id AND m.user_id=? AND m.status='active' AND (r.visibility='enterprise' OR r.owner_id=m.user_id))) ORDER BY created_at DESC LIMIT 200",
       kind,
       enterprise,
       enterprise,

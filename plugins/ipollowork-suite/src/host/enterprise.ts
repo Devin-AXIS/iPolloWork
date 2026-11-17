@@ -1,12 +1,13 @@
 import { enterpriseAnalyticsSchema } from "../shared/enterprise-analytics.ts";
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import type { AccountService } from "./account.ts";
+import { readJson, type AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
 import { linkProject } from "./project-context.ts";
+import { pinnedPlugin } from "./enterprise-plugin.ts";
+import { organizationTabs } from "../shared/enterprise.ts";
 import type {
   EnterpriseAssets,
-  PackageDetail,
   EnterpriseModel,
   ModelProbe,
 } from "../shared/enterprise.ts";
@@ -30,15 +31,37 @@ const id = z
   .max(200)
   .regex(/^[A-Za-z0-9_-]+$/);
 const name = z.string().trim().min(1).max(120);
+const logo = z.string().max(48_000).regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/);
 const row = z.record(z.string(), z.unknown());
 const audience = z
   .object({
     all: z.boolean(),
     departments: z.array(id).max(200),
     members: z.array(id).max(500),
+    includeSubdepartments: z.boolean().optional(),
   })
   .strict();
 const description = z.string().trim().max(2000);
+const tabs = z.array(z.enum(organizationTabs)).max(organizationTabs.length);
+const publicationKind = z.enum(["plugin", "template", "skill"]);
+const publicationVersion = z.string().min(1).max(64).regex(/^[0-9A-Za-z.-]+$/);
+const mcpOAuth = z.object({
+  authorizationUrl:z.url().max(2048), tokenUrl:z.url().max(2048), clientId:z.string().min(1).max(256), scope:z.string().max(512),
+}).strict();
+const publicMcpList = z.object({ items:z.array(z.object({
+  id:z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/), name, description:z.string().max(500), oauth:z.boolean(),
+  url:z.url().max(2048).refine(value=>{
+    const url=new URL(value);
+    return url.protocol==="https:" && !url.username && !url.password && !url.search && !url.hash;
+  }),
+})).max(100) });
+const publicationList = z.object({
+  canManage: z.boolean(),
+  items: z.array(z.object({
+    id, title: name, description, packageName: z.string().max(214).optional(),
+    publishedVersion: publicationVersion.nullable(), canSubmit: z.boolean(), audience: audience.optional(),
+  })).max(200),
+});
 const modelEntry = z
   .object({
     id: z.string().min(1).max(200),
@@ -66,19 +89,6 @@ const key = z
   .refine((value) => !/[\r\n]/.test(value));
 const assetsResponse = z.object({
   canManage: z.boolean(),
-  packages: z
-    .array(
-      z.object({
-        id,
-        title: z.string(),
-        description: z.string(),
-        fileCount: z.number(),
-        bytes: z.number(),
-        updatedAt: z.number(),
-        audience,
-      }),
-    )
-    .max(200),
   skills: z
     .array(
       z.object({
@@ -92,26 +102,6 @@ const assetsResponse = z.object({
       }),
     )
     .max(200),
-});
-const packageResponse = z.object({
-  package: z.object({
-    id,
-    title: z.string(),
-    description: z.string(),
-    audience,
-  }),
-  files: z
-    .array(
-      z.object({
-        id,
-        name: z.string(),
-        bytes: z.number(),
-        mime: z.string(),
-        addedAt: z.number(),
-        addedBy: z.string(),
-      }),
-    )
-    .max(500),
 });
 const modelsResponse = z.object({
   items: z
@@ -159,6 +149,7 @@ const organization = (r: Record<string, unknown>): Enterprise => ({
   name: string(r.name),
   role: typeof r.role === "string" ? r.role : "admin",
   memberCount: typeof r.member_count === "number" ? r.member_count : 0,
+  logo: logo.safeParse(r.logo).data ?? null,
 });
 function projectWork(r: Record<string, unknown>): ProjectWork {
   return {
@@ -195,6 +186,7 @@ function projectUpdate(r: Record<string, unknown>): ProjectUpdate {
 }
 export interface EnterpriseNative {
   workspaceRegistry: {
+    create?(path: string, title?: string): Promise<{ id: string }>;
     list(): {
       id: string;
       title: string;
@@ -220,10 +212,9 @@ export class EnterpriseService {
     return this.account.request("/api/v1/" + path, data, method);
   }
   private async signedIn() {
-    const state = await this.account.state();
-    if (state.status !== "signed-in")
-      throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
-    return state.user.id;
+    const user = await this.account.user();
+    if (!user) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
+    return user.id;
   }
   /** Join native workspaces with the caller's own cloud project records. */
   private localProjects(
@@ -250,22 +241,21 @@ export class EnterpriseService {
     });
   }
   async catalog(): Promise<EnterpriseCatalog> {
+    const accountGeneration = this.account.generation;
     const userId = await this.signedIn();
-    const [organizations, projects, shares, workRows, projectRows] =
-      await Promise.all([
-        this.cloud("enterprises"),
-        this.cloud("projects"),
-        Promise.resolve({ items: [] }),
-        Promise.resolve({ items: [] }),
-        this.cloud("projects"),
-      ]);
+    const [organizations, projects] = await Promise.all([
+      this.cloud("enterprises"),
+      this.cloud("projects"),
+    ]);
+    if (accountGeneration !== this.account.generation)
+      throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
     const enterprises = list.parse(organizations).items.map(organization);
     return {
       serviceOrigin: this.origin,
       userId,
       enterprises,
-      work: list.parse(workRows).items.map(projectWork),
-      sharedProjects: list.parse(projectRows).items.map((r) => ({
+      work: [],
+      sharedProjects: list.parse(projects).items.map((r) => ({
         executionMode: r.execution_mode === "cloud" ? "cloud" : "local",
         id: string(r.id),
         title: string(r.title),
@@ -273,16 +263,7 @@ export class EnterpriseService {
         enterpriseName: nullableString(r.enterprise_name),
       })),
       projects: this.localProjects(userId, enterprises, projects),
-      shares: list.parse(shares).items.map((r) => ({
-        id: string(r.id),
-        title: string(r.title),
-        projectId: string(r.project_id),
-        projectTitle: string(r.project_title),
-        enterpriseId: nullableString(r.enterprise_id),
-        enterpriseName: nullableString(r.enterprise_name),
-        ownerId: string(r.owner_id),
-        createdAt: number(r.created_at),
-      })),
+      shares: [],
     };
   }
   async detail(enterpriseId: string): Promise<EnterpriseDetail> {
@@ -298,25 +279,34 @@ export class EnterpriseService {
     return {
       enterprise: organization(result.enterprise),
       canManage: result.canManage,
+      description: nullableString(result.enterprise.description) ?? "",
+      tabOrder: typeof result.enterprise.tab_order === "string"
+        ? tabs.parse(JSON.parse(result.enterprise.tab_order)) : [],
       members: result.members.map((r) => ({
         userId: string(r.user_id),
         name: string(r.name),
         email: string(r.email),
         role: string(r.role),
+        status: r.status === "suspended" ? "suspended" : "active",
         departmentId: nullableString(r.department_id),
+        employeeNumber: nullableString(r.employee_number),
+        displayName: nullableString(r.display_name),
       })),
       departments: result.departments.map((r) => ({
         id: string(r.id),
         name: string(r.name),
+        parentId: nullableString(r.parent_id),
       })),
       invitations: result.invitations.map((r) => ({
         projectId: nullableString(r.project_id),
         projectRole: r.project_role as "view" | "participate" | "maintain" | null,
         departmentId: nullableString(r.department_id),
         id: string(r.id),
-        email: string(r.email),
+        email: nullableString(r.email),
+        inviteeName: nullableString(r.invitee_name),
+        employeeNumber: nullableString(r.employee_number),
         role: string(r.role),
-        expiresAt: number(r.expires_at),
+        expiresAt: r.expires_at == null ? null : number(r.expires_at),
         accepted: !!r.accepted_by,
         revoked: !!r.revoked_at,
       })),
@@ -365,6 +355,13 @@ export class EnterpriseService {
       projects,
     ).find((p) => p.id === local.id);
     if (!project) throw new SuiteError("IPW_PROJECT_NOT_FOUND", 404);
+    return { project, ...await this.sessionTranscript(sessionId) };
+  }
+
+  /** The same bounded, human/model-only snapshot is used for each enterprise backend. */
+  async sessionTranscript(sessionId: string): Promise<Pick<SharePreview, "transcript" | "revision">> {
+    if (!this.native.workspaceRegistry.list().some(workspace => workspace.sessionIds.includes(sessionId)))
+      throw new SuiteError("IPW_PROJECT_NOT_FOUND", 404);
     const surface = await this.native.sessionQuery.readSurface(sessionId);
     const transcript = surface.events.flatMap((event) => {
       if (event.type !== "user/message" && event.type !== "assistant/message")
@@ -402,7 +399,6 @@ export class EnterpriseService {
     )
       throw new SuiteError("IPW_SHARE_TOO_LARGE", 413);
     return {
-      project,
       transcript,
       revision: createHash("sha256")
         .update(JSON.stringify(transcript))
@@ -441,6 +437,62 @@ export class EnterpriseService {
       })),
     };
   }
+  private async organizationCapability(path: string, input?: unknown, method?: string) {
+    try {
+      return await this.cloud(path, input, method);
+    } catch (error) {
+      if (error instanceof SuiteError && error.status === 404 && error.code === "IPW_ACCOUNT_UNAVAILABLE")
+        throw new SuiteError("IPW_ENTERPRISE_CAPABILITIES_UNAVAILABLE", 503, { cause: error });
+      throw error;
+    }
+  }
+
+  private async publications(base: string, parts: string[], method: string, input: unknown) {
+    const kind = publicationKind.parse(parts[0]);
+    const root = base + "/publications/" + kind;
+    if (parts.length === 1) {
+      if (method === "GET") return publicationList.parse(await this.organizationCapability(root));
+      if (method === "POST") {
+        const common = { id: id.optional(), title: name, description, version: publicationVersion };
+        if (kind === "plugin") {
+          const data = z.object({ ...common, packageName: z.string().max(214) }).strict().parse(input);
+          pinnedPlugin(data.packageName + "@" + data.version);
+          return this.organizationCapability(root, data);
+        }
+        if (kind === "skill")
+          return this.organizationCapability(root, z.object({ ...common, markdown:z.string().min(1).max(32_000) }).strict().parse(input));
+        return this.organizationCapability(root, z.object({ ...common, html: z.string().min(1).max(512 * 1024) }).strict().parse(input));
+      }
+    }
+    if (!parts[1]) throw new SuiteError("IPW_NOT_FOUND", 404);
+    const item = root + "/" + id.parse(parts[1]);
+    if (parts.length === 2 && method === "DELETE") return this.organizationCapability(item, undefined, method);
+    if (parts[2] === "versions" && parts.length === 3 && method === "GET") {
+      const { items } = z.object({ items: z.array(z.object({
+        version: publicationVersion, status: z.enum(["pending", "rejected", "approved"]),
+        note: z.string(), created_at: z.number(),
+      })).max(200) }).parse(await this.organizationCapability(item + "/versions"));
+      return { items: items.map(row => ({ version: row.version, status: row.status, note: row.note, createdAt: row.created_at })) };
+    }
+    if (parts[2] === "versions" && parts.length === 4) {
+      const version = publicationVersion.parse(parts[3]), path = item + "/versions/" + version;
+      if (method === "PUT")
+        return this.organizationCapability(path, z.object({
+          decision: z.enum(["approve", "reject", "publish"]), note: z.string().max(1000).optional(),
+        }).strict().parse(input), method);
+      if (method === "GET") {
+        const result = await this.organizationCapability(path);
+        if (kind === "template") return z.object({ html: z.string().max(512 * 1024) }).parse(result);
+        if (kind === "skill") return z.object({ markdown:z.string().max(32_000) }).parse(result);
+        const { spec } = z.object({ spec: z.string().max(300) }).parse(result);
+        const reference = pinnedPlugin(spec);
+        if (reference.version !== version) throw new SuiteError("IPW_INVALID_RESPONSE", 502);
+        return { spec };
+      }
+    }
+    throw new SuiteError("IPW_NOT_FOUND", 404);
+  }
+
   async request(
     method: string,
     path: string,
@@ -491,18 +543,50 @@ export class EnterpriseService {
       return { ok: true };
     }
     if (method === "GET" && parts.length === 0) return this.catalog();
+    if (method === "GET" && path === "/public-mcp") {
+      await this.signedIn();
+      try {
+        const result = await fetch("https://i.ipollo.ai/api/v1/mcp/catalog", {
+          redirect:"error", headers:{accept:"application/json"}, signal:AbortSignal.timeout(8_000),
+        });
+        if (!result.ok) {
+          await result.body?.cancel();
+          throw new SuiteError("IPW_ENTERPRISE_MCP_UNAVAILABLE",503);
+        }
+        return publicMcpList.parse(await readJson(result, 128 * 1024));
+      } catch (cause) {
+        throw new SuiteError("IPW_PUBLIC_MCP_UNAVAILABLE",503,{cause});
+      }
+    }
+    if (path === "/notices") {
+      if (method === "GET") {
+        const { items } = z.object({ items: z.array(z.object({
+          id, kind: z.enum(["role", "department", "removed", "status"]), value: z.string().nullable(),
+          name, created_at: z.number(), read_at: z.number().nullable(),
+        })).max(100) }).parse(await this.organizationCapability("me/organization-notices?include=status"));
+        return { items: items.map(row => ({ id:row.id, kind:row.kind, value:row.value, name:row.name, createdAt:row.created_at, readAt:row.read_at })) };
+      }
+      if (method === "PUT") return this.organizationCapability("me/organization-notices",
+        z.object({ids:z.array(z.uuid()).max(100)}).strict().parse(input), method);
+    }
     if (method === "POST" && path === "/organizations")
       return this.cloud("enterprises", z.object({ name }).parse(input));
     if (method === "POST" && path === "/join") {
-      const { invitation } = z
-        .object({ invitation: z.string().trim().min(1).max(2048) })
+      const { invitation, serviceAddress } = z
+        .object({ invitation: z.string().trim().min(1).max(2048), serviceAddress: z.url().max(2048).optional() }).strict()
         .parse(input);
+      if (serviceAddress) {
+        const service = new URL(serviceAddress);
+        if (service.origin !== this.origin || service.pathname !== "/" || service.username || service.password || service.search || service.hash)
+          throw new SuiteError("IPW_INVITATION_SERVICE_MISMATCH", 400);
+      }
       let token = invitation;
       if (invitation.includes("://")) {
-        const url = new URL(invitation);
-        if (url.origin !== this.origin || !url.pathname.startsWith("/invite/"))
+        const url = z.url().parse(invitation);
+        const link = new URL(url);
+        if (link.origin !== this.origin || !link.pathname.startsWith("/invite/") || link.username || link.password)
           throw new SuiteError("IPW_INVALID_INVITATION", 400);
-        token = url.pathname.slice("/invite/".length);
+        token = link.pathname.slice("/invite/".length);
       }
       if (!/^[A-Za-z0-9_-]{40,100}$/.test(token))
         throw new SuiteError("IPW_INVALID_INVITATION", 400);
@@ -511,6 +595,23 @@ export class EnterpriseService {
     if (method === "POST" && path === "/assign") return this.assign(input);
     if (parts[0] === "organizations" && parts[1]) {
       const base = "enterprises/" + id.parse(parts[1]);
+      if (method === "GET" && parts[2] === "messages" && parts.length === 3) {
+        const { shares } = z.object({shares:z.array(z.object({
+          enterpriseId:id.nullable(), shareId:id, ownerId:id, sessionTitle:z.string().max(4096),
+          sessionMode:z.enum(["view","write"]), online:z.boolean(),
+        })).max(1000)}).parse(await this.cloud("liveshare/shares"));
+        return { items:shares.filter(share=>share.enterpriseId===parts[1]).map(share=>({
+          ...share,link:this.origin + "/s/" + encodeURIComponent(share.shareId),
+        })) };
+      }
+      if (parts[2] === "publications" && parts[3])
+        return this.publications(base, parts.slice(3), method, input);
+      if (method === "GET" && parts[2] === "activity" && parts.length === 3) {
+        const { items } = z.object({ items: z.array(z.object({
+          id: z.union([z.string(), z.number()]), action: z.string(), actor: z.string().nullable(), created_at: z.number(),
+        })).max(100) }).parse(await this.organizationCapability(base + "/activity"));
+        return { items: items.map(row => ({ id: String(row.id), action: row.action, actor: row.actor, createdAt: row.created_at })) };
+      }
       if (method === "POST" && parts[2] === "analytics" && parts.length === 3)
         return enterpriseAnalyticsSchema.parse(await this.cloud(base + "/analytics", z.object({
           days: z.union([z.literal(7), z.literal(30), z.literal(90)]),
@@ -519,16 +620,50 @@ export class EnterpriseService {
           activityPage: z.number().int().min(1).max(10000),
         }).strict().parse(input)));
       if (method === "GET" && parts.length === 2) return this.detail(parts[1]);
+      if (method === "PATCH" && parts.length === 2) {
+        const data = z.object({ name: name.optional(), description: z.string().trim().max(1000).optional(), tabOrder: tabs.optional(), logo:logo.nullable().optional() }).strict().parse(input);
+        try {
+          return z.object({ id, name, description: z.string().optional(), tabOrder: tabs.optional(), logo:logo.nullable().optional() }).parse(await this.cloud(base, data, "PATCH"));
+        } catch (error) {
+          if (error instanceof SuiteError && error.status === 404 && error.code === "IPW_ACCOUNT_UNAVAILABLE")
+            throw new SuiteError("IPW_ENTERPRISE_SETTINGS_UNAVAILABLE", 503, { cause: error });
+          throw error;
+        }
+      }
       if (parts[2] === "notifications" && parts.length === 3) {
         if (method === "GET") return this.cloud(base + "/notifications");
         if (method === "PUT") return this.cloud(base + "/notifications", z.object({endpoint:z.string().max(2048),enabled:z.boolean(),rotate:z.boolean().optional()}).strict().parse(input), "PUT");
       }
-      if (method === "POST" && parts[2] === "invitations" && parts[3] === "batch" && parts.length === 4)
-        return this.cloud(base + "/invitations/batch", z.object({people:z.array(z.object({email:z.email(),departmentId:id.nullable(),role:z.enum(["member","admin"])}).strict()).min(1).max(500),days:z.number().int().min(1).max(30)}).strict().parse(input));
+      if (method === "POST" && parts[2] === "invitations" && parts[3] === "batch" && parts.length === 4) {
+        const days = z.number().int().min(1).max(30);
+        return this.cloud(base + "/invitations/batch", z.union([
+          z.object({people:z.array(z.object({email:z.email(),departmentId:id.nullable(),role:z.enum(["member","admin"])}).strict()).min(1).max(500),days}).strict(),
+          z.object({csv:z.string().min(1).max(256 * 1024),days}).strict(),
+        ]).parse(input));
+      }
+      if (method === "POST" && parts[2] === "join-codes" && parts.length === 3) {
+        const data = z.object({
+          departmentId: id.nullable().optional(), days: z.number().int().min(1).max(30).nullable().optional(),
+          displayName: name.optional(),
+          projectId: id.optional(), projectRole: z.enum(["view", "participate", "maintain"]).optional(),
+        }).strict().parse(input);
+        return z.object({
+          id, code: z.string().regex(/^[A-Za-z0-9_-]{40,100}$/),
+          expiresAt: z.number().nullable(), serviceAddress: z.url(),
+        }).parse(await this.organizationCapability(base + "/join-codes", data));
+      }
+      if (method === "POST" && parts[2] === "join-codes" && parts[3] === "batch" && parts.length === 4)
+        return this.organizationCapability(base + "/join-codes/batch", z.object({
+          csv:z.string().min(1).max(256 * 1024),days:z.number().int().min(1).max(30).nullable().optional(),
+        }).strict().parse(input));
+      if (method === "PATCH" && parts[2] === "join-codes" && parts.length === 4)
+        return this.organizationCapability(base + "/join-codes/" + id.parse(parts[3]), z.object({
+          days:z.number().int().min(1).max(30).nullable(),
+        }).strict().parse(input), "PATCH");
       if (method === "POST" && parts[2] === "departments" && parts.length === 3)
         return this.cloud(
           base + "/departments",
-          z.object({ name }).parse(input),
+          z.object({ name, parentId: id.nullable().optional() }).parse(input),
         );
       if (method === "POST" && parts[2] === "invitations" && parts.length === 3)
         return this.cloud(
@@ -557,7 +692,7 @@ export class EnterpriseService {
         if (method === "PATCH")
           return this.cloud(
             base + "/departments/" + id.parse(parts[3]),
-            z.object({ name }).parse(input),
+            z.object({ name, parentId: id.nullable().optional() }).parse(input),
             "PATCH",
           );
         if (method === "DELETE")
@@ -576,7 +711,7 @@ export class EnterpriseService {
           base + "/grants",
           z
             .object({
-              kind: z.enum(["package", "skill", "service", "mcp"]),
+                kind: z.enum(["skill", "service", "mcp", "plugin", "template"]),
               assetId: id,
               audience,
             })
@@ -593,7 +728,11 @@ export class EnterpriseService {
           });
           return z.object({
             canManage: z.boolean(),
-            items: z.array(z.object({ id, title: name, description, host: z.string().max(253), audience })).max(100),
+            items: z.array(z.object({
+              id, title: name, description, host: z.string().max(253), audience,
+              enabled: z.boolean().optional(), endpoint: z.url().max(2048).optional(),
+              oauthRequired:z.boolean().optional(), authorized:z.boolean().optional(), oauth:mcpOAuth.optional(),
+            })).max(100),
           }).parse(value);
         }
         if (parts.length === 3 && method === "POST")
@@ -602,46 +741,23 @@ export class EnterpriseService {
             description: z.string().trim().max(1000),
             endpoint: z.url().max(2048),
             key: key.optional(),
+            oauth:mcpOAuth.optional(),
           }).strict().parse(input));
         if (parts.length === 4 && method === "DELETE")
           return this.cloud(base + "/mcp/" + id.parse(parts[3]), undefined, "DELETE");
-      }
-      if (parts[2] === "packages") {
-        if (method === "POST" && parts.length === 3)
-          return this.cloud(
-            base + "/packages",
-            z
-              .object({
-                title: name,
-                description: description.optional(),
-                audience: audience.optional(),
-              })
-              .parse(input),
-          );
-        const target = parts[3] ? base + "/packages/" + id.parse(parts[3]) : "";
-        if (method === "GET" && parts.length === 4)
-          return packageResponse.parse(
-            await this.cloud(target),
-          ) satisfies PackageDetail;
-        if (method === "PATCH" && parts.length === 4)
-          return this.cloud(
-            target,
-            z
-              .object({
-                title: name.optional(),
-                description: description.optional(),
-              })
-              .parse(input),
-            "PATCH",
-          );
-        if (method === "DELETE" && parts.length === 4)
-          return this.cloud(target, undefined, "DELETE");
-        if (method === "DELETE" && parts.length === 6 && parts[4] === "files")
-          return this.cloud(
-            target + "/files/" + id.parse(parts[5]),
-            undefined,
-            "DELETE",
-          );
+        if (parts.length === 4 && method === "PATCH")
+          return this.organizationCapability(base + "/mcp/" + id.parse(parts[3]), z.object({
+            title: name, description: z.string().trim().max(1000), endpoint: z.url().max(2048),
+            key: key.nullable().optional(), enabled: z.boolean(),
+            oauth:mcpOAuth.nullable().optional(),
+          }).strict().parse(input), method);
+        if (parts.length === 5 && parts[4] === "oauth") {
+          const path = "me/enterprise-mcp/" + id.parse(parts[3]) + "/oauth";
+          if (method === "DELETE") return this.organizationCapability(path,undefined,method);
+          if (method === "POST") return z.object({
+            authorizationUrl:z.url().max(4096).refine(value=>new URL(value).protocol==="https:"),
+          }).parse(await this.organizationCapability(path,{},method));
+        }
       }
       if (parts[2] === "skills") {
         if (method === "POST" && parts.length === 3)
@@ -731,7 +847,10 @@ export class EnterpriseService {
             z
               .object({
                 role: z.enum(["admin", "member"]),
+                status: z.enum(["active", "suspended"]).optional(),
                 departmentId: id.nullable(),
+                employeeNumber: z.string().trim().min(1).max(64).nullable().optional(),
+                displayName: name.nullable().optional(),
               })
               .parse(input),
             "PATCH",

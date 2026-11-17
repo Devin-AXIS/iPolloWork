@@ -12,6 +12,8 @@ For a local unsigned Mac application directory, install dependencies with `node 
 
 There is no old iPolloWork profile conversion or downgrade layer. Files and account credentials remain owned by the configured DSH home. The original DeepSeek Harness MIT license is retained in `LICENSE`; product changes are maintained here, independently from the official app tree.
 
+On Windows, a staged Jovan development desktop can be started with `powershell -NoProfile -File integrations/desktop/scripts/start-local-hot.ps1`. Keep the staged shell running the first time so the launcher can record its profile. The launcher uses the staged Node.js runtime by default (`-NodeExecutable` can override it). It reuses the same DSH home and Electron user data, builds the linked Work suite on startup, and rebuilds it after source saves. DSH's native Host and client HMR apply the bundle. `-Restart` replaces the running development shell; otherwise an existing watched window is activated. Electron shell and DSH runtime changes still use their normal build and restart flow.
+
 To build an installer on its native platform, run `node integrations/tooling/setup.mjs --plugins` from the repository root, then run the matching command below. The package command builds and verifies the pinned runtime and product.
 
 | Target | Command | Website asset |

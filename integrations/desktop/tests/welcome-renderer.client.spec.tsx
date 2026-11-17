@@ -6,7 +6,7 @@ import { Welcome } from '../src/client/WelcomePage.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopLocale } from '../src/locale.ts'
 import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
-import type { WelcomeSaveResult, WelcomeNotice } from '../src/welcome-api.ts'
+import type { WelcomeSaveResult, WelcomeNotice, WelcomeAccountResult } from '../src/welcome-api.ts'
 
 const html = readFileSync(join(import.meta.dirname, '../renderer/welcome.html'), 'utf8')
 afterEach(cleanup)
@@ -343,10 +343,13 @@ it('reports each return to the welcome entry once, including account cancellatio
 })
 
 
-it('keeps the welcome page and signs in inside the iPolloWork window', async () => {
+it.each([
+  [{ ok: false, reason: 'invalid-credentials' }, '邮箱或密码不正确，请重试。'],
+  [{ ok: false }, '登录未完成，请重试。'],
+] as const)('shows the sign-in outcome %j inside the iPolloWork window', async (result, message) => {
   const original = mount('zh-CN')
   original.unmount()
-  const signInAccount = vi.fn(async () => ({ ok: false }))
+  const signInAccount = vi.fn<() => Promise<WelcomeAccountResult>>().mockResolvedValue(result)
   render(<Welcome api={{ ...original.api, signInAccount }} />)
   expect(document.getElementById('welcome-heading')?.textContent).toContain('iPolloWork')
   fireEvent.click(document.getElementById('sign-in')!)
@@ -355,14 +358,15 @@ it('keeps the welcome page and signs in inside the iPolloWork window', async () 
   fireEvent.submit(document.getElementById('login-form')!)
   await vi.waitFor(() => { expect(signInAccount).toHaveBeenCalledExactlyOnceWith('member@example.test', 'example-secret') })
   await vi.waitFor(() => { expect((document.getElementById('login-password') as HTMLInputElement).value).toBe('') })
+  expect(document.querySelector('#login-form [role="alert"]')?.textContent).toBe(message)
   expect(original.api.startSignIn).not.toHaveBeenCalled()
   expect(document.getElementById('login-form')?.textContent).not.toContain('example-secret')
 })
 
-it('registers an iPolloWork account and clears the password before retry', async () => {
+it('shows an occupied email and clears the registration password before retry', async () => {
   const original = mount('zh-CN')
   original.unmount()
-  const signUpAccount = vi.fn(async () => ({ ok: false }))
+  const signUpAccount = vi.fn(async (): Promise<WelcomeAccountResult> => ({ ok: false, reason: 'email-in-use' }))
   render(<Welcome api={{ ...original.api, signInAccount: async () => ({ ok: false }), signUpAccount }} />)
   fireEvent.click(document.getElementById('sign-in')!)
   fireEvent.click(document.getElementById('switch-account-mode')!)
@@ -373,7 +377,28 @@ it('registers an iPolloWork account and clears the password before retry', async
   fireEvent.submit(document.getElementById('login-form')!)
   await vi.waitFor(() => { expect(signUpAccount).toHaveBeenCalledExactlyOnceWith('Member', 'member@example.test', 'example-secret') })
   await vi.waitFor(() => { expect((document.getElementById('login-password') as HTMLInputElement).value).toBe('') })
-  expect(document.querySelector('#login-form [role="alert"]')?.textContent).toContain('注册失败')
+  expect(document.querySelector('#login-form [role="alert"]')?.textContent).toContain('该邮箱已注册')
   fireEvent.click(document.getElementById('switch-account-mode')!)
   expect(document.getElementById('login-name')).toBeNull()
+})
+
+it('requests a password reset from the login page and surfaces delivery failure', async () => {
+  const original = mount('zh-CN')
+  original.unmount()
+  const requestPasswordReset = vi.fn<() => Promise<WelcomeSaveResult>>()
+    .mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true })
+  render(<Welcome api={{ ...original.api, signInAccount: async () => ({ ok: false }), requestPasswordReset }} />)
+  fireEvent.click(document.getElementById('sign-in')!)
+  fireEvent.click(document.querySelector('#login-form button')!)
+  expect(document.getElementById('login-password')).toBeNull()
+  fireEvent.change(document.getElementById('login-email')!, { target: { value: 'member@example.test' } })
+  fireEvent.submit(document.getElementById('login-form')!)
+  await vi.waitFor(() => {
+    expect(document.querySelector('#login-form [role="alert"]')?.textContent).toContain('暂时无法发送')
+  })
+  fireEvent.submit(document.getElementById('login-form')!)
+  await vi.waitFor(() => {
+    expect(document.querySelector('#login-form [role="status"]')?.textContent).toContain('如果该邮箱已注册')
+  })
+  expect(requestPasswordReset.mock.calls).toEqual([['member@example.test'], ['member@example.test']])
 })

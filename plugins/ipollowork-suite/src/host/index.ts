@@ -26,6 +26,7 @@ import { Services } from "./services.ts";
 import type { ServiceCenter, ServiceChoice } from "../shared/services.ts";
 import { AccountService, publicAccountState } from "./account.ts";
 import { mountCapabilityTools } from "./capability-tools.ts";
+import { mountWorkspaceTrash } from "./workspace-trash.ts";
 import {
   sharingStatus,
   nativeShareAudience,
@@ -255,6 +256,11 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   const lifetime = new AbortController();
   ctx.effect(() => () => lifetime.abort(), "ipollowork-suite: requests");
   const account = new AccountService(ctx.credentials, config, lifetime.signal);
+  let workspaceTrash: ReturnType<typeof mountWorkspaceTrash> | undefined;
+  ctx.inject?.(["workspaceRegistry", "storageDomain", "sessionQuery"], scope => {
+    workspaceTrash = mountWorkspaceTrash(scope, ctx.profileContext.home);
+    scope.effect(() => () => { workspaceTrash = undefined; });
+  });
   if (config.account) ctx.provide?.("ipolloStage", {
     request: async (action: string, input?: unknown, signal?: AbortSignal) => {
       const paths = new Set(["status", "connect", "disconnect", "launch", "catalog", "document", "generate", "export", "task", "source"]);
@@ -551,6 +557,15 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               json(response, 200, { ok: true });
               return;
             }
+            if (request.method === "GET" && path === "/workspace-trash" && workspaceTrash) {
+              json(response, 200, await workspaceTrash.state());
+              return;
+            }
+            if (request.method === "POST" && path === "/workspace-trash/restore" && workspaceTrash) {
+              await workspaceTrash.restore(await body(request));
+              json(response, 200, { ok: true });
+              return;
+            }
             if (request.method === "GET" && path === "/membership" && config.account) {
               json(response, 200, membershipSchema.parse(await account.request("/api/v1/me/membership")));
               return;
@@ -714,33 +729,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               await relayDownload(
                 await account.transfer(
                   "/api/v1/resources/" + resourceId + "/download",
-                ),
-                response,
-                config.maxArtifactBytes,
-              );
-              return;
-            }
-            const packageFile =
-              /^\/enterprise\/organizations\/([A-Za-z0-9_-]{1,100})\/packages\/([A-Za-z0-9_-]{1,100})\/(upload|files\/([A-Za-z0-9_-]{1,100})\/download)$/.exec(
-                path,
-              );
-            if (
-              packageFile &&
-              packageFile[3] === "upload" &&
-              request.method === "POST"
-            ) {
-              const form = await readForm(request);
-              const result = await account.transfer(
-                `/api/v1/enterprises/${packageFile[1]}/packages/${packageFile[2]}/files`,
-                form,
-              );
-              json(response, 200, await result.json());
-              return;
-            }
-            if (packageFile && packageFile[4] && request.method === "GET") {
-              await relayDownload(
-                await account.transfer(
-                  `/api/v1/enterprises/${packageFile[1]}/packages/${packageFile[2]}/files/${packageFile[4]}/download`,
                 ),
                 response,
                 config.maxArtifactBytes,

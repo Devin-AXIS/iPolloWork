@@ -5,7 +5,7 @@ copyFileSync("src/schema-postgres.sql", "dist/server/schema-postgres.sql");
 copyFileSync("src/app-data-schema.sql", "dist/server/app-data-schema.sql");
 copyFileSync("src/app-data-migration-002.sql", "dist/server/app-data-migration-002.sql");
 copyFileSync("src/app-data-migration-003.sql", "dist/server/app-data-migration-003.sql");
-for (let version = 2; version <= 14; version++) {
+for (let version = 2; version <= 17; version++) {
   const name = `migration-pg-${String(version).padStart(3, "0")}.sql`;
   copyFileSync(`src/${name}`, `dist/server/${name}`);
 }

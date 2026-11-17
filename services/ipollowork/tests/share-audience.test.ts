@@ -311,7 +311,7 @@ test("PostgreSQL restart preserves project share records and fork permissions", 
           "SELECT MAX(version) AS version FROM service_schema",
         )
       )?.version,
-      14,
+      17,
     );
   } finally {
     await service.close();

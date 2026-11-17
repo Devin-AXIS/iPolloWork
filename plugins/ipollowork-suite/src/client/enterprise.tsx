@@ -1,10 +1,9 @@
-import { AnalyticsTab } from "./enterprise-analytics.tsx";
-import { McpTab } from "./enterprise-mcp.tsx";
+import { MemberNoticeHistory, OrganizationActivityTab, OrganizationMessages, OrganizationNotices, OrganizationPublications } from "./organization-publications.tsx";
+import { McpLibrary, mcpSettings, type McpForm } from "./mcp-library.tsx";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Button,
   IconChevronDownOutlineRegular,
-  IconPlusOutlineRegular,
   IconRefreshOutlineRegular,
   IconUsersOutlineRegular,
   IconWorkspaceTreeOutlineRegular,
@@ -31,6 +30,7 @@ import {
   type EnterpriseLabels,
 } from "./enterprise-locale.ts";
 import { language } from "./locale.ts";
+import { EnterpriseSettings } from "./enterprise-settings.tsx";
 import { createOwnedProject } from "./project-creation-actions.ts";
 import {
   EnterpriseDirectoryFlow,
@@ -44,7 +44,7 @@ import {
   type ViewProps,
 } from "./collaboration.tsx";
 import {
-  InviteDialog,
+  JoinCodeDialog,
   MemberDialog,
   MembersTab,
   NoEnterprise,
@@ -52,11 +52,8 @@ import {
 import { ShareAudience } from "./enterprise-share.tsx";
 import {
   DepartmentsTab,
-  EnterpriseStats,
-  FilesTab,
   ModelsTab,
   SkillsTab,
-  useEnterpriseAssets,
 } from "./enterprise-assets.tsx";
 import {
   ConfirmDialog,
@@ -89,6 +86,8 @@ export interface Props
   controller: EnterpriseController;
   actions: CollaborationActions;
   openAccountSettings(): boolean;
+  installEnterprisePlugin(spec: string): Promise<void>;
+  mcpForm: McpForm;
 }
 
 function EnterpriseSwitcher({
@@ -120,7 +119,7 @@ function EnterpriseSwitcher({
           onClick={() => setOpen((v) => !v)}
         >
           <span className={css.switcherMark} aria-hidden>
-            {current?.name.slice(0, 1)}
+            {current?.logo ? <img src={current.logo} alt="" /> : current?.name.slice(0, 1)}
           </span>
           <span className={css.switcherText}>
             <strong>{current?.name}</strong>
@@ -136,12 +135,12 @@ function EnterpriseSwitcher({
         { type: "label", id: "label", text: t.switchEnterprise },
         ...catalog.enterprises.map((e) => ({ id: e.id, label: e.name })),
         { type: "separator", id: "separator" },
-        { id: ":join", label: t.join },
+        { id: ":service", label: t.joinByService },
         { id: ":create", label: t.create },
       ]}
       onSelect={(id) => {
         setOpen(false);
-        if (id === ":join") controller.open({ kind: "join" });
+        if (id === ":service") controller.open({ kind: "joinService" });
         else if (id === ":create") controller.open({ kind: "create" });
         else controller.selectEnterprise(id);
       }}
@@ -149,11 +148,24 @@ function EnterpriseSwitcher({
   );
 }
 
+function EnterpriseFeedback({ useEnterpriseState, useEnterpriseLabels, useLocale, controller }: Props) {
+  const userId = useEnterpriseState(state => state.catalog?.userId);
+  const t = useEnterpriseLabels(value => value);
+  const locale = useLocale(value => value);
+  return <>
+    {userId && <OrganizationNotices key={userId} controller={controller} t={t} language={locale}/>}
+    <ToastHost useEnterpriseState={useEnterpriseState} dismiss={controller.dismissToast}/>
+  </>;
+}
+
 function EnterprisePanel(props: Props) {
   const t = props.useEnterpriseLabels((v) => v),
     state = props.useEnterpriseState((v) => v),
     language = props.useLocale((v) => v);
   const { controller } = props;
+  const joinService = <Button variant="outline" onClick={() => controller.open({ kind: "joinService" })}>
+    {t.joinByService}
+  </Button>;
   useEffect(() => {
     if (state.signedIn && !state.catalog) void controller.load();
   }, [state.signedIn]);
@@ -188,11 +200,16 @@ function EnterprisePanel(props: Props) {
             <h1>{t.title}</h1>
             <p>{t.intro}</p>
           </div>
+          <div className={css.enterpriseActions}>
+            <MemberNoticeHistory controller={controller} revision={state.revision} t={t} language={language}/>
+            {joinService}
+          </div>
         </div>
         {state.error ? (
           <Notice
             error={state.error}
             t={t}
+            fallback={t.organizationListLoadFailed}
             retry={() => void controller.load()}
           />
         ) : (
@@ -228,20 +245,8 @@ function EnterprisePanel(props: Props) {
               <p>{t.intro}</p>
             </div>
             <div className={css.enterpriseActions}>
-              {enterpriseId &&
-                catalog.enterprises.find((e) => e.id === enterpriseId)?.role !==
-                  "member" && (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    icon={<IconPlusOutlineRegular size={14} />}
-                    onClick={() =>
-                      controller.open({ kind: "invite", enterpriseId })
-                    }
-                  >
-                    {t.invite}
-                  </Button>
-                )}
+              <MemberNoticeHistory controller={controller} revision={state.revision} t={t} language={language}/>
+              {enterpriseId && joinService}
               {enterpriseId && (
                 <EnterpriseSwitcher
                   catalog={catalog}
@@ -261,13 +266,11 @@ function EnterprisePanel(props: Props) {
               />
             </div>
           </div>
-          <Notice
-            error={state.error}
-            t={t}
-            retry={() => void controller.load()}
-          />
           {!enterpriseId ? (
-            <NoEnterprise t={t} controller={controller} />
+            <>
+              <Notice error={state.error} t={t} fallback={t.organizationListLoadFailed} retry={controller.load} />
+              <NoEnterprise t={t} controller={controller} />
+            </>
           ) : (
             <EnterpriseBody
               key={enterpriseId}
@@ -279,6 +282,10 @@ function EnterprisePanel(props: Props) {
               language={language}
               controller={controller}
               revision={state.revision}
+              catalogError={state.error}
+              refreshing={state.loading}
+              installEnterprisePlugin={props.installEnterprisePlugin}
+              mcpForm={props.mcpForm}
             />
           )}
         </>
@@ -297,6 +304,10 @@ function EnterpriseBody({
   language,
   controller,
   revision,
+  catalogError,
+  refreshing,
+  installEnterprisePlugin,
+  mcpForm,
 }: {
   enterpriseId: string;
   userId: string;
@@ -306,27 +317,30 @@ function EnterpriseBody({
   language: string;
   controller: EnterpriseController;
   revision: number;
+  catalogError: string;
+  refreshing: boolean;
+  installEnterprisePlugin(spec: string): Promise<void>;
+  mcpForm: McpForm;
 }) {
   const detail = useRecord<EnterpriseDetail>(
     "/organizations/" + enterpriseId,
     controller.call,
     revision,
   );
-  const { assets, models } = useEnterpriseAssets(
-    enterpriseId,
-    controller.call,
-    revision,
-  );
-  const tabs = (
+  const detailError = !detail.data && !refreshing ? detail.error : "";
+  const labels = (
     [
-      ["analytics", t.analyticsTab],
       ["projects", t.projectsTab],
       ["members", t.membersTab],
       ["departments", t.departmentsTab],
-      ["files", t.filesTab],
+      ["templates", t.templatesTab],
+      ["plugins", t.pluginsTab],
       ["skills", t.skillsTab],
       ["mcp", t.mcpTab],
       ["models", t.modelsTab],
+      ["messages", t.messagesTab],
+      ["activity", t.activityTab],
+      ["settings", t.settingsTab],
     ] as const
   ).map(([value, label]) => ({
     value,
@@ -334,6 +348,7 @@ function EnterpriseBody({
     id: "ipw-enterprise-tab-" + value,
     panelId: "ipw-enterprise-panel-" + value,
   }));
+  const tabs = labels.filter(item => item.value !== "activity" || detail.data?.canManage);
   const active = tabs.find((item) => item.value === tab) ?? tabs[0]!;
   const assetProps = detail.data
     ? {
@@ -348,15 +363,12 @@ function EnterpriseBody({
     : null;
   return (
     <>
-      {detail.data && (
-        <EnterpriseStats
-          detail={detail.data}
-          assets={assets.data}
-          models={models.data}
-          t={t}
-          open={controller.selectTab}
-        />
-      )}
+      <Notice
+        error={detailError || catalogError}
+        t={t}
+        fallback={detailError ? t.organizationDetailsLoadFailed : t.organizationListLoadFailed}
+        retry={catalogError ? controller.load : detail.reload}
+      />
       <nav className={css.lineTabs} role="tablist" aria-label={t.title}>
         {tabs.map((item) => (
           <button
@@ -378,10 +390,7 @@ function EnterpriseBody({
         aria-labelledby={active.id}
         className={css.enterpriseView}
       >
-        {active.value === "analytics" ? (
-          !detail.data ? (detail.error ? <Notice error={detail.error} t={t} retry={detail.reload} /> : <ListSkeleton />) :
-          <AnalyticsTab key={enterpriseId} enterpriseId={enterpriseId} canManage={detail.data.canManage} call={controller.call} revision={revision} t={t} language={language} />
-        ) : active.value === "projects" ? (
+        {active.value === "projects" ? (
           <ProjectsTab enterpriseId={enterpriseId} view={view} />
         ) : active.value === "members" ? (
           <MembersTab
@@ -393,19 +402,21 @@ function EnterpriseBody({
             controller={controller}
           />
         ) : !assetProps ? (
-          detail.error ? (
-            <Notice error={detail.error} t={t} retry={detail.reload} />
-          ) : (
-            <ListSkeleton />
-          )
+          detailError ? null : <ListSkeleton />
         ) : active.value === "departments" ? (
           <DepartmentsTab {...assetProps} />
-        ) : active.value === "files" ? (
-          <FilesTab {...assetProps} />
+        ) : active.value === "templates" || active.value === "plugins" ? (
+          <OrganizationPublications key={active.value} {...assetProps} kind={active.value === "templates" ? "template" : "plugin"} install={installEnterprisePlugin} />
+        ) : active.value === "activity" ? (
+          <OrganizationActivityTab {...assetProps} />
+        ) : active.value === "messages" ? (
+          <OrganizationMessages {...assetProps} />
         ) : active.value === "skills" ? (
-          <SkillsTab {...assetProps} />
+          <><SkillsTab {...assetProps} /><OrganizationPublications {...assetProps} kind="skill" install={installEnterprisePlugin} /></>
         ) : active.value === "mcp" ? (
-          <McpTab {...assetProps} />
+          <McpLibrary {...assetProps} form={mcpForm} />
+        ) : active.value === "settings" ? (
+          <EnterpriseSettings key={enterpriseId} {...assetProps} serviceAddress={view.catalog.serviceOrigin} />
         ) : (
           <ModelsTab {...assetProps} />
         )}
@@ -418,13 +429,16 @@ function SimpleDialog({
   kind,
   t,
   controller,
+  serviceOrigin,
 }: {
-  kind: "create" | "join";
+  kind: "create" | "joinService";
   t: EnterpriseLabels;
   controller: EnterpriseController;
+  serviceOrigin: string | undefined;
 }) {
   const task = useTask(t),
-    [input, setInput] = useState("");
+    [input, setInput] = useState(""),
+    [serviceAddress, setServiceAddress] = useState(serviceOrigin ?? "");
   const close = () => {
     if (!task.busy) controller.open(null);
   };
@@ -442,7 +456,7 @@ function SimpleDialog({
         const result = await controller.call<{
           enterpriseId?: string;
           enterprise_id?: string;
-        }>("/join", { invitation: input });
+        }>("/join", { invitation: input, ...(kind === "joinService" ? { serviceAddress: serviceAddress.trim() } : {}) });
         const joined = result.enterpriseId ?? result.enterprise_id;
         if (joined) controller.selectEnterprise(joined);
         controller.selectTab("projects");
@@ -455,14 +469,16 @@ function SimpleDialog({
   return (
     <Modal
       open
-      title={kind === "create" ? t.create : t.join}
-      description={kind === "create" ? t.emptyHint : t.joinHint}
+      title={kind === "create" ? t.create : t.joinByService}
+      {...(kind === "create" ? {description:t.emptyHint} : {})}
       closeLabel={t.close}
       className={css.enterpriseModal!}
       onClose={close}
     >
       <form className={css.enterpriseForm} onSubmit={submit}>
-        <Field label={kind === "create" ? t.name : t.invitation}>
+        {kind === "joinService" && <Field label={t.serviceAddress}><input type="url" required maxLength={2048}
+          value={serviceAddress} onChange={event => setServiceAddress(event.target.value)} disabled={task.busy} /></Field>}
+        <Field label={kind === "create" ? t.name : t.invitationCode}>
           <input
             autoFocus
             required
@@ -614,13 +630,14 @@ function DialogHost(props: Props) {
   if (!dialog || !state.signedIn) return null;
   switch (dialog.kind) {
     case "create":
-    case "join":
+    case "joinService":
       return (
         <SimpleDialog
           key={dialog.kind}
           kind={dialog.kind}
           t={t}
           controller={controller}
+          serviceOrigin={state.catalog?.serviceOrigin}
         />
       );
     case "createProject":
@@ -647,7 +664,7 @@ function DialogHost(props: Props) {
           close={close}
         />
       );
-    case "invite":
+    case "joinCode":
       return (
         <WithDetail
           enterpriseId={dialog.enterpriseId}
@@ -655,7 +672,7 @@ function DialogHost(props: Props) {
           controller={controller}
         >
           {(detail) => (
-            <InviteDialog
+            <JoinCodeDialog
               dialog={dialog}
               t={t}
               call={controller.call}
@@ -729,9 +746,11 @@ function CollaborationMark({
 export function mountEnterprise(
   ctx: ClientContext,
   account: AccountController,
+  installEnterprisePlugin: (spec: string) => Promise<void>,
 ): void {
   const controller = new EnterpriseController(),
     labels = enterpriseLabels(ctx);
+  const mcpForm = mcpSettings(ctx.configForms);
   const locale = {
     getSnapshot: () => language(ctx),
     subscribe: (listener: () => void) => ctx.locale.subscribe(listener),
@@ -801,6 +820,8 @@ export function mountEnterprise(
     controller,
     actions,
     openAccountSettings: account.openAccountSettings,
+    installEnterprisePlugin,
+    mcpForm,
   });
   for (const name of [
     "sidebar.workspaces.directoryFlow",
@@ -830,16 +851,9 @@ export function mountEnterprise(
     ),
   );
   ctx.slots.inject("shell.overlay", () =>
-    ctx.slots.register(
-      {
-        name: "shell.overlay",
-        id: "ipollowork-enterprise-toast",
-        inject: () => ({
-          hooks: { enterpriseState: controller },
-          dismiss: controller.dismissToast,
-        }),
-      },
-      ToastHost,
+    ctx.slots.register<Props>(
+      { name: "shell.overlay", id: "ipollowork-enterprise-toast", inject: props },
+      EnterpriseFeedback,
     ),
   );
   ctx.slots.inject("sidebar.panellist", () =>

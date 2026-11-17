@@ -111,6 +111,12 @@ test("organization assets enforce member and department grants, and project owne
       );
     }
     const base = `/api/v1/enterprises/${enterprise}`;
+    assert.equal((await http(base, design.token, { name: "Unauthorized rename" }, "PATCH")).status, 403);
+    assert.equal((await http(base, owner.token, { name: "   " }, "PATCH")).status, 400);
+    assert.deepEqual((await http(base, owner.token, { name: "  Assets team  " }, "PATCH")).data,
+      { id: enterprise, name: "Assets team" });
+    assert.equal((await http<{ enterprise: { name: string } }>(base, design.token)).data.enterprise.name, "Assets team");
+    assert.equal((await service.store.all("SELECT target FROM audit WHERE action=? AND target=?", "enterprise.update", enterprise)).length, 1);
 
     const pack = (
       await http<{ id: string }>(base + "/packages", owner.token, {
@@ -235,7 +241,7 @@ test("organization assets enforce member and department grants, and project owne
       ).data.items;
     assert.deepEqual(
       (await mine(sales.token)).map((s) => [s.name, s.enterpriseName]),
-      [["brand-voice", "Assets"]],
+      [["brand-voice", "Assets team"]],
     );
     assert.match((await mine(sales.token))[0]!.content, /short sentences/);
     assert.deepEqual(await mine(design.token), []);

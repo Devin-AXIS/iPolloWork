@@ -35,7 +35,10 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
       setResetStatus('error')
     }
   }
-  const message = error && (error === 'IPW_REGISTRATION_REJECTED' ? t.registrationError : error === 'IPW_SIGN_IN_REQUIRED' || error === 'IPW_INVALID_LOGIN' ? t.loginError : error === 'IPW_LOGIN_CANCELLED' ? t.canceled : t.error)
+  const message = error && (error === 'IPW_EMAIL_IN_USE' ? t.emailInUse
+    : error === 'IPW_REGISTRATION_REJECTED' ? t.registrationError
+    : error === 'IPW_SIGN_IN_REQUIRED' || error === 'IPW_INVALID_LOGIN' ? t.loginError
+    : error === 'IPW_LOGIN_CANCELLED' ? t.canceled : t.error)
   const service = <p className={css.authService}>
     <span aria-hidden="true" data-state={error === 'IPW_SERVICE_UNAVAILABLE' ? 'down' : 'up'}/>
     {t.service}
@@ -70,7 +73,7 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
           <button className={css.authReset} type="button" disabled={!email || busy || resetStatus === 'sending'}
             onClick={() => void resetPassword()}>{resetStatus === 'sending' ? t.loading : t.requestPasswordReset}</button>
           {resetStatus === 'sent' && <p role="status" className={css.authService}>{t.passwordResetSent}</p>}
-          {resetStatus === 'error' && <p role="alert" className={css.authError}>{t.error}</p>}
+          {resetStatus === 'error' && <p role="alert" className={css.authError}>{t.passwordResetFailed}</p>}
         </>}
         {registering && <p className={css.authService}>{t.email === '邮箱' ? '使用受邀邮箱注册后，打开邀请链接即可加入组织。' : 'Register with the invited email, then open the invitation link to join.'}</p>}
         {service}

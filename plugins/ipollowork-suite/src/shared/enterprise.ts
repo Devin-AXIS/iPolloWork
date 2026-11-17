@@ -1,29 +1,39 @@
+export const organizationTabs = ["analytics", "projects", "members", "departments", "templates", "plugins", "skills", "mcp", "models", "messages", "activity", "settings"] as const;
+export type EnterpriseTab = typeof organizationTabs[number];
+
 /** Account-scoped enterprise records; local paths never leave the DSH Host. */
 export interface Enterprise {
   id: string;
   name: string;
   role: string;
   memberCount: number;
+  logo?: string | null;
 }
 export interface EnterpriseMember {
   userId: string;
   name: string;
   email: string;
   role: string;
+  status?: 'active' | 'suspended';
   departmentId: string | null;
+  employeeNumber?: string | null;
+  displayName?: string | null;
 }
 export interface Department {
   id: string;
   name: string;
+  parentId?: string | null;
 }
 export interface Invitation {
   projectId?: string | null;
   projectRole?: "view" | "participate" | "maintain" | null;
   departmentId?: string | null;
   id: string;
-  email: string;
+  email: string | null;
+  inviteeName?: string | null;
+  employeeNumber?: string | null;
   role: string;
-  expiresAt: number;
+  expiresAt: number | null;
   accepted: boolean;
   revoked: boolean;
 }
@@ -33,6 +43,31 @@ export interface EnterpriseDetail {
   members: EnterpriseMember[];
   departments: Department[];
   invitations: Invitation[];
+  description?: string;
+  tabOrder?: EnterpriseTab[];
+}
+
+export type PublicationKind = "plugin" | "template" | "skill";
+export interface OrganizationPublication {
+  id: string;
+  title: string;
+  description: string;
+  packageName?: string;
+  publishedVersion: string | null;
+  canSubmit: boolean;
+  audience?: Audience;
+}
+export interface PublicationVersion {
+  version: string;
+  status: "pending" | "approved" | "rejected";
+  note: string;
+  createdAt: number;
+}
+export interface OrganizationActivity {
+  id: string;
+  action: string;
+  actor: string | null;
+  createdAt: number;
 }
 export interface EnterpriseProject {
   id: string;
@@ -166,32 +201,7 @@ export interface Audience {
   all: boolean;
   departments: string[];
   members: string[];
-}
-export interface EnterprisePackage {
-  id: string;
-  title: string;
-  description: string;
-  fileCount: number;
-  bytes: number;
-  updatedAt: number;
-  audience: Audience;
-}
-export interface PackageFile {
-  id: string;
-  name: string;
-  bytes: number;
-  mime: string;
-  addedAt: number;
-  addedBy: string;
-}
-export interface PackageDetail {
-  package: {
-    id: string;
-    title: string;
-    description: string;
-    audience: Audience;
-  };
-  files: PackageFile[];
+  includeSubdepartments?: boolean | undefined;
 }
 /** `name` is the skill's name in each permitted member's DSH. */
 export interface EnterpriseSkill {
@@ -205,7 +215,6 @@ export interface EnterpriseSkill {
 }
 export interface EnterpriseAssets {
   canManage: boolean;
-  packages: EnterprisePackage[];
   skills: EnterpriseSkill[];
 }
 export interface EnterpriseMcp {
@@ -213,6 +222,11 @@ export interface EnterpriseMcp {
   title: string;
   description: string;
   host: string;
+  enabled?: boolean;
+  endpoint?: string;
+  oauthRequired?: boolean;
+  authorized?: boolean;
+  oauth?: { authorizationUrl:string; tokenUrl:string; clientId:string; scope:string };
   audience: Audience;
 }
 import type { ServiceCategory } from "./service-categories.ts";

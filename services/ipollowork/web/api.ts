@@ -16,5 +16,10 @@ export const text = (v: unknown) => String(v ?? "");
 export const operation = (v: unknown) => ({
   "enterprise.create": "创建企业", "department.create": "添加部门", "member.update": "调整成员", "member.remove": "移除成员",
   "invitation.create": "邀请成员", "invitation.accept": "加入企业", "invitation.revoke": "撤销邀请",
+  "enterprise.update": "更新组织设置", "department.update": "更新部门", "department.remove": "移除部门",
+  "publication.submit": "提交资源版本", "publication.approve": "通过审核", "publication.reject": "驳回审核",
+  "publication.publish": "发布资源", "publication.archive": "下架资源", "grant.update": "更新访问范围",
+  "skill.create": "发布技能", "skill.remove": "移除技能", "mcp.create": "添加 MCP", "mcp.update": "更新 MCP", "mcp.remove": "移除 MCP",
+  "organization.notification.configure": "更新成员变更通知",
   "plan.create": "添加套餐", "plan.update": "更新套餐", "points.adjust": "调整积分", "user.update": "更新账号", "settings.update": "更新配置", "share.create": "分享会话",
 } as Record<string, string>)[text(v)] ?? "更新记录";

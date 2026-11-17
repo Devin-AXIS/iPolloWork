@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { admin, bearer } from "better-auth/plugins";
 import { apiKey } from "@better-auth/api-key";
@@ -9,6 +10,7 @@ import { ServiceError } from "./errors.js";
 
 /** Authentication is owned by Better Auth, with no dependency on Cloud. */
 export async function createAuth(config: Config, store: Store) {
+  const resetDelivery = new AsyncLocalStorage<{ failed: boolean }>();
   const deliver = async (to: string, template: string, url: string) => {
     if (!config.mailUrl || !config.mailToken)
       throw new ServiceError("MAIL_NOT_CONFIGURED", 503, "邮件服务尚未配置");
@@ -33,8 +35,15 @@ export async function createAuth(config: Config, store: Store) {
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 10,
-      sendResetPassword: async ({ user, url }) =>
-        await deliver(user.email, "reset-password", url),
+      sendResetPassword: async ({ user, url }) => {
+        try {
+          await deliver(user.email, "reset-password", url);
+        } catch {
+          const delivery = resetDelivery.getStore();
+          if (delivery) delivery.failed = true;
+          console.warn("password reset email delivery failed");
+        }
+      },
     },
     emailVerification: {
       sendVerificationEmail: async ({ user, url }) =>
@@ -54,7 +63,20 @@ export async function createAuth(config: Config, store: Store) {
   });
   const migrations = await getMigrations(auth.options);
   await migrations.runMigrations();
-  return auth;
+  return {
+    ...auth,
+    async handler(request: Request) {
+      if (request.method !== "POST" || new URL(request.url).pathname !== "/api/auth/request-password-reset")
+        return auth.handler(request);
+      if (!config.mailUrl || !config.mailToken)
+        return Response.json({ code: "MAIL_NOT_CONFIGURED", message: "Password reset email is unavailable" }, { status: 503 });
+      const delivery = { failed: false };
+      const response = await resetDelivery.run(delivery, () => auth.handler(request));
+      if (!delivery.failed) return response;
+      await response.body?.cancel();
+      return Response.json({ code: "MAIL_DELIVERY_FAILED", message: "Password reset email is temporarily unavailable" }, { status: 503 });
+    },
+  };
 }
 export type Auth = Awaited<ReturnType<typeof createAuth>>;
 export interface Actor {

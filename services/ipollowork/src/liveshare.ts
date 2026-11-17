@@ -201,12 +201,12 @@ export class LiveshareRelay {
         ? []
         : audience.kind !== "project"
           ? await this.store.all(
-              'SELECT u.id,u.name,u.email,u.role FROM "user" u JOIN members m ON m.user_id=u.id WHERE m.enterprise_id=? AND COALESCE(u.banned,false)=false UNION SELECT id,name,email,role FROM \"user\" WHERE id=? AND COALESCE(banned,false)=false',
+              'SELECT u.id,u.name,u.email,u.role FROM "user" u JOIN members m ON m.user_id=u.id WHERE m.enterprise_id=? AND m.status=\'active\' AND COALESCE(u.banned,false)=false UNION SELECT id,name,email,role FROM \"user\" WHERE id=? AND COALESCE(banned,false)=false',
               audience.enterpriseId,
               share.owner_id,
             )
           : await this.store.all(
-              "SELECT u.id,u.name,u.email,u.role FROM \"user\" u WHERE COALESCE(u.banned,false)=false AND (u.id=? OR u.role='admin' OR EXISTS(SELECT 1 FROM members m JOIN projects p ON p.enterprise_id=m.enterprise_id WHERE p.id=? AND m.user_id=u.id))",
+              "SELECT u.id,u.name,u.email,u.role FROM \"user\" u WHERE COALESCE(u.banned,false)=false AND (u.id=? OR u.role='admin' OR EXISTS(SELECT 1 FROM members m JOIN projects p ON p.enterprise_id=m.enterprise_id WHERE p.id=? AND m.user_id=u.id AND m.status='active'))",
               share.owner_id,
               share.project_id,
             );

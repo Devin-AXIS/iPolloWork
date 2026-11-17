@@ -1472,7 +1472,7 @@ export class AppData {
   }
   private async membership(userId: string, operator: boolean, enterpriseId: string) {
     const row = await this.accounts.one<{ role: string; name: string }>(
-      "SELECT m.role,e.name FROM members m JOIN enterprises e ON e.id=m.enterprise_id WHERE m.enterprise_id=? AND m.user_id=?",
+      "SELECT m.role,e.name FROM members m JOIN enterprises e ON e.id=m.enterprise_id WHERE m.enterprise_id=? AND m.user_id=? AND m.status='active'",
       enterpriseId,
       userId,
     );
@@ -1623,7 +1623,7 @@ export class AppData {
   }
   private async organizations(actor: Actor) {
     const rows = await this.accounts.all<{ id: string; name: string; role: string }>(
-      "SELECT e.id,e.name,m.role FROM enterprises e JOIN members m ON m.enterprise_id=e.id WHERE m.user_id=? LIMIT 200",
+      "SELECT e.id,e.name,m.role FROM enterprises e JOIN members m ON m.enterprise_id=e.id WHERE m.user_id=? AND m.status='active' LIMIT 200",
       actor.id,
     );
     return new Map(rows.map((r) => [r.id, { name: r.name, manager: r.role === "owner" || r.role === "admin" }]));

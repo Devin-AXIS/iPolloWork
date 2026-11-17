@@ -1421,6 +1421,7 @@ async function main(): Promise<void> {
           if (result.ok) await enterWorkspace()
           return result
         },
+        requestPasswordReset: async (email) => await welcomeBackend?.requestPasswordReset?.(email) ?? { ok: false },
         startSignIn: async () => {
           if (welcomeBackend === undefined) throw new Error('desktop welcome: backend unavailable')
           return welcomeBackend.account.start(desktopClientMetadata(locale.id))

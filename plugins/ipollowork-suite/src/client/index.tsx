@@ -12,7 +12,7 @@ import { mountAddPlugin } from './add-plugin.ts'
 import { AccountPanel, AccountLauncher } from './account.tsx'
 import { AccountController } from './account-controller.ts'
 import { mountAgents } from './agents.tsx'
-import { mountCoordinator } from './coordinator.tsx'
+import { mountWorkspaceTrash } from './workspace-trash.tsx'
 import { mountEnterprise } from './enterprise.tsx'
 import { mountData } from './data.tsx'
 import { createBrowserAppData } from './data-service.ts'
@@ -38,16 +38,19 @@ export async function apply(ctx: ClientContext): Promise<void> {
   mountOutputContinuationPresentation(ctx)
   mountChatErrors(ctx)
   mountSessionDelete(ctx)
+  mountWorkspaceTrash(ctx)
   mountConnections(ctx)
   mountAgents(ctx)
-  mountCoordinator(ctx)
   mountIm(ctx)
   if (info.theme) mountTheme(ctx)
+  let enterpriseInstaller: MarketInstallation | undefined
   ctx.inject(['remote.pluginManager'], scope => {
     const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
     const marketLifetime = new AbortController()
     scope.effect(() => () => marketLifetime.abort(), 'ipollowork-market: client requests')
     const installation = new MarketInstallation(scope.remote.pluginManager, marketLifetime.signal)
+    enterpriseInstaller = installation
+    scope.effect(() => () => { if (enterpriseInstaller === installation) enterpriseInstaller = undefined }, 'ipollowork: enterprise plugin installer')
     mountAddPlugin(scope, installation.openManual)
     scope.effect(() => scope.remote.$on('plugin-manager/changed', installation.invalidate), 'ipollowork-market: bundle changes')
     scope.effect(() => scope.remote.$on('plugin-manager/install-state', installation.progress), 'ipollowork-market: install progress')
@@ -99,7 +102,10 @@ export async function apply(ctx: ClientContext): Promise<void> {
     }
     const { mountSharing } = await import('./sharing/mount.ts')
     mountSharing(ctx, prepareShare)
-    mountEnterprise(ctx, account)
+    mountEnterprise(ctx, account, async spec => {
+      if (!enterpriseInstaller) throw new Error('IPW_DSH_PLUGIN_UNAVAILABLE')
+      await enterpriseInstaller.startManual(spec, '', spec)
+    })
     // App data follows its own entry of the bundle; a change takes effect when the page reloads.
     if (info.appData) {
       mountData(ctx, account)

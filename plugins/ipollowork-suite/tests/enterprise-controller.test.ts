@@ -12,7 +12,7 @@ function serve(responses: EnterpriseCatalog[]) {
   globalThis.fetch = (async (input: string | URL | Request) => {
     calls.push(String(input))
     const next = responses.shift()
-    return new Response(JSON.stringify(next), { status: next ? 200 : 503, headers: { 'Content-Type': 'application/json' } })
+    return Response.json(next ?? { error: 'IPW_SERVICE_UNAVAILABLE' }, { status: next ? 200 : 503 })
   }) as typeof fetch
   return { calls, restore: () => { globalThis.fetch = original } }
 }
@@ -60,6 +60,21 @@ test('window focus does not reload a catalog that was just read, and each mutati
     assert.equal(server.calls.length, 2)
     await controller.load()
     assert.equal(controller.getSnapshot().revision, revision + 1)
+  } finally { controller.dispose(); server.restore() }
+})
+
+test('refresh retries organization records even if refreshing the cached list fails', async () => {
+  const server = serve([catalog(['a']), catalog(['a'])])
+  const controller = new EnterpriseController()
+  try {
+    controller.accountChanged(true)
+    await controller.load()
+    const previous = controller.getSnapshot()
+    await controller.load()
+    const failed = controller.getSnapshot()
+    assert.equal(failed.catalog, previous.catalog)
+    assert.equal(failed.error, 'IPW_SERVICE_UNAVAILABLE')
+    assert.equal(failed.revision, previous.revision + 1)
   } finally { controller.dispose(); server.restore() }
 })
 

@@ -10,6 +10,7 @@ import type { Settings } from "./settings.js";
 import { ServiceError } from "./errors.js";
 import { audit, enterpriseAccess, isEnterpriseManager, now, requireEnterpriseManager, uid } from "./domain.js";
 import { audienceOf, audienceSchema, grantedTo, replaceAudience, requireUse } from "./grants.js";
+import { EnterpriseMcpOAuth, mcpMemberCredentials, mcpOAuthConfig, memberMcpToken, type McpOAuthConfig } from "./enterprise-mcp-oauth.js";
 
 const maxRequest = 1024 * 1024;
 const maxResponse = 16 * 1024 * 1024;
@@ -39,10 +40,16 @@ const inputSchema = z.object({
   endpoint: z.string().trim().max(2048).refine(isSharedMcpEndpoint, "需要公开的 HTTPS MCP 地址"),
   key: z.string().max(8192).regex(/^[\x21-\x7e]*$/).optional(),
   audience: audienceSchema.optional(),
+  oauth: mcpOAuthConfig.refine(value=>isSharedMcpEndpoint(value.authorizationUrl) && isSharedMcpEndpoint(value.tokenUrl)).optional(),
 }).strict();
 const rpcMessage = z.object({ jsonrpc: z.literal("2.0") }).passthrough();
 const rpcBody = z.union([rpcMessage, z.array(rpcMessage).min(1).max(64)]);
-type Row = { id: string; enterprise_id: string; title: string; description: string; endpoint: string };
+const updateSchema = inputSchema.omit({ audience: true }).extend({
+  key: inputSchema.shape.key.unwrap().nullable().optional(),
+  oauth: inputSchema.shape.oauth.unwrap().nullable().optional(),
+  enabled: z.boolean(),
+});
+type Row = { id: string; enterprise_id: string; title: string; description: string; endpoint: string; enabled: boolean; oauth_config:string|null };
 const keyName = (id: string) => "enterprise-mcp/" + id;
 
 /** Accept only DNS answers for public IPv4 and use that exact address for the TLS connection. */
@@ -66,20 +73,22 @@ function connect(endpoint: URL, method: string, headers: Record<string, string>,
 }
 
 /** Bind the upstream session ID to the account and the configured MCP. */
-function sessionTag(secret: string, member: string, id: string, encoded: string): string {
-  return createHmac("sha256", secret).update(JSON.stringify(["enterprise-mcp", member, id, encoded])).digest("base64url");
+function sessionTag(secret: string, member: string, row: Row, encoded: string): string {
+  return createHmac("sha256", secret).update(JSON.stringify(["enterprise-mcp", member, row.id, row.endpoint, encoded])).digest("base64url");
 }
-function readSession(secret: string, member: string, id: string, value: string): string {
+function readSession(secret: string, member: string, row: Row, value: string): string {
   const parts = /^([A-Za-z0-9_-]{1,1366})\.([A-Za-z0-9_-]{43})$/.exec(value);
   if (parts) {
     const encoded = parts[1]!, given = parts[2]!;
-    if (timingSafeEqual(Buffer.from(given), Buffer.from(sessionTag(secret, member, id, encoded))))
+    if (timingSafeEqual(Buffer.from(given), Buffer.from(sessionTag(secret, member, row, encoded))))
       return Buffer.from(encoded, "base64url").toString();
   }
   throw new ServiceError("MCP_SESSION_INVALID", 400, "MCP 会话已失效，请重新连接");
 }
 
-export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, secret: string, transport = connect): void {
+export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, secret: string, transport = connect, origin?:string): void {
+  const oauth = origin ? new EnterpriseMcpOAuth(store,settings,origin,transport) : undefined;
+  oauth?.mount(app);
   app.get("/api/v1/enterprises/:id/mcp", async (c) => {
     const enterprise = c.req.param("id"), actor = c.get("actor");
     await enterpriseAccess(store, actor, enterprise);
@@ -88,11 +97,15 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
       ? await store.all<Row>("SELECT * FROM enterprise_mcp WHERE enterprise_id=? ORDER BY created_at DESC,id LIMIT 100", enterprise)
       : await store.all<Row>(
         `SELECT r.* FROM enterprise_mcp r JOIN members m ON m.enterprise_id=r.enterprise_id
-         WHERE r.enterprise_id=? AND m.user_id=? AND ${grantedTo("r.id")} ORDER BY r.created_at DESC,r.id LIMIT 100`,
+         WHERE r.enterprise_id=? AND r.enabled AND m.user_id=? AND m.status='active' AND ${grantedTo("r.id")} ORDER BY r.created_at DESC,r.id LIMIT 100`,
         enterprise, actor.id, "mcp",
       );
     return c.json({ canManage, items: await Promise.all(rows.map(async (r) => ({
       id: r.id, title: r.title, description: r.description, host: new URL(r.endpoint).hostname,
+      enabled: r.enabled,
+      oauthRequired:!!r.oauth_config,
+      authorized:!r.oauth_config || Boolean(await store.one("SELECT 1 FROM settings WHERE key=?",memberMcpToken(r.id,actor.id))),
+      ...(canManage ? {endpoint:r.endpoint, ...(r.oauth_config ? {oauth:JSON.parse(r.oauth_config) as McpOAuthConfig} : {})} : {}),
       audience: await audienceOf(store, "mcp", r.id),
     }))) });
   });
@@ -100,17 +113,41 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
     const enterprise = c.req.param("id"), actor = c.get("actor");
     await requireEnterpriseManager(store, actor, enterprise);
     const input = inputSchema.parse(await c.req.json());
+    if (input.oauth && (!oauth || input.key)) throw new ServiceError("MCP_AUTH_CONFIGURATION_INVALID",400,"请选择一种授权方式");
     const id = uid();
     await store.transaction(async () => {
       await store.run(
-        "INSERT INTO enterprise_mcp(id,enterprise_id,title,description,endpoint,created_at) VALUES(?,?,?,?,?,?)",
-        id, enterprise, input.title, input.description, new URL(input.endpoint).href, now(),
+        "INSERT INTO enterprise_mcp(id,enterprise_id,title,description,endpoint,created_at,oauth_config) VALUES(?,?,?,?,?,?,?)",
+        id, enterprise, input.title, input.description, new URL(input.endpoint).href, now(),input.oauth ? JSON.stringify(input.oauth) : null,
       );
       if (input.key) await settings.set(keyName(id), { key: input.key });
       await replaceAudience(store, enterprise, "mcp", id, input.audience ?? { all: true, departments: [], members: [] });
-      await audit(store, actor, "mcp.create", id);
+      await audit(store, actor, "mcp.create", id, enterprise);
     });
     return c.json({ id }, 201);
+  });
+  app.patch("/api/v1/enterprises/:id/mcp/:mcpId", async c => {
+    const enterprise = c.req.param("id"), id = c.req.param("mcpId"), actor = c.get("actor");
+    const input = updateSchema.parse(await c.req.json());
+    if (input.oauth && (!oauth || input.key)) throw new ServiceError("MCP_AUTH_CONFIGURATION_INVALID",400,"请选择一种授权方式");
+    const endpoint = new URL(input.endpoint).href;
+    await store.transaction(async () => {
+      await requireEnterpriseManager(store, actor, enterprise);
+      const previous = await store.one<Row>("SELECT * FROM enterprise_mcp WHERE id=? AND enterprise_id=? FOR UPDATE", id, enterprise);
+      if (!previous) throw new ServiceError("MCP_NOT_FOUND", 404, "MCP 不存在");
+      const nextOAuth = input.oauth === undefined ? previous.oauth_config : input.oauth ? JSON.stringify(input.oauth) : null;
+      if (nextOAuth && input.key) throw new ServiceError("MCP_AUTH_CONFIGURATION_INVALID",400,"请选择一种授权方式");
+      await store.run("UPDATE enterprise_mcp SET title=?,description=?,endpoint=?,enabled=?,oauth_config=? WHERE id=?", input.title, input.description, endpoint, input.enabled,nextOAuth,id);
+      if (input.key) await settings.set(keyName(id), { key:input.key });
+      else if (input.key === null || endpoint !== previous.endpoint || nextOAuth)
+        await store.run("DELETE FROM settings WHERE key=?", keyName(id));
+      if (nextOAuth !== previous.oauth_config || endpoint !== previous.endpoint) {
+        await store.run("DELETE FROM enterprise_mcp_oauth_pending WHERE mcp_id=?",id);
+        await store.run("DELETE FROM settings WHERE key LIKE ?",mcpMemberCredentials(id));
+      }
+      await audit(store, actor, "mcp.update", id, enterprise);
+    });
+    return c.json({ ok:true });
   });
   app.delete("/api/v1/enterprises/:id/mcp/:mcpId", async (c) => {
     const enterprise = c.req.param("id"), id = c.req.param("mcpId"), actor = c.get("actor");
@@ -120,24 +157,30 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
       if (!removed.changes) throw new ServiceError("MCP_NOT_FOUND", 404, "MCP 不存在");
       await store.run("DELETE FROM enterprise_grants WHERE asset_kind='mcp' AND asset_id=?", id);
       await store.run("DELETE FROM settings WHERE key=?", keyName(id));
-      await audit(store, actor, "mcp.remove", id);
+      await store.run("DELETE FROM settings WHERE key LIKE ?",mcpMemberCredentials(id));
+      await audit(store, actor, "mcp.remove", id, enterprise);
     });
     return c.json({ ok: true });
   });
   app.get("/api/v1/me/enterprise-mcp", async (c) => {
     const items = await store.all<{ id: string; title: string; enterpriseName: string }>(
       `SELECT r.id,r.title,e.name AS "enterpriseName" FROM members m JOIN enterprise_mcp r ON r.enterprise_id=m.enterprise_id
-       JOIN enterprises e ON e.id=r.enterprise_id WHERE m.user_id=? AND (m.role IN('admin','owner') OR ${grantedTo("r.id")})
+       JOIN enterprises e ON e.id=r.enterprise_id WHERE m.user_id=? AND m.status='active' AND r.enabled AND (m.role IN('admin','owner') OR ${grantedTo("r.id")})
+       AND (r.oauth_config IS NULL OR EXISTS(SELECT 1 FROM settings s WHERE s.key='enterprise-mcp-member/'||r.id||'/'||m.user_id))
        ORDER BY r.id LIMIT 100`, c.get("actor").id, "mcp",
     );
     return c.json({ items });
   });
   app.on(["GET", "POST", "DELETE"], "/api/v1/me/enterprise-mcp/:mcpId/connect", async (c) => {
     const actor = c.get("actor"), id = c.req.param("mcpId");
-    const row = await store.one<Row>("SELECT * FROM enterprise_mcp WHERE id=?", id);
-    if (!row) throw new ServiceError("MCP_NOT_FOUND", 404, "MCP 不存在");
-    await requireUse(store, actor, row.enterprise_id, "mcp", id);
-    if (!isSharedMcpEndpoint(row.endpoint)) throw new ServiceError("MCP_UNAVAILABLE", 503, "MCP 连接不可用");
+    const { row, key } = await store.transaction(async () => {
+      const row = await store.one<Row>("SELECT * FROM enterprise_mcp WHERE id=? FOR SHARE", id);
+      if (!row) throw new ServiceError("MCP_NOT_FOUND", 404, "MCP 不存在");
+      await requireUse(store, actor, row.enterprise_id, "mcp", id);
+      if (!row.enabled || !isSharedMcpEndpoint(row.endpoint)) throw new ServiceError("MCP_UNAVAILABLE", 503, "MCP 连接不可用");
+      if (row.oauth_config && !oauth) throw new ServiceError("MCP_OAUTH_UNAVAILABLE",503);
+      return { row, key:row.oauth_config ? await oauth!.token(row,actor) : (await settings.get(keyName(id))).key };
+    });
     const body = c.req.method === "POST" ? Buffer.from(await c.req.arrayBuffer()) : undefined;
     if (body && body.length > maxRequest) throw new ServiceError("MCP_REQUEST_TOO_LARGE", 413, "MCP 请求过大");
     const headers: Record<string, string> = { accept: "application/json, text/event-stream" };
@@ -149,11 +192,10 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
     if (version && /^\d{4}-\d{2}-\d{2}$/.test(version)) headers["mcp-protocol-version"] = version;
     const session = c.req.header("mcp-session-id");
     if (session) {
-      headers["mcp-session-id"] = readSession(secret, actor.id, id, session);
+      headers["mcp-session-id"] = readSession(secret, actor.id, row, session);
       const previousEvent = c.req.header("last-event-id");
       if (previousEvent && previousEvent.length <= 1024) headers["last-event-id"] = previousEvent;
     }
-    const key = (await settings.get(keyName(id))).key;
     if (key) headers.authorization = "Bearer " + key;
     if (body) headers["content-length"] = String(body.length);
     const signal = AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(120_000)]);
@@ -173,7 +215,7 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
     const remoteSession = upstream.headers["mcp-session-id"];
     if (typeof remoteSession === "string" && /^[\x21-\x7e]{1,1024}$/.test(remoteSession)) {
       const encoded = Buffer.from(remoteSession).toString("base64url");
-      result.set("mcp-session-id", encoded + "." + sessionTag(secret, actor.id, id, encoded));
+      result.set("mcp-session-id", encoded + "." + sessionTag(secret, actor.id, row, encoded));
     }
     if (status === 202 || status === 204) {
       upstream.destroy();
