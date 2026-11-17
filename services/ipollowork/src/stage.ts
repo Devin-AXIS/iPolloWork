@@ -79,16 +79,34 @@ export class StageService {
   async callback(state:string,code:string){
     if(!/^[\w-]{43}$/.test(code))throw new ServiceError('STAGE_AUTH_EXPIRED',400);
     const description=await this.descriptor(state);
-    // Serialize link changes, including the code exchange, so a stale browser tab cannot restore a revoked link.
-    await this.store.transaction(async()=>{
+    // Consume the browser code locally before network I/O. The pending pointer fences the final write.
+    const pending=await this.store.transaction(async()=>{
       await this.lock(description.userId!);
       const pending=await this.settings.get('stage-pending/'+state),pointer=await this.settings.get('stage-pending-user/'+description.userId);
       if(!pending.userId||Number(pending.expires)<Date.now()||pointer.state!==state)throw new ServiceError('STAGE_AUTH_EXPIRED',400);
-      const billingToken=opaque();
-      const result=token.parse(await this.remote(pending.origin!,'/api/integrations/ipollowork/token',undefined,{grant_type:'authorization_code',code,code_verifier:pending.verifier,redirect_uri:this.workOrigin+'/api/integrations/stage/callback',client_id:this.workOrigin,billing_token:billingToken}));
-      await this.settings.set('stage-link/'+pending.userId,{origin:pending.origin!,access:result.access_token,connectionId:result.connectionId,subject:result.subject,name:result.name,expires:String(Date.now()+result.expires_in*1000),billingToken});
-      await this.store.run('DELETE FROM settings WHERE key IN (?,?)','stage-pending/'+state,'stage-pending-user/'+pending.userId);
+      await this.store.run('DELETE FROM settings WHERE key=?','stage-pending/'+state);
+      return pending;
     });
+    const billingToken=opaque();
+    let result:z.infer<typeof token>;
+    try{result=token.parse(await this.remote(pending.origin!,'/api/integrations/ipollowork/token',undefined,{grant_type:'authorization_code',code,code_verifier:pending.verifier,redirect_uri:this.workOrigin+'/api/integrations/stage/callback',client_id:this.workOrigin,billing_token:billingToken}));}
+    catch(error){
+      await this.store.transaction(async()=>{await this.lock(description.userId!);const pointer=await this.settings.get('stage-pending-user/'+description.userId);if(pointer.state===state)await this.store.run('DELETE FROM settings WHERE key=?','stage-pending-user/'+description.userId);});
+      throw error;
+    }
+    const accepted=await this.store.transaction(async()=>{
+      await this.lock(description.userId!);
+      const pointer=await this.settings.get('stage-pending-user/'+description.userId),config=await this.config();
+      if(pointer.state!==state||Number(pending.expires)<=Date.now()||!config.enabled||pending.origin!==config.origin){
+        await this.settings.set('stage-revoke/'+result.connectionId,{origin:pending.origin!,access:result.access_token});
+        if(pointer.state===state)await this.store.run('DELETE FROM settings WHERE key=?','stage-pending-user/'+description.userId);
+        return false;
+      }
+      await this.settings.set('stage-link/'+pending.userId,{origin:pending.origin!,access:result.access_token,connectionId:result.connectionId,subject:result.subject,name:result.name,expires:String(Date.now()+result.expires_in*1000),billingToken});
+      await this.store.run('DELETE FROM settings WHERE key=?','stage-pending-user/'+pending.userId);
+      return true;
+    });
+    if(!accepted)throw new ServiceError('STAGE_AUTH_EXPIRED',400);
   }
   async disconnect(actor:Actor){
     await this.store.transaction(async()=>{

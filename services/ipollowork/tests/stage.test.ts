@@ -95,3 +95,29 @@ test('Stage routes require the native account session even when the integration 
  const app=await createService(await testConfig({DATA_DIR:directory,SERVICE_ORIGIN:'http://localhost:4785'}));
  try{assert.equal((await app.app.request('http://localhost:4785/api/v1/stage/status')).status,401);assert.equal((await app.app.request('http://localhost:4785/api/v1/stage/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);}finally{await app.close();await rm(directory,{recursive:true,force:true});}
 });
+
+test('disconnect stays responsive during code exchange and fences a late grant',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'ipw-stage-exchange-'));
+ const app=await createService(await testConfig({DATA_DIR:directory,SERVICE_ORIGIN:'http://localhost:4785'}));
+ let release!:()=>void,entered!:()=>void;
+ const held=new Promise<void>(resolve=>{release=resolve;}),ready=new Promise<void>(resolve=>{entered=resolve;});
+ try{
+  const {user}=await app.auth.api.signUpEmail({body:{name:'Owner',email:'stage-exchange@example.test',password:'Strong-test-password-2026'}});
+  const actor:Actor={id:user.id,name:user.name,email:user.email,role:'user'};
+  await app.settings.set('stage',{enabled:'true',origin:'https://stage.example.test',rates:'[]'});
+  const bridge=new StageService(app.store,app.settings,'http://localhost:4785',async(url)=>{
+   if(String(url).endsWith('/token')){entered();await held;return Response.json({access_token:'late-grant-token-'.repeat(3),connectionId:'late-grant',subject:'stage-user',name:'Stage user',expires_in:3600});}
+   return Response.json({revoked:true});
+  });
+  const state=new URL((await bridge.connect(actor)).url).searchParams.get('state')!;
+  const callback=bridge.callback(state,'c'.repeat(43)).then(()=>null,error=>error as Error&{code:string});
+  await ready;
+  let timeout:ReturnType<typeof setTimeout>|undefined;
+  try{await Promise.race([bridge.disconnect(actor),new Promise((_,reject)=>{timeout=setTimeout(()=>reject(new Error('Disconnect is blocked by external code exchange')),1000);})]);}finally{if(timeout)clearTimeout(timeout);release();}
+  assert.equal((await callback)?.code,'STAGE_AUTH_EXPIRED');
+  assert.equal((await bridge.status(actor)).connected,false);
+  assert.equal((await app.store.all("SELECT key FROM settings WHERE key='stage-revoke/late-grant'")).length,1);
+  await bridge.reconcile();
+  assert.equal((await app.store.all("SELECT key FROM settings WHERE key='stage-revoke/late-grant'")).length,0);
+ }finally{release();await app.close();await rm(directory,{recursive:true,force:true});}
+});
