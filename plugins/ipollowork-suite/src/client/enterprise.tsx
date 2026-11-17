@@ -1,4 +1,5 @@
 import { AnalyticsTab } from "./enterprise-analytics.tsx";
+import { McpTab } from "./enterprise-mcp.tsx";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Button,
@@ -324,6 +325,7 @@ function EnterpriseBody({
       ["departments", t.departmentsTab],
       ["files", t.filesTab],
       ["skills", t.skillsTab],
+      ["mcp", t.mcpTab],
       ["models", t.modelsTab],
     ] as const
   ).map(([value, label]) => ({
@@ -402,6 +404,8 @@ function EnterpriseBody({
           <FilesTab {...assetProps} />
         ) : active.value === "skills" ? (
           <SkillsTab {...assetProps} />
+        ) : active.value === "mcp" ? (
+          <McpTab {...assetProps} />
         ) : (
           <ModelsTab {...assetProps} />
         )}

@@ -37,6 +37,7 @@ export type EnterpriseTab =
   | "departments"
   | "files"
   | "skills"
+  | "mcp"
   | "models";
 export interface EnterpriseToast {
   id: number;

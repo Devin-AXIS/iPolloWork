@@ -8,6 +8,7 @@ export type Project = Row & {
   id: string;
   owner_id: string;
   enterprise_id: string | null;
+  deleted_at?: number | null;
 };
 export type Resource = Row & {
   id: string;
@@ -116,6 +117,7 @@ export async function projectRole(
   actor: Actor,
   project: Project,
 ): Promise<ProjectRole | undefined> {
+  if (project.deleted_at != null) return undefined;
   if (actor.role === "admin") return "maintain";
   if (project.enterprise_id) {
     const member = await store.one(
@@ -150,7 +152,7 @@ export async function projectAccess(
   manage = false,
 ) {
   const project = await store.one<Project>(
-    "SELECT * FROM projects WHERE id=?" +
+    "SELECT * FROM projects WHERE id=? AND deleted_at IS NULL" +
       (manage && store.inTransaction ? " FOR UPDATE" : ""),
     id,
   );
@@ -159,6 +161,11 @@ export async function projectAccess(
   if (!role || (manage && role !== "maintain"))
     throw new ServiceError("PROJECT_FORBIDDEN", 403, "没有项目访问权限");
   return project;
+}
+/** Destructive project changes require ownership or organization management. */
+export async function canDeleteProject(store: Store, actor: Actor, project: Project): Promise<boolean> {
+  return actor.role === "admin" || project.owner_id === actor.id ||
+    (project.enterprise_id !== null && await isEnterpriseManager(store, actor, project.enterprise_id));
 }
 export async function resourceAccess(store: Store, actor: Actor, id: string) {
   const resource = await store.one<Resource>(
@@ -212,7 +219,7 @@ export async function shareAccess(
     "SELECT * FROM projects WHERE id=?",
     share.project_id,
   );
-  if (!project) throw new ServiceError("SHARE_NOT_FOUND", 404);
+  if (!project || project.deleted_at != null) throw new ServiceError("SHARE_NOT_FOUND", 404);
   if (project.enterprise_id)
     await enterpriseAccess(store, actor, project.enterprise_id);
   if (share.owner_id === actor.id || actor.role === "admin") return share;

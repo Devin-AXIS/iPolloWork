@@ -6,6 +6,9 @@ import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
 import { mountCurrentVersion } from './desktop-version.tsx'
 import { MarketPanel } from './market.tsx'
+import { MarketInstallation } from './market-installation.ts'
+import { MarketInstallDialog } from './market-install-dialog.tsx'
+import { mountAddPlugin } from './add-plugin.ts'
 import { AccountPanel, AccountLauncher } from './account.tsx'
 import { AccountController } from './account-controller.ts'
 import { mountAgents } from './agents.tsx'
@@ -15,6 +18,8 @@ import { mountData } from './data.tsx'
 import { createBrowserAppData } from './data-service.ts'
 import { mountConnections } from './connections.tsx'
 import { mountOutputContinuationPresentation } from './output-continuation.tsx'
+import { mountChatErrors } from './chat-errors.tsx'
+import { mountSessionDelete } from './session-delete.tsx'
 import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
 import { shareAudienceCopy } from './share-audience-copy.ts'
 import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
@@ -30,19 +35,30 @@ export async function apply(ctx: ClientContext): Promise<void> {
   if (lifetime.signal.aborted) return
   const labels = labelSource(ctx)
   mountOutputContinuationPresentation(ctx)
+  mountChatErrors(ctx)
+  mountSessionDelete(ctx)
   mountConnections(ctx)
   mountAgents(ctx)
   mountCoordinator(ctx)
   mountIm(ctx)
   if (info.theme) mountTheme(ctx)
   mountCurrentVersion(ctx)
-  if (info.market) {
+  ctx.inject(['remote.pluginManager'], scope => {
     const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
-    const subscribeChanges = (listener: () => void) => ctx.remote.$on('plugin-manager/changed', listener)
-    ctx.slots.inject('plugins.tab', () => ctx.slots.register({ name: 'plugins.tab', id: 'ipollowork-market', order: -10, label: () => copy(ctx).market,
-      inject: () => ({ load, subscribeChanges, hooks: { labels } }),
+    const marketLifetime = new AbortController()
+    scope.effect(() => () => marketLifetime.abort(), 'ipollowork-market: client requests')
+    const installation = new MarketInstallation(scope.remote.pluginManager, marketLifetime.signal)
+    mountAddPlugin(scope, installation.openManual)
+    scope.effect(() => scope.remote.$on('plugin-manager/changed', installation.invalidate), 'ipollowork-market: bundle changes')
+    scope.effect(() => scope.remote.$on('plugin-manager/install-state', installation.progress), 'ipollowork-market: install progress')
+    scope.effect(() => scope.on('connection/reset', installation.invalidate), 'ipollowork-market: reconnect')
+    scope.slots.inject('shell.overlay', () => scope.slots.register({
+      name: 'shell.overlay', id: 'ipollowork-market-install', inject: () => ({ installation, hooks: { labels } }),
+    }, MarketInstallDialog))
+    if (info.market) scope.slots.inject('plugins.tab', () => scope.slots.register({ name: 'plugins.tab', id: 'ipollowork-market', order: -10, label: () => copy(ctx).market,
+      inject: () => ({ load, installation, hooks: { labels } }),
     }, MarketPanel))
-  }
+  })
   if (info.account) {
     const account = new AccountController()
     ctx.effect(() => {

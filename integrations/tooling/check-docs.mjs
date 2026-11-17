@@ -6,7 +6,7 @@ const paths = execFileSync('git', ['ls-files', '--cached', '--others', '--exclud
 const errors = []
 for (const path of paths) {
   if (!path.endsWith('.md') || !existsSync(path) || !lstatSync(path).isFile()) continue
-  if (!['README.md', 'README.zh.md', 'integrations/README.md', 'integrations/README.zh.md', 'integrations/runtime/README.md', 'integrations/runtime/README.zh.md', 'integrations/desktop/README.md', 'integrations/desktop/README.zh.md'].includes(path)) continue
+  if (!['README.md', 'README.zh.md', 'integrations/README.md', 'integrations/README.zh.md', 'integrations/runtime/README.md', 'integrations/runtime/README.zh.md', 'integrations/runtime/compatibility.md', 'integrations/runtime/compatibility.zh.md', 'integrations/desktop/README.md', 'integrations/desktop/README.zh.md'].includes(path)) continue
   const source = readFileSync(path, 'utf8')
   for (const match of source.matchAll(/\]\(([^)]+)\)/g)) {
     const target = match[1].split('#')[0]

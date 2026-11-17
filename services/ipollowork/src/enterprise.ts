@@ -7,6 +7,7 @@ import type { Store } from "./database.js";
 import type { Config } from "./config.js";
 import {
   audit,
+  canDeleteProject,
   departmentAccess,
   enterpriseAccess,
   now,
@@ -314,6 +315,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         await store.run('SELECT pg_advisory_xact_lock(hashtextextended(?,0))',actor.id+input.creationKey);
         const existing=await store.one('SELECT * FROM projects WHERE owner_id=? AND creation_key=?',actor.id,input.creationKey);
         if(existing){
+          if(existing.deleted_at != null)throw new ServiceError('PROJECT_NOT_FOUND',404,'项目已删除');
           if(existing.title!==input.title || existing.enterprise_id!==input.enterpriseId || existing.execution_mode!==input.executionMode || existing.native_id!==input.nativeId)throw new ServiceError('PROJECT_CREATION_CONFLICT',409);
           return c.json({id:existing.id,...input});
         }
@@ -373,6 +375,21 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         id,
       );
       await audit(store, actor, "project.update", id);
+    });
+    return c.json({ ok: true });
+  });
+  app.delete("/api/v1/projects/:id", async (c) => {
+    const actor = c.get("actor"), id = c.req.param("id");
+    await store.transaction(async () => {
+      const project = await projectAccess(store, actor, id, true);
+      if (!await canDeleteProject(store, actor, project))
+        throw new ServiceError("PROJECT_FORBIDDEN", 403, "没有删除项目的权限");
+      const deleted = now();
+      await store.run("UPDATE projects SET deleted_at=?,native_id=NULL WHERE id=?", deleted, id);
+      await store.run("UPDATE shares SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL", deleted, id);
+      await store.run("UPDATE live_shares SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL", deleted, id);
+      await store.run("UPDATE invitations SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL AND accepted_by IS NULL", deleted, id);
+      await audit(store, actor, "project.delete", id);
     });
     return c.json({ ok: true });
   });

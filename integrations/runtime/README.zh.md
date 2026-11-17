@@ -8,4 +8,6 @@
 
 `npm run check:upstream` 校验原始源码哈希并拒绝跟踪上游实现目录。在本目录执行 `node check-pin.mjs` 校验已下载的源码。现有文件和会话不存放在依赖缓存中。
 
+[DSH 兼容记录](compatibility.zh.md)列出产品对上游接口的依赖和升级验证步骤。
+
 可在本目录执行 `npm ci --ignore-scripts` 单独检查官方 npm 发布包，不用它混合或替换源码构建的桌面依赖图中的单个包。

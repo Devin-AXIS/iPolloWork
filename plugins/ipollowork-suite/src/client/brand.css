@@ -1,3 +1,15 @@
+.ipw-chat-error {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.ipw-chat-error strong { color: var(--dsw-alias-state-error-primary, currentColor); }
+.ipw-chat-error code { margin-inline-start: auto; font-size: 11px; opacity: .75; }
+
 /* iPolloWork artwork in DSH's brand places. Rules apply only while the suite theme marks the body. */
 body[data-ipw-suite] [data-home-whale] { display: none; }
 /* The home headline follows the original iPolloWork home: the wordmark above a large title, left-aligned with the
@@ -29,20 +41,6 @@ body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:
 @keyframes ipw-running { 0%, 100% { opacity: .4; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { body[data-ipw-suite] [data-chat-running] > span:last-child > span:first-child { animation: none; } }
 
-
-/* The Windows shell hides the stock logo row. Keep the mark beside the caption controls. */
-html[data-windows-titlebar]:not([data-fullscreen]) body[data-ipw-suite]::before {
-  content: '';
-  position: fixed;
-  z-index: 30;
-  top: calc((var(--dsh-windows-titlebar-height) - 18px) / 2);
-  left: var(--dsh-windows-menu-start, 48px);
-  width: 18px;
-  height: 18px;
-  pointer-events: none;
-  background: var(--dsw-alias-label-primary);
-  mask: url('../../assets/mark.svg') center / contain no-repeat;
-}
 
 /* Match single-choice select controls and their popups to the product theme. */
 @supports (appearance: base-select) and selector(::picker(select)) {

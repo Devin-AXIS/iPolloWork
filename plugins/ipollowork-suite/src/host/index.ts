@@ -16,6 +16,7 @@ import type { CredentialStore } from "../shared/types.ts";
 import { membershipSchema, membershipOrderSchema, membershipCheckoutSchema } from "../shared/membership.ts";
 import { initializeAccountModel } from "./default-model.ts";
 import { mountServiceModels } from "./service-models.ts";
+import { mountEnterpriseMcp, type EnterpriseMcpScope } from "./enterprise-mcp.ts";
 import { mountOutputContinuation } from "./output-continuation.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
@@ -81,6 +82,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
     names: ["skills"] | ["skills", "ipolloAppDataFeature"],
     callback: (scope: EnterpriseSkillScope) => void,
   ): unknown;
+  inject?(names: ["mcpManager"], callback: (scope: EnterpriseMcpScope) => void): unknown;
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
   provide?(name: "ipolloData", value: IpolloData): void;
@@ -254,9 +256,10 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   ctx.inject?.(["tools", "sandboxPolicy"], scope => mountCapabilityTools(scope, account, config.uploadTimeoutMs));
   let refreshModels = async () => {};
   let refreshSkills = async () => {};
+  let refreshMcp = async () => {};
   // Account changes and enterprise grant edits change both the official model list and the granted enterprise skills.
   const refreshAccount = async () => {
-    await Promise.all([refreshModels(), refreshSkills()]);
+    await Promise.all([refreshModels(), refreshSkills(), refreshMcp()]);
   };
   const services = new Services(
     account,
@@ -318,6 +321,16 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   ctx.inject?.(["skills"], (scope) => {
     refreshSkills = mountEnterpriseSkills(scope, account);
     void refreshSkills().catch(() => {});
+  });
+  if (config.account && !account.cloudOnly) ctx.inject?.(["mcpManager"], (scope) => {
+    const web = ctx.webServer;
+    if (!web.getOrigin) return;
+    refreshMcp = mountEnterpriseMcp(scope, {
+      register: route => web.register(route),
+      getOrigin: () => web.getOrigin!(),
+    }, account);
+    scope.effect(() => () => { refreshMcp = async () => {}; });
+    void refreshMcp().catch(() => {});
   });
   if (config.account)
     ctx.inject?.(["skills", "ipolloAppDataFeature"], (scope) =>
@@ -733,7 +746,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               );
               if (
                 request.method !== "GET" &&
-                /^\/enterprise\/organizations\/[^/]+\/(skills|grants|services|members|departments)/.test(
+                /^\/enterprise\/organizations\/[^/]+\/(skills|mcp|grants|services|members|departments)/.test(
                   path,
                 )
               )

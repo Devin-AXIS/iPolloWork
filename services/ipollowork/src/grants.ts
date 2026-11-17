@@ -4,7 +4,7 @@ import type { Store } from "./database.js";
 import type { Actor } from "./auth.js";
 import { ServiceError } from "./errors.js";
 
-export type AssetKind = "package" | "skill" | "service";
+export type AssetKind = "package" | "skill" | "service" | "mcp";
 /** `all` covers every member; otherwise the listed departments and members are allowed. */
 export interface Audience {
   all: boolean;

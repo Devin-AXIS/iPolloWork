@@ -20,35 +20,42 @@ declare module "@deepseek-ai/dsh-llm" {
  * @param ctx Native plugin lifetime, with the agent registry available.
  */
 export function mountOutputContinuation(ctx: Context): void {
-  const truncated = new WeakSet<Agent>();
+  const truncated = new WeakMap<Agent, number>();
   const pending = new Set<Agent>();
+  const clearPending = (agent: Agent) => {
+    if (!pending.delete(agent)) return;
+    for (let index = agent.inbox.nextStep.length - 1; index >= 0; index--) {
+      if (agent.inbox.nextStep[index]?.source.kind === "ipollowork-output-continuation")
+        agent.inbox.splice("next-step", index, 1, []);
+    }
+  };
   ctx.on("agent/inbox/claimed", ({ agent, message }) => {
     if (message.source.kind === "ipollowork-output-continuation") pending.delete(agent);
   });
   ctx.on("agent/disposed", ({ agent }) => pending.delete(agent));
   ctx.effect(() => () => {
-    for (const agent of pending) {
-      for (let index = agent.inbox.nextStep.length - 1; index >= 0; index--) {
-        if (agent.inbox.nextStep[index]?.source.kind === "ipollowork-output-continuation")
-          agent.inbox.splice("next-step", index, 1, []);
-      }
-    }
-    pending.clear();
+    for (const agent of pending) clearPending(agent);
   });
   ctx.on("session/event", (session, event) => {
-    if (event.type !== "assistant/message") return;
+    if (event.type !== "assistant/message" && event.type !== "turn/end") return;
     const agent = ctx.agents.get(session.id);
     if (!agent) return;
     truncated.delete(agent);
-    const { message, stream } = event.data;
+    if (event.type === "turn/end") {
+      clearPending(agent);
+      return;
+    }
+    const { message, stream, turn } = event.data;
     if (!message.source.provider.startsWith("ipollo-")
       || message.content.some(block => block.type === "tool-call")) return;
     const finish = stream?.findLast(entry => entry.type === "chunk" && entry.chunk.type === "finish");
     if (finish?.type === "chunk" && finish.chunk.type === "finish" && finish.chunk.reason.kind === "max-tokens")
-      truncated.add(agent);
+      truncated.set(agent, turn);
   });
-  ctx.on("agent/turn-stopping", ({ agent, signal }) => {
-    if (!truncated.delete(agent) || signal.aborted
+  ctx.on("agent/turn-stopping", ({ agent, turn, signal }) => {
+    if (truncated.get(agent) !== turn) return;
+    truncated.delete(agent);
+    if (signal.aborted
       || agent.inbox.nextTurn.length || agent.inbox.nextStep.length) return;
     const message = createUserMessage({
       source: { kind: "ipollowork-output-continuation", form: "notice", summary: "继续处理" },

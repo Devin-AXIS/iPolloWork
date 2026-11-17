@@ -8,4 +8,6 @@ Run `npm run setup:build` at the product repository root. The source is download
 
 `npm run check:upstream` checks original source hashes and rejects tracked upstream implementation directories. `node check-pin.mjs` checks the downloaded source from this directory. Existing files and sessions are outside this dependency cache.
 
+See the [DSH compatibility record](compatibility.md) for product integrations, upstream interfaces that may change, and the upgrade verification steps.
+
 The official npm distribution can be examined separately with `npm ci --ignore-scripts` here. It is not used to mix or replace individual packages inside the source-built desktop graph.

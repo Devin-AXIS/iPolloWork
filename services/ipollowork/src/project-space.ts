@@ -5,6 +5,7 @@ import type { Store, Row } from "./database.js";
 import type { Actor } from "./auth.js";
 import {
   audit,
+  canDeleteProject,
   now,
   projectAccess,
   projectRole,
@@ -73,7 +74,7 @@ export async function projectListings(
       WHEN p.access_mode='enterprise' OR EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=p.id AND ((g.kind='member' AND g.subject_id=m.user_id) OR (g.kind='department' AND g.subject_id=m.department_id))) THEN 'view' END AS project_role
     FROM projects p LEFT JOIN enterprises e ON e.id=p.enterprise_id
     LEFT JOIN members m ON m.enterprise_id=p.enterprise_id AND m.user_id=?
-    WHERE (?::text IS NULL OR p.enterprise_id=?)) AS permitted WHERE project_role IS NOT NULL ORDER BY created_at DESC LIMIT 200`,
+    WHERE p.deleted_at IS NULL AND (?::text IS NULL OR p.enterprise_id=?)) AS permitted WHERE project_role IS NOT NULL ORDER BY created_at DESC LIMIT 200`,
     actor.role,
     actor.id,
     actor.id,
@@ -129,6 +130,7 @@ export function mountProjectSpace(
         role: await projectRole(store, actor, p),
         accessMode: p.access_mode,
         publishedAt: p.published_at,
+        canDelete: await canDeleteProject(store, actor, p),
       },
       memory: { text: p.memory, version: p.memory_version },
       files: JSON.parse(String(p.files)),

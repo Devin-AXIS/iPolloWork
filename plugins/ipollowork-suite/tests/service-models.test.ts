@@ -2,6 +2,7 @@ import test from "node:test";
 import { ReasoningEffortId, ToolCallId, createAssistantMessage, createToolResultMessage } from "@deepseek-ai/dsh-llm";
 import assert from "node:assert/strict";
 import { Context } from "@deepseek-ai/cordis";
+import { agentEvents, type Agent } from "@deepseek-ai/dsh-agent";
 import LlmRuntime from "@deepseek-ai/dsh-llm";
 import { mountServiceModels } from "../src/host/service-models.ts";
 import { Services } from "../src/host/services.ts";
@@ -37,6 +38,7 @@ test("official models register lazily, retain native providers and withdraw on o
       records.delete(key);
     },
   };
+  let catalogModel = "model";
   const account = new AccountService(
     credentials,
     resolveConfig({ accountOrigin: "https://accounts.test" }),
@@ -65,7 +67,7 @@ test("official models register lazily, retain native providers and withdraw on o
             basePath: "/v1",
             models: [
               {
-                id: "model",
+                id: catalogModel,
                 name: "Model",
                 contextWindow: 32768,
                 maxTokens: 2048,
@@ -102,8 +104,19 @@ test("official models register lazily, retain native providers and withdraw on o
   });
   await fiber;
   try {
+    const admitStep = (provider: string, model = "model") => agentEvents(ctx, {} as Agent).waterfall(
+      "agent/pre-step",
+      { modelSelection: { provider, model }, messages: [], turn: 1, step: 1, signal: new AbortController().signal },
+      () => {
+        assert(ctx.llm.listProviders().some(item => item.id === provider));
+        return Promise.resolve({ kind: "enter", messages: [] });
+      },
+    );
     assert.equal(ctx.llm.listProviders().length, 0);
-    await assert.rejects(refresh(), /Default selection temporarily unavailable/);
+    const startup = refresh();
+    const admitted = admitStep("ipollo-chat");
+    await assert.rejects(startup, /Default selection temporarily unavailable/);
+    assert.equal((await admitted).kind, "enter");
     assert.equal(center.modelStatus, "error");
     assert.equal(ctx.llm.listProviders().length, 1);
     await refresh();
@@ -120,9 +133,15 @@ test("official models register lazily, retain native providers and withdraw on o
     await center.choose("bailian", { source: "own" });
     await refresh();
     assert.equal(ctx.llm.listProviders().length, 0);
+    await assert.rejects(admitStep("ipollo-chat"), { code: "IPW_OFFICIAL_MODEL_SOURCE_CHANGED" });
     await center.choose("bailian", { source: "official", serviceId: "chat" });
-    await refresh();
+    assert.equal((await admitStep("ipollo-chat")).kind, "enter");
     assert.equal(ctx.llm.listProviders().length, 1);
+    catalogModel = "replacement";
+    await refresh();
+    await assert.rejects(admitStep("ipollo-chat"), { code: "IPW_OFFICIAL_MODEL_UNAVAILABLE" });
+    catalogModel = "model";
+    assert.equal((await admitStep("ipollo-chat")).kind, "enter");
   } finally {
     await fiber.dispose();
   }
@@ -136,6 +155,7 @@ test("account model calls use their private token and report insufficient points
   await ctx.plugin(WebServer, { host: "127.0.0.1", port: 0 });
   await ctx.plugin(LlmRuntime);
   let calls = 0;
+  let proxyAuthorization: string | undefined;
   const credentials: CredentialStore = {
     readRecord: async key => key === "ipollowork-suite/account" ? { kind: "grant", payload: { version: 1, origin: "https://accounts.test", token: "account-secret" } } : undefined,
     modifyRecord: async () => undefined,
@@ -155,12 +175,20 @@ test("account model calls use their private token and report insufficient points
   let refresh = async () => {};
   await ctx.plugin({ inject: ["llm", "webServer"], apply(scope: Context) {
     refresh = mountServiceModels(scope, {
-      getOrigin: () => scope.webServer.getOrigin(), register: route => scope.webServer.register(route),
+      getOrigin: () => scope.webServer.getOrigin(),
+      register: route => scope.webServer.register({
+        ...route,
+        handler(request, response) {
+          proxyAuthorization ??= request.headers.authorization;
+          return route.handler(request, response);
+        },
+      }),
     }, center, account);
   } });
   try {
     await refresh();
-    const denied = await fetch(ctx.webServer.getOrigin() + "/ipollo-service-models/chat/v1/chat/completions", { method: "POST", body: "{}" });
+    const url = ctx.webServer.getOrigin() + "/ipollo-service-models/chat/v1/chat/completions";
+    const denied = await fetch(url, { method: "POST", body: "{}" });
     assert.equal(denied.status, 401);
     assert.equal(calls, 0);
     const chunks = [];
@@ -168,6 +196,15 @@ test("account model calls use their private token and report insufficient points
     const finish = chunks.find(chunk => chunk.type === "finish");
     assert.equal(finish?.reason.kind, "error");
     if (finish?.reason.kind === "error") assert.equal(finish.reason.failure.code, "ACCOUNT_QUOTA");
+    assert.equal(calls, 1);
+    assert(proxyAuthorization);
+    const oversized = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: proxyAuthorization },
+      body: new Uint8Array(16 * 1024 * 1024 + 1),
+    });
+    assert.equal(oversized.status, 413);
+    assert.equal((await oversized.json()).error.code, "IPW_MODEL_REQUEST_TOO_LARGE");
     assert.equal(calls, 1);
   } finally { await ctx.fiber.dispose(); }
 });

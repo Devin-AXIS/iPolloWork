@@ -54,7 +54,7 @@ import {
 import { KeyGlyph, Monogram } from "./glyphs.tsx";
 import css from "./suite.module.css";
 
-type Kind = "package" | "skill" | "service";
+type Kind = "package" | "skill" | "service" | "mcp";
 export interface AssetProps {
   enterpriseId: string;
   detail: EnterpriseDetail;
@@ -354,7 +354,7 @@ export function AccessDialog({
   );
 }
 
-function RowMenu({
+export function RowMenu({
   t,
   items,
   onSelect,

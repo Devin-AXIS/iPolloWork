@@ -446,6 +446,8 @@ export class EnterpriseService {
     input?: unknown,
   ): Promise<unknown> {
     const parts = path.split("/").filter(Boolean);
+    if (method === "DELETE" && parts[0] === "projects" && parts.length === 2)
+      return this.cloud("projects/" + id.parse(parts[1]), undefined, "DELETE");
     if (
       parts[0] === "projects" &&
       parts[1] &&
@@ -567,13 +569,36 @@ export class EnterpriseService {
           base + "/grants",
           z
             .object({
-              kind: z.enum(["package", "skill", "service"]),
+              kind: z.enum(["package", "skill", "service", "mcp"]),
               assetId: id,
               audience,
             })
             .parse(input),
           "PUT",
         );
+      if (parts[2] === "mcp") {
+        if (parts.length === 3 && method === "GET") {
+          const value = await this.cloud(base + "/mcp").catch((error: unknown) => {
+            // Older account services return an unstructured 404 for this route.
+            if (error instanceof SuiteError && error.status === 404 && error.code === "IPW_ACCOUNT_UNAVAILABLE")
+              throw new SuiteError("IPW_ENTERPRISE_MCP_UNAVAILABLE", 503, { cause: error });
+            throw error;
+          });
+          return z.object({
+            canManage: z.boolean(),
+            items: z.array(z.object({ id, title: name, description, host: z.string().max(253), audience })).max(100),
+          }).parse(value);
+        }
+        if (parts.length === 3 && method === "POST")
+          return this.cloud(base + "/mcp", z.object({
+            title: name,
+            description: z.string().trim().max(1000),
+            endpoint: z.url().max(2048),
+            key: key.optional(),
+          }).strict().parse(input));
+        if (parts.length === 4 && method === "DELETE")
+          return this.cloud(base + "/mcp/" + id.parse(parts[3]), undefined, "DELETE");
+      }
       if (parts[2] === "packages") {
         if (method === "POST" && parts.length === 3)
           return this.cloud(

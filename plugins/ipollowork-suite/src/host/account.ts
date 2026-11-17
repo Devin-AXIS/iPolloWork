@@ -150,6 +150,27 @@ export class AccountService {
     if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
     return this.send(path, grant.token, body, method, signal);
   }
+  /** Forward the native MCP transport through the member's account grant. */
+  async connectEnterpriseMcp(
+    id: string,
+    method: "GET" | "POST" | "DELETE",
+    headers: Headers,
+    body: Uint8Array<ArrayBuffer> | undefined,
+    signal: AbortSignal,
+  ): Promise<Response> {
+    const revision = this.revision;
+    const grant = await this.grant();
+    if (!grant) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
+    if (revision !== this.revision) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    headers.set("authorization", "Bearer " + grant.token);
+    return this.fetcher(this.config.accountOrigin + "/api/v1/me/enterprise-mcp/" + encodeURIComponent(id) + "/connect", {
+      method,
+      headers,
+      ...(body === undefined ? {} : { body }),
+      redirect: "error",
+      signal: AbortSignal.any([signal, this.signal, AbortSignal.timeout(125_000)]),
+    });
+  }
   /** Cloud startup is bounded independently from ordinary account reads. */
   async openCloudProject(projectId: string): Promise<unknown> {
     const generation=this.revision, grant=await this.grant();

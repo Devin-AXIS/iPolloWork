@@ -1,6 +1,7 @@
 /** Official chat services mount through DSH's existing pi-ai adapter. */
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { resolveImageAttachmentAccess, resolveRetryPolicy, ACCOUNT_QUOTA_EXCEEDED_CODE, type GenerateOptions, type StreamChunk, type PreparedAdapterCall } from "@deepseek-ai/dsh-llm";
+import { LlmError, resolveImageAttachmentAccess, resolveRetryPolicy, ACCOUNT_QUOTA_EXCEEDED_CODE, type GenerateOptions, type StreamChunk, type PreparedAdapterCall } from "@deepseek-ai/dsh-llm";
+import type {} from "@deepseek-ai/dsh-agent";
 import { SuiteError } from "./errors.ts";
 import {
   createProvider,
@@ -68,6 +69,8 @@ export function mountServiceModels(
   let profiles = new Map<string, pi.ResolvedPiAiProviderProfile>(),
     facts = "",
     serial = Promise.resolve();
+  let personalSourceProviders = new Set<string>();
+  let pendingRefresh: Promise<void> | undefined;
   const adapter = new OfficialModelAdapter({
     profiles: () => profiles,
     resolveApiKey: async () => token,
@@ -97,6 +100,8 @@ export function mountServiceModels(
         }
         const controller = new AbortController();
         res.on("close", () => controller.abort());
+        const requestId = randomUUID();
+        let phase = "request";
         try {
           const url = new URL(req.url ?? "/", "http://localhost");
           const match =
@@ -110,15 +115,19 @@ export function mountServiceModels(
           }
           const chunks: Buffer[] = [];
           let length = 0;
-          for await (const chunk of req) {
+          for await (const chunk of req.iterator({ destroyOnReturn: false })) {
             length += chunk.length;
-            if (length > 16 * 1024 * 1024) throw Error("request limit");
+            if (length > 16 * 1024 * 1024) {
+              res.setHeader("Connection", "close");
+              throw new SuiteError("IPW_MODEL_REQUEST_TOO_LARGE", 413);
+            }
             chunks.push(Buffer.from(chunk));
           }
+          phase = "gateway";
           const response = await account.execute(
             match[1]!,
             {
-              requestId: randomUUID(),
+              requestId,
               path: "/chat/completions",
               method: "POST",
               body: Buffer.concat(chunks).toString("base64"),
@@ -126,6 +135,7 @@ export function mountServiceModels(
             },
             AbortSignal.any([controller.signal, lifetime.signal]),
           );
+          phase = "response";
           res.writeHead(response.status, {
             "Content-Type":
               response.headers.get("content-type") ?? "application/json",
@@ -151,6 +161,12 @@ export function mountServiceModels(
             );
           else res.end();
         } catch (error) {
+          if (!controller.signal.aborted && !lifetime.signal.aborted && !(error instanceof SuiteError)) {
+            const cause = error instanceof Error ? error.cause : undefined;
+            const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
+            const reason = typeof code === "string" && /^(?:E|UND_ERR_)[A-Z0-9_]{1,48}$/.test(code) ? code : "unknown";
+            ctx.logger.warn("Official model proxy failed: request %s, phase %s, reason %s", requestId, phase, reason);
+          }
           if (res.headersSent) res.destroy();
           else {
             res.writeHead(error instanceof SuiteError ? error.status : 503, { "Content-Type": "application/json" });
@@ -164,7 +180,7 @@ export function mountServiceModels(
     }),
   );
 
-  return () => {
+  const refreshModels = () => {
     const refresh = async () => {
       const generation = services.generation;
       try {
@@ -180,6 +196,11 @@ export function mountServiceModels(
         );
         if (lifetime.signal.aborted || generation !== services.generation)
           return;
+        personalSourceProviders = new Set(
+          catalog.items
+            .filter(service => choices[service.provider]?.source === "own")
+            .map(service => "ipollo-" + service.id),
+        );
         const next = JSON.stringify(models.map((s) => [s.id, s.models]));
         const changed = next !== facts;
         if (!changed && services.modelStatus === "ready") return;
@@ -275,7 +296,48 @@ export function mountServiceModels(
         throw error;
       }
     };
-    serial = serial.then(refresh, refresh);
-    return serial;
+    const running = serial = serial.then(refresh, refresh);
+    pendingRefresh = running;
+    const clear = () => {
+      if (pendingRefresh === running) pendingRefresh = undefined;
+    };
+    void running.then(clear, clear);
+    return running;
   };
+
+  const hasModel = (provider: string, model: string) => {
+    if (!ctx.llm.listProviders().some(item => item.id === provider)) return false;
+    const profile = profiles.get(provider);
+    return !profile || profile.piProvider?.getModels().some(item => item.id === model) === true;
+  };
+  ctx.on("agent/pre-step", async ({ agent, modelSelection: { provider, model }, signal }, next) => {
+    // The built-in fallback can exist without a usable credential or any
+    // conversation selection, while the composer still shows "Choose model".
+    if (provider === "deepseek-official"
+      && !agent.session.snapshotEvents().some(event => event.type === "model/selection")
+      && !(await ctx.llm.listModels(provider)).some(item => item.id === model)) {
+      signal.throwIfAborted();
+      throw LlmError.fromFailure({
+        code: "MODEL_NOT_SELECTED",
+        message: "Choose a model in the composer before sending a message.",
+      });
+    }
+    if (!provider.startsWith("ipollo-")) return next();
+    if (hasModel(provider, model)) return next();
+    signal.throwIfAborted();
+    // A saved route may predate startup, a source change, or a catalog update.
+    await (pendingRefresh ?? refreshModels()).catch(() => { /* The refresh records its failure in Services. */ });
+    signal.throwIfAborted();
+    if (hasModel(provider, model)) return next();
+    if (personalSourceProviders.has(provider)) throw LlmError.fromFailure({
+      code: "IPW_OFFICIAL_MODEL_SOURCE_CHANGED",
+      message: "This conversation still uses an official model. Its service now uses your own key. Select a model configured with your key, or switch the service back to Official in Service connections.",
+    });
+    throw LlmError.fromFailure({
+      code: services.modelError || "IPW_OFFICIAL_MODEL_UNAVAILABLE",
+      message: "The selected iPolloWork model is unavailable. Check service connections or select an available model.",
+    });
+  });
+
+  return refreshModels;
 }

@@ -12,11 +12,14 @@ function fixture() {
   const listeners = new Map(), submitted = [], disposers = [];
   const agent = { inbox: { nextTurn: [], nextStep: [], splice: (_target, start, count) => agent.inbox.nextStep.splice(start, count) }, steer: message => { submitted.push(message); agent.inbox.nextStep.push(message); } };
   module.exports.mountOutputContinuation({ agents: { get: () => agent }, on: (name, callback) => listeners.set(name, callback), effect: setup => disposers.push(setup()) });
-  const response = ({ provider = 'ipollo-bailian', finish = 'max-tokens', content = [] } = {}) => listeners.get('session/event')({ id: 'session' }, {
-    type: 'assistant/message', data: { message: { source: { provider }, content }, stream: [{ type: 'chunk', chunk: { type: 'finish', reason: { kind: finish } } }] },
+  const response = ({ provider = 'ipollo-bailian', finish = 'max-tokens', content = [], turn = 1 } = {}) => listeners.get('session/event')({ id: 'session' }, {
+    type: 'assistant/message', data: { turn, message: { source: { provider }, content }, stream: [{ type: 'chunk', chunk: { type: 'finish', reason: { kind: finish } } }] },
   });
-  const stop = (aborted = false) => listeners.get('agent/turn-stopping')({ agent, signal: { aborted } });
-  return { agent, submitted, response, stop, dispose: () => { disposers.forEach(dispose => dispose()); listeners.clear(); } };
+  const stop = (aborted = false, turn = 1) => listeners.get('agent/turn-stopping')({ agent, turn, signal: { aborted } });
+  const fail = () => listeners.get('session/event')({ id: 'session' }, {
+    type: 'turn/end', data: { turn: 1, reason: { kind: 'error' } },
+  });
+  return { agent, submitted, response, stop, fail, dispose: () => { disposers.forEach(dispose => dispose()); listeners.clear(); } };
 }
 
 test('a committed truncated response resumes once with recorded, non-user attribution', () => {
@@ -34,6 +37,17 @@ test('unloading removes only the unclaimed automatic continuation', () => {
   f.agent.inbox.nextStep.push(human);
   f.dispose();
   assert.deepEqual(f.agent.inbox.nextStep, [human]);
+});
+
+test('a failed turn cannot leave an automatic continuation for a new task', () => {
+  const f = fixture(); f.response(); f.stop();
+  const human = { id: 'new-task', source: { kind: 'user' } };
+  f.agent.inbox.nextTurn.push(human);
+  f.fail();
+  f.stop(false, 2);
+  assert.deepEqual(f.agent.inbox.nextStep, []);
+  assert.deepEqual(f.agent.inbox.nextTurn, [human]);
+  assert.equal(f.submitted.length, 1);
 });
 
 test('normal providers, unresolved tools, cancellation and queued human work are preserved', () => {

@@ -1,47 +1,48 @@
 /** Native plugin-page tab. Installation and component management stay with DSH. */
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import { PluginArtworkDefault } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { MarketItem, MarketState } from '../shared/types.ts'
 import type { Labels } from './locale.ts'
 import type { MarketProps } from './native.ts'
+import { installPending, type MarketInstallation } from './market-installation.ts'
 import css from './suite.module.css'
 
 export interface MarketPanelProps extends MarketProps {
   useLabels<T>(selector: (value: Labels) => T): T
   load(signal: AbortSignal): Promise<MarketState>
-  subscribeChanges(listener: () => void): () => void
+  installation: MarketInstallation
 }
 
-export function MarketPanel({ useLabels, load, subscribeChanges, install, openPackage }: MarketPanelProps) {
+export function MarketPanel({ useLabels, load, installation, openPackage }: MarketPanelProps) {
   const t = useLabels(value => value)
-  const [data, setData] = useState<MarketState | null>(null)
+  const { task, revision } = useSyncExternalStore(installation.subscribe, installation.getSnapshot)
+  const [catalog, setCatalog] = useState<{ data: MarketState; revision: number } | null>(null)
+  const data = catalog?.data
   const [error, setError] = useState(false)
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [enterprise, setEnterprise] = useState(false)
-  const [selected, setSelected] = useState<MarketItem | null>(null)
-  const [revision, refresh] = useState(0)
+  const [selectedName, setSelectedName] = useState<string | null>(null)
+  const selected = data?.items.find(item => item.name === selectedName)
   const detailTitle = useRef<HTMLHeadingElement>(null)
   const returnFocus = useRef<string | null>(null)
   const cardButtons = useRef(new Map<string, HTMLButtonElement>())
-  useEffect(() => subscribeChanges(() => refresh(value => value + 1)), [subscribeChanges])
   useEffect(() => {
     const controller = new AbortController()
     setLoading(true)
     setError(false)
     void load(controller.signal).then(value => {
       if (controller.signal.aborted) return
-      setData(value)
+      setCatalog({ data: value, revision })
       setLoading(false)
-      setSelected(previous => previous ? value.items.find(item => item.name === previous.name) ?? null : null)
     }).catch(() => {
       if (controller.signal.aborted) return
       setLoading(false)
       setError(true)
     })
     return () => controller.abort()
-  }, [load, revision])
+  }, [load, revision, t])
   useEffect(() => {
     if (selected) detailTitle.current?.focus()
     else if (returnFocus.current) cardButtons.current.get(returnFocus.current)?.focus()
@@ -49,15 +50,26 @@ export function MarketPanel({ useLabels, load, subscribeChanges, install, openPa
   const items = data?.items.filter(item => (!category || item.category === category)
     && `${item.title} ${item.name} ${item.description} ${item.author}`.toLowerCase().includes(query.toLowerCase())) ?? []
   const available = (item: MarketItem) => item.installed || item.providedByDsh
-  const action = (item: MarketItem) => available(item) ? openPackage(item.name)
-    : install({ spec: item.spec, title: item.title, version: item.version, ...(item.registry ? { registry: item.registry } : {}) })
+  const action = (item: MarketItem) => {
+    const currentTask = task?.target.name === item.name ? task : null
+    const pending = currentTask && installPending(currentTask.phase)
+    const unconfirmed = currentTask?.phase === 'unconfirmed'
+    const completed = currentTask?.phase === 'done' && (catalog?.revision ?? 0) < (currentTask.completedRevision ?? 0)
+    const installed = available(item)
+    const otherInstallPending = task && task !== currentTask && (installPending(task.phase) || task.phase === 'unconfirmed')
+    return {
+      label: pending ? t.installing : unconfirmed ? t.installView : installed ? t.manage : completed ? t.installed : item.compatible ? t.install : t.incompatible,
+      disabled: !pending && !unconfirmed && !installed && (completed || !item.compatible || Boolean(otherInstallPending)),
+      onClick: () => pending || unconfirmed ? installation.show() : installed ? openPackage(item.name) : installation.start(item),
+    }
+  }
 
   return <section className={css.page} aria-busy={loading} {...selected ? { 'data-ipw-market-detail': '' } : {}}>
-    {error && <p role="alert" className={css.error}>{t.error} <button className={css.back} onClick={() => refresh(value => value + 1)}>{t.retry}</button></p>}
+    {error && <p role="alert" className={css.error}>{t.error} <button className={css.back} onClick={installation.invalidate}>{t.retry}</button></p>}
     {selected ? <PluginDetailPage item={selected} t={t} titleRef={detailTitle}
-      onBack={() => setSelected(null)} onAction={() => action(selected)} onOpenComponents={() => openPackage(selected.name)}/>
+      onBack={() => setSelectedName(null)} action={action(selected)} onOpenComponents={() => openPackage(selected.name)}/>
       : <>
-      <div className={css.heading}><div><h1>{t.market}</h1><p>{t.intro}</p></div><button className={css.secondary} onClick={() => refresh(value => value + 1)} disabled={loading}>{t.refresh}</button></div>
+      <div className={css.heading}><div><h1>{t.market}</h1><p>{t.intro}</p></div><button className={css.secondary} onClick={installation.invalidate} disabled={loading}>{t.refresh}</button></div>
       <div className={css.toolbar}>
         <div className={css.segmented} role="group" aria-label={t.market}>
           <button aria-pressed={!enterprise} onClick={() => setEnterprise(false)}>{t.public}</button><button aria-pressed={enterprise} onClick={() => setEnterprise(true)}>{t.enterprise}</button>
@@ -72,7 +84,7 @@ export function MarketPanel({ useLabels, load, subscribeChanges, install, openPa
         {[0, 1, 2].map(key => <div className={css.skeletonRow} key={key} aria-hidden="true"><span/><div><span/><span/></div></div>)}
       </div> : <div className={css.pluginList}>
         {items.map(item => <article className={css.card} key={item.name}>
-          <button className={css.cardBody} ref={element => { if (element) cardButtons.current.set(item.name, element); else cardButtons.current.delete(item.name) }} onClick={() => { if (available(item)) openPackage(item.name); else { returnFocus.current = item.name; setSelected(item) } }} aria-label={`${t.details} · ${item.title}`}>
+          <button className={css.cardBody} ref={element => { if (element) cardButtons.current.set(item.name, element); else cardButtons.current.delete(item.name) }} onClick={() => { if (available(item)) openPackage(item.name); else { returnFocus.current = item.name; setSelectedName(item.name) } }} aria-label={`${t.details} · ${item.title}`}>
             <Icon item={item}/>
             <div className={css.cardCopy}>
               <div className={css.titleRow}><h2>{item.title}</h2><span className={css.version}>{item.version}</span></div>
@@ -80,7 +92,7 @@ export function MarketPanel({ useLabels, load, subscribeChanges, install, openPa
               <div className={css.cardMeta}><span>{item.author}</span><span aria-hidden="true">·</span><span>{item.categoryTitle}</span>{available(item) && <><span aria-hidden="true">·</span><span>{item.enabled ? t.enabled : t.disabled}</span></>}</div>
             </div>
           </button>
-          <button className={available(item) ? css.secondary : css.primary} disabled={!available(item) && !item.compatible} onClick={() => action(item)}>{available(item) ? t.manage : item.compatible ? t.install : t.incompatible}</button>
+          <InstallButton action={action(item)} secondary={available(item)}/>
         </article>)}
         {!items.length && !error && <p className={css.empty}>{t.empty}</p>}
       </div>}
@@ -88,10 +100,17 @@ export function MarketPanel({ useLabels, load, subscribeChanges, install, openPa
   </section>
 }
 
+interface InstallAction { label: string; disabled: boolean; onClick(): void }
+
+function InstallButton({ action, secondary = false }: { action: InstallAction; secondary?: boolean }) {
+  return <button type="button" className={secondary ? css.secondary : css.primary}
+    disabled={action.disabled} onClick={action.onClick}>{action.label}</button>
+}
+
 /** One detail template for every catalog entry; installed bundles open DSH's native page. */
-function PluginDetailPage({ item, t, titleRef, onBack, onAction, onOpenComponents }: {
+function PluginDetailPage({ item, t, titleRef, onBack, action, onOpenComponents }: {
   item: MarketItem; t: Labels; titleRef: RefObject<HTMLHeadingElement>;
-  onBack(): void; onAction(): void; onOpenComponents(): void;
+  onBack(): void; action: InstallAction; onOpenComponents(): void;
 }) {
   const available = (value: MarketItem) => value.installed || value.providedByDsh
   const status = (value: MarketItem) => value.providedByDsh ? t.provided : value.installed ? t.installed : !value.compatible ? t.incompatible : value.categoryTitle
@@ -101,7 +120,7 @@ function PluginDetailPage({ item, t, titleRef, onBack, onAction, onOpenComponent
       </div>
       <div className={css.detailHeader}>
         <Icon item={item} large/>
-        <button className={css.primary} disabled={!available(item) && !item.compatible} onClick={() => onAction()}>{available(item) ? t.manage : t.install}</button>
+        <InstallButton action={action}/>
       </div>
       <div className={css.detailHeading}>
         <div className={css.titleRow}><h1 ref={titleRef} tabIndex={-1}>{item.title}</h1><span className={css.badge}>{item.version}</span>{(available(item) || !item.compatible) && <span className={css.badge}>{status(item)}</span>}</div>

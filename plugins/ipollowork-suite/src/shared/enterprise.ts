@@ -154,6 +154,7 @@ export interface ProjectSpace {
     role: ProjectRole;
     accessMode: "enterprise" | "selected";
     publishedAt?: number | null;
+    canDelete?: boolean;
   };
   memory: { text: string; version: number };
   files: ProjectFile[];
@@ -206,6 +207,13 @@ export interface EnterpriseAssets {
   canManage: boolean;
   packages: EnterprisePackage[];
   skills: EnterpriseSkill[];
+}
+export interface EnterpriseMcp {
+  id: string;
+  title: string;
+  description: string;
+  host: string;
+  audience: Audience;
 }
 import type { ServiceCategory } from "./service-categories.ts";
 export interface EnterpriseModelEntry {

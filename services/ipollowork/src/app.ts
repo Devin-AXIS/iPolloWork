@@ -27,6 +27,7 @@ import { mountCollaboration } from "./collaboration.js";
 import { mountEnterprise } from "./enterprise.js";
 import { mountPayments } from "./payments.js";
 import { mountEnterpriseAssets } from "./enterprise-assets.js";
+import { mountEnterpriseMcp } from "./enterprise-mcp.js";
 import { mountResources } from "./resources.js";
 import { LiveshareRelay } from "./liveshare.js";
 import { mountLiveshare } from "./liveshare-http.js";
@@ -407,6 +408,7 @@ export async function createService(config: Config) {
     mountCapabilities(app, new Capabilities(execution, store));
     mountAccessKeys(app, auth);
     mountEnterpriseAssets(app, store, storage, config);
+    mountEnterpriseMcp(app, store, settings, config.secret);
     mountEnterprise(app, store, config, cloud);
     mountCloudProjects(app, cloud);
     mountEnterpriseAnalytics(app, store);

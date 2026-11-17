@@ -16,7 +16,8 @@ import type {
   ProjectChange,
 } from "../shared/enterprise.ts";
 import type { EnterpriseController } from "./enterprise-controller.ts";
-import type { EnterpriseLabels } from "./enterprise-locale.ts";
+import { format, type EnterpriseLabels } from "./enterprise-locale.ts";
+import { RowMenu } from "./enterprise-assets.tsx";
 import {
   EmptyState,
   Field,
@@ -245,6 +246,17 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
             {c.submit}
           </Button>
         )}
+        {space.project.canDelete && <RowMenu t={t}
+          items={[{ id: "delete", label: t.deleteProject, danger: true }]}
+          onSelect={() => controller.open({
+            kind: "confirm", title: format(t.deleteProjectTitle, { name: space.project.title }),
+            description: t.deleteProjectBody, confirmLabel: t.deleteProject,
+            run: async () => {
+              await call("/projects/" + id, undefined, "DELETE");
+              controller.back();
+              await controller.load();
+            },
+          })} />}
       </div>
       <SegmentedTabs
         label={space.project.title}

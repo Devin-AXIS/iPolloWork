@@ -1,5 +1,7 @@
 /** Minimal public DSH client capabilities consumed by the suite. */
 import type { ComponentType } from 'react'
+import type { ClientRemote, PluginInstallProgress } from '@deepseek-ai/dsh-api-remotes/client'
+import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 export interface NativeSessionBinding { readonly sessionId:string; readonly ctx:object }
 /** Credential-free result supplied to the optional native sharing hook. */
 interface SharingPreparation { readonly connected?:boolean; readonly error?:string }
@@ -9,6 +11,8 @@ export interface SlotOptions<P> {
   children?: Record<string, { kind: 'single'; scope: 'session' }>;
 }
 export interface ClientContext {
+  inject(dependencies: readonly ['remote.pluginManager'], callback: (scope: ClientContext) => void): unknown;
+  inject(dependencies: readonly ['remoteAccess'], callback: (scope: ClientContext) => void): unknown;
   inject(dependencies: readonly ['remote.liveshareShares'], callback: (scope: {
     remote: { liveshareShares: import('./sharing/owner-shares.ts').OwnerShares }
   }) => void): unknown;
@@ -21,12 +25,18 @@ export interface ClientContext {
     register<P>(options: SlotOptions<P>, component: ComponentType<P>): () => void;
   };
   theme: { overrideTokens(source: string, tokens: Record<string, { light: string; dark: string }>): () => void };
-  locale: { getSnapshot(): { active?: string; locale?: string; language?: string } | string; subscribe(listener: () => void): () => void };
-  remote: { $on(event: string, listener: () => void): () => void };
+  locale: { bind(namespace: string): (key: string) => string; getSnapshot(): { active?: string; locale?: string; language?: string } | string; subscribe(listener: () => void): () => void };
+  remote: {
+    pluginManager: ClientRemote['pluginManager'];
+    $on(event: 'plugin-manager/install-state', listener: (progress: PluginInstallProgress) => void): () => void;
+    $on(event: string, listener: () => void): () => void;
+  };
   on(name: string, listener: () => void): () => void;
   on(name: 'ipollowork/prepare-share', listener: (signal: AbortSignal, next: () => Promise<SharingPreparation>) => Promise<SharingPreparation>): () => void;
   layout: { selectPanel(id: string): void };
+  remoteAccess: { source(kind: 'session', id: string, action: string): { getSnapshot(): boolean } };
   uiWorkspace: {
+    archiveSession: IWorkspaces['archiveSession'];
     openSession(sessionId: string): void;
     openWorkspace(workspaceId: string): Promise<void>;
     pickDirectory(): Promise<string | null>;
@@ -36,12 +46,13 @@ export interface ClientContext {
     createDirectory(path:string,name:string):Promise<string>;
   };
   workspaces: { create(input:{path:string}):Promise<{workspaceId:string;path:string;title:string}>; list: {
-    getSnapshot(): { phase: 'pending' | 'ready'; items: readonly { workspaceId:string;title:string;path:string;sessionIds:readonly string[] }[] };
+    getSnapshot(): Pick<WorkspaceSnapshot, 'archivedSessionIds'> & { phase: 'pending' | 'ready'; items: readonly { workspaceId:string;title:string;path:string;sessionIds:readonly string[] }[] };
     subscribe(listener:()=>void):()=>void;
   } };
   contextMenus: { register(contribution:{
     id:string;target:'workspace'|'session'|'sessionHeader';order:number;
-    resolve(input:{workspaceId?:string;sessionId?:string;displayTitle?:string}):{id:string;label:string;icon?:{key:string};run:()=>void|Promise<void>}[];
+    observe?(input:ContextMenuTarget):readonly { getSnapshot(): unknown }[];
+    resolve(input:ContextMenuTarget):{id:string;label:string;icon?:{key:string};danger?:boolean;separatorBefore?:boolean;run:()=>void|Promise<void>}[];
   }):()=>void };
   conversation: { input: { for(ctx:object):{insertQuote(text:string,summary:{label:string;title:string;body:string}):boolean}; requestDraftInitialization(binding:NativeSessionBinding,options:{prompt:string;whenDraftExists:'keep'}):'applied'|'preserved'|'blocked' } };
   sessions: {
@@ -52,8 +63,8 @@ export interface ClientContext {
     subscribe(listener: () => void): () => void;
   } };
 }
+type ContextMenuTarget = { workspaceId?: string; sessionId?: Parameters<IWorkspaces['archiveSession']>[0]; displayTitle?: string };
 export interface MarketProps {
-  install(target: { spec: string; title: string; version: string; registry?: string }): void;
   openPackage(name: string): void;
 }
 export interface LauncherProps { wide: boolean; openSettings(section?: string): void }

@@ -232,31 +232,20 @@ export function mountEnterpriseAssets(
     await requireEnterpriseManager(store, actor, id);
     const input = z
       .object({
-        kind: z.enum(["package", "skill", "service"]),
+        kind: z.enum(["package", "skill", "service", "mcp"]),
         assetId: z.string().min(1).max(100),
         audience: audienceSchema,
       })
       .parse(await c.req.json());
-    const owned =
-      input.kind === "package"
-        ? await store.one(
-            "SELECT 1 FROM file_packages WHERE id=? AND enterprise_id=?",
-            input.assetId,
-            id,
-          )
-        : input.kind === "skill"
-          ? await store.one(
-              "SELECT 1 FROM resources WHERE id=? AND enterprise_id=? AND kind='skill'",
-              input.assetId,
-              id,
-            )
-          : await store.one(
-              "SELECT 1 FROM enterprise_services WHERE service_id=? AND enterprise_id=?",
-              input.assetId,
-              id,
-            );
-    if (!owned) throw new ServiceError("ASSET_NOT_FOUND", 404, "资源不存在");
     await store.transaction(async () => {
+      const select = {
+        package: "SELECT 1 FROM file_packages WHERE id=? AND enterprise_id=?",
+        skill: "SELECT 1 FROM resources WHERE id=? AND enterprise_id=? AND kind='skill'",
+        mcp: "SELECT 1 FROM enterprise_mcp WHERE id=? AND enterprise_id=? FOR UPDATE",
+        service: "SELECT 1 FROM enterprise_services WHERE service_id=? AND enterprise_id=?",
+      }[input.kind];
+      if (!await store.one(select, input.assetId, id))
+        throw new ServiceError("ASSET_NOT_FOUND", 404, "资源不存在");
       await replaceAudience(
         store,
         id,

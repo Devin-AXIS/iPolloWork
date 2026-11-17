@@ -4,6 +4,33 @@ import { AccountService } from '../src/host/account.ts'
 import { resolveConfig } from '../src/host/config.ts'
 import { EnterpriseService } from '../src/host/enterprise.ts'
 
+test('the MCP list distinguishes an older service from empty, inaccessible, or missing organizations', async () => {
+  const host = 'https://account.test'
+  const organization = '00000000-0000-4000-8000-000000000001'
+  let reply = Response.json({ canManage: true, items: [] })
+  const account = new AccountService({
+    readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: host, token: 'test-token' } }),
+    modifyRecord: async () => undefined,
+    deleteRecord: async () => {},
+  }, resolveConfig({ accountOrigin: host }), new AbortController().signal, async input => {
+    assert.equal(new URL(String(input)).pathname, `/api/v1/enterprises/${organization}/mcp`)
+    return reply
+  })
+  const enterprise = new EnterpriseService(account, {
+    workspaceRegistry: { list: () => [] },
+    sessionQuery: { readSurface: async () => ({ events: [] }) },
+  }, host)
+  const readMcp = () => enterprise.request('GET', `/organizations/${organization}/mcp`)
+
+  assert.deepEqual(await readMcp(), { canManage: true, items: [] })
+  reply = Response.json({ error: 'Unknown route' }, { status: 404 })
+  await assert.rejects(readMcp, { code: 'IPW_ENTERPRISE_MCP_UNAVAILABLE', status: 503 })
+  reply = Response.json({ code: 'ENTERPRISE_FORBIDDEN' }, { status: 403 })
+  await assert.rejects(readMcp, { code: 'ENTERPRISE_FORBIDDEN', status: 403 })
+  reply = Response.json({ code: 'ENTERPRISE_NOT_FOUND' }, { status: 404 })
+  await assert.rejects(readMcp, { code: 'ENTERPRISE_NOT_FOUND', status: 404 })
+})
+
 test('enterprise bridge uses native ids keep historical previews local and refuse legacy sharing', async () => {
   const calls: { path: string; body: unknown }[] = []
   const json = (data: unknown) => new Response(JSON.stringify(data), { headers: { 'Content-Type':'application/json' } })

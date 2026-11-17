@@ -4,15 +4,21 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { IncomingMessage } from "node:http";
+import { Socket } from "node:net";
+import { Hono } from "hono";
 import { createService } from "../src/app.js";
 import { testConfig as loadConfig } from "./database.js";
 import { ExecutionService } from "../src/execution.js";
 import type { Actor } from "../src/auth.js";
+import { isSharedMcpEndpoint, mountEnterpriseMcp } from "../src/enterprise-mcp.js";
+import { ServiceError } from "../src/errors.js";
+import type { App } from "../src/http.js";
 
 const code = (expected: string) => (error: unknown) =>
   (error as { code?: string }).code === expected;
 
-test("departments and members receive only the packages, skills and models granted to them", async () => {
+test("organization assets enforce member and department grants, and project owners can remove projects", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-assets-"));
   const config = await loadConfig({
     DATA_DIR: dir,
@@ -239,6 +245,74 @@ test("departments and members receive only the packages, skills and models grant
       "managers can use every skill",
     );
 
+    const mcpInput = {
+      title: "Shared MCP", endpoint: "https://mcp.example.com/tools", key: "test-bearer-credential",
+      audience: { all: false, departments: [salesDep], members: [] },
+    };
+    assert.equal((await http(base + "/mcp", design.token, mcpInput)).status, 403);
+    const mcp = await http<{ id: string }>(base + "/mcp", owner.token, mcpInput);
+    assert.equal(mcp.status, 201);
+    const mcpCatalog = "/api/v1/me/enterprise-mcp";
+    assert.deepEqual((await http(mcpCatalog, design.token)).data.items, []);
+    assert.match(JSON.stringify((await http(mcpCatalog, sales.token)).data), /Shared MCP/);
+    assert.doesNotMatch(JSON.stringify((await http(base + "/mcp", sales.token)).data), /test-bearer-credential|\/tools/);
+    assert.doesNotMatch(JSON.stringify(await service.store.one("SELECT value FROM settings WHERE key=?", "enterprise-mcp/" + mcp.data.id)),
+      /test-bearer-credential/);
+
+    const relay: App = new Hono();
+    relay.use("*", (c, next) => {
+      const user = c.req.header("x-test-user") === "sales" ? sales : design;
+      c.set("actor", { id: user.id, email: user.email, name: user.email, role: "user" });
+      return next();
+    });
+    relay.onError((error, c) => error instanceof ServiceError
+      ? c.json({ code: error.code }, error.status) : c.json({ code: "UNEXPECTED" }, 500));
+    let forwarded = 0;
+    mountEnterpriseMcp(relay, service.store, service.settings, config.secret, async (url, method, headers) => {
+      assert.equal(url.href, mcpInput.endpoint);
+      assert.equal(method, "POST");
+      assert.equal(headers.authorization, "Bearer test-bearer-credential");
+      assert.equal(headers.cookie, undefined);
+      if (forwarded > 0) assert.equal(headers["mcp-session-id"], "upstream-session");
+      forwarded++;
+      const response = new IncomingMessage(new Socket());
+      response.statusCode = 200;
+      response.headers = { "content-type": "application/json", "mcp-session-id": "upstream-session" };
+      response.push('{"jsonrpc":"2.0","id":1,"result":{}}');
+      response.push(null);
+      return response;
+    });
+    const connect = (user: string, session?: string) => relay.request(mcpCatalog + "/" + mcp.data.id + "/connect", {
+      method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      headers: { "x-test-user": user, Cookie: "ignored", ...(session ? { "mcp-session-id": session } : {}) },
+    });
+    const authorized = await connect("sales");
+    const mcpSession = authorized.headers.get("mcp-session-id");
+    assert.equal(authorized.status, 200);
+    assert.ok(mcpSession && mcpSession !== "upstream-session");
+    await authorized.text();
+    assert.equal((await connect("design")).status, 403);
+    assert.equal((await http(base + "/grants", owner.token, {
+      kind: "mcp", assetId: mcp.data.id, audience: { all: true },
+    }, "PUT")).status, 200);
+    assert.equal((await connect("design", mcpSession)).status, 400);
+    assert.equal(await (await connect("sales", mcpSession)).text(), '{"jsonrpc":"2.0","id":1,"result":{}}');
+    assert.equal(forwarded, 2);
+    assert.equal((await http(base + "/mcp/" + mcp.data.id, owner.token, undefined, "DELETE")).status, 200);
+    assert.equal((await connect("sales", mcpSession)).status, 404);
+    assert.equal(forwarded, 2);
+
+    const project = await http<{ id: string }>("/api/v1/projects", owner.token, {
+      title: "Delete fixture project", enterpriseId: enterprise, nativeId: "fixture-workspace",
+    });
+    const projectPath = "/api/v1/projects/" + project.data.id;
+    await service.store.run("INSERT INTO project_grants VALUES(?,?,?,?)", project.data.id, "member", design.id, "maintain");
+    assert.equal((await http(projectPath, design.token, undefined, "DELETE")).status, 403);
+    assert.equal((await http(projectPath, owner.token, undefined, "DELETE")).status, 200);
+    assert.equal((await http(projectPath + "/space", owner.token)).status, 404);
+    assert.equal((await service.store.one("SELECT native_id FROM projects WHERE id=?", project.data.id))?.native_id, null);
+    assert.doesNotMatch(JSON.stringify((await http("/api/v1/projects", owner.token)).data), /Delete fixture project/);
+
     // Deleting a department unassigns its members and removes its grants.
     assert.equal(
       (
@@ -296,6 +370,15 @@ test("departments and members receive only the packages, skills and models grant
     await service.close();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("shared MCP destinations reject local hosts, embedded credentials and unsafe schemes", () => {
+  assert.equal(isSharedMcpEndpoint("https://mcp.example.com/tools"), true);
+  for (const endpoint of [
+    "http://mcp.example.com", "https://127.0.0.1", "https://[::1]", "https://0x7f000001",
+    "https://user:password@mcp.example.com", "https://mcp.example.com:8080",
+    "https://mcp.internal", "https://mcp.example.com/?token=private", "https://mcp.example.com/#{secret}",
+  ]) assert.equal(isSharedMcpEndpoint(endpoint), false, endpoint);
 });
 
 test("enterprise models use the enterprise key, follow grants, never charge points and stay out of official administration", async () => {
