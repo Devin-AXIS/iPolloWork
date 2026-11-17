@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile, rm } from 'node:fs/promises'
 import { larkSdkHandshakePatch } from '../vendor/dsh-im/plugin-src/host/lark-sdk-handshake-patch.mjs'
 
 await mkdir('lib', { recursive: true })
+await writeFile('lib/stage.d.ts', await readFile('src/shared/stage.ts', 'utf8'))
 await rm('lib/host/sandbox', { recursive: true, force: true })
 await writeFile('lib/services.d.ts', await readFile('src/shared/services.ts', 'utf8'))
 await writeFile('lib/connections.d.ts', await readFile('src/shared/connections.ts', 'utf8'))

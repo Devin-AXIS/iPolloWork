@@ -30,6 +30,8 @@ export function localMacOSPackageEnvironment(environment = process.env) {
     ...Object.fromEntries(Object.entries(environment).filter(([name]) => !AMBIENT_RELEASE_SETTING.test(name))),
     DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
     DSH_DESKTOP_UNSIGNED: '1',
+    // pnpm's recursive pack retains the whole workspace; local verification uses the bounded serial path.
+    DSH_DESKTOP_MACOS_PACK_CONCURRENCY: '1',
   }
 }
 

@@ -103,6 +103,8 @@ Published desktop versions use three numeric parts (for example `1.0.2`). A GitH
 
 The standard publication entrypoint is **Actions → Publish verified iPolloWork release** (`ipollo-publish.yml`). Upload the signed and notarized Apple Silicon/Intel DMGs, update ZIPs, blockmaps, clean-build records, Windows installer and current Design/suite packages to a numeric draft. Then dispatch this workflow with the tag. It rejects incomplete drafts and versions older than Latest, verifies every downloaded byte against GitHub, generates both update feeds and checksums, publishes Latest, and checks the public feeds and referenced downloads. A failed public check restores the previous Latest. The mirror workflow receives the same finalized files; it does not rebuild them. Do not publish a draft manually or promote a test suffix to Latest.
 
+The [Stage adapter](plugins/stage/README.md) is included in the complete desktop installer. Open it manually, link your existing Stage account once, and explicitly enable a workspace for conversation tools. Stage remains an independent editor/service; official model usage is settled in Work points from actual tokens without a balance hold.
+
 ## Independent plugins
 
 [Data annotation training](plugins/data-annotation/README.md) and [Operation recorder](plugins/operation-recorder/README.md) are separately installable DSH bundles. They reuse official authentication, workspaces and plugin lifecycle; neither modifies the DSH runtime. Recorder exports installable DSH Skill bundles. Independent plugins are distributed separately through the plugin marketplace; do not bundle them in the iPolloWork application installer.

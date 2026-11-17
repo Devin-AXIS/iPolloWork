@@ -132,3 +132,19 @@ test('remote HTTP account services are rejected before mounting', () => {
   assert.throws(() => resolveConfig({ accountOrigin: 'http://account.example.com' }), { code: 'IPW_INVALID_ACCOUNT_ORIGIN' })
   assert.doesNotThrow(() => resolveConfig({ accountOrigin: 'http://127.0.0.1:3100' }))
 })
+
+test('Stage business responses cannot cross an account change and larger documents keep their own bounded budget', async () => {
+  const fixture=credentials(),entered=Promise.withResolvers<void>(),reply=Promise.withResolvers<Response>();
+  const account=new AccountService(fixture.store,config,new AbortController().signal,async(input,init)=>{
+    if(String(input).endsWith('/api/v1/stage/document')){entered.resolve();return reply.promise;}
+    return success(input,init);
+  });
+  await account.signIn({email:user.email,password:'test-password'});
+  const pending=account.request('/api/v1/stage/document',{},'POST');await entered.promise;
+  await account.signOut();reply.resolve(json({privateDoc:'old account'}));
+  await assert.rejects(pending,{code:'IPW_ACCOUNT_CHANGED'});
+  const documents=new AccountService(credentials().store,config,new AbortController().signal,async(input,init)=>String(input).endsWith('/api/v1/stage/document')?json({doc:'x'.repeat(2*1024*1024)}):success(input,init));
+  await documents.signIn({email:user.email,password:'test-password'});
+  await assert.rejects(documents.request('/api/v1/stage/document',{},'POST'),{code:'IPW_RESPONSE_TOO_LARGE'});
+  const result=await documents.request('/api/v1/stage/document',{},'POST',undefined,{maximum:3*1024*1024}) as {doc:string};assert.equal(result.doc.length,2*1024*1024);
+});

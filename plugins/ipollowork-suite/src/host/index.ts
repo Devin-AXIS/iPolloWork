@@ -85,6 +85,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
   provide?(name: "ipolloData", value: IpolloData): void;
+  provide?(name: "ipolloStage", value: import('../shared/stage.ts').StageBridge): void;
   get?(name: "ipolloCloud"): unknown;
   get?(name: "liveshareShares"): NativeSharing | undefined;
   on(
@@ -252,6 +253,17 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   const lifetime = new AbortController();
   ctx.effect(() => () => lifetime.abort(), "ipollowork-suite: requests");
   const account = new AccountService(ctx.credentials, config, lifetime.signal);
+  if (config.account) ctx.provide?.("ipolloStage", {
+    request: async (action: string, input?: unknown, signal?: AbortSignal) => {
+      const paths = new Set(["status", "connect", "disconnect", "launch", "catalog", "document", "generate", "export", "task", "source"]);
+      if (!paths.has(action)) throw new SuiteError("IPW_INVALID_INPUT", 400);
+      return account.request("/api/v1/stage/" + action, input, action === "status" ? "GET" : "POST", signal,{timeoutMs:config.uploadTimeoutMs,maximum:12*1024*1024});
+    },
+    download:async(id:string,signal?:AbortSignal)=>{
+      if(!/^[a-f0-9]{32}$/.test(id))throw new SuiteError('IPW_INVALID_INPUT',400);
+      return account.transfer('/api/v1/stage/download/'+id,undefined,signal);
+    },
+  });
   ctx.inject?.(["tools", "sandboxPolicy"], scope => mountCapabilityTools(scope, account, config.uploadTimeoutMs));
   let refreshModels = async () => {};
   let refreshSkills = async () => {};

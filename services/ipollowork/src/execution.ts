@@ -325,12 +325,12 @@ export class ExecutionService {
   /** Mark interrupted requests uncertain only after their reservation lease expires. */
   async recover(): Promise<void> {
     await this.store.run(
-      "UPDATE service_calls SET response_body=NULL WHERE updated_at<?",
+      "UPDATE service_calls SET response_body=NULL WHERE updated_at<? AND service_id NOT IN (SELECT id FROM execution_services WHERE provider='ipollo-stage')",
       now() - 86400000,
     );
     await this.store.run(
       `UPDATE service_calls c SET state='unknown',updated_at=? FROM execution_services s
-      WHERE c.service_id=s.id AND c.state='running'
+      WHERE c.service_id=s.id AND c.state='running' AND s.provider<>'ipollo-stage'
       AND c.updated_at+COALESCE((s.plan_ids::jsonb->>'timeoutMs')::bigint,120000)<?`,
       now(),
       now(),

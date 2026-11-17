@@ -9,5 +9,6 @@ await pnpm(['exec', 'tsc', '-b', 'integrations/desktop', 'integrations/desktop-h
 await pnpm(['exec', 'tsdown', '--config-loader', 'native', '--config', 'integrations/desktop/tsdown.config.ts'], root)
 await pnpm(['exec', 'tsdown', '--config-loader', 'native', '--config', 'integrations/desktop-host/tsdown.config.ts'], root)
 await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: join(root, 'plugins/ipollowork-suite') })
+await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: join(root, 'plugins/stage') })
 await verifySource()
 await run(process.execPath, ['integrations/tooling/desktop-composition.mjs'], { cwd: root })
