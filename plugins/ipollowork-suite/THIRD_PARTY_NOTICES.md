@@ -6,4 +6,6 @@ The embedded IM implementation retains its [MIT license](vendor/dsh-im/LICENSE) 
 
 E2B SDK (`e2b`, MIT) is a separately licensed runtime dependency of the optional Alibaba sandbox component. Their package license files remain with the installed dependencies.
 
+The membership notice bell reuses the Lucide Bell artwork under the [Lucide license](LICENSES/ISC-lucide.txt).
+
 The market discovery worker bundles the unmodified reference index generator from the pinned DeepSeek Harness archive (`apps/plugin-market-generator/src`), under the [DeepSeek MIT license](LICENSES/MIT-dsh-market-generator.txt). It reads third-party metadata without executing plugin code. This is an authoring utility, not a second Agent runtime.

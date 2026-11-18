@@ -10,6 +10,10 @@ export const KeyGlyph = ({ size }: { size?: number }) => <Line size={size}><circ
 export const CoinGlyph = ({ size }: { size?: number }) => <Line size={size}><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v9M9.5 9.5h3.75a1.75 1.75 0 0 1 0 3.5h-2.5a1.75 1.75 0 0 0 0 3.5H14.5"/></Line>
 export const ArrowGlyph = ({ size }: { size?: number }) => <Line size={size}><path d="M5 12h14M13 6l6 6-6 6"/></Line>
 export const BuildingGlyph = ({ size }: { size?: number }) => <Line size={size}><path d="M4 20V6l8-3v17M12 9h8v11M2 20h20M7 8h2M7 12h2M7 16h2M15 13h2M15 16h2"/></Line>
+/** Lucide Bell artwork, see THIRD_PARTY_NOTICES.md. */
+export const BellGlyph = ({ size }: { size?: number }) => <Line size={size}>
+  <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+</Line>
 
 /** The account mark: the brand glyph on a small glass tile. */
 export function AccountArt() {

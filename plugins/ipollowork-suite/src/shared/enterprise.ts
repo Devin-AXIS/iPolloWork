@@ -1,6 +1,24 @@
 export const organizationTabs = ["analytics", "projects", "members", "departments", "templates", "plugins", "skills", "mcp", "models", "messages", "activity", "settings"] as const;
 export type EnterpriseTab = typeof organizationTabs[number];
 
+export interface MemberNotice {
+  id: string;
+  kind: string;
+  value: string | null;
+  name: string;
+  createdAt: number;
+  readAt: number | null;
+  enterpriseId?: string | undefined;
+  tab?: EnterpriseTab | null | undefined;
+  targetId?: string | null | undefined;
+}
+
+export interface MemberNoticeFeed {
+  items: MemberNotice[];
+  /** Absent on account services that only return the most recent notices. */
+  unreadCount?: number | undefined;
+}
+
 /** Account-scoped enterprise records; local paths never leave the DSH Host. */
 export interface Enterprise {
   id: string;

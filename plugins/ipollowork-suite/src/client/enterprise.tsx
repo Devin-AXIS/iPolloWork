@@ -198,7 +198,7 @@ function EnterprisePanel(props: Props) {
             <p>{t.intro}</p>
           </div>
           <div className={css.enterpriseActions}>
-            <MemberNoticeHistory controller={controller} revision={state.revision} t={t} language={language}/>
+            <MemberNoticeHistory controller={controller} state={state} t={t} language={language}/>
             {joinService}
           </div>
         </div>
@@ -242,7 +242,7 @@ function EnterprisePanel(props: Props) {
               <p>{t.intro}</p>
             </div>
             <div className={css.enterpriseActions}>
-              <MemberNoticeHistory controller={controller} revision={state.revision} t={t} language={language}/>
+              <MemberNoticeHistory controller={controller} state={state} t={t} language={language}/>
               {enterpriseId && joinService}
               {enterpriseId && (
                 <EnterpriseSwitcher

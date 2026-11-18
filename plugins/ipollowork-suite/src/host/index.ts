@@ -772,6 +772,9 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                   ? await body(request, config.maxRequestBytes)
                   : undefined,
               );
+              if (request.method === "GET" && (path === "/enterprise" ||
+                /^\/enterprise\/organizations\/[^/]+\/(?:skills|mcp|publications\/(?:skill|mcp))$/.test(path)))
+                await Promise.allSettled([refreshSkills(), refreshMcp()]);
               if (
                 request.method !== "GET" &&
                 /^\/enterprise\/organizations\/[^/]+\/(?:skills|mcp|grants|services|members|departments|publications\/(?:skill|mcp))(?:\/|$)/.test(

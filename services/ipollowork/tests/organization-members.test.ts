@@ -56,3 +56,47 @@ test('organization invitations are atomic and scoped; notifications are signed, 
 test('notification endpoints reject internal addresses and embedded credentials',async()=>{
  for(const endpoint of ['http://example.com/hook','https://127.0.0.1/hook','https://10.1.2.3/hook','https://[::1]/hook','https://[::ffff:127.0.0.1]/hook','https://user:pass@example.com/hook'])await assert.rejects(notificationEndpoint(endpoint));
 });
+
+test('unread count includes older notices and marking all as read is account scoped', async () => {
+ const dir = await mkdtemp(join(tmpdir(), 'ipw-unread-notices-'));
+ const service = await createService(await testConfig({DATA_DIR: dir}));
+ try {
+  const account = async (name: string) => {
+   const email = name + '@unread-notices.test', password = 'Valid-password-2026';
+   const {user} = await service.auth.api.signUpEmail({body: {email, password, name}});
+   const {token} = await service.auth.api.signInEmail({body: {email, password}});
+   return {id: user.id, token};
+  };
+  const [recipient, colleague] = await Promise.all([account('recipient'), account('colleague')]);
+  const enterpriseId = randomUUID();
+  await service.store.run('INSERT INTO enterprises VALUES(?,?,?,?)', enterpriseId, 'Unread notices', recipient.id, Date.now());
+  const oldest = randomUUID(), otherNotice = randomUUID();
+  await service.store.transaction(async () => {
+   for (let i = 0; i < 102; i++) await service.store.run(
+    'INSERT INTO organization_member_notices(id,enterprise_id,user_id,kind,created_at) VALUES(?,?,?,?,?)',
+    i === 0 ? oldest : randomUUID(), enterpriseId, recipient.id, 'role', i + 1,
+   );
+   await service.store.run('INSERT INTO organization_member_notices(id,enterprise_id,user_id,kind,created_at) VALUES(?,?,?,?,?)',
+    otherNotice, enterpriseId, colleague.id, 'role', 1);
+  });
+  const request = async (token: string, body?: { ids: string[] } | { all: true }) => {
+   const response = await service.app.request('/api/v1/me/organization-notices?include=all', {
+    headers: {authorization: 'Bearer ' + token, 'content-type': 'application/json'},
+    ...(body && {method: 'PUT', body: JSON.stringify(body)}),
+   });
+   assert.equal(response.status, 200, await response.clone().text());
+   return response.json();
+  };
+  const first = await request(recipient.token);
+  assert.equal(first.items.length, 100);
+  assert.equal(first.unreadCount, 102);
+  assert.equal(first.items.some((row: {id: string}) => row.id === oldest), false);
+  await request(recipient.token, {ids: [first.items[0].id, otherNotice]});
+  assert.equal((await request(recipient.token)).unreadCount, 101);
+  await request(recipient.token, {all: true});
+  const cleared = await request(recipient.token);
+  assert.equal(cleared.unreadCount, 0);
+  assert.equal(cleared.items.length, 100);
+  assert.equal((await request(colleague.token)).unreadCount, 1);
+ } finally { await service.close(); await rm(dir, {recursive: true, force: true}); }
+});

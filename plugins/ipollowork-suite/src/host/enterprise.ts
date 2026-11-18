@@ -574,17 +574,17 @@ export class EnterpriseService {
     }
     if (path === "/notices") {
       if (method === "GET") {
-        const { items } = z.object({ items: z.array(z.object({
+        const { items, unreadCount } = z.object({ unreadCount: z.number().int().nonnegative().optional(), items: z.array(z.object({
           id, kind: z.enum(["role", "department", "removed", "status", "resource.approved", "resource.rejected",
             "resource.published", "project.submitted", "project.accepted", "conversation.shared"]), value: z.string().nullable(),
           name, created_at: z.number(), read_at: z.number().nullable(),
           enterprise_id:id.optional(), target_tab:tabs.element.nullable().optional(), target_id:id.nullable().optional(),
         })).max(100) }).parse(await this.organizationCapability("me/organization-notices?include=all"));
-        return { items: items.map(row => ({ id:row.id, kind:row.kind, value:row.value, name:row.name,
+        return { unreadCount, items: items.map(row => ({ id:row.id, kind:row.kind, value:row.value, name:row.name,
           createdAt:row.created_at, readAt:row.read_at, enterpriseId:row.enterprise_id, tab:row.target_tab, targetId:row.target_id })) };
       }
       if (method === "PUT") return this.organizationCapability("me/organization-notices",
-        z.object({ids:z.array(z.uuid()).max(100)}).strict().parse(input), method);
+        z.union([z.object({ids:z.array(z.uuid()).max(100)}).strict(), z.object({all:z.literal(true)}).strict()]).parse(input), method);
     }
     if (method === "POST" && path === "/organizations")
       return this.cloud("enterprises", z.object({ name }).parse(input));

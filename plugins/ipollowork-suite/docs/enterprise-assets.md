@@ -24,6 +24,8 @@ The Departments tab lists departments on the left. The selected department shows
 
 Managers write a skill's name, a one-sentence routing description and its Markdown instructions, or import a Markdown file whose front matter supplies the name and description. The account service returns the skills each member may use from `GET /api/v1/me/enterprise-skills`. The suite Host registers them as runtime skills in the native skill registry after sign-in, sign-out and any skill, grant, member or department change. A skill's DSH name is its kebab-case title, or `team-skill-` plus an id prefix for titles without ASCII letters; same-name skills from different enterprises receive numeric suffixes.
 
+After publication, members can open Organization Space and switch to the Skill or MCP tab to refresh their grants. In a new conversation, type `/` and select the shared Skill to load its instructions. To use a shared MCP, ask the agent to use that MCP by name. An MCP configured for member OAuth requires signing in from the MCP tab first. The desktop Host also refreshes shared Skills and MCPs in the background.
+
 ## Enterprise models
 
 Managers connect an OpenAI-compatible endpoint with the enterprise's own key. The editor offers provider presets, tests the address and key, lists the provider's models and sends a one-token chat completion. Enterprise models are stored beside official services and owned through `enterprise_services`. Their calls use the enterprise key, follow the model's audience and record zero points. Official administration cannot list or overwrite them. Granted members see them in the native model picker as `<enterprise> · <title>`.

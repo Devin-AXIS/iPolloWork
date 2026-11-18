@@ -1,4 +1,4 @@
-import type { EnterpriseCatalog, EnterpriseTab } from "../shared/enterprise.ts";
+import type { EnterpriseCatalog, EnterpriseTab, MemberNoticeFeed } from "../shared/enterprise.ts";
 export type { EnterpriseTab } from "../shared/enterprise.ts";
 import { request } from "./api.ts";
 
@@ -41,6 +41,8 @@ export interface EnterpriseState {
   tab: EnterpriseTab;
   views: readonly EnterpriseView[];
   toast: EnterpriseToast | null;
+  memberNotices: MemberNoticeFeed | null;
+  memberNoticeError: string;
   /** Increments after every mutation so open detail views reload their records. */
   revision: number;
   publicationTarget?: string | undefined;
@@ -75,6 +77,8 @@ export class EnterpriseController {
     tab: "projects",
     views: [],
     toast: null,
+    memberNotices: null,
+    memberNoticeError: "",
     revision: 0,
   };
   private listeners = new Set<() => void>();
@@ -82,6 +86,8 @@ export class EnterpriseController {
   private generation = 0;
   private loadedAt = 0;
   private toastId = 0;
+  private noticeAccount = 0;
+  private noticeRequest = 0;
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -102,6 +108,8 @@ export class EnterpriseController {
     });
   accountChanged(signedIn: boolean) {
     this.generation++;
+    this.noticeAccount++;
+    this.noticeRequest++;
     this.publish({
       catalog: null,
       loading: false,
@@ -110,10 +118,32 @@ export class EnterpriseController {
       signedIn,
       views: [],
       toast: null,
+      memberNotices: null,
+      memberNoticeError: "",
       publicationTarget: undefined,
     });
     if (signedIn) void this.load();
   }
+  loadNotices = async (): Promise<MemberNoticeFeed | undefined> => {
+    if (!this.state.signedIn) return;
+    const requestId = ++this.noticeRequest;
+    try {
+      const feed = await this.call<MemberNoticeFeed>("/notices");
+      if (requestId !== this.noticeRequest) return;
+      this.publish({ memberNotices: feed, memberNoticeError: "" });
+      return feed;
+    } catch (error) {
+      if (requestId === this.noticeRequest) this.publish({
+        memberNoticeError: error instanceof Error ? error.message : "IPW_ACCOUNT_UNAVAILABLE",
+      });
+    }
+  };
+  readNotices = async (input: { ids: string[] } | { all: true }) => {
+    const account = this.noticeAccount;
+    await this.call("/notices", input, "PUT");
+    if (account === this.noticeAccount) await this.loadNotices();
+    return account === this.noticeAccount;
+  };
   load = async () => {
     if (!this.state.signedIn) return;
     const generation = ++this.generation;

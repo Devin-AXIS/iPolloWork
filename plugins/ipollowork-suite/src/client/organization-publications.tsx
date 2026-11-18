@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
-import type { EnterpriseTab, OrganizationActivity, OrganizationPublication, PublicationKind, PublicationVersion } from "../shared/enterprise.ts";
+import { Button, Modal, Tooltip } from "@deepseek-ai/dsh-client-ui-primitives";
+import type { MemberNotice, OrganizationActivity, OrganizationPublication, PublicationKind, PublicationVersion } from "../shared/enterprise.ts";
 import { AccessDialog, AudiencePill, type AssetProps } from "./enterprise-assets.tsx";
 import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, When, roleName, useRecord, useTask, type Call } from "./enterprise-ui.tsx";
-import type { EnterpriseController } from "./enterprise-controller.ts";
-import type { EnterpriseLabels } from "./enterprise-locale.ts";
+import type { EnterpriseController, EnterpriseState } from "./enterprise-controller.ts";
+import { format, type EnterpriseLabels } from "./enterprise-locale.ts";
+import { BellGlyph } from "./glyphs.tsx";
 import css from "./suite.module.css";
 
 type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void>; target?: string | undefined };
@@ -239,14 +240,14 @@ export function OrganizationActivityTab({ enterpriseId, call, revision, t, langu
   const [search, setSearch] = useState(""), [actor, setActor] = useState("");
   const filtered = useMemo<Call>(() => path => actor ? call(path, {actor}, "POST") : call(path), [call, actor]);
   const state = useRecord<{items:OrganizationActivity[]}>("/organizations/" + enterpriseId + "/activity", filtered, revision);
-  return <Section title={t.activityTab}>
+  return <Section title={t.activityTab} actions={
     <form className={css.activitySearch} onSubmit={event=>{event.preventDefault(); setActor(search.trim());}}>
-      <Field label={zh ? "操作人" : "Operator"}>
-        <input type="search" maxLength={120} value={search} placeholder={zh ? "姓名或工号" : "Name or employee number"}
-          onChange={event=>{setSearch(event.currentTarget.value); if (!event.currentTarget.value) setActor("");}}/>
-      </Field>
-      <Button type="submit" variant="outline">{zh ? "搜索" : "Search"}</Button>
+      <input type="search" aria-label={zh ? "操作人" : "Operator"} maxLength={120} value={search}
+        placeholder={zh ? "姓名或工号" : "Name or employee number"}
+        onChange={event=>{setSearch(event.currentTarget.value); if (!event.currentTarget.value) setActor("");}}/>
+      <Button type="submit" size="sm" variant="outline">{zh ? "搜索" : "Search"}</Button>
     </form>
+  }>
     <Notice error={state.error} t={t} retry={state.reload}/>
     {!state.data ? (!state.error && <ListSkeleton/>) : state.data.items.length ? state.data.items.map(row => (
       <Row key={row.id} title={activityNames[row.action]?.[zh ? 0 : 1] ?? (zh ? "更新组织" : "Updated organization")}
@@ -256,10 +257,6 @@ export function OrganizationActivityTab({ enterpriseId, call, revision, t, langu
   </Section>;
 }
 
-type MemberNotice = {
-  id:string; kind:string; value:string|null; name:string; createdAt:number; readAt:number|null;
-  enterpriseId?:string; tab?:EnterpriseTab|null; targetId?:string|null;
-};
 function noticeMessage(row: MemberNotice, t: EnterpriseLabels, zh: boolean): string {
   const event = {
     "resource.approved": ["审核通过", "Approved"],
@@ -277,32 +274,62 @@ function noticeMessage(row: MemberNotice, t: EnterpriseLabels, zh: boolean): str
   return zh ? "你已被移出此组织" : "Your access to this organization was removed";
 }
 
-export function MemberNoticeHistory({ controller, revision, t, language }: {
-  controller:EnterpriseController; revision:number; t:EnterpriseLabels; language:string;
+export function MemberNoticeHistory({ controller, state, t, language }: {
+  controller: EnterpriseController;
+  state: Pick<EnterpriseState, "memberNotices" | "memberNoticeError">;
+  t: EnterpriseLabels;
+  language: string;
 }) {
   const [open, setOpen] = useState(false);
+  const count = state.memberNotices?.unreadCount ?? state.memberNotices?.items.filter(row => row.readAt === null).length ?? 0;
+  const label = count ? format(t.memberNoticesUnread, { count }) : t.memberNotices;
   return <>
-    <Button variant="outline" onClick={() => setOpen(true)}>{t.memberNotices}</Button>
+    <Tooltip side="bottom" label={label}>
+      <Button variant="outline" className={css.memberNoticeButton} aria-label={label} aria-haspopup="dialog" aria-expanded={open}
+        icon={<BellGlyph size={18} />} onClick={() => { setOpen(true); void controller.loadNotices(); }}>
+        {count > 0 && <span aria-hidden="true" className={css.memberNoticeBadge}>{count > 99 ? "99+" : count}</span>}
+      </Button>
+    </Tooltip>
     {open && <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => setOpen(false)}>
-      <MemberNoticeList controller={controller} revision={revision} t={t} language={language} close={() => setOpen(false)}/>
+      <MemberNoticeList controller={controller} state={state} count={count} t={t} language={language} close={() => setOpen(false)}/>
     </Modal>}
   </>;
 }
 
-function MemberNoticeList({ controller, revision, t, language, close }: {
-  controller:EnterpriseController; revision:number; t:EnterpriseLabels; language:string; close():void;
+function MemberNoticeList({ controller, state, count, t, language, close }: {
+  controller: EnterpriseController;
+  state: Pick<EnterpriseState, "memberNotices" | "memberNoticeError">;
+  count: number;
+  t: EnterpriseLabels;
+  language: string;
+  close(): void;
 }) {
-  const state = useRecord<{items:MemberNotice[]}>("/notices",controller.call,revision);
-  if (!state.data) return state.error ? <Notice error={state.error} t={t} retry={state.reload}/> : <ListSkeleton/>;
-  if (!state.data.items.length) return <p>{t.noMemberNotices}</p>;
-  return state.data.items.map(row => <Row key={row.id} title={row.name} meta={noticeMessage(row,t,language.startsWith("zh"))}
-    aside={<When at={row.createdAt} language={language}/>} actions={row.enterpriseId && row.tab &&
-      controller.getSnapshot().catalog?.enterprises.some(item=>item.id===row.enterpriseId) &&
-      <Button size="sm" variant="ghost" onClick={() => {
-        if (!row.enterpriseId || !row.tab) return;
-        controller.openNotice(row.enterpriseId, row.tab, row.targetId ?? undefined);
-        close();
-      }}>{t.open}</Button>}/>);
+  const task = useTask(t);
+  const { memberNotices: feed, memberNoticeError: error } = state;
+  return <>
+    <Notice error={error} t={t} retry={() => void controller.loadNotices()}/>
+    <FormError message={task.error}/>
+    {!feed ? (!error && <ListSkeleton/>) : <>
+      {count > 0 && <div className={css.memberNoticeActions}>
+        <Button size="sm" variant="ghost" disabled={task.busy} onClick={() => void task.run(async () => {
+          await controller.readNotices(feed.unreadCount === undefined
+            ? { ids: feed.items.filter(row => row.readAt === null).map(row => row.id) }
+            : { all: true });
+        })}>{t.markMemberNoticesRead}</Button>
+      </div>}
+      {feed.items.length ? feed.items.map(row => {
+        const { enterpriseId, tab } = row;
+        const canOpen = enterpriseId && tab && controller.getSnapshot().catalog?.enterprises.some(item => item.id === enterpriseId);
+        return <Row key={row.id} title={row.name} meta={noticeMessage(row, t, language.startsWith("zh"))}
+          aside={<When at={row.createdAt} language={language}/>} actions={canOpen &&
+            <Button size="sm" variant="ghost" disabled={task.busy} onClick={() => void task.run(async () => {
+              if (row.readAt === null && !await controller.readNotices({ ids: [row.id] })) return;
+              controller.openNotice(enterpriseId, tab, row.targetId ?? undefined);
+              close();
+            })}>{t.open}</Button>}/>;
+      }) : <p>{t.noMemberNotices}</p>}
+    </>}
+  </>;
 }
 
 export function OrganizationNotices({ controller, t, language }: {
@@ -313,22 +340,18 @@ export function OrganizationNotices({ controller, t, language }: {
     let active = true, pending = false;
     const shown = new Set<string>();
     const receive = async () => {
-      if (!active || pending || document.hidden || controller.getSnapshot().toast) return;
+      if (!active || pending || document.hidden) return;
       pending = true;
       try {
-        const { items } = await controller.call<{items:MemberNotice[]}>("/notices");
-        if (!active || document.hidden || controller.getSnapshot().toast) return;
-        const row = items.find(notice => notice.readAt === null);
+        const feed = await controller.loadNotices();
+        if (!feed || !active || document.hidden || controller.getSnapshot().toast) return;
+        const unread = feed.items.filter(notice => notice.readAt === null);
+        for (const noticeId of shown) if (!unread.some(row => row.id === noticeId)) shown.delete(noticeId);
+        const row = unread.find(notice => !shown.has(notice.id));
         if (!row) return;
-        if (!shown.has(row.id)) {
-          controller.notify(row.name + " · " + noticeMessage(row,t,zh));
-          shown.add(row.id);
-          if (row.kind === "status" || row.kind === "removed") void controller.load();
-        }
-        await controller.call("/notices",{ids:[row.id]},"PUT");
-        shown.delete(row.id);
-      } catch {
-        // Try again on the next refresh without showing an error over the current view.
+        shown.add(row.id);
+        controller.notify(row.name + " · " + noticeMessage(row, t, zh));
+        if (row.kind === "status" || row.kind === "removed") void controller.load();
       } finally {
         pending = false;
       }

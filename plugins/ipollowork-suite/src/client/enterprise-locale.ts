@@ -139,6 +139,8 @@ const en = {
   memberSuspended: "Suspended",
   memberSuspendedHint: "Suspended members lose access to this organization until reactivated.",
   memberNotices: "Membership notices",
+  memberNoticesUnread: "Membership notices ({count} unread)",
+  markMemberNoticesRead: "Mark all as read",
   noMemberNotices: "No membership notices.",
   inviteTitle: "Invite a colleague",
   inviteReady:
@@ -593,6 +595,8 @@ const zh: typeof en = {
   memberSuspended: "已停用",
   memberSuspendedHint: "停用后，成员将失去该组织的访问权限，恢复正常后可重新访问。",
   memberNotices: "成员通知",
+  memberNoticesUnread: "成员通知，{count} 条未读",
+  markMemberNoticesRead: "全部标为已读",
   noMemberNotices: "暂无成员通知。",
   inviteTitle: "邀请同事",
   inviteReady: "把链接发给 {email}，对方用该邮箱登录后才能加入",

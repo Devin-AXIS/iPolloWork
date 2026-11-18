@@ -205,17 +205,30 @@ export class OrganizationMembers {
   app.post('/api/v1/enterprises/:id/join-codes/batch',async c=>c.json(await this.batch(c.get('actor'),c.req.param('id'),await c.req.json(),true)));
   app.get('/api/v1/enterprises/:id/notifications',async c=>c.json(await this.config(c.get('actor'),c.req.param('id'))));
   app.put('/api/v1/enterprises/:id/notifications',async c=>c.json(await this.configure(c.get('actor'),c.req.param('id'),await c.req.json())));
-  app.get('/api/v1/me/organization-notices', async c => c.json({ items: await this.store.all(
-    `SELECT n.id,n.kind,n.value,n.created_at,n.read_at,n.enterprise_id,n.target_tab,n.target_id,e.name FROM organization_member_notices n
-      JOIN enterprises e ON e.id=n.enterprise_id WHERE n.user_id=? AND
-      (? OR n.kind IN ('role','department','removed') OR (? AND n.kind='status'))
-      ORDER BY n.created_at DESC,n.id LIMIT 100`,
-    c.get('actor').id, c.req.query('include') === 'all', c.req.query('include') === 'status',
-  ) }));
+  app.get('/api/v1/me/organization-notices', async c => {
+    const userId = c.get('actor').id;
+    const include = c.req.query('include');
+    const items = await this.store.all(
+      `SELECT n.id,n.kind,n.value,n.created_at,n.read_at,n.enterprise_id,n.target_tab,n.target_id,e.name FROM organization_member_notices n
+        JOIN enterprises e ON e.id=n.enterprise_id WHERE n.user_id=? AND
+        (? OR n.kind IN ('role','department','removed') OR (? AND n.kind='status'))
+        ORDER BY n.created_at DESC,n.id LIMIT 100`,
+      userId, include === 'all', include === 'status',
+    );
+    if (include !== 'all') return c.json({ items });
+    const count = await this.store.one<{ count: string }>(
+      'SELECT COUNT(*) AS count FROM organization_member_notices WHERE user_id=? AND read_at IS NULL', userId,
+    );
+    return c.json({ items, unreadCount: Number(count?.count ?? 0) });
+  });
   app.put('/api/v1/me/organization-notices', async c => {
-    const { ids } = z.object({ ids: z.array(z.uuid()).max(100) }).strict().parse(await c.req.json());
-    await this.store.run('UPDATE organization_member_notices SET read_at=? WHERE user_id=? AND id IN (SELECT json_array_elements_text(?::json)) AND read_at IS NULL',
-      now(), c.get('actor').id, JSON.stringify(ids));
+    const input = z.union([z.object({ ids: z.array(z.uuid()).max(100) }).strict(), z.object({ all: z.literal(true) }).strict()]).parse(await c.req.json());
+    const userId = c.get('actor').id;
+    if ('all' in input) await this.store.run('UPDATE organization_member_notices SET read_at=? WHERE user_id=? AND read_at IS NULL', now(), userId);
+    else await this.store.run(
+      'UPDATE organization_member_notices SET read_at=? WHERE user_id=? AND id IN (SELECT json_array_elements_text(?::json)) AND read_at IS NULL',
+      now(), userId, JSON.stringify(input.ids),
+    );
     return c.json({ ok:true });
   });
  }
