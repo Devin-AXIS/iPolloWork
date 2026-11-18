@@ -129,10 +129,15 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
   });
   app.get("/api/v1/enterprises/:id/activity", async (c) => {
     const id = c.req.param("id"), actor = c.get("actor");
+    const search = z.string().trim().max(120).optional().parse(c.req.query("actor")) ?? "";
     await enterpriseAccess(store, actor, id, true);
     return c.json({ items: await store.all(
-      'SELECT a.id,a.action,a.created_at,u.name AS actor FROM audit a LEFT JOIN "user" u ON u.id=a.actor_id WHERE a.enterprise_id=? OR (a.enterprise_id IS NULL AND a.target=? AND a.action IN(\'enterprise.create\',\'enterprise.update\')) ORDER BY a.id DESC LIMIT 100',
-      id, id,
+      `SELECT a.id,a.action,a.created_at,COALESCE(m.display_name,u.name) AS actor
+       FROM audit a LEFT JOIN "user" u ON u.id=a.actor_id LEFT JOIN members m ON m.enterprise_id=? AND m.user_id=a.actor_id
+       WHERE (a.enterprise_id=? OR (a.enterprise_id IS NULL AND a.target=? AND a.action IN('enterprise.create','enterprise.update')))
+       AND (?='' OR strpos(lower(COALESCE(m.display_name,u.name,'')),lower(?))>0 OR strpos(lower(COALESCE(m.employee_number,'')),lower(?))>0)
+       ORDER BY a.id DESC LIMIT 100`,
+      id, id, id, search, search, search,
     ) });
   });
   app.post("/api/v1/enterprises/:id/departments", async (c) => {
@@ -208,6 +213,8 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         target,
       );
       if (!removed.changes) return;
+      await store.run("DELETE FROM organization_conversation_recipients WHERE user_id=? AND share_id IN (SELECT id FROM organization_conversation_shares WHERE enterprise_id=?)", target, id);
+      await store.run("DELETE FROM organization_conversation_shares WHERE enterprise_id=? AND owner_id=?", id, target);
       await store.run("DELETE FROM settings WHERE split_part(key,'/',1)='member-service-key' AND split_part(key,'/',3)=? AND split_part(key,'/',2) IN (SELECT service_id FROM enterprise_services WHERE enterprise_id=?)", target, id);
       await store.run("DELETE FROM settings WHERE split_part(key,'/',1)='enterprise-mcp-member' AND split_part(key,'/',3)=? AND split_part(key,'/',2) IN (SELECT id FROM enterprise_mcp WHERE enterprise_id=?)",target,id);
       await store.run("DELETE FROM enterprise_mcp_oauth_pending WHERE user_id=? AND mcp_id IN (SELECT id FROM enterprise_mcp WHERE enterprise_id=?)",target,id);

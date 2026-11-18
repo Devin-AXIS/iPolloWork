@@ -248,12 +248,12 @@ export function mountEnterpriseAssets(
       const select = {
         package: "SELECT 1 FROM file_packages WHERE id=? AND enterprise_id=?",
         skill: "SELECT 1 FROM resources WHERE id=? AND enterprise_id=? AND kind='skill' UNION ALL SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='skill'",
-        mcp: "SELECT 1 FROM enterprise_mcp WHERE id=? AND enterprise_id=? FOR UPDATE",
+        mcp: "SELECT 1 FROM enterprise_mcp WHERE id=? AND enterprise_id=? UNION ALL SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='mcp'",
         service: "SELECT 1 FROM enterprise_services WHERE service_id=? AND enterprise_id=?",
         plugin: "SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='plugin' FOR UPDATE",
         template: "SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='template' FOR UPDATE",
       }[input.kind];
-      if (!await store.one(select, input.assetId, id, ...(input.kind === "skill" ? [input.assetId,id] : [])))
+      if (!await store.one(select, input.assetId, id, ...(input.kind === "skill" || input.kind === "mcp" ? [input.assetId,id] : [])))
         throw new ServiceError("ASSET_NOT_FOUND", 404, "资源不存在");
       await replaceAudience(
         store,

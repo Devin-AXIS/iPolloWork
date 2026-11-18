@@ -123,9 +123,13 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
   })
   ctx.effect(() => releaseCoordinator, 'ipollo: main assistant preset')
 
+  async function unmountDefinition(id: string): Promise<void> {
+    const prior = mounts.get(id)
+    if (prior) { await prior(); mounts.delete(id) }
+  }
+
   async function mountDefinition(definition: AgentDefinition): Promise<void> {
-    const prior = mounts.get(definition.id)
-    if (prior) { await prior(); mounts.delete(definition.id) }
+    await unmountDefinition(definition.id)
     if (!definition.enabled) return
     const dispose = await ctx.agentPresets.register(composePreset(base, definition, store.snapshot().accounts, resolvedConfig.mcpStartupTimeoutMs))
     mounts.set(definition.id, dispose)
@@ -240,6 +244,9 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
         const url = new URL(request.url ?? '/', 'http://localhost')
         const path = url.pathname.slice(API.length)
         if (!url.pathname.startsWith(`${API}/`)) { reply(response, 404, { error: 'IPOLLO_NOT_FOUND' }); return }
+        if (path === '/delete' && admission.peer.principal.kind !== 'owner') {
+          reply(response, 403, { error: 'IPOLLO_UNAUTHORIZED' }); return
+        }
         if (request.method === 'GET') {
           if (path === '/catalog') reply(response, 200, await catalog())
           else if (path === '/models') reply(response, 200, await modelCatalog())
@@ -257,6 +264,13 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
           return openCoordinator(ctx, resolvedConfig.coordinatorWorkspace, input.fresh, lifetime.signal)
         }))
         else if (path === '/agents') reply(response, 200, await exclusive(() => saveDefinition(agentInputSchema.parse(rawInput))))
+        else if (path === '/delete') reply(response, 200, await exclusive(async () => {
+          const input = valueSchema.object({ id: valueSchema.uuid(), revision: valueSchema.number().int().positive() }).strict().parse(rawInput)
+          await store.deleteAgent(input.id, input.revision)
+          try { await unmountDefinition(input.id) }
+          finally { await refreshDelegation() }
+          return { ok: true }
+        }))
         else if (path === '/accounts') reply(response, 200, await exclusive(async () => {
           const input = valueSchema.object({ name: valueSchema.string(), secret: valueSchema.string() }).parse(rawInput)
           if (typeof input.secret !== 'string' || !input.secret.trim()) throw new AgentError('Enter an account token', 'IPOLLO_INVALID_ACCOUNT')

@@ -1,29 +1,35 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
-import type { OrganizationActivity, OrganizationPublication, PublicationKind, PublicationVersion } from "../shared/enterprise.ts";
+import type { EnterpriseTab, OrganizationActivity, OrganizationPublication, PublicationKind, PublicationVersion } from "../shared/enterprise.ts";
 import { AccessDialog, AudiencePill, type AssetProps } from "./enterprise-assets.tsx";
-import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, When, roleName, useRecord, useTask } from "./enterprise-ui.tsx";
+import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, When, roleName, useRecord, useTask, type Call } from "./enterprise-ui.tsx";
 import type { EnterpriseController } from "./enterprise-controller.ts";
 import type { EnterpriseLabels } from "./enterprise-locale.ts";
 import css from "./suite.module.css";
 
-type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void> };
+type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void>; target?: string | undefined };
 
 export function OrganizationPublications(props: PublicationProps) {
   const { enterpriseId, call, revision, language, t, kind } = props;
   const path = "/organizations/" + enterpriseId + "/publications/" + kind;
   const list = useRecord<{ items: OrganizationPublication[]; canManage: boolean }>(path, call, revision);
-  const [selected, setSelected] = useState<string>();
+  const [selected, setSelected] = useState<string | undefined>(props.target);
+  useEffect(() => { if (props.target) setSelected(props.target); }, [props.target]);
   const [editing, setEditing] = useState<OrganizationPublication | "new">();
   const zh = language.startsWith("zh");
   const current = list.data?.items.find(item => item.id === selected);
   if (!list.data) return list.error ? <Notice error={list.error} t={t} retry={list.reload}/> : <ListSkeleton/>;
+  const items = kind === "mcp" && !list.data.canManage ? list.data.items.filter(item => item.canSubmit) : list.data.items;
   return <Section
-    title={kind === "plugin" ? t.pluginsTab : kind === "skill" ? (zh ? "Skill 发布与审核" : "Skill publications") : t.templatesTab}
-    actions={<Button variant="primary" onClick={() => setEditing("new")}>{zh ? "提交资源" : "Submit resource"}</Button>}
+    title={kind === "plugin" ? t.pluginsTab : kind === "skill" ? t.skillPublications :
+      kind === "mcp" ? (list.data.canManage ? (zh ? "MCP 提交与审核" : "MCP review") :
+        (zh ? "我的 MCP 提交" : "My MCP submissions")) : t.templatesTab}
+    actions={<Button variant="primary" onClick={() => setEditing("new")}>{
+      kind === "mcp" ? (zh ? "提交 MCP" : "Submit MCP") : (zh ? "提交资源" : "Submit resource")
+    }</Button>}
   >
     <Notice error={list.error} t={t} retry={list.reload}/>
-    {list.data.items.length ? list.data.items.map(item => (
+    {items.length ? items.map(item => (
       <div key={item.id}>
         <Row title={item.title} meta={item.packageName
           ? [item.packageName, item.publishedVersion].filter(Boolean).join(" · ")
@@ -56,7 +62,8 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
         await call(path, {
           ...(publication ? {id:publication.id} : {}),
           title: form.get("title"), description: form.get("description"), version: form.get("version"),
-          ...(kind === "plugin" ? { packageName: form.get("packageName") } : kind === "skill" ? {markdown:form.get("markdown")} : { html }),
+          ...(kind === "plugin" ? { packageName: form.get("packageName") } : kind === "skill" ? {markdown:form.get("markdown")} :
+            kind === "mcp" ? {endpoint: form.get("endpoint")} : { html }),
         });
         close();
         await controller.load();
@@ -68,6 +75,9 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
       {kind === "plugin" ? <Field label={zh ? "DSH 插件包名" : "DSH plugin package"}>
         <input name="packageName" required maxLength={214} placeholder="@team/plugin" readOnly={!!publication} defaultValue={publication?.packageName}/>
       </Field> : kind === "skill" ? <Field label="SKILL.md"><textarea name="markdown" rows={8} maxLength={32000} required/></Field>
+        : kind === "mcp" ? <Field label={t.mcpEndpoint} hint={t.mcpEndpointHint}>
+          <input name="endpoint" type="url" maxLength={2048} required />
+        </Field>
         : <Field label={zh ? "HTML 模板" : "HTML template"}>
         <input type="file" accept=".html,.htm,text/html" required onChange={event => {
           const input = event.currentTarget;
@@ -117,6 +127,9 @@ function PublicationDetails(props: PublicationProps & {
     } else if (kind === "template") {
       const { html } = await call<{html:string}>(release(version));
       setPreview(html);
+    } else if (kind === "mcp") {
+      const { endpoint } = await call<{endpoint:string}>(release(version));
+      setPreview(endpoint);
     } else {
       const { markdown } = await call<{markdown:string}>(release(version));
       setPreview(markdown);
@@ -150,7 +163,7 @@ function PublicationDetails(props: PublicationProps & {
           {(published || kind !== "plugin") && <Button size="sm" variant="outline" disabled={task.busy} onClick={() => read(row.version)}>
             {kind === "plugin" ? (zh ? "用 DSH 安装" : "Install with DSH") : (zh ? "预览" : "Preview")}
           </Button>}
-          {canManage && !published && row.status === "approved" && <Button size="sm" variant="primary" disabled={task.busy} onClick={() => publish(row.version)}>{zh ? "发布" : "Publish"}</Button>}
+          {canManage && !published && row.status === "approved" && <Button size="sm" variant="primary" disabled={task.busy} onClick={() => publish(row.version)}>{zh ? "下发" : "Publish"}</Button>}
           {canManage && !published && row.status === "pending" && <>
             <Button size="sm" variant="outline" onClick={() => setReview({version:row.version,decision:"approve"})}>{zh ? "通过" : "Approve"}</Button>
             <Button size="sm" variant="ghost" onClick={() => setReview({version:row.version,decision:"reject"})}>{zh ? "驳回" : "Reject"}</Button>
@@ -177,17 +190,17 @@ function PublicationDetails(props: PublicationProps & {
       </form>
     </Modal>}
     {preview !== undefined && <Modal open title={publication.title} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => setPreview(undefined)}>
-      {kind === "skill" ? <pre className={css.organizationSkillPreview}>{preview}</pre> : <iframe title={publication.title} className={css.organizationTemplatePreview} sandbox="" referrerPolicy="no-referrer" srcDoc={
+      {kind !== "template" ? <pre className={css.organizationSkillPreview}>{preview}</pre> : <iframe title={publication.title} className={css.organizationTemplatePreview} sandbox="" referrerPolicy="no-referrer" srcDoc={
         "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; img-src data:; style-src 'unsafe-inline'\">" + preview
       }/>}
-      <Button variant="outline" onClick={() => {
+      {kind !== "mcp" && <Button variant="outline" onClick={() => {
         const url = URL.createObjectURL(new Blob([preview], {type:kind === "skill" ? "text/markdown" : "text/html"}));
         const link = document.createElement("a");
         link.href = url;
         link.download = kind === "skill" ? "SKILL.md" : "template.html";
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);
-      }}>{kind === "skill" ? (zh ? "下载 Skill" : "Download Skill") : (zh ? "下载 HTML" : "Download HTML")}</Button>
+      }}>{kind === "skill" ? (zh ? "下载 Skill" : "Download Skill") : (zh ? "下载 HTML" : "Download HTML")}</Button>}
     </Modal>}
   </div>;
 }
@@ -215,40 +228,48 @@ const activityNames: Record<string, [string, string]> = {
   "mcp.create": ["添加 MCP", "Added MCP"],
   "mcp.update": ["更新 MCP", "Updated MCP"],
   "mcp.remove": ["移除 MCP", "Removed MCP"],
+  "conversation.share": ["分享会话", "Shared conversation"],
+  "conversation.revoke": ["撤回会话分享", "Withdrew shared conversation"],
+  "project.submit": ["提交项目改动", "Submitted project changes"],
+  "project.accept": ["接纳项目改动", "Accepted project changes"],
 };
 
 export function OrganizationActivityTab({ enterpriseId, call, revision, t, language }: AssetProps) {
-  const state = useRecord<{items:OrganizationActivity[]}>("/organizations/" + enterpriseId + "/activity", call, revision);
-  if (state.error) return <Notice error={state.error} t={t} retry={state.reload}/>;
-  if (!state.data) return <ListSkeleton/>;
   const zh = language.startsWith("zh");
-  return <Section title={t.activityTab}>{state.data.items.length ? state.data.items.map(row => (
-    <Row key={row.id} title={activityNames[row.action]?.[zh ? 0 : 1] ?? (zh ? "更新组织" : "Updated organization")}
-      meta={row.actor} aside={<When at={row.createdAt} language={language}/>}/>
-  )) : <EmptyState title={zh ? "暂无操作记录" : "No organization activity yet"}/>}</Section>;
-}
-
-export function OrganizationMessages({ enterpriseId, call, revision, t, language }: AssetProps) {
-  const state = useRecord<{items:{shareId:string;sessionTitle:string;sessionMode:"view"|"write";online:boolean;link:string}[]}>(
-    "/organizations/" + enterpriseId + "/messages",call,revision,
-  );
-  const zh=language.startsWith("zh");
-  if (state.error) return <Notice error={state.error} t={t} retry={state.reload}/>;
-  if (!state.data) return <ListSkeleton/>;
-  return <Section title={t.messagesTab}>{state.data.items.length ? state.data.items.map(row=>(
-    <Row key={row.shareId} title={row.sessionTitle} meta={[
-      row.sessionMode==="write" ? t.spaceParticipate : t.spaceView,
-      !row.online && (zh ? "分享者离线" : "Sharer offline"),
-    ].filter(Boolean).join(" · ")} actions={<a href={row.link} target="_blank" rel="noopener noreferrer">
-      {zh?"打开会话":"Open conversation"}
-    </a>}/>
-  )) : <EmptyState title={zh?"暂无共享会话":"No shared conversations"}/>}</Section>;
+  const [search, setSearch] = useState(""), [actor, setActor] = useState("");
+  const filtered = useMemo<Call>(() => path => actor ? call(path, {actor}, "POST") : call(path), [call, actor]);
+  const state = useRecord<{items:OrganizationActivity[]}>("/organizations/" + enterpriseId + "/activity", filtered, revision);
+  return <Section title={t.activityTab}>
+    <form className={css.activitySearch} onSubmit={event=>{event.preventDefault(); setActor(search.trim());}}>
+      <Field label={zh ? "操作人" : "Operator"}>
+        <input type="search" maxLength={120} value={search} placeholder={zh ? "姓名或工号" : "Name or employee number"}
+          onChange={event=>{setSearch(event.currentTarget.value); if (!event.currentTarget.value) setActor("");}}/>
+      </Field>
+      <Button type="submit" variant="outline">{zh ? "搜索" : "Search"}</Button>
+    </form>
+    <Notice error={state.error} t={t} retry={state.reload}/>
+    {!state.data ? (!state.error && <ListSkeleton/>) : state.data.items.length ? state.data.items.map(row => (
+      <Row key={row.id} title={activityNames[row.action]?.[zh ? 0 : 1] ?? (zh ? "更新组织" : "Updated organization")}
+        meta={row.actor} aside={<When at={row.createdAt} language={language}/>}/>
+    )) : <EmptyState title={actor ? (zh ? "没有匹配该操作人的记录" : "No activity for this operator")
+      : (zh ? "暂无操作记录" : "No organization activity yet")}/>}
+  </Section>;
 }
 
 type MemberNotice = {
-  id:string; kind:"role"|"department"|"removed"|"status"; value:string|null; name:string; createdAt:number; readAt:number|null;
+  id:string; kind:string; value:string|null; name:string; createdAt:number; readAt:number|null;
+  enterpriseId?:string; tab?:EnterpriseTab|null; targetId?:string|null;
 };
 function noticeMessage(row: MemberNotice, t: EnterpriseLabels, zh: boolean): string {
+  const event = {
+    "resource.approved": ["审核通过", "Approved"],
+    "resource.rejected": ["审核未通过", "Rejected"],
+    "resource.published": ["资源已下发", "Resource published"],
+    "project.submitted": ["收到项目改动", "Project changes submitted"],
+    "project.accepted": ["项目改动已接纳", "Project changes accepted"],
+    "conversation.shared": ["收到会话分享", "Conversation shared with you"],
+  }[row.kind];
+  if (event) return event[zh ? 0 : 1] + (row.value ? " · " + row.value : "");
   if (row.kind === "status") return (zh ? "成员状态已变更为 " : "Membership status changed to ") +
     (row.value === "suspended" ? t.memberSuspended : t.memberActive);
   if (row.kind === "role") return (zh ? "身份已变更为 " : "Role changed to ") + roleName(row.value ?? "",t);
@@ -263,19 +284,25 @@ export function MemberNoticeHistory({ controller, revision, t, language }: {
   return <>
     <Button variant="outline" onClick={() => setOpen(true)}>{t.memberNotices}</Button>
     {open && <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => setOpen(false)}>
-      <MemberNoticeList controller={controller} revision={revision} t={t} language={language}/>
+      <MemberNoticeList controller={controller} revision={revision} t={t} language={language} close={() => setOpen(false)}/>
     </Modal>}
   </>;
 }
 
-function MemberNoticeList({ controller, revision, t, language }: {
-  controller:EnterpriseController; revision:number; t:EnterpriseLabels; language:string;
+function MemberNoticeList({ controller, revision, t, language, close }: {
+  controller:EnterpriseController; revision:number; t:EnterpriseLabels; language:string; close():void;
 }) {
   const state = useRecord<{items:MemberNotice[]}>("/notices",controller.call,revision);
   if (!state.data) return state.error ? <Notice error={state.error} t={t} retry={state.reload}/> : <ListSkeleton/>;
   if (!state.data.items.length) return <p>{t.noMemberNotices}</p>;
   return state.data.items.map(row => <Row key={row.id} title={row.name} meta={noticeMessage(row,t,language.startsWith("zh"))}
-    aside={<When at={row.createdAt} language={language}/>}/>);
+    aside={<When at={row.createdAt} language={language}/>} actions={row.enterpriseId && row.tab &&
+      controller.getSnapshot().catalog?.enterprises.some(item=>item.id===row.enterpriseId) &&
+      <Button size="sm" variant="ghost" onClick={() => {
+        if (!row.enterpriseId || !row.tab) return;
+        controller.openNotice(row.enterpriseId, row.tab, row.targetId ?? undefined);
+        close();
+      }}>{t.open}</Button>}/>);
 }
 
 export function OrganizationNotices({ controller, t, language }: {

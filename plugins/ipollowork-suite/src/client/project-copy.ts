@@ -69,6 +69,9 @@ const en = {
   localHint: "New AI turns in this workspace read the accepted project memory",
   retry: "Retry",
   download: "Download",
+  downloading: "Downloading…",
+  downloaded: "File downloaded",
+  downloadFailed: "Could not download the file. Check your access and try again.",
   submitHint:
     "Your submission leaves the main project unchanged until a maintainer accepts it.",
   nativeHint:
@@ -159,6 +162,9 @@ const zh: typeof en = {
   localHint: "此工作区的新一轮 AI 工作会读取主项目已接纳的记忆",
   retry: "重试",
   download: "下载",
+  downloading: "下载中…",
+  downloaded: "文件已下载",
+  downloadFailed: "无法下载文件，请检查访问权限或稍后重试",
   submitHint: "提交后由维护者接纳，主项目不会直接被覆盖。",
   nativeHint:
     "每个会话按所选分享范围与原生权限开放。分享期间，请保持此电脑在线。",

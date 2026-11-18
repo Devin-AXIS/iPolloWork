@@ -3,7 +3,8 @@ import { useState, type FormEvent } from 'react'
 import { Button, IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { EnterpriseDetail, Invitation } from '../shared/enterprise.ts'
 import type { EnterpriseController, EnterpriseDialog } from './enterprise-controller.ts'
-import { format, type EnterpriseLabels } from './enterprise-locale.ts'
+import { enterpriseError, format, type EnterpriseLabels } from './enterprise-locale.ts'
+import { RosterRequestError } from './api.ts'
 import { CopyLink, EmptyState, Field, FormError, ListSkeleton, Notice, roleName, useRecord, useTask, type Call } from './enterprise-ui.tsx'
 import { MailGlyph, Monogram } from './glyphs.tsx'
 import css from './suite.module.css'
@@ -74,7 +75,11 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
     <div className={css.peopleList}>
       {members.map(m => <div key={m.userId} className={css.person}>
         <Monogram id={m.email} label={m.name || m.email} size={32} round/>
-        <span className={css.personText}><strong>{m.name}{m.userId === userId && <span className={css.youTag}>{t.you}</span>}</strong><small>{[m.email, m.employeeNumber].filter(Boolean).join(' · ')}</small></span>
+        <span className={css.personText}>
+          <strong>{m.name}{m.userId === userId && <span className={css.youTag}>{t.you}</span>}</strong>
+          <small title={m.email}>{m.email}</small>
+          <small title={m.employeeNumber ?? undefined}>{t.employeeNumber} {m.employeeNumber || '—'}</small>
+        </span>
         <ChoiceChip label={t.changeDepartment} value={m.departmentId ?? ''} options={departmentOptions} disabled={!data.canManage || m.role === 'owner' || task.busy}
           onChoose={id => update(m, { departmentId: id || null })}/>
         {m.role === 'owner' ? <span className={css.chip} data-tone="strong" data-static="">{t.admin}</span>
@@ -96,7 +101,11 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
         const expired = i.expiresAt !== null && i.expiresAt <= Date.now()
         return <div key={i.id} className={css.person} data-pending="">
           <span className={css.pendingAvatar} aria-hidden="true"><MailGlyph size={14}/></span>
-          <span className={css.personText}><strong>{[i.inviteeName,i.email,i.employeeNumber].filter(Boolean).join(' · ') || t.invitationCode}</strong><small>{expired ? t.expired : t.pending} · {roleName(i.role, t)} · {expiryLabel(i.expiresAt, t)}</small></span>
+          <span className={css.personText}>
+            <strong>{[i.inviteeName, i.email].filter(Boolean).join(' · ') || t.invitationCode}</strong>
+            {i.employeeNumber && <small title={i.employeeNumber}>{t.employeeNumber} {i.employeeNumber}</small>}
+            <small>{expired ? t.expired : t.pending} · {roleName(i.role, t)} · {expiryLabel(i.expiresAt, t)}</small>
+          </span>
           <span className={css.personActions}>
             {!i.email && !i.projectId && <button type="button" className={css.quietButton} onClick={() => setEditingCode(i)}>{t.editJoinCodeExpiry}</button>}
             <button type="button" className={css.quietButton} onClick={() => controller.open({ kind: 'confirm', title: t.revokeInviteTitle, description: t.revokeInviteBody, confirmLabel: t.revoke,
@@ -228,34 +237,68 @@ export function NoEnterprise({ t, controller }: { t: EnterpriseLabels; controlle
   </EmptyState>
 }
 
+function rosterError(error: unknown, t: EnterpriseLabels) {
+  const row = error instanceof RosterRequestError ? error.row : undefined
+  const code = error instanceof Error ? error.message : ''
+  const messages: Record<string, string> = {
+    ROSTER_FILE_REQUIRED: t.rosterFileRequired,
+    ROSTER_UNREADABLE: t.rosterUnreadable,
+    INVITATION_CSV_EMPTY: t.rosterEmpty,
+    INVITATION_CSV_TOO_LARGE: t.rosterTooLarge,
+    INVITATION_CSV_TOO_MANY_ROWS: t.rosterTooManyRows,
+    INVITATION_CSV_INVALID: row === undefined ? t.rosterInvalid : t.rosterInvalidRow,
+    INVITATION_DUPLICATE: t.rosterDuplicate,
+    DEPARTMENT_MISMATCH: t.rosterDepartmentMissing,
+    INVALID_INPUT: t.rosterInvalidInput,
+    IPW_INVALID_INPUT: t.rosterInvalidInput,
+  }
+  const localized = Object.hasOwn(messages, code) ? messages[code] : undefined
+  const message = localized ?? enterpriseError(code, t, t.rosterUnknownResult)
+  return row === undefined ? message : format(t.rosterErrorRow, { row }) + ' · ' + message
+}
+
 export function BatchCodesDialog({enterpriseId,t,call,controller,close}:{enterpriseId:string;t:EnterpriseLabels;call:Call;controller:EnterpriseController;close():void}) {
   const [days,setDays] = useState('')
-  const [csv,setCsv] = useState("")
-  const task = useTask(t);
+  const [result,setResult] = useState<{ csv: string; count: number }>()
+  const task = useTask(t, error => rosterError(error, t))
   return <Modal open title={t.batchJoinCodes} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close() }}>
     <form className={css.enterpriseForm} onSubmit={event=>{
       event.preventDefault();
-      const file = new FormData(event.currentTarget).get("roster");
+      const form = new FormData(event.currentTarget);
+      const file = form.get("roster");
       void task.run(async()=>{
-        if (!(file instanceof File) || !file.size) throw new Error("IPW_INVALID_INPUT")
-        const result=await call<{items:{name?:string;employeeNumber?:string;serviceAddress:string;code:string}[]}>(
-          "/organizations/"+enterpriseId+"/join-codes/batch", {csv:await file.text(),days:days === '' ? null : Number(days)},
+        if (!(file instanceof File) || !file.size) throw new Error("ROSTER_FILE_REQUIRED")
+        if (file.size > 256 * 1024) throw new Error("INVITATION_CSV_TOO_LARGE")
+        let csv: string;
+        try {
+          csv = new TextDecoder("utf-8", { fatal: true }).decode(await file.arrayBuffer())
+        } catch {
+          throw new Error("ROSTER_UNREADABLE")
+        }
+        const { items } = await call<{items:{name?:string;employeeNumber?:string;serviceAddress:string;code:string}[]}>(
+          "/organizations/"+enterpriseId+"/join-codes/batch", {
+            csv, days: days === '' ? null : Number(days),
+            ...(form.has("createMissingDepartments") ? { createMissingDepartments: true } : {}),
+          },
         );
-        setCsv([[t.name,t.employeeNumber,t.serviceAddress,t.invitationCode].join(","),...result.items.map(item =>
+        const exported = [[t.name,t.employeeNumber,t.serviceAddress,t.invitationCode].join(","),...items.map(item =>
           [item.name,item.employeeNumber,item.serviceAddress,item.code].map(value => {
             const field = value ?? "";
             return '"' + (/^[=+\-@\t\r]/.test(field) ? "'" : "") + field.replaceAll('"','""') + '"';
           }).join(","),
-        )].join("\r\n"));
+        )].join("\r\n");
+        setResult({ csv: exported, count: items.length });
         await controller.load();
       });
     }}>
       <div><Button type="button" variant="outline" onClick={() => downloadCsv("employee-roster-template.csv", t.rosterHeaders + "\r\n")}>{t.downloadRoster}</Button></div>
-      <Field label={t.invitationCsv} hint={t.invitationCsvHint}><input name="roster" type="file" accept=".csv,text/csv" required disabled={task.busy}/></Field>
+      <Field label={t.invitationCsv} hint={t.invitationCsvHint}><input name="roster" type="file" accept=".csv,text/csv" required disabled={task.busy} onChange={() => task.setError('')}/></Field>
+      <label><input name="createMissingDepartments" type="checkbox" disabled={task.busy}/> {t.rosterCreateDepartments}</label>
       <DaysField t={t} days={days} setDays={setDays} busy={task.busy}/>
       <FormError message={task.error}/>
+      {result && <p className={css.quietLine} role="status">{format(t.rosterSuccess, { count: result.count })}</p>}
       <div className={css.dialogFooter}>
-        {csv && <Button type="button" variant="outline" onClick={() => downloadCsv("organization-join-codes.csv", csv)}>{t.invitationExport}</Button>}
+        {result && <Button type="button" variant="outline" onClick={() => downloadCsv("organization-join-codes.csv", result.csv)}>{t.invitationExport}</Button>}
         <Button type="submit" variant="primary" disabled={task.busy}>{t.batchJoinCodes}</Button>
       </div>
     </form>

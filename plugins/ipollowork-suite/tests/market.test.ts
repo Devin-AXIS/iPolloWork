@@ -49,7 +49,7 @@ test('the default market shows Design and Video first without installing or enab
   const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'zh', 1048576)
   assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
   for (const item of state.items.slice(0, 2)) {
-    assert.equal(item.version, item.name === 'deepseek-idesign' ? '1.0.0-beta.32' : '1.0.0-beta.23')
+    assert.equal(item.version, item.name === 'deepseek-idesign' ? '1.0.0-beta.33' : '1.0.0-beta.23')
     assert.equal(item.categoryTitle, '创作')
     assert.equal(item.compatible, true)
     assert.equal(item.installed, false)
@@ -65,7 +65,7 @@ test('a custom operator catalog keeps its declared source for the same package v
     const path = join(dir, 'index.json')
     await writeFile(path, await readFile('catalog/index.json'))
     const state = await readMarket(path, { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576)
-    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.32', 'deepseek-ivideo@1.0.0-beta.23'])
+    assert.deepEqual(state.items.slice(0, 2).map(item => item.spec), ['deepseek-idesign@1.0.0-beta.33', 'deepseek-ivideo@1.0.0-beta.23'])
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
@@ -110,7 +110,7 @@ test('npm delivery downloads optional Studio archives only when installed', asyn
   await rename(original, hidden)
   try {
     const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, directory)
-    assert.equal(state.items[0]?.version, '1.0.0-beta.32')
+    assert.equal(state.items[0]?.version, '1.0.0-beta.33')
     assert.equal(state.items[1]?.version, '1.0.0-beta.23')
     for (const item of state.items.slice(0, 2)) assert(item.spec.startsWith('https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/'))
   } finally { await rename(hidden, original); await rm(directory, { recursive: true, force: true }) }

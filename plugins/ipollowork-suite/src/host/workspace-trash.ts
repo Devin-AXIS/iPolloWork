@@ -1,22 +1,14 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type {} from '@deepseek-ai/dsh-workspace'
-import { mkdir } from 'node:fs/promises'
-import { join } from 'node:path'
+import { resolve } from 'node:path'
 import { SuiteError } from './errors.ts'
 
 /** Archive the conversations when the native workspace registration is deleted. */
 export function mountWorkspaceTrash(ctx: Context, profileHome: string) {
   const registry = ctx.workspaceRegistry
-  const directory = join(profileHome, 'workspaces', 'recycle-bin')
-  let binId: string | undefined
-  let creating: Promise<string> | undefined
-  const ensureWorkspace = () => creating ??= (async () => {
-    const existing = registry.list().find(row => row.id === binId || row.path === directory)
-    if (existing) return binId = existing.id
-    await mkdir(directory, { recursive: true, mode: 0o700 })
-    return binId = (await registry.create(directory, '回收站')).id
-  })().finally(() => { creating = undefined })
+  const directory = resolve(profileHome, 'workspaces', 'recycle-bin')
+  const normalized = (path: string) => process.platform === 'win32' ? resolve(path).toLowerCase() : resolve(path)
   const sessions = new Map<string, readonly SessionId[]>(registry.list().map(workspace => [workspace.id, [...workspace.sessionIds]]))
   let pending = Promise.resolve()
   ctx.on('domain/changed', change => {
@@ -39,18 +31,19 @@ export function mountWorkspaceTrash(ctx: Context, profileHome: string) {
             ctx.logger.warn('Could not archive a session from a deleted workspace', error)
         }
       }
-      if (change.key === binId || registry.archivedSessionIds.length > 0) {
-        await ensureWorkspace().catch(error => ctx.logger.warn('Could not recreate the Recycle Bin workspace', error))
-      }
     })
   })
   ctx.effect(() => () => pending, 'ipollowork: finish archiving deleted workspaces')
-  const restore = async (input: unknown) => {
+  const archived = (input: unknown) => {
     if (typeof input !== 'object' || input === null || !('sessionId' in input) ||
         typeof input.sessionId !== 'string' || input.sessionId.length > 128 || !input.sessionId)
       throw new SuiteError('IPW_INVALID_INPUT', 400)
     const id = registry.archivedSessionIds.find(sessionId => sessionId === input.sessionId)
-    if (!id) return
+    if (!id) throw new SuiteError('IPW_ARCHIVED_SESSION_NOT_FOUND', 404)
+    return id
+  }
+  const restore = async (input: unknown) => {
+    const id = archived(input)
     const { session } = await ctx.sessionQuery.readTitleSnapshot(id)
     if (session.cwd !== undefined) {
       const workspace = registry.list().find(item => item.path === session.cwd) ?? await registry.create(session.cwd)
@@ -59,8 +52,14 @@ export function mountWorkspaceTrash(ctx: Context, profileHome: string) {
     await registry.unarchiveSession(id)
   }
   return {
-    state: async () => ({ workspaceId: registry.list().find(row => row.id === binId || row.path === directory)?.id
-      ?? (registry.archivedSessionIds.length > 0 ? await ensureWorkspace() : null) }),
+    // Old versions inserted an empty synthetic Workspace. Hide only that entry; preserve real sessions and files.
+    state: () => ({ workspaceId: registry.list().find(row => normalized(row.path) === normalized(directory) && row.sessionIds.length === 0)?.id ?? null }),
+    reveal: async (input: unknown) => {
+      const id = archived(input)
+      const location = (await ctx.sessionPersistence.stat(id))?.location
+      if (!location?.path) throw new SuiteError('IPW_ARCHIVED_SESSION_NOT_FOUND', 404)
+      return { path: location.path }
+    },
     restore,
   }
 }

@@ -47,6 +47,7 @@ test('failed persistence leaves the last saved definition and memory intact', as
   const agent = await f.store.saveAgent({ name: 'Analyst' }, [])
   f.fail(new Error('disk full'))
   await assert.rejects(f.store.saveAgent({ ...agent, name: 'Not saved' }, []), /disk full/)
+  await assert.rejects(f.store.deleteAgent(agent.id, agent.revision), /disk full/)
   assert.equal(f.store.snapshot().agents[0]!.name, 'Analyst')
   await assert.rejects(f.store.saveMemory('a', agent.id, 'Not saved', 0), /disk full/)
   assert.equal(f.store.readMemory('a', agent.id).revision, 0)
@@ -80,6 +81,21 @@ test('disabling a definition preserves its project memories and stable identity'
   assert.equal(disabled.id, agent.id)
   assert.equal(disabled.enabled, false)
   assert.equal(store.readMemory('project', agent.id).text, 'Keep this')
+})
+
+test('deleting an agent checks its revision, frees its slot, and retains project memory', async () => {
+  const { store } = fixture()
+  const agent = await store.saveAgent({ name: 'Writer' }, [])
+  const other = await store.saveAgent({ name: 'Reviewer' }, [])
+  await store.saveMemory('project', agent.id, 'Keep this', 0)
+  const updated = await store.saveAgent({ ...agent, enabled: false }, [])
+  await assert.rejects(store.deleteAgent(agent.id, agent.revision), { code: 'IPOLLO_STALE_REVISION' })
+  assert.deepEqual(store.snapshot().agents.map(item => item.id), [agent.id, other.id])
+  await store.deleteAgent(updated.id, updated.revision)
+  await store.deleteAgent(updated.id, updated.revision)
+  assert.deepEqual(store.snapshot().agents.map(item => item.id), [other.id])
+  assert.equal(store.readMemory('project', agent.id).text, 'Keep this')
+  await assert.rejects(store.saveAgent(updated, []), { code: 'IPOLLO_AGENT_NOT_FOUND' })
 })
 
 test('service selections reuse names and preserve legacy definitions without requiring account setup', async () => {

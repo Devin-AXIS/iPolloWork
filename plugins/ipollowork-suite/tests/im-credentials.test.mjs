@@ -11,7 +11,10 @@ const require = createRequire(import.meta.url)
 test('IM key forms use the native modal and keep their existing submit fields', async () => {
   const result = await build({ entryPoints: ['vendor/dsh-im/plugin-src/client/credential-binding.js'], bundle: true, platform: 'node', format: 'cjs', external: ['react', '@deepseek-ai/dsh-client-ui-primitives'], write: false })
   const module = { exports: {} }
-  runInNewContext(result.outputFiles[0].text, { module, exports: module.exports, require: name => name === '@deepseek-ai/dsh-client-ui-primitives' ? { Modal: ({ title, children }) => React.createElement('div', { role: 'dialog', 'aria-label': title }, children) } : require(name) })
+  runInNewContext(result.outputFiles[0].text, { module, exports: module.exports, require: name => name === '@deepseek-ai/dsh-client-ui-primitives' ? {
+    Modal: ({ title, children }) => React.createElement('div', { role: 'dialog', 'aria-label': title }, children),
+    Button: ({ variant, children, ...props }) => React.createElement('button', props, children),
+  } : require(name) })
   const html = renderToStaticMarkup(React.createElement(module.exports.CredentialBindingPanel, { channel: 'feishu', identityLabel: 'App ID', secretLabel: 'App secret' }))
   const document = new JSDOM(html).window.document
   assert.equal(document.querySelectorAll('[role="dialog"] input').length, 2)

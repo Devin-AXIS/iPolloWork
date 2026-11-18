@@ -35,7 +35,6 @@ import {
 import {
   ActionForm,
   Field,
-  Modal,
   Status,
   Table,
   useData,
@@ -58,9 +57,7 @@ import { Connect, DataApps } from "./data-apps.js";
 function Auth({ done }: { done: () => void }) {
   const inviteToken = location.pathname.startsWith("/invite/") ? location.pathname.split("/")[2] : null;
   const invitation = useData<{ organization: string; space: string | null; emailBound?:boolean }>(inviteToken ? "/api/invitations/" + encodeURIComponent(inviteToken) : "/api/health");
-  const [register, setRegister] = useState(false),
-    [reset, setReset] = useState(location.pathname === "/forgot-password"),
-    [message, setMessage] = useState("");
+  const [register, setRegister] = useState(false);
   const [reveal, setReveal] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -156,30 +153,6 @@ function Auth({ done }: { done: () => void }) {
             <ArrowRight size={15} />
           </button>
         </form>
-        {!register && (
-          <button className="link forgot" onClick={() => setReset(true)}>
-            忘记密码？
-          </button>
-        )}
-        {reset && (
-          <Modal title="重置密码" close={() => setReset(false)}>
-            <ActionForm
-              label="发送重置邮件"
-              submit={async (f) => {
-                await api("/api/auth/request-password-reset", {
-                  email: value(f, "email"),
-                  redirectTo: location.origin + "/reset-password",
-                });
-                setMessage("如果邮箱已注册，你会收到重置邮件。");
-              }}
-            >
-              <Field label="邮箱">
-                <input name="email" type="email" required />
-              </Field>
-            </ActionForm>
-            <p role="status">{message}</p>
-          </Modal>
-        )}
       </div>
     </main>
   );

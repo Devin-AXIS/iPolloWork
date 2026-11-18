@@ -49,8 +49,31 @@ const updateSchema = inputSchema.omit({ audience: true }).extend({
   oauth: inputSchema.shape.oauth.unwrap().nullable().optional(),
   enabled: z.boolean(),
 });
-type Row = { id: string; enterprise_id: string; title: string; description: string; endpoint: string; enabled: boolean; oauth_config:string|null };
+type Row = { id: string; enterprise_id: string; title: string; description: string; endpoint: string; enabled: boolean; oauth_config:string|null; reviewed?:boolean };
 const keyName = (id: string) => "enterprise-mcp/" + id;
+
+/** Activate the approved version inside the publication transaction. */
+export async function publishEnterpriseMcp(
+  store: Store,
+  id: string,
+  enterprise: string,
+  title: string,
+  description: string,
+  endpoint: string,
+): Promise<void> {
+  const previous = await store.one<Row>("SELECT * FROM enterprise_mcp WHERE id=? AND enterprise_id=? FOR UPDATE", id, enterprise);
+  if (previous && previous.endpoint !== endpoint) {
+    await store.run("DELETE FROM settings WHERE key=? OR key LIKE ?", keyName(id), mcpMemberCredentials(id));
+    await store.run("DELETE FROM enterprise_mcp_oauth_pending WHERE mcp_id=?", id);
+  }
+  await store.run(
+    `INSERT INTO enterprise_mcp(id,enterprise_id,title,description,endpoint,created_at)
+     VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+     title=EXCLUDED.title,description=EXCLUDED.description,endpoint=EXCLUDED.endpoint,enabled=TRUE,
+     oauth_config=CASE WHEN enterprise_mcp.endpoint=EXCLUDED.endpoint THEN enterprise_mcp.oauth_config END`,
+    id, enterprise, title, description, endpoint, now(),
+  );
+}
 
 /** Accept only DNS answers for public IPv4 and use that exact address for the TLS connection. */
 function connect(endpoint: URL, method: string, headers: Record<string, string>, body: Buffer | undefined, signal: AbortSignal) {
@@ -94,7 +117,11 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
     await enterpriseAccess(store, actor, enterprise);
     const canManage = await isEnterpriseManager(store, actor, enterprise);
     const rows = canManage
-      ? await store.all<Row>("SELECT * FROM enterprise_mcp WHERE enterprise_id=? ORDER BY created_at DESC,id LIMIT 100", enterprise)
+      ? await store.all<Row>(
+        `SELECT r.*,p.id IS NOT NULL AS reviewed FROM enterprise_mcp r LEFT JOIN organization_publications p ON p.id=r.id AND p.kind='mcp'
+         WHERE r.enterprise_id=? AND (p.id IS NULL OR p.published_version IS NOT NULL)
+         ORDER BY r.created_at DESC,r.id LIMIT 100`, enterprise,
+      )
       : await store.all<Row>(
         `SELECT r.* FROM enterprise_mcp r JOIN members m ON m.enterprise_id=r.enterprise_id
          WHERE r.enterprise_id=? AND r.enabled AND m.user_id=? AND m.status='active' AND ${grantedTo("r.id")} ORDER BY r.created_at DESC,r.id LIMIT 100`,
@@ -105,7 +132,7 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
       enabled: r.enabled,
       oauthRequired:!!r.oauth_config,
       authorized:!r.oauth_config || Boolean(await store.one("SELECT 1 FROM settings WHERE key=?",memberMcpToken(r.id,actor.id))),
-      ...(canManage ? {endpoint:r.endpoint, ...(r.oauth_config ? {oauth:JSON.parse(r.oauth_config) as McpOAuthConfig} : {})} : {}),
+      ...(canManage ? {endpoint:r.endpoint, reviewed:r.reviewed, ...(r.oauth_config ? {oauth:JSON.parse(r.oauth_config) as McpOAuthConfig} : {})} : {}),
       audience: await audienceOf(store, "mcp", r.id),
     }))) });
   });
@@ -135,6 +162,11 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
       await requireEnterpriseManager(store, actor, enterprise);
       const previous = await store.one<Row>("SELECT * FROM enterprise_mcp WHERE id=? AND enterprise_id=? FOR UPDATE", id, enterprise);
       if (!previous) throw new ServiceError("MCP_NOT_FOUND", 404, "MCP 不存在");
+      const publication = await store.one<{ published_version: string | null }>(
+        "SELECT published_version FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='mcp'", id, enterprise,
+      );
+      if (publication && (!publication.published_version || endpoint !== previous.endpoint))
+        throw new ServiceError("MCP_REVIEW_REQUIRED", 409, "变更 MCP 地址请提交新版本审核");
       const nextOAuth = input.oauth === undefined ? previous.oauth_config : input.oauth ? JSON.stringify(input.oauth) : null;
       if (nextOAuth && input.key) throw new ServiceError("MCP_AUTH_CONFIGURATION_INVALID",400,"请选择一种授权方式");
       await store.run("UPDATE enterprise_mcp SET title=?,description=?,endpoint=?,enabled=?,oauth_config=? WHERE id=?", input.title, input.description, endpoint, input.enabled,nextOAuth,id);
@@ -153,6 +185,10 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
     const enterprise = c.req.param("id"), id = c.req.param("mcpId"), actor = c.get("actor");
     await requireEnterpriseManager(store, actor, enterprise);
     await store.transaction(async () => {
+      await store.run(
+        "UPDATE organization_publications SET published_version=NULL WHERE id=? AND enterprise_id=? AND kind='mcp'",
+        id, enterprise,
+      );
       const removed = await store.run("DELETE FROM enterprise_mcp WHERE id=? AND enterprise_id=?", id, enterprise);
       if (!removed.changes) throw new ServiceError("MCP_NOT_FOUND", 404, "MCP 不存在");
       await store.run("DELETE FROM enterprise_grants WHERE asset_kind='mcp' AND asset_id=?", id);

@@ -1,6 +1,7 @@
 import { mountMarket } from './market.js';
 import { StageService, validateStageSettings } from './stage.js';
 import { OrganizationMembers } from "./organization-members.js";
+import { InvitationRosterError } from "./organization-invitation-csv.js";
 import { AppDataFiles } from './app-data-files.js';
 import { CloudProjects, cloudGrantAllows, mountCloudProjects } from './cloud-projects.js';
 import { ExecutionService, mountExecution } from "./execution.js";
@@ -29,6 +30,7 @@ import { mountProjectArchive } from "./project-archive.js";
 import { mountCollaboration } from "./collaboration.js";
 import { mountEnterprise } from "./enterprise.js";
 import { mountOrganizationPublications } from "./organization-publications.js";
+import { mountOrganizationConversations } from "./organization-conversations.js";
 import { mountPayments } from "./payments.js";
 import { mountEnterpriseAssets } from "./enterprise-assets.js";
 import { mountEnterpriseMcp } from "./enterprise-mcp.js";
@@ -129,7 +131,10 @@ export async function createService(config: Config) {
     );
     app.onError((error, c) => {
       if (error instanceof ServiceError)
-        return c.json({ error: error.message, code: error.code }, error.status);
+        return c.json({
+          error: error.message, code: error.code,
+          ...(error instanceof InvitationRosterError && error.row !== undefined ? { row: error.row } : {}),
+        }, error.status);
       if (error instanceof z.ZodError)
         return c.json(
           {
@@ -423,6 +428,7 @@ export async function createService(config: Config) {
     mountEnterpriseMcp(app, store, settings, config.secret, undefined, config.origin);
     mountEnterprise(app, store, config, cloud, organizationMembers);
     mountOrganizationPublications(app, store);
+    mountOrganizationConversations(app, store);
     organizationMembers.mount(app);
     organizationMembers.start();
     mountCloudProjects(app, cloud);

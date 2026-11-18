@@ -176,7 +176,9 @@
 .botAvatar { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; flex-shrink: 0; border-radius: 12px; background: var(--ipw-wash); color: var(--ipw-accent); font-size: 20px; font-weight: 500; }
 .page .botDescription { margin: 0; color: var(--ipw-muted); font-size: 13px; line-height: 1.7; min-height: 44px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .botCapabilities { display: flex; gap: 16px; color: var(--ipw-muted); font-size: 12px; margin-top: auto; }
-.botActions { display: flex; justify-content: space-between; gap: 12px; }.botActions button { background: transparent; border: 0; padding: 4px 0; color: var(--ipw-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.botActions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; }.botActions button { background: transparent; border: 0; padding: 4px 0; color: var(--ipw-muted); font: inherit; font-size: 12px; cursor: pointer; }
+.botActions .botDelete { color: var(--dsw-alias-state-error); }
+.botActions .botDelete:disabled { opacity: .4; cursor: default; }
 .botEmpty { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 340px; padding: 32px 12px; text-align: center; gap: 16px; }.botEmpty p { color: var(--ipw-muted); max-width: 380px; margin: 0 0 8px; }.botEmpty h2 { margin: 0; }
 .agentSkeleton { height: 240px; border-radius: 14px; background: var(--ipw-muted-surface); }
 .agentDialog { box-sizing: border-box; width: min(620px, 100%); max-width: 620px; max-height: 100%; margin: 0; padding: 0 0 24px; font-size: 14px; }
@@ -256,6 +258,13 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .enterpriseField { display:flex;flex-direction:column;gap:6px;min-width:0;font-size:13px; }
 .enterpriseField > span { font-weight:500; }
 .enterpriseField > small { font-size:12px;line-height:18px;color:var(--ipw-muted); }
+.shareMembers { display:grid;max-height:min(33vh,260px);overflow:auto;align-content:start;gap:2px;padding:2px; }
+.shareMembers label { display:flex;align-items:center;gap:9px;padding:7px 6px;border-radius:6px;cursor:pointer;overflow-wrap:anywhere; }
+.shareMembers label:hover { background:var(--ipw-muted-surface); }
+.shareMembers input { flex:none;accent-color:var(--ipw-accent); }
+.shareMembers small { color:var(--ipw-muted);margin-inline-start:8px; }
+.activitySearch { display:flex;align-items:flex-end;gap:8px;margin-block:0 10px; }
+.activitySearch > label { width:min(320px,100%); }
 .enterpriseField input,.enterpriseField select { width:100%;min-width:0;box-sizing:border-box;font:inherit;color:inherit;background:var(--ipw-muted-surface, var(--dsw-alias-bg-base));border:0;border-radius:8px;padding:9px 12px; }
 .textarea,.enterpriseField textarea { width:100%;box-sizing:border-box;font:inherit;font-size:13px;line-height:1.7;background:var(--ipw-muted-surface);border:0;border-radius:8px;padding:10px 12px;color:inherit;resize:vertical; }
 .enterpriseColumns { display:grid;grid-template-columns:1fr 1fr;gap:16px; }
@@ -367,9 +376,6 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .authSubmit:disabled { opacity:.28;cursor:default; }
 .authPage .authError { margin:2px 0 0;text-align:left;font-size:12px;color:var(--g-bad); }
 .authPage .authService { display:inline-flex;align-items:center;gap:6px;margin:16px 0 0;font-size:11px;color:var(--g-faint); }
-.authReset { align-self:center;border:0;padding:4px 0;background:transparent;color:var(--g-faint);font:inherit;font-size:12px;cursor:pointer; }
-.authReset:hover:not(:disabled) { text-decoration:underline; }
-.authReset:disabled { opacity:.55;cursor:default; }
 .authService > span { width:6px;height:6px;border-radius:50%;background:var(--g-ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--g-ok) 16%,transparent); }
 .authService > span[data-state='down'] { background:var(--g-warn);box-shadow:0 0 0 3px color-mix(in srgb,var(--g-warn) 16%,transparent); }
 .identity { display:flex;align-items:center;gap:12px; }
@@ -725,10 +731,15 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .marketImportSource span { min-width:0;overflow-wrap:anywhere;font-size:12px;color:var(--ipw-muted); }
 .marketImportPreview { padding:16px 0 4px; }
 .marketImportPreview .cardMeta { overflow-wrap:anywhere; }
-.workspaceTrashList { margin: 0; padding: 0; list-style: none; }
-.workspaceTrashList li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--ipw-border); }
-.workspaceTrashList li > div { min-width: 0; }
-.workspaceTrashList span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--ipw-muted); }
+.workspaceTrashEntry { width:100%; justify-content:flex-start; }
+.workspaceTrashList { margin:0; padding:0; list-style:none; }
+.workspaceTrashList li { display:flex; gap:6px; align-items:center; padding:3px; border-bottom:1px solid var(--ipw-border); }
+.workspaceTrashDetails { flex:1; min-width:0; padding:7px; text-align:start; border:0; border-radius:6px; background:none;color:inherit; font:inherit; cursor:pointer; }
+.workspaceTrashDetails:is(:hover,[aria-pressed="true"]) { background:var(--dsw-alias-interactive-bg-hover); }
+.workspaceTrashDetails > strong, .workspaceTrashDetails > span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.workspaceTrashDetails > strong { font-weight: 500; }
+.workspaceTrashDetails > span { color: var(--ipw-muted, var(--dsw-alias-label-secondary)); }
+.workspaceTrashActions { flex:none; display:flex; gap:4px; }
 .organizationTemplatePreview { display: block; width: 100%; min-height: 280px; border: 0; color-scheme: light; background: white; }
 .organizationSkillPreview { max-height:50vh; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
 .organizationLogo { display:block;width:64px;height:64px;object-fit:contain;border-radius:10px;background:var(--ipw-muted-surface,var(--dsw-alias-bg-base)); }

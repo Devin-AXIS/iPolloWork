@@ -16,7 +16,6 @@ export const WELCOME_IPC = {
   state: 'dsh-welcome:state',
   signInAccount: 'dsh-welcome:sign-in-account',
   signUpAccount: 'dsh-welcome:sign-up-account',
-  requestPasswordReset: 'dsh-welcome:request-password-reset',
   takeNotice: 'dsh-welcome:take-notice',
 } as const
 
@@ -46,7 +45,6 @@ export interface WelcomeOperations {
    * @returns Whether registration completed and signed in.
    */
   signUpAccount?(name: string, email: string, password: string): Promise<WelcomeAccountResult>
-  requestPasswordReset?(email: string): Promise<WelcomeSaveResult>
   /** @param eventName - allowed welcome event. @param attributes - approved fields without credentials. */
   analytics?<K extends WelcomeEventName>(eventName: K, attributes: ProductEventMap[K]): Promise<void>
   /** @returns the Host's current effective collection policy. */

@@ -245,7 +245,7 @@ function Enterprise({
       {result.data && tab === "mcp" && <OrganizationMcp path={path} members={result.data.members} departments={result.data.departments}/>}
       {result.data?.canManage && tab === "activity" && <OrganizationActivity path={path}/>}
       {result.data && tab === "settings" && <OrganizationSettings path={path} enterprise={result.data.enterprise} canManage={result.data.canManage} reload={result.reload}/>}
-      {result.data && tab === "settings" && <section className="panel organization-settings">
+      {result.data?.canManage && tab === "settings" && <section className="panel organization-settings">
         <div className="panel-heading">
           <h2>组织服务地址</h2>
         </div>
@@ -268,10 +268,11 @@ function Enterprise({
                 cell: (r) => (
                   <span>
                     {text(r.name)}
-                    <small>{[r.email,r.employee_number].filter(Boolean).join(" · ")}</small>
+                    <small>{text(r.email)}</small>
                   </span>
                 ),
               },
+              { label: "工号", cell: (r) => text(r.employee_number) || "—" },
               {
                 label: "身份",
                 cell: (r) =>
@@ -292,10 +293,10 @@ function Enterprise({
                 label: "成员状态",
                 cell: r => r.status === "suspended" ? "已停用" : "正常",
               },
-              {
+              ...(result.data.canManage ? [{
                 label: "操作",
-                cell: (r) =>
-                  r.role === "owner" || !result.data?.canManage ? (
+                cell: (r: Row) =>
+                  r.role === "owner" ? (
                     "—"
                   ) : (
                     <div className="actions">
@@ -305,13 +306,14 @@ function Enterprise({
                       </button>
                     </div>
                   ),
-              },
+              }] : []),
             ]}
           />
           {result.data.canManage && result.data.invitations.length > 0 && <>
             <div className="panel-heading"><h2>待使用的邀请码</h2></div>
             <Table rows={result.data.invitations} columns={[
-              {label:"员工",cell:r=>[r.invitee_name,r.employee_number,r.email].filter(Boolean).join(" · ") || "邀请码"},
+              {label:"员工",cell:r=>[r.invitee_name,r.email].filter(Boolean).join(" · ") || "邀请码"},
+              {label:"工号",cell:r=>text(r.employee_number) || "—"},
               {label:"有效期",cell:r=>r.expires_at === null ? "永久有效" : date(r.expires_at)},
               {label:"状态",cell:r=>r.expires_at !== null && Number(r.expires_at) <= Date.now() ? "已过期" : "待使用"},
               {label:"操作",cell:r=>!r.email && !r.project_id && <button onClick={()=>setExpiry(r)}>修改有效期</button>},
@@ -357,19 +359,30 @@ function Enterprise({
       {modal === "batch" && <Modal title="从 CSV 批量生成" close={refresh}>
         <ActionForm label="导出邀请码" submit={async form => {
           const roster = form.get("roster");
-          if (!(roster instanceof File) || !roster.size) throw new Error("请选择成员名单 CSV");
+          if (!(roster instanceof File) || !roster.size) throw new Error("请选择包含成员记录的 CSV 文件");
+          if (roster.size > 256 * 1024) throw new Error("请将 CSV 拆分为不超过 256 KB 的文件");
+          let rosterText: string;
+          try {
+            rosterText = new TextDecoder("utf-8", { fatal: true }).decode(await roster.arrayBuffer());
+          } catch {
+            throw new Error("无法以 UTF-8 读取文件，请另存为 CSV UTF-8 后重试");
+          }
           const response = await api<{items:{name?:string;employeeNumber?:string;code:string;serviceAddress:string}[]}>(path + "/join-codes/batch",
-            {csv:await roster.text(),days:codeDays(form)},
+            {
+              csv: rosterText, days: codeDays(form),
+              ...(form.has("createMissingDepartments") ? { createMissingDepartments: true } : {}),
+            },
           );
           const csv = ["名称,工号,服务地址,邀请码",...response.items.map(item=>[item.name,item.employeeNumber,item.serviceAddress,item.code]
             .map(field=>'"' + (/^[=+\-@\t\r]/.test(field ?? "") ? "'" : "") + (field ?? "").replaceAll('"','""') + '"').join(","))].join("\r\n");
           downloadCsv("organization-join-codes.csv", csv);
-          setMessage("邀请码已生成并导出");
+          setMessage(`已生成并导出 ${response.items.length} 个邀请码`);
           refresh();
         }}>
           <button type="button" onClick={()=>downloadCsv("employee-roster-template.csv","名称,工号,部门名称\r\n")}>下载 CSV 模板</button>
           <Field label="成员名单 CSV"><input type="file" name="roster" accept=".csv,text/csv" required/></Field>
-          <p>名称和工号必填，部门名称可选。加入后身份为普通成员。</p>
+          <p>请使用 UTF-8 CSV。名称和工号必填，部门名称可选。</p>
+          <label className="check"><input name="createMissingDepartments" type="checkbox"/>自动创建缺少的部门</label>
           <CodeDays/>
         </ActionForm>
       </Modal>}

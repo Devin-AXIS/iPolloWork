@@ -3,7 +3,7 @@ import type { ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/typ
 
 import { randomUUID } from 'node:crypto'
 import { desktopAccountBackend, type DesktopAccountBackend } from './account-backend.ts'
-import type { WelcomeAccountResult, WelcomeSaveResult } from './welcome-api.ts'
+import type { WelcomeAccountResult } from './welcome-api.ts'
 
 /** Metadata needed before the native entry or workspace becomes visible. */
 export interface WelcomeState {
@@ -24,7 +24,6 @@ export interface DesktopWelcomeBackend {
   signInAccount?(email: string, password: string): Promise<WelcomeAccountResult>
   /** Register through the owned iPolloWork service without returning its session grant. */
   signUpAccount?(name: string, email: string, password: string): Promise<WelcomeAccountResult>
-  requestPasswordReset?(email: string): Promise<WelcomeSaveResult>
   /** @param event - desktop-owned fields. @returns after local Host intake. */
   report(event: ProductEvent): Promise<void>
   /** @returns Configured-key presence and the shared language and theme preferences, without credential values. */
@@ -171,17 +170,6 @@ export function connectDesktopWelcome(
       async signInAccount(email: string, password: string) {
         try { return await suiteAccount({ email, password }) }
         catch (_error) { return { ok: false } }
-      },
-      async requestPasswordReset(email: string) {
-        try {
-          const response = await send(new URL('/ipollowork-suite/account/request-password-reset', origin).href, {
-            method: 'POST', redirect: 'error', headers: { cookie, 'content-type': 'application/json' },
-            body: JSON.stringify({ email }), signal: AbortSignal.timeout(25000),
-          })
-          if (!response.ok) { await response.body?.cancel(); return { ok: false } }
-          const result: unknown = await response.json()
-          return record(result) && result.ok === true ? { ok: true } : { ok: false }
-        } catch { return { ok: false } }
       },
     } : {}),
     async analyticsEnabled() {

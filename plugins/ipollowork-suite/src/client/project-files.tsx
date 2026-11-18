@@ -33,6 +33,25 @@ interface Listing {
   policy: { outputs: boolean };
 }
 
+export function ProjectDownload({ href, name, view }: { href: string; name: string; view: ViewProps }) {
+  const c = projectCopy(view.language);
+  const { dshDesktop } = window as Window & {
+    dshDesktop?: { fileActions?: { save(request: { url: string; name: string; mode: "download" }): Promise<{ status: string }> } };
+  };
+  const task = useTask(view.t, () => c.downloadFailed);
+  if (!dshDesktop?.fileActions)
+    return <a className={css.projectDownload} href={href} target="_blank" rel="noreferrer">{c.download}</a>;
+
+  const fileActions = dshDesktop.fileActions;
+  return <span>
+    <Button size="sm" variant="ghost" disabled={task.busy} onClick={() => void task.run(async () => {
+      const result = await fileActions.save({ url: new URL(href, location.href).href, name: name.split(/[\\/]/).at(-1) || name, mode: "download" });
+      if (result.status === "saved") view.controller.notify(c.downloaded);
+    })}>{task.busy ? c.downloading : c.download}</Button>
+    <FormError message={task.error} />
+  </span>;
+}
+
 export function ProjectOverview({ id, view }: { id: string; view: ViewProps }) {
   const c = projectCopy(view.language);
   const record = useRecord<{
@@ -234,17 +253,8 @@ export function ProjectFiles({
                 }
                 onOpen={() => setHistory(file)}
                 actions={
-                  <a
-                    className={css.projectDownload}
-                    href={
-                      "/ipollowork-suite/enterprise/download/" +
-                      file.resource_id
-                    }
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {c.download}
-                  </a>
+                  <ProjectDownload href={"/ipollowork-suite/enterprise/download/" +
+                      file.resource_id} name={file.path} view={view} />
                 }
               />
             ))}
@@ -328,16 +338,7 @@ function VersionHistory({
                 </>
               }
               actions={
-                <a
-                  className={css.projectDownload}
-                  href={
-                    "/ipollowork-suite/enterprise/download/" + item.resource_id
-                  }
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {c.download}
-                </a>
+                <ProjectDownload href={"/ipollowork-suite/enterprise/download/" + item.resource_id} name={item.path} view={view} />
               }
             />
           ))}
@@ -361,19 +362,10 @@ export function MemoryVersions({ id, view }: { id: string; view: ViewProps }) {
           title={c.version + " " + item.version}
           meta={item.author_name}
           actions={
-            <a
-              className={css.projectDownload}
-              href={
-                "/ipollowork-suite/enterprise/projects/" +
+            <ProjectDownload href={"/ipollowork-suite/enterprise/projects/" +
                 id +
                 "/memory-versions/" +
-                item.version
-              }
-              target="_blank"
-              rel="noreferrer"
-            >
-              {c.download}
-            </a>
+                item.version} name={"project-memory-" + item.version + ".md"} view={view} />
           }
         />
       ))}

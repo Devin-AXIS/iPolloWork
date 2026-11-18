@@ -43,6 +43,7 @@ export interface EnterpriseState {
   toast: EnterpriseToast | null;
   /** Increments after every mutation so open detail views reload their records. */
   revision: number;
+  publicationTarget?: string | undefined;
 }
 const SELECTED_KEY = "ipollowork.enterprise.selected";
 const FOCUS_REFRESH_MS = 30_000;
@@ -109,6 +110,7 @@ export class EnterpriseController {
       signedIn,
       views: [],
       toast: null,
+      publicationTarget: undefined,
     });
     if (signedIn) void this.load();
   }
@@ -150,9 +152,17 @@ export class EnterpriseController {
   open = (dialog: EnterpriseDialog | null) => this.publish({ dialog });
   selectEnterprise = (enterpriseId: string | null) => {
     remember(enterpriseId);
-    this.publish({ enterpriseId, views: [] });
+    this.publish({ enterpriseId, views: [], publicationTarget: undefined });
   };
-  selectTab = (tab: EnterpriseTab) => this.publish({ tab, views: [] });
+  selectTab = (tab: EnterpriseTab) => this.publish({ tab, views: [], publicationTarget: undefined });
+  openNotice = (enterpriseId: string, tab: EnterpriseTab, target?: string) => {
+    remember(enterpriseId);
+    this.publish({
+      enterpriseId, tab, publicationTarget: tab === "projects" ? undefined : target,
+      views: tab === "projects" && target ? [{ kind:"project", id:target }] : [],
+      revision: this.state.revision + 1,
+    });
+  };
   push = (view: EnterpriseView) =>
     this.publish({ views: [...this.state.views, view], dialog: null });
   /** Replace the stack with one view, used when another surface opens a record directly. */

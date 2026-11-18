@@ -31,6 +31,7 @@ function createProductApi(): DshDesktopProductApi {
     protocolVersion: 1,
     ...(version ? { version } : {}),
     appVersion: () => ipcRenderer.invoke(DESKTOP_IPC.appVersion) as Promise<string>,
+    revealArchivedSession: sessionId => ipcRenderer.invoke(DESKTOP_IPC.revealArchivedSession, sessionId) as Promise<void>,
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
       readClipboardImage: url => ipcRenderer.invoke(DESKTOP_IPC.clipboardImageRead, url) as

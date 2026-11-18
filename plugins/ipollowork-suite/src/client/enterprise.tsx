@@ -1,5 +1,6 @@
-import { MemberNoticeHistory, OrganizationActivityTab, OrganizationMessages, OrganizationNotices, OrganizationPublications } from "./organization-publications.tsx";
-import { McpLibrary, mcpSettings, type McpForm } from "./mcp-library.tsx";
+import { MemberNoticeHistory, OrganizationActivityTab, OrganizationNotices, OrganizationPublications } from "./organization-publications.tsx";
+import { ConversationShareAction, OrganizationMessages } from "./conversation-shares.tsx";
+import { McpTab } from "./enterprise-mcp.tsx";
 import { useEffect, useState, type FormEvent } from "react";
 import {
   Button,
@@ -49,7 +50,6 @@ import {
   MembersTab,
   NoEnterprise,
 } from "./enterprise-members.tsx";
-import { ShareAudience } from "./enterprise-share.tsx";
 import {
   DepartmentsTab,
   ModelsTab,
@@ -87,7 +87,6 @@ export interface Props
   actions: CollaborationActions;
   openAccountSettings(): boolean;
   installEnterprisePlugin(spec: string): Promise<void>;
-  mcpForm: McpForm;
 }
 
 function EnterpriseSwitcher({
@@ -135,13 +134,11 @@ function EnterpriseSwitcher({
         { type: "label", id: "label", text: t.switchEnterprise },
         ...catalog.enterprises.map((e) => ({ id: e.id, label: e.name })),
         { type: "separator", id: "separator" },
-        { id: ":service", label: t.joinByService },
         { id: ":create", label: t.create },
       ]}
       onSelect={(id) => {
         setOpen(false);
-        if (id === ":service") controller.open({ kind: "joinService" });
-        else if (id === ":create") controller.open({ kind: "create" });
+        if (id === ":create") controller.open({ kind: "create" });
         else controller.selectEnterprise(id);
       }}
     />
@@ -284,8 +281,8 @@ function EnterprisePanel(props: Props) {
               revision={state.revision}
               catalogError={state.error}
               refreshing={state.loading}
+              publicationTarget={state.publicationTarget}
               installEnterprisePlugin={props.installEnterprisePlugin}
-              mcpForm={props.mcpForm}
             />
           )}
         </>
@@ -306,8 +303,8 @@ function EnterpriseBody({
   revision,
   catalogError,
   refreshing,
+  publicationTarget,
   installEnterprisePlugin,
-  mcpForm,
 }: {
   enterpriseId: string;
   userId: string;
@@ -319,8 +316,8 @@ function EnterpriseBody({
   revision: number;
   catalogError: string;
   refreshing: boolean;
+  publicationTarget: string | undefined;
   installEnterprisePlugin(spec: string): Promise<void>;
-  mcpForm: McpForm;
 }) {
   const detail = useRecord<EnterpriseDetail>(
     "/organizations/" + enterpriseId,
@@ -406,15 +403,21 @@ function EnterpriseBody({
         ) : active.value === "departments" ? (
           <DepartmentsTab {...assetProps} />
         ) : active.value === "templates" || active.value === "plugins" ? (
-          <OrganizationPublications key={active.value} {...assetProps} kind={active.value === "templates" ? "template" : "plugin"} install={installEnterprisePlugin} />
+          <OrganizationPublications key={active.value} {...assetProps} target={publicationTarget} kind={active.value === "templates" ? "template" : "plugin"} install={installEnterprisePlugin} />
         ) : active.value === "activity" ? (
           <OrganizationActivityTab {...assetProps} />
         ) : active.value === "messages" ? (
-          <OrganizationMessages {...assetProps} />
+          <OrganizationMessages key={enterpriseId} {...assetProps} openSession={view.actions.openSession} />
         ) : active.value === "skills" ? (
-          <><SkillsTab {...assetProps} /><OrganizationPublications {...assetProps} kind="skill" install={installEnterprisePlugin} /></>
+          <>
+            <OrganizationPublications {...assetProps} target={publicationTarget} kind="skill" install={installEnterprisePlugin} />
+            <SkillsTab {...assetProps} />
+          </>
         ) : active.value === "mcp" ? (
-          <McpLibrary {...assetProps} form={mcpForm} />
+          <>
+            <OrganizationPublications {...assetProps} target={publicationTarget} kind="mcp" install={installEnterprisePlugin} />
+            <McpTab {...assetProps} />
+          </>
         ) : active.value === "settings" ? (
           <EnterpriseSettings key={enterpriseId} {...assetProps} serviceAddress={view.catalog.serviceOrigin} />
         ) : (
@@ -750,7 +753,6 @@ export function mountEnterprise(
 ): void {
   const controller = new EnterpriseController(),
     labels = enterpriseLabels(ctx);
-  const mcpForm = mcpSettings(ctx.configForms);
   const locale = {
     getSnapshot: () => language(ctx),
     subscribe: (listener: () => void) => ctx.locale.subscribe(listener),
@@ -762,6 +764,10 @@ export function mountEnterprise(
   }, "ipollowork-suite: refresh collaboration");
   const pendingOwnership = new Set<string>();
   const actions: CollaborationActions = {
+    openSession: async (id) => {
+      await ctx.sessions.refresh();
+      ctx.uiWorkspace.openSession(id);
+    },
     openProject: (id) => {
       void ctx.uiWorkspace.openWorkspace(id);
     },
@@ -821,7 +827,6 @@ export function mountEnterprise(
     actions,
     openAccountSettings: account.openAccountSettings,
     installEnterprisePlugin,
-    mcpForm,
   });
   for (const name of [
     "sidebar.workspaces.directoryFlow",
@@ -880,14 +885,16 @@ export function mountEnterprise(
       CollaborationMark,
     ),
   );
-  ctx.slots.inject("ipollowork.share.audience", () =>
+  ctx.slots.inject("conversation.session.header.utilities", () =>
     ctx.slots.register(
       {
-        name: "ipollowork.share.audience",
-        id: "ipollowork-recipients",
+        name: "conversation.session.header.utilities",
+        id: "liveshare-share",
+        priority: -100,
+        order: -7,
         inject: props,
       },
-      ShareAudience,
+      ConversationShareAction,
     ),
   );
   let userId: string | undefined;

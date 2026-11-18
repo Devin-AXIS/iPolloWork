@@ -311,7 +311,7 @@ test("PostgreSQL restart preserves project share records and fork permissions", 
           "SELECT MAX(version) AS version FROM service_schema",
         )
       )?.version,
-      17,
+      19,
     );
   } finally {
     await service.close();
@@ -403,6 +403,54 @@ test("unextended native open links work without a suite intent and keep expiry",
       }),
     );
     assert.equal(status, 403);
+    // Updating permissions replaces the tunnel while keeping the native ID and gateway token.
+    // A different token cannot change the stored policy.
+    const updatedUrl = new URL(url);
+    updatedUrl.searchParams.set("sessionMode", "write");
+    updatedUrl.searchParams.set("allowsFork", "1");
+    updatedUrl.searchParams.delete("expiresAt");
+    const connect = (target: URL, token: string) => {
+      const socket = new WebSocket(target, {
+        headers: {
+          authorization: "Bearer " + token,
+          "x-liveshare-owner-credential": credential,
+        },
+      });
+      sockets.push(socket);
+      return socket;
+    };
+    const foreign = connect(updatedUrl, "b".repeat(32));
+    foreign.on("error", () => {});
+    const [, foreignResponse] = await once(foreign, "unexpected-response");
+    assert.equal(foreignResponse.statusCode, 403);
+    foreignResponse.resume();
+    assert.equal((await service.relay.share("native-open")).mode, "view");
+
+    const replacement = connect(updatedUrl, "g".repeat(32));
+    replacement.on("error", () => {});
+    replacement.once("unexpected-response", (_request, response) => {
+      response.resume();
+      replacement.emit("error", new Error("Relay rejected permission update: " + response.statusCode));
+    });
+    const [updated] = await once(replacement, "message");
+    const updatedFrame = JSON.parse(String(updated));
+    assert.equal(updatedFrame.sessionMode, "write");
+    assert.equal(updatedFrame.allowsFork, true);
+    assert.equal(updatedFrame.expiresAt, undefined);
+    assert.equal(service.relay.online("native-open"), true);
+    assert.equal((await service.relay.share("native-open")).mode, "write");
+    assert.equal((await service.relay.share("native-open")).expires_at, null);
+
+    const lowered = connect(url, "g".repeat(32));
+    const [downgraded] = await once(lowered, "message");
+    const loweredFrame = JSON.parse(String(downgraded));
+    assert.equal(loweredFrame.sessionMode, "view");
+    assert.equal(loweredFrame.allowsFork, false);
+    assert.equal(loweredFrame.expiresAt, expiry);
+    const viewer = await service.relay.rpc(await service.relay.share("native-open"),
+      { id: "guest:fixture", name: "Guest", email: "", role: "guest" },
+      { path: "/api/session/prompt" });
+    assert.equal(viewer.status, 403);
     await service.store.run(
       "UPDATE live_shares SET expires_at=? WHERE native_id=?",
       Date.now() - 1,

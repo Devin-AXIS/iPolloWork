@@ -42,6 +42,7 @@ import {
   Field,
   ListSkeleton,
   Notice,
+  Section,
   When,
   useRecord,
   useTask,
@@ -190,9 +191,27 @@ export function AccessDialog({
     [departments, setDepartments] = useState(new Set(audience.departments)),
     [members, setMembers] = useState(new Set(audience.members)),
     [includeSubdepartments, setIncludeSubdepartments] = useState(audience.includeSubdepartments ?? false);
+  const coveredDepartments = new Set(departments);
+  if (includeSubdepartments) {
+    let size = 0;
+    while (coveredDepartments.size !== size) {
+      size = coveredDepartments.size;
+      for (const department of detail.departments) {
+        if (department.parentId && coveredDepartments.has(department.parentId))
+          coveredDepartments.add(department.id);
+      }
+    }
+  }
+  const isCovered = (departmentId: string | null) =>
+    departmentId !== null && coveredDepartments.has(departmentId);
+  const activeMembers = detail.members.filter((member) => member.status !== "suspended");
+  const recipientCount = activeMembers.filter((member) =>
+    all || member.role === "owner" || member.role === "admin" ||
+    members.has(member.userId) || isCovered(member.departmentId)
+  ).length;
   const [query, setQuery] = useState("");
   const needle = query.trim().toLocaleLowerCase();
-  const people = detail.members.filter(
+  const people = activeMembers.filter(
     (m) =>
       m.role !== "owner" &&
       m.role !== "admin" &&
@@ -251,9 +270,9 @@ export function AccessDialog({
       <div className={css.accessDialog}>
         <div className={css.accessAll}>
           <span>
-            <strong>{t.everyoneAccess}</strong>
+            <strong>{all ? t.everyoneAccess : departments.size || members.size ? t.restrictedAccess : t.managersOnly}</strong>
             <small>
-              {format(t.memberCount, { count: detail.members.length })}
+              {format(all ? t.memberCount : t.accessCount, { count: recipientCount })}
             </small>
           </span>
           <Toggle checked={all} label={t.everyoneAccess} onChange={setAll} />
@@ -280,7 +299,7 @@ export function AccessDialog({
                       {d.name}
                       <small>
                         {
-                          detail.members.filter((m) => m.departmentId === d.id)
+                          activeMembers.filter((m) => m.departmentId === d.id)
                             .length
                         }
                       </small>
@@ -305,7 +324,7 @@ export function AccessDialog({
               <div className={css.pickList}>
                 {people.map((m) => {
                   const inDepartment =
-                      !!m.departmentId && departments.has(m.departmentId),
+                      isCovered(m.departmentId),
                     selected = members.has(m.userId) || inDepartment;
                   return (
                     <button
@@ -843,18 +862,9 @@ export function SkillsTab(props: AssetProps) {
   const manage = assets.data.canManage,
     skills = assets.data.skills;
   return (
-    <div className={css.teamView}>
-      {manage && (
-        <div className={css.tabActions}>
-          <Button
-            variant="primary"
-            icon={<IconPlusOutlineRegular size={14} />}
-            onClick={() => setCreating(true)}
-          >
-            {t.newSkill}
-          </Button>
-        </div>
-      )}
+    <Section title={t.directOrganizationSkills} actions={manage && (
+      <Button variant="outline" onClick={() => setCreating(true)}>{t.newSkill}</Button>
+    )}>
       {!skills.length ? (
         <EmptyState title={t.noSkills} hint={t.noSkillsHint} />
       ) : (
@@ -922,8 +932,8 @@ export function SkillsTab(props: AssetProps) {
           ))}
         </div>
       )}
-      {creating && <SkillDialog {...props} close={() => setCreating(false)} />}
-      {access && (
+      {manage && creating && <SkillDialog {...props} close={() => setCreating(false)} />}
+      {manage && access && (
         <AccessDialog
           {...props}
           kind="skill"
@@ -933,7 +943,7 @@ export function SkillsTab(props: AssetProps) {
           close={() => setAccess(null)}
         />
       )}
-    </div>
+    </Section>
   );
 }
 

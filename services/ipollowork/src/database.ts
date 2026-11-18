@@ -169,7 +169,7 @@ export async function migrate(store: Store, config: Config): Promise<void> {
         )
       )?.version,
     );
-    if (version > 17)
+    if (version > 19)
       throw new Error("This database requires a newer iPolloWork service");
     if (version < 1) {
       await store.run(
@@ -258,6 +258,14 @@ export async function migrate(store: Store, config: Config): Promise<void> {
     if (version < 17) {
       await store.run(await readFile(new URL("./migration-pg-017.sql", import.meta.url), "utf8"));
       await store.run("INSERT INTO service_schema(version) VALUES(17)");
+    }
+    if (version < 18) {
+      await store.run(await readFile(new URL("./migration-pg-018.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(18)");
+    }
+    if (version < 19) {
+      await store.run(await readFile(new URL("./migration-pg-019.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(19)");
     }
     await adoptStoredResources(store, config);
   });

@@ -62,21 +62,6 @@ test('registration rejects incomplete input and does not store a rejected accoun
   await assert.rejects(account.signUp({ name: user.name, email: user.email, password: 'new-password-123' }), { code: 'IPW_REGISTRATION_REJECTED' })
   assert.equal(fixture.record(), undefined)
 })
-test('password reset uses the configured service without accepting a client redirect', async () => {
-  const fixture = credentials()
-  let calls = 0
-  const account = new AccountService(fixture.store, config, new AbortController().signal, async (input, init) => {
-    calls++
-    assert.equal(String(input), 'https://account.example.com/api/auth/request-password-reset')
-    assert.deepEqual(JSON.parse(String(init?.body)), {
-      email: user.email, redirectTo: 'https://account.example.com/reset-password',
-    })
-    return json({ status: true })
-  })
-  await assert.rejects(account.requestPasswordReset({ email: 'invalid' }), { code: 'IPW_INVALID_LOGIN' })
-  await account.requestPasswordReset({ email: user.email, redirectTo: 'https://example.test/' })
-  assert.equal(calls, 1)
-})
 test('sign-in survives a new service, exposes no credentials, and disconnect removes its record', async () => {
   const fixture = credentials()
   const a = new AccountService(fixture.store, config, new AbortController().signal, success)

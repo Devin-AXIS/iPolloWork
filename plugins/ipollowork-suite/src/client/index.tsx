@@ -20,8 +20,6 @@ import { mountConnections } from './connections.tsx'
 import { mountOutputContinuationPresentation } from './output-continuation.tsx'
 import { mountChatErrors } from './chat-errors.tsx'
 import { mountSessionDelete } from './session-delete.tsx'
-import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
-import { shareAudienceCopy } from './share-audience-copy.ts'
 import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
 export const inject = ['slots', 'theme', 'locale', 'remote', 'layout', 'uiWorkspace', 'connection', 'sessions', 'workspaces', 'contextMenus', 'conversation', 'configForms']
 export async function apply(ctx: ClientContext): Promise<void> {
@@ -79,29 +77,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
         document.removeEventListener('visibilitychange', visible)
       }
     }, 'ipollowork-suite: refresh account on return')
-    const prepareShare = async (signal: AbortSignal) => {
-      const previous = {};
-      const t = shareAudienceCopy(language(ctx))
-      await account.refresh()
-      signal.throwIfAborted()
-      const state = account.getSnapshot()
-      if (state.error) return { error: t.connectionFailed }
-      if (state.account?.status !== 'signed-in') {
-        account.openAccountSettings()
-        return { error: t.connectionSignIn }
-      }
-      try {
-        await prepareSharingConnection({
-          suite: (path, body, signal) => request(path, { method: 'POST', body: JSON.stringify(body), signal }),
-          native: callNativeSharing,
-        }, AbortSignal.any([signal, lifetime.signal]))
-        return { ...previous, connected: true }
-      } catch (_error) {
-        return { error: t.connectionFailed }
-      }
-    }
-    const { mountSharing } = await import('./sharing/mount.ts')
-    mountSharing(ctx, prepareShare)
     mountEnterprise(ctx, account, async spec => {
       if (!enterpriseInstaller) throw new Error('IPW_DSH_PLUGIN_UNAVAILABLE')
       await enterpriseInstaller.startManual(spec, '', spec)

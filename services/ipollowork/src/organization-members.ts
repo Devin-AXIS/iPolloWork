@@ -9,7 +9,7 @@ import type { App } from './http.js';
 import type { Actor } from './auth.js';
 import { audit, departmentAccess, enterpriseAccess, now } from './domain.js';
 import { ServiceError } from './errors.js';
-import { organizationInvitationRoster } from './organization-invitation-csv.js';
+import { InvitationRosterError, organizationInvitationRoster } from './organization-invitation-csv.js';
 import { z } from 'zod';
 const endpointSchema=z.url().refine(v=>{const u=new URL(v);return u.protocol==='https:'&&!u.username&&!u.password&&!u.hash&&!u.search;});
 function forbiddenAddress(address:string) {
@@ -46,9 +46,10 @@ const invitationPerson = z.object({
 const peopleSchema = z.array(invitationPerson).min(1).max(500);
 const invitationDays = z.number().int().min(1).max(30).default(7);
 const csvBatchSchema = z.object({
- csv:z.string().refine(value=>Buffer.byteLength(value)<=256*1024),
+ csv:z.string(),
  days:z.number().int().min(1).max(30).nullable().optional(),
 }).strict();
+const codeBatchSchema = csvBatchSchema.extend({ createMissingDepartments: z.boolean().optional() });
 const batchSchema=z.union([
  z.object({people:peopleSchema,days:invitationDays}).strict(),
  csvBatchSchema,
@@ -65,32 +66,68 @@ export class OrganizationMembers {
  async batch(actor:Actor,id:string,raw:unknown,codeOnly:true):Promise<{items:IssuedCode[]}>;
  async batch(actor:Actor,id:string,raw:unknown,codeOnly=false){
   await enterpriseAccess(this.store,actor,id,true);
-  const input=(codeOnly ? csvBatchSchema : batchSchema).parse(raw);
+  const input=(codeOnly ? codeBatchSchema : batchSchema).parse(raw);
   const days = codeOnly ? input.days : (input.days ?? 7);
   const createdAt = now();
   const expiresAt = days == null ? null : createdAt + days * 86400000;
-  const people = 'people' in input ? input.people : peopleSchema.parse(
-    organizationInvitationRoster(input.csv,codeOnly),
-  );
-  for (const values of [people.flatMap(p=>p.email ? [p.email] : []), people.flatMap(p=>p.employeeNumber ? [p.employeeNumber.toLowerCase()] : [])])
-    if(new Set(values).size!==values.length)throw new ServiceError('INVITATION_DUPLICATE',400,'批量邀请中存在重复的邮箱或工号');
+  const createMissingDepartments = 'createMissingDepartments' in input && input.createMissingDepartments;
+  let roster: { person: z.infer<typeof invitationPerson>; line?: number }[];
+  if ('people' in input) {
+    roster = input.people.map(person => ({ person }));
+  } else {
+    if (Buffer.byteLength(input.csv) > 256 * 1024)
+      throw new InvitationRosterError('INVITATION_CSV_TOO_LARGE', 413, 'CSV 文件不能超过 256 KB，请拆分文件后重试');
+    roster = organizationInvitationRoster(input.csv, codeOnly).map(({ person, line }) => {
+      const parsed = invitationPerson.safeParse(person);
+      if (!parsed.success) {
+        const field = parsed.error.issues[0]?.path[0];
+        const message = field === 'name' ? '名称不能超过 120 个字符'
+          : field === 'employeeNumber' ? '工号不能超过 64 个字符'
+          : field === 'departmentName' ? '部门名称不能超过 120 个字符'
+          : field === 'email' ? '邮箱格式有误' : '管理员邀请需要绑定邮箱';
+        throw new InvitationRosterError('INVITATION_CSV_INVALID', 400, message, line);
+      }
+      return { person: parsed.data, line };
+    });
+  }
+  const emails = new Set<string>(), employeeNumbers = new Set<string>();
+  for (const { person, line } of roster) {
+    const employeeNumber = person.employeeNumber?.toLowerCase();
+    if (person.email && emails.has(person.email))
+      throw new InvitationRosterError('INVITATION_DUPLICATE', 400, '名单中存在重复的邮箱', line);
+    if (employeeNumber && employeeNumbers.has(employeeNumber))
+      throw new InvitationRosterError('INVITATION_DUPLICATE', 400, '名单中存在重复的工号', line);
+    if (person.email) emails.add(person.email);
+    if (employeeNumber) employeeNumbers.add(employeeNumber);
+  }
   const items:LegacyInvitation[]=[];
   await this.store.transaction(async()=>{
    await this.store.one('SELECT id FROM enterprises WHERE id=? FOR NO KEY UPDATE',id);
    await enterpriseAccess(this.store,actor,id,true);
-   for(const person of people){
+   for(const { person, line } of roster){
     let department = person.departmentId;
     if (person.departmentName) {
-      const found = await this.store.one('SELECT id FROM departments WHERE enterprise_id=? AND name=?', id, person.departmentName);
+      let found = await this.store.one('SELECT id FROM departments WHERE enterprise_id=? AND name=?', id, person.departmentName);
+      if (!found && createMissingDepartments) {
+        const inserted = await this.store.one(
+          'INSERT INTO departments(id,enterprise_id,name) VALUES(?,?,?) ON CONFLICT(enterprise_id,name) DO NOTHING RETURNING id',
+          randomUUID(), id, person.departmentName,
+        );
+        if (inserted) await audit(this.store, actor, 'department.create', String(inserted.id), id);
+        found = inserted ?? await this.store.one('SELECT id FROM departments WHERE enterprise_id=? AND name=?', id, person.departmentName);
+      }
       if (!found || (department && department !== found.id))
-        throw new ServiceError('DEPARTMENT_MISMATCH', 400, '找不到部门「' + person.departmentName + '」');
+        throw new InvitationRosterError('DEPARTMENT_MISMATCH', 400,
+          '找不到部门「' + person.departmentName + '」。' + (codeOnly ? '请检查部门名称或勾选自动创建缺少的部门' : '请检查部门名称'),
+          line,
+        );
       department = String(found.id);
     }
     await departmentAccess(this.store,id,department);
     if (person.employeeNumber && await this.store.one(`SELECT 1 FROM members WHERE enterprise_id=? AND lower(employee_number)=lower(?)
       UNION ALL SELECT 1 FROM invitations WHERE enterprise_id=? AND lower(employee_number)=lower(?) AND accepted_by IS NULL AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)`,
       id,person.employeeNumber,id,person.employeeNumber,createdAt))
-      throw new ServiceError('INVITATION_EMPLOYEE_NUMBER_IN_USE',409,'工号已分配或已有有效邀请');
+      throw new InvitationRosterError('INVITATION_EMPLOYEE_NUMBER_IN_USE',409,'工号已分配或已有有效邀请码，请核对工号或使用现有邀请码', line);
     const token=(codeOnly ? 'ipw_' : '')+randomBytes(32).toString('base64url'),invitationId=randomUUID();
     // Do not invalidate existing invitations as a side effect of bulk creation.
     await this.store.run('INSERT INTO invitations(id,enterprise_id,token_hash,email,role,department_id,expires_at,created_at,invitee_name,employee_number) VALUES(?,?,?,?,?,?,?,?,?,?)',
@@ -169,10 +206,11 @@ export class OrganizationMembers {
   app.get('/api/v1/enterprises/:id/notifications',async c=>c.json(await this.config(c.get('actor'),c.req.param('id'))));
   app.put('/api/v1/enterprises/:id/notifications',async c=>c.json(await this.configure(c.get('actor'),c.req.param('id'),await c.req.json())));
   app.get('/api/v1/me/organization-notices', async c => c.json({ items: await this.store.all(
-    `SELECT n.id,n.kind,n.value,n.created_at,n.read_at,e.name FROM organization_member_notices n
-      JOIN enterprises e ON e.id=n.enterprise_id WHERE n.user_id=? AND (? OR n.kind<>'status')
+    `SELECT n.id,n.kind,n.value,n.created_at,n.read_at,n.enterprise_id,n.target_tab,n.target_id,e.name FROM organization_member_notices n
+      JOIN enterprises e ON e.id=n.enterprise_id WHERE n.user_id=? AND
+      (? OR n.kind IN ('role','department','removed') OR (? AND n.kind='status'))
       ORDER BY n.created_at DESC,n.id LIMIT 100`,
-    c.get('actor').id, c.req.query('include') === 'status',
+    c.get('actor').id, c.req.query('include') === 'all', c.req.query('include') === 'status',
   ) }));
   app.put('/api/v1/me/organization-notices', async c => {
     const { ids } = z.object({ ids: z.array(z.uuid()).max(100) }).strict().parse(await c.req.json());

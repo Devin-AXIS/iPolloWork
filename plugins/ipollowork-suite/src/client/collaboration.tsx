@@ -1,5 +1,5 @@
 /** Project files, accepted memory and contributions, with explicit view/participate/maintain access. */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Button,
   IconChevronLeftOutlineRegular,
@@ -35,6 +35,7 @@ import {
 import { request } from "./api.ts";
 import { projectCopy } from "./project-copy.ts";
 import {
+  ProjectDownload,
   ProjectFiles,
   ProjectOverview,
   MemoryVersions,
@@ -43,6 +44,7 @@ import css from "./suite.module.css";
 
 export interface CollaborationActions {
   openProject(workspaceId: string): void;
+  openSession(sessionId: string): Promise<void>;
 }
 export interface ViewProps {
   t: EnterpriseLabels;
@@ -119,7 +121,7 @@ export function ProjectsTab({
     </div>
   );
 }
-function Header({ title, view }: { title: string; view: ViewProps }) {
+function Header({ title, view, refresh }: { title: string; view: ViewProps; refresh?: () => void }) {
   return (
     <header className={css.viewHeader}>
       <Button
@@ -131,6 +133,7 @@ function Header({ title, view }: { title: string; view: ViewProps }) {
         {view.t.back}
       </Button>
       <h1>{title}</h1>
+      {refresh && <Button size="sm" variant="outline" onClick={refresh}>{view.t.refresh}</Button>}
     </header>
   );
 }
@@ -152,6 +155,16 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
     [draft, setDraft] = useState(""),
     [base, setBase] = useState(0),
     [workspace, setWorkspace] = useState("");
+  const { reload } = record;
+  useEffect(() => {
+    const refreshVisible = () => { if (!document.hidden) reload(); };
+    const timer = window.setInterval(refreshVisible, 12_000);
+    window.addEventListener("focus", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshVisible);
+    };
+  }, [reload, id]);
   if (!record.data)
     return (
       <>
@@ -216,7 +229,8 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
   const selected = tabs.find((x) => x.value === tab)!;
   return (
     <>
-      <Header title={space.project.title} view={view} />
+      <Header title={space.project.title} view={view} refresh={record.reload} />
+      <Notice error={record.error} t={t} retry={record.reload} />
       <div className={css.projectToolbar}>
         <span className={css.muted}>{c[space.project.role]}</span>
         <span className={css.spacer} />
@@ -288,17 +302,7 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
                       key={file.path}
                       title={file.path}
                       actions={
-                        <a
-                          className={css.projectDownload}
-                          href={
-                            "/ipollowork-suite/enterprise/download/" +
-                            encodeURIComponent(file.resourceId)
-                          }
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {c.download}
-                        </a>
+                        <ProjectDownload href={"/ipollowork-suite/enterprise/download/" + encodeURIComponent(file.resourceId)} name={file.path} view={view} />
                       }
                     />
                   ))}
@@ -476,16 +480,7 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
                   meta={f.resourceId ? "" : c.removed}
                   actions={
                     f.resourceId ? (
-                      <a
-                        href={
-                          "/ipollowork-suite/enterprise/download/" +
-                          encodeURIComponent(f.resourceId)
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {c.download}
-                      </a>
+                      <ProjectDownload href={"/ipollowork-suite/enterprise/download/" + encodeURIComponent(f.resourceId)} name={f.path} view={view} />
                     ) : undefined
                   }
                 />

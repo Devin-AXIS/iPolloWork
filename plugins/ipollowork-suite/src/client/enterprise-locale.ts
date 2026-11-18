@@ -117,7 +117,7 @@ const en = {
   localProjects: "Local projects in this enterprise",
   unassignedProjects: "Local projects without an enterprise",
   assignHere: "Move to this enterprise",
-  searchMembers: "Search name or email",
+  searchMembers: "Search name, email, or employee number",
   allDepartments: "All",
   invitations: "Invitations",
   resend: "New link",
@@ -190,7 +190,7 @@ const en = {
   shares: "Shared conversations",
   create: "Create enterprise",
   join: "Join enterprise",
-  joinByService: "Join with a code",
+  joinByService: "Join organization",
   name: "Name",
   personal: "Personal",
   owner: "Owner",
@@ -310,6 +310,9 @@ const en = {
   sharingScope:
     "Shared text is available only to the selected enterprise members.",
   changed: "The conversation changed. Reopen the preview before sharing.",
+  emptyShare: "Send a message in this conversation before sharing it.",
+  missingShare: "This share is no longer available.",
+  copyWorkspaceRequired: "Create or open a workspace before copying a conversation.",
   inviteSent: "Invitation link ready for {email}",
   newDepartment: "Department",
   departmentName: "Department name",
@@ -325,13 +328,28 @@ const en = {
   serviceAddress: "Organization service address",
   invitationCode: "Invitation code",
   invitationCsv: "Member roster (CSV)",
-  invitationCsvHint: "Include name and employee number. Department is optional.",
+  invitationCsvHint: "Use a UTF-8 CSV with a name and employee number for each member. Department is optional.",
+  rosterCreateDepartments: "Create missing departments",
+  rosterFileRequired: "Choose a CSV file containing member records.",
+  rosterUnreadable: "The file could not be read as UTF-8. Save it as CSV UTF-8 and try again.",
+  rosterEmpty: "The CSV has no member records. Add at least one member.",
+  rosterTooLarge: "Split the CSV into files of 256 KB or less.",
+  rosterTooManyRows: "Split the CSV into batches of up to 500 members.",
+  rosterInvalid: "Use the downloaded template and check the CSV headers and encoding.",
+  rosterInvalidRow: "Check the columns, quotes, and required name and employee number.",
+  rosterDuplicate: "This employee number is repeated in the CSV. Give each member a unique number.",
+  rosterDepartmentMissing: "This department was not found. Correct the name or select Create missing departments.",
+  rosterInvalidInput: "Check the CSV and enter a whole number from 1 to 30 for the validity period or leave it blank.",
+  rosterUnknownResult: "Could not confirm whether codes were created. Check pending codes before retrying.",
+  rosterErrorRow: "CSV row {row}",
+  rosterSuccess: "Created {count} join codes. Download them to share with members.",
   createJoinCode: "Generate join code",
   addEmployee: "Add employee",
   permanentJoinCode: "Never expires",
   permanentJoinCodeHint: "Leave blank for a code that never expires.",
   editJoinCodeExpiry: "Edit code expiration",
   inviteNotEditable: "This code is already used or revoked.",
+  inviteUsed: "This invitation code has already been used. Ask an administrator for a new code.",
   employeeNumberInUse: "This employee number is already assigned or has an active code.",
   downloadRoster: "Download CSV template",
   rosterHeaders: "Name,Employee number,Department",
@@ -354,7 +372,10 @@ const en = {
   organizationNameSaved: "Organization name saved",
   settingsUnavailable: "This account service does not support editing the organization name yet.",
   skillsTab: "Skills",
+  skillPublications: "Skill submissions and publications",
+  directOrganizationSkills: "Directly shared skills",
   mcpTab: "MCP",
+  organizationMcp: "Organization MCP",
   newMcp: "Share MCP",
   mcpUnavailable: "This organization service does not support MCP sharing yet. Ask your administrator to update it.",
   publicMcpUnavailable: "Could not load the public MCP catalog.",
@@ -366,6 +387,7 @@ const en = {
   noMcpHint: "MCP servers shared with your organization, department, or account appear here.",
   deleteMcpTitle: "Remove “{name}”?",
   deleteMcpBody: "Members will lose access to this shared MCP server.",
+  mcpReviewRequired: "Submit a new version for review to change the MCP address.",
   deleteSessionTitle: "Delete “{name}”?",
   deleteSessionBody: "Running tasks will stop. You can restore this conversation from Archived.",
   deleteSession: "Delete conversation",
@@ -375,6 +397,8 @@ const en = {
   modelsTab: "Models and tools",
   everyoneAccess: "Everyone",
   managersOnly: "Managers only",
+  restrictedAccess: "Selected recipients",
+  accessCount: "{count} with access, including managers",
   accessTitle: "Who can use this",
   accessHint: "Owners and administrators can always use it.",
   peopleCount: "{count} people",
@@ -405,7 +429,7 @@ const en = {
   skillDescriptionHint: "The model reads this to decide when to use the skill.",
   skillContent: "Instructions",
   importMarkdown: "Import Markdown",
-  noSkills: "No enterprise skills yet",
+  noSkills: "No directly shared skills",
   noSkillsHint:
     "Shared ways of working live here. Colleagues with access can use them in their own DSH.",
   skillCreated: "Skill created",
@@ -548,7 +572,7 @@ const zh: typeof en = {
   localProjects: "归属此组织的本机项目",
   unassignedProjects: "尚未归属组织的本机项目",
   assignHere: "归入此组织",
-  searchMembers: "搜索姓名或邮箱",
+  searchMembers: "搜索姓名、邮箱或工号",
   allDepartments: "全部",
   invitations: "邀请记录",
   resend: "重新生成链接",
@@ -616,7 +640,7 @@ const zh: typeof en = {
   shares: "共享会话",
   create: "创建组织",
   join: "加入组织",
-  joinByService: "通过邀请码加入",
+  joinByService: "加入企业",
   name: "名称",
   personal: "个人",
   owner: "所有者",
@@ -720,6 +744,9 @@ const zh: typeof en = {
   chooseColleague: "请至少选择一位同事",
   sharingScope: "分享文字仅对所选组织成员开放",
   changed: "会话内容已更新，请重新打开预览后分享",
+  emptyShare: "当前会话还没有可分享的消息",
+  missingShare: "这条会话分享已撤回或无法访问",
+  copyWorkspaceRequired: "请先创建或打开一个工作区，再复制会话",
   inviteSent: "已为 {email} 生成邀请链接",
   newDepartment: "部门",
   departmentName: "部门名称",
@@ -735,13 +762,28 @@ const zh: typeof en = {
   serviceAddress: "组织服务地址",
   invitationCode: "邀请码",
   invitationCsv: "成员名单（CSV）",
-  invitationCsvHint: "名称和工号必填，部门名称可选。",
+  invitationCsvHint: "请使用 UTF-8 CSV。名称和工号必填，部门名称可选",
+  rosterCreateDepartments: "自动创建缺少的部门",
+  rosterFileRequired: "请选择包含成员记录的 CSV 文件",
+  rosterUnreadable: "无法以 UTF-8 读取文件，请另存为 CSV UTF-8 后重试",
+  rosterEmpty: "CSV 中没有成员记录，请至少填写一位成员",
+  rosterTooLarge: "请将 CSV 拆分为不超过 256 KB 的文件",
+  rosterTooManyRows: "每次最多导入 500 位成员，请拆分名单后重试",
+  rosterInvalid: "请使用下载的模板，并检查 CSV 表头和编码",
+  rosterInvalidRow: "请检查列数、引号，以及名称和工号是否填写且长度符合要求",
+  rosterDuplicate: "CSV 中存在重复工号，请为每位成员填写唯一工号",
+  rosterDepartmentMissing: "找不到此部门，请检查部门名称或勾选自动创建缺少的部门",
+  rosterInvalidInput: "请检查 CSV，并将有效天数留空或填写 1 到 30 之间的整数",
+  rosterUnknownResult: "无法确认邀请码是否生成，请先查看待使用的邀请码，再决定是否重试",
+  rosterErrorRow: "CSV 第 {row} 行",
+  rosterSuccess: "已生成 {count} 个邀请码，下载后可发给对应成员",
   createJoinCode: "生成邀请码",
   addEmployee: "添加员工",
   permanentJoinCode: "永久有效",
   permanentJoinCodeHint: "留空则永久有效。邀请码仅可使用一次。",
   editJoinCodeExpiry: "修改邀请码有效期",
   inviteNotEditable: "邀请码已使用或已撤销。",
+  inviteUsed: "邀请码已被使用，请联系管理员获取新的邀请码",
   employeeNumberInUse: "该工号已分配或已有有效邀请码。",
   downloadRoster: "下载 CSV 模板",
   rosterHeaders: "名称,工号,部门名称",
@@ -764,7 +806,10 @@ const zh: typeof en = {
   organizationNameSaved: "组织名称已保存",
   settingsUnavailable: "当前账号服务暂不支持修改组织名称。",
   skillsTab: "Skill",
+  skillPublications: "Skill 提交与发布",
+  directOrganizationSkills: "直接共享的 Skill",
   mcpTab: "MCP",
+  organizationMcp: "组织 MCP",
   newMcp: "共享 MCP",
   mcpUnavailable: "当前组织服务暂未启用 MCP 共享，请联系管理员更新企业服务。",
   publicMcpUnavailable: "公开 MCP 目录暂时无法加载。",
@@ -776,6 +821,7 @@ const zh: typeof en = {
   noMcpHint: "共享给组织、部门或你的 MCP 会显示在这里。",
   deleteMcpTitle: "移除「{name}」？",
   deleteMcpBody: "已获授权的成员将无法继续使用此共享 MCP。",
+  mcpReviewRequired: "变更 MCP 地址请提交新版本审核",
   deleteSessionTitle: "删除会话「{name}」？",
   deleteSessionBody: "正在运行的任务会停止。之后可在「已归档」中恢复此会话。",
   deleteSession: "删除会话",
@@ -785,6 +831,8 @@ const zh: typeof en = {
   modelsTab: "模型与工具",
   everyoneAccess: "全员可用",
   managersOnly: "仅管理员",
+  restrictedAccess: "指定范围",
+  accessCount: "{count} 人可使用（含管理员）",
   accessTitle: "谁可以使用",
   accessHint: "所有者和管理员始终可以使用",
   peopleCount: "{count} 人",
@@ -813,7 +861,7 @@ const zh: typeof en = {
   skillDescriptionHint: "模型根据这句话判断何时使用",
   skillContent: "内容",
   importMarkdown: "导入 Markdown",
-  noSkills: "还没有组织 Skill",
+  noSkills: "暂无直接共享的 Skill",
   noSkillsHint:
     "把团队的工作方法沉淀在这里，有权限的同事在自己的 DSH 里直接就能用",
   skillCreated: "Skill 已创建",
@@ -881,6 +929,7 @@ export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.
     return t.forbidden;
   if (code === "EMAIL_NOT_VERIFIED") return t.verifyEmail;
   if (code === "MEMBER_SUSPENDED") return t.memberSuspendedHint;
+  if (code === "INVITATION_USED") return t.inviteUsed;
   if (code === "INVITATION_NOT_EDITABLE") return t.inviteNotEditable;
   if (code === "INVITATION_EMPLOYEE_NUMBER_IN_USE") return t.employeeNumberInUse;
   if (
@@ -891,7 +940,10 @@ export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.
     ].includes(code)
   )
     return t.invalidInvite;
-  if (code === "RECIPIENT_NOT_FOUND") return t.recipientMissing;
+  if (code === "RECIPIENT_NOT_FOUND" || code === "SHARE_RECIPIENT_INVALID") return t.recipientMissing;
+  if (code === "SHARE_NOT_FOUND") return t.missingShare;
+  if (code === "IPW_SHARE_EMPTY") return t.emptyShare;
+  if (code === "IPW_SHARE_WORKSPACE_REQUIRED") return t.copyWorkspaceRequired;
   if (code === "IPW_SHARE_TOO_LARGE") return t.tooLarge;
   if (code === "IPW_PROJECT_NOT_FOUND") return t.projectMissing;
   if (
@@ -909,6 +961,7 @@ export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.
   if (code === "WORK_NOT_FOUND") return t.projectMissing;
   if (code === "IPW_SHARE_CHANGED") return t.changed;
   if (code === "IPW_ENTERPRISE_MCP_UNAVAILABLE") return t.mcpUnavailable;
+  if (code === "MCP_REVIEW_REQUIRED") return t.mcpReviewRequired;
   if (code === "IPW_PUBLIC_MCP_UNAVAILABLE") return t.publicMcpUnavailable;
   if (code === "IPW_ENTERPRISE_SETTINGS_UNAVAILABLE") return t.settingsUnavailable;
   if (code === "IPW_ENTERPRISE_CAPABILITIES_UNAVAILABLE") return t.organizationCapabilitiesUnavailable;

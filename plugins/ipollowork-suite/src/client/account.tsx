@@ -5,7 +5,6 @@ import type { Labels } from './locale.ts'
 import type { LauncherProps } from './native.ts'
 import { IconEyeOffOutlineRegular, IconEyeOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { AccountArt, ArrowGlyph, LockGlyph, MailGlyph, Monogram } from './glyphs.tsx'
-import { request } from './api.ts'
 import { MembershipPanel } from './membership.tsx'
 import css from './suite.module.css'
 
@@ -17,7 +16,6 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
   const t = useLabels(value => value); const { account, busy, error } = useAccount(value => value)
   const [email, setEmail] = useState(''); const [password, setPassword] = useState('')
   const [registering, setRegistering] = useState(false); const [reveal, setReveal] = useState(false)
-  const [resetStatus, setResetStatus] = useState<'sending' | 'sent' | 'error'>()
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => { if (account?.status === 'signed-in') setRegistering(false) }, [account?.status])
   const submit = (event: FormEvent) => {
@@ -25,15 +23,6 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
     // The account service requires a display name; the email's local part is the editable default.
     if (registering) void signUp(email.split('@')[0] || email, email, secret)
     else void signIn(email, secret)
-  }
-  const resetPassword = async () => {
-    setResetStatus('sending')
-    try {
-      await request('/account/request-password-reset', { method: 'POST', body: JSON.stringify({ email }) })
-      setResetStatus('sent')
-    } catch {
-      setResetStatus('error')
-    }
   }
   const message = error && (error === 'IPW_EMAIL_IN_USE' ? t.emailInUse
     : error === 'IPW_REGISTRATION_REJECTED' ? t.registrationError
@@ -69,12 +58,6 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
           {message && <p role="alert" className={css.authError}>{message}</p>}
           <button className={css.authSubmit} type="submit" disabled={busy || !email || !password}>{busy ? t.loading : registering ? t.registerAndSignIn : t.signIn}<ArrowGlyph size={14}/></button>
         </form>
-        {!registering && <>
-          <button className={css.authReset} type="button" disabled={!email || busy || resetStatus === 'sending'}
-            onClick={() => void resetPassword()}>{resetStatus === 'sending' ? t.loading : t.requestPasswordReset}</button>
-          {resetStatus === 'sent' && <p role="status" className={css.authService}>{t.passwordResetSent}</p>}
-          {resetStatus === 'error' && <p role="alert" className={css.authError}>{t.passwordResetFailed}</p>}
-        </>}
         {registering && <p className={css.authService}>{t.email === '邮箱' ? '使用受邀邮箱注册后，打开邀请链接即可加入组织。' : 'Register with the invited email, then open the invitation link to join.'}</p>}
         {service}
       </div>

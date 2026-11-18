@@ -47,7 +47,7 @@ export interface EnterpriseDetail {
   tabOrder?: EnterpriseTab[];
 }
 
-export type PublicationKind = "plugin" | "template" | "skill";
+export type PublicationKind = "plugin" | "template" | "skill" | "mcp";
 export interface OrganizationPublication {
   id: string;
   title: string;
@@ -224,6 +224,7 @@ export interface EnterpriseMcp {
   host: string;
   enabled?: boolean;
   endpoint?: string;
+  reviewed?: boolean;
   oauthRequired?: boolean;
   authorized?: boolean;
   oauth?: { authorizationUrl:string; tokenUrl:string; clientId:string; scope:string };

@@ -25,6 +25,7 @@ import type {
 } from "../shared/enterprise.ts";
 
 import { serviceCategories } from "../shared/service-categories.ts";
+import { conversationCopyId, importConversationCopy, type CopyPersistence, type CopyWorkspace } from "./session-copies.ts";
 const id = z
   .string()
   .min(1)
@@ -43,7 +44,7 @@ const audience = z
   .strict();
 const description = z.string().trim().max(2000);
 const tabs = z.array(z.enum(organizationTabs)).max(organizationTabs.length);
-const publicationKind = z.enum(["plugin", "template", "skill"]);
+const publicationKind = z.enum(["plugin", "template", "skill", "mcp"]);
 const publicationVersion = z.string().min(1).max(64).regex(/^[0-9A-Za-z.-]+$/);
 const mcpOAuth = z.object({
   authorizationUrl:z.url().max(2048), tokenUrl:z.url().max(2048), clientId:z.string().min(1).max(256), scope:z.string().max(512),
@@ -185,7 +186,9 @@ function projectUpdate(r: Record<string, unknown>): ProjectUpdate {
   };
 }
 export interface EnterpriseNative {
+  sessionPersistence?: CopyPersistence;
   workspaceRegistry: {
+    get?(id: string): CopyWorkspace | undefined;
     create?(path: string, title?: string): Promise<{ id: string }>;
     list(): {
       id: string;
@@ -203,6 +206,7 @@ export interface EnterpriseNative {
 
 /** Uses native workspace identities and shares only an explicitly reviewed text snapshot. */
 export class EnterpriseService {
+  private importing = new Map<string, Promise<{ sessionId: string }>>();
   constructor(
     private account: AccountService,
     private native: EnterpriseNative,
@@ -461,6 +465,8 @@ export class EnterpriseService {
         }
         if (kind === "skill")
           return this.organizationCapability(root, z.object({ ...common, markdown:z.string().min(1).max(32_000) }).strict().parse(input));
+        if (kind === "mcp")
+          return this.organizationCapability(root, z.object({ ...common, endpoint:z.url().max(2048) }).strict().parse(input));
         return this.organizationCapability(root, z.object({ ...common, html: z.string().min(1).max(512 * 1024) }).strict().parse(input));
       }
     }
@@ -484,6 +490,7 @@ export class EnterpriseService {
         const result = await this.organizationCapability(path);
         if (kind === "template") return z.object({ html: z.string().max(512 * 1024) }).parse(result);
         if (kind === "skill") return z.object({ markdown:z.string().max(32_000) }).parse(result);
+        if (kind === "mcp") return z.object({ endpoint:z.url().max(2048) }).parse(result);
         const { spec } = z.object({ spec: z.string().max(300) }).parse(result);
         const reference = pinnedPlugin(spec);
         if (reference.version !== version) throw new SuiteError("IPW_INVALID_RESPONSE", 502);
@@ -499,6 +506,13 @@ export class EnterpriseService {
     input?: unknown,
   ): Promise<unknown> {
     const parts = path.split("/").filter(Boolean);
+    if (path === "/conversation-share-preview" && method === "POST") {
+      await this.signedIn();
+      const { sessionId } = z.object({ sessionId: id }).strict().parse(input);
+      const { transcript, revision } = await this.sessionTranscript(sessionId);
+      if (!transcript.some(message => message.role === "user")) throw new SuiteError("IPW_SHARE_EMPTY", 409);
+      return { revision, messageCount: transcript.length };
+    }
     if (method === "DELETE" && parts[0] === "projects" && parts.length === 2)
       return this.cloud("projects/" + id.parse(parts[1]), undefined, "DELETE");
     if (
@@ -561,10 +575,13 @@ export class EnterpriseService {
     if (path === "/notices") {
       if (method === "GET") {
         const { items } = z.object({ items: z.array(z.object({
-          id, kind: z.enum(["role", "department", "removed", "status"]), value: z.string().nullable(),
+          id, kind: z.enum(["role", "department", "removed", "status", "resource.approved", "resource.rejected",
+            "resource.published", "project.submitted", "project.accepted", "conversation.shared"]), value: z.string().nullable(),
           name, created_at: z.number(), read_at: z.number().nullable(),
-        })).max(100) }).parse(await this.organizationCapability("me/organization-notices?include=status"));
-        return { items: items.map(row => ({ id:row.id, kind:row.kind, value:row.value, name:row.name, createdAt:row.created_at, readAt:row.read_at })) };
+          enterprise_id:id.optional(), target_tab:tabs.element.nullable().optional(), target_id:id.nullable().optional(),
+        })).max(100) }).parse(await this.organizationCapability("me/organization-notices?include=all"));
+        return { items: items.map(row => ({ id:row.id, kind:row.kind, value:row.value, name:row.name,
+          createdAt:row.created_at, readAt:row.read_at, enterpriseId:row.enterprise_id, tab:row.target_tab, targetId:row.target_id })) };
       }
       if (method === "PUT") return this.organizationCapability("me/organization-notices",
         z.object({ids:z.array(z.uuid()).max(100)}).strict().parse(input), method);
@@ -595,21 +612,52 @@ export class EnterpriseService {
     if (method === "POST" && path === "/assign") return this.assign(input);
     if (parts[0] === "organizations" && parts[1]) {
       const base = "enterprises/" + id.parse(parts[1]);
-      if (method === "GET" && parts[2] === "messages" && parts.length === 3) {
-        const { shares } = z.object({shares:z.array(z.object({
-          enterpriseId:id.nullable(), shareId:id, ownerId:id, sessionTitle:z.string().max(4096),
-          sessionMode:z.enum(["view","write"]), online:z.boolean(),
-        })).max(1000)}).parse(await this.cloud("liveshare/shares"));
-        return { items:shares.filter(share=>share.enterpriseId===parts[1]).map(share=>({
-          ...share,link:this.origin + "/s/" + encodeURIComponent(share.shareId),
-        })) };
+      if (parts[2] === "messages") {
+        const route = base + "/conversation-shares";
+        if (parts.length === 3 && method === "GET") {
+          const userId = await this.signedIn();
+          const { items } = z.object({items:z.array(z.object({
+            id, title: name, owner_id:id, owner_name:z.string(), created_at:z.number(),
+          })).max(200)}).parse(await this.organizationCapability(route));
+          return { userId, items:items.map(share => ({ id:share.id, title:share.title,
+            ownerId:share.owner_id, ownerName:share.owner_name, createdAt:share.created_at })) };
+        }
+        if (parts.length === 3 && method === "POST") {
+          await this.signedIn();
+          const data = z.object({ requestId:z.uuid(), sessionId:id, title:name, recipients:z.array(id).min(1).max(100),
+            revision:z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(input);
+          const current = await this.sessionTranscript(data.sessionId);
+          if (current.revision !== data.revision) throw new SuiteError("IPW_SHARE_CHANGED", 409);
+          if (!current.transcript.some(message => message.role === "user")) throw new SuiteError("IPW_SHARE_EMPTY", 409);
+          return this.organizationCapability(route, { requestId:data.requestId, title:data.title,
+            recipients:data.recipients, transcript:current.transcript });
+        }
+        if (parts.length === 4 && method === "DELETE") return this.organizationCapability(route + "/" + id.parse(parts[3]), undefined, method);
+        if (parts.length === 5 && parts[4] === "copy" && method === "POST") {
+          const user = await this.signedIn(), shareId = id.parse(parts[3]);
+          const share = z.object({ title:name, transcript:z.array(z.object({
+            role:z.enum(["user","assistant"]), content:z.string(),
+          })).min(1).max(200) }).parse(await this.organizationCapability(route + "/" + shareId));
+          const sessionId = conversationCopyId(user, shareId);
+          const workspaces = this.native.workspaceRegistry.list();
+          if (workspaces.some(workspace => workspace.sessionIds.includes(sessionId))) return { sessionId };
+          const running = this.importing.get(sessionId);
+          if (running) return running;
+          const preferred = workspaces[0];
+          const destination = preferred && this.native.workspaceRegistry.get?.(preferred.id);
+          if (!this.native.sessionPersistence || !destination) throw new SuiteError("IPW_SHARE_WORKSPACE_REQUIRED", 409);
+          const operation = importConversationCopy(this.native.sessionPersistence, destination, sessionId, share.title, share.transcript);
+          this.importing.set(sessionId, operation);
+          try { return await operation; } finally { this.importing.delete(sessionId); }
+        }
       }
       if (parts[2] === "publications" && parts[3])
         return this.publications(base, parts.slice(3), method, input);
-      if (method === "GET" && parts[2] === "activity" && parts.length === 3) {
+      if ((method === "GET" || method === "POST") && parts[2] === "activity" && parts.length === 3) {
+        const search = method === "POST" ? z.object({ actor: z.string().trim().max(120) }).strict().parse(input).actor : "";
         const { items } = z.object({ items: z.array(z.object({
           id: z.union([z.string(), z.number()]), action: z.string(), actor: z.string().nullable(), created_at: z.number(),
-        })).max(100) }).parse(await this.organizationCapability(base + "/activity"));
+        })).max(100) }).parse(await this.organizationCapability(base + "/activity" + (search ? "?actor=" + encodeURIComponent(search) : "")));
         return { items: items.map(row => ({ id: String(row.id), action: row.action, actor: row.actor, createdAt: row.created_at })) };
       }
       if (method === "POST" && parts[2] === "analytics" && parts.length === 3)
@@ -654,7 +702,9 @@ export class EnterpriseService {
       }
       if (method === "POST" && parts[2] === "join-codes" && parts[3] === "batch" && parts.length === 4)
         return this.organizationCapability(base + "/join-codes/batch", z.object({
-          csv:z.string().min(1).max(256 * 1024),days:z.number().int().min(1).max(30).nullable().optional(),
+          csv: z.string(),
+          days: z.number().int().min(1).max(30).nullable().optional(),
+          createMissingDepartments: z.boolean().optional(),
         }).strict().parse(input));
       if (method === "PATCH" && parts[2] === "join-codes" && parts.length === 4)
         return this.organizationCapability(base + "/join-codes/" + id.parse(parts[3]), z.object({
@@ -731,6 +781,7 @@ export class EnterpriseService {
             items: z.array(z.object({
               id, title: name, description, host: z.string().max(253), audience,
               enabled: z.boolean().optional(), endpoint: z.url().max(2048).optional(),
+              reviewed: z.boolean().optional(),
               oauthRequired:z.boolean().optional(), authorized:z.boolean().optional(), oauth:mcpOAuth.optional(),
             })).max(100),
           }).parse(value);

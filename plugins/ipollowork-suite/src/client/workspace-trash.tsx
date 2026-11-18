@@ -1,89 +1,83 @@
 import { useState, useSyncExternalStore } from 'react'
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { SessionSummary } from '@deepseek-ai/dsh-api-session-controller/client'
+import {
+  Button, IconArchiveOffOutlineRegular, IconFolderOpenOutlineRegular, IconTrashOutlineRegular, Modal,
+} from '@deepseek-ai/dsh-client-ui-primitives'
 import { language } from './locale.ts'
 import { request } from './api.ts'
 import type { ClientContext } from './native.ts'
 import css from './suite.module.css'
 
 const messages = {
-  zh: { title: '回收站', open: '查看回收站', close: '关闭', empty: '回收站没有会话。', restore: '恢复', restoreFailed: '无法恢复会话。请确认原工作区目录仍可访问。' },
-  en: { title: 'Recycle Bin', open: 'Open Recycle Bin', close: 'Close', empty: 'There are no conversations in the Recycle Bin.', restore: 'Restore', restoreFailed: 'Could not restore the conversation. Check that its original directory is accessible.' },
+  zh: { title: '回收站', close: '关闭', empty: '没有已归档的会话', loading: '正在加载归档会话',
+    restore: '恢复会话', reveal: '在文件夹中显示', restoreFailed: '无法恢复会话，请确认原工作区目录仍可访问',
+    revealFailed: '无法找到此会话的本地文件' },
+  en: { title: 'Recycle Bin', close: 'Close', empty: 'No archived conversations', loading: 'Loading archived conversations',
+    restore: 'Restore conversation', reveal: 'Show in folder', restoreFailed: 'Could not restore the chat. Check that its original workspace is accessible.',
+    revealFailed: 'The local conversation file could not be found.' },
 }
 
-/** Recover conversations without changing their original working directories. */
+/** Local archive browser, separate from the Workspace tree and its commands. */
 export function mountWorkspaceTrash(ctx: ClientContext): void {
+  if (location.protocol !== 'dsh-app:') return
+  const workspace = ctx.workspaces.list, sessions = ctx.sessions.list
   const copy = () => messages[language(ctx)]
-  const workspaces = ctx.workspaces.list
-  const sessions = ctx.sessions.list
-  const subscribeLocale = (listener: () => void) => ctx.locale.subscribe(listener)
-  const subscribeWorkspaces = (listener: () => void) => workspaces.subscribe(listener)
-  const subscribeSessions = (listener: () => void) => sessions.subscribe(listener)
-  const workspaceSnapshot = () => workspaces.getSnapshot()
-  const sessionSnapshot = () => sessions.getSnapshot()
-  let workspaceId: string | null = null
-  let open = false
-  const listeners = new Set<() => void>()
-  const openSnapshot = () => open
-  const subscribeOpen = (listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener) }
-  const show = (value: boolean) => { open = value; for (const listener of listeners) listener() }
-  function WorkspaceTrash() {
-    const visible = useSyncExternalStore(subscribeOpen, openSnapshot)
-    const t = useSyncExternalStore(subscribeLocale, copy)
-    const workspaceState = useSyncExternalStore(subscribeWorkspaces, workspaceSnapshot)
-    const sessionState = useSyncExternalStore(subscribeSessions, sessionSnapshot)
+  const desktop = (window as Window & { dshDesktop?: { revealArchivedSession?(id: string): Promise<void> } }).dshDesktop
+  function WorkspaceTrash({ wide }: { wide: boolean }) {
+    const t = useSyncExternalStore(listener => ctx.locale.subscribe(listener), copy)
+    const workspaceState = useSyncExternalStore(listener => workspace.subscribe(listener), () => workspace.getSnapshot())
+    const sessionState = useSyncExternalStore(listener => sessions.subscribe(listener), () => sessions.getSnapshot())
+    const [open, setOpen] = useState(false), [selected, select] = useState<string>()
+    const [busy, setBusy] = useState(false), [error, setError] = useState('')
     const archived = new Set(workspaceState.archivedSessionIds)
     const rows = sessionState.ids.filter(id => archived.has(id)).map(id => sessionState.byId[id]).filter(row => row !== undefined)
-    const [restoring, setRestoring] = useState<string>()
-    const [error, setError] = useState(false)
-    async function restore(row: SessionSummary) {
-      setRestoring(row.id)
-      setError(false)
-      try {
-        await request('/workspace-trash/restore', { method: 'POST', body: JSON.stringify({ sessionId: row.id }) })
-      } catch {
-        setError(true)
-      } finally {
-        setRestoring(undefined)
-      }
+    const action = (id: string, kind: 'restore' | 'reveal') => {
+      if (busy) return
+      setError(''); setBusy(true)
+      void (async () => {
+        try {
+          if (kind === 'restore') {
+            await request('/workspace-trash/restore', { method: 'POST', body: JSON.stringify({ sessionId: id }) })
+            select(undefined)
+          } else if (desktop?.revealArchivedSession) {
+            await desktop.revealArchivedSession(id)
+          }
+        } catch { setError(kind === 'restore' ? t.restoreFailed : t.revealFailed) }
+        finally { setBusy(false) }
+      })()
     }
-    if (!visible) return null
-    return <Modal open title={t.title} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => show(false)}>
-      {error && <p role="alert">{t.restoreFailed}</p>}
-      {workspaceState.phase === 'ready' && sessionState.phase === 'ready' && rows.length === 0 && <p>{t.empty}</p>}
-      <ul className={css.workspaceTrashList}>
-        {rows.map(row => <li key={row.id}>
-          <div><strong>{row.displayTitle}</strong>{row.cwd && <span title={row.cwd}>{row.cwd}</span>}</div>
-          <Button variant="outline" disabled={restoring !== undefined} onClick={() => void restore(row)}>{t.restore}</Button>
-        </li>)}
-      </ul>
-    </Modal>
+    return <>
+      <Button className={css.workspaceTrashEntry} size="sm" variant="ghost" aria-label={t.title}
+        aria-expanded={open} title={t.title} icon={<IconTrashOutlineRegular size={16}/>}
+        onClick={() => { setOpen(value => !value); select(undefined); setError('') }}>{wide ? t.title : undefined}</Button>
+      {open && <Modal open title={t.title} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => setOpen(false)}>
+        {error && <p className={css.formError} role="alert">{error}</p>}
+        {workspaceState.phase !== 'ready' || sessionState.phase !== 'ready' ? <p role="status">{t.loading}</p> :
+          rows.length ? <ul className={css.workspaceTrashList}>{rows.map(row => <li key={row.id}>
+            <button type="button" className={css.workspaceTrashDetails} aria-pressed={selected === row.id}
+              onClick={() => { select(row.id); setError('') }}>
+              <strong title={row.displayTitle}>{row.displayTitle}</strong>
+              {row.cwd && <span title={row.cwd}>{row.cwd}</span>}
+            </button>
+            {selected === row.id && <div className={css.workspaceTrashActions}>
+              <Button variant="ghost" size="sm" disabled={busy} aria-label={t.restore} title={t.restore}
+                icon={<IconArchiveOffOutlineRegular size={16}/>} onClick={() => action(row.id, 'restore')}/>
+              {desktop?.revealArchivedSession && <Button variant="ghost" size="sm" disabled={busy} aria-label={t.reveal} title={t.reveal}
+                icon={<IconFolderOpenOutlineRegular size={16}/>} onClick={() => action(row.id, 'reveal')}/>}
+            </div>}
+          </li>)}</ul> : <p>{t.empty}</p>}
+      </Modal>}
+    </>
   }
-  ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'ipollowork-workspace-trash' }, WorkspaceTrash))
-  ctx.effect(() => ctx.contextMenus.register({
-    id: 'ipollowork.workspace-trash', target: 'workspace', order: 10,
-    resolve: target => workspaceId && target.workspaceId === workspaceId ? [{ id: 'open-recycle-bin', label: copy().open, run: () => show(true) }] : [],
-  }), 'ipollowork: native recycle bin workspace menu')
+  ctx.slots.inject('sidebar.footer.action', () =>
+    ctx.slots.register({ name: 'sidebar.footer.action', id: 'ipollowork-trash', order: 80 }, WorkspaceTrash))
   ctx.effect(() => {
     const lifetime = new AbortController()
-    let loading = false
-    const refresh = () => {
-      const snapshot = workspaceSnapshot()
-      if (loading || snapshot.phase !== 'ready' || workspaceId && snapshot.items.some(row => row.workspaceId === workspaceId)) return
-      loading = true
-      void request<{ workspaceId: string | null }>('/workspace-trash', { signal: lifetime.signal })
-        .then(result => { workspaceId = result.workspaceId }, () => {})
-        .finally(() => { loading = false })
-    }
-    // The native row click expands a folder. For this one workspace its contents are the Host's archived sessions.
-    const click = (event: MouseEvent) => {
-      if (!workspaceId || !(event.target instanceof Element) || event.target.closest('button,a,[role="button"]')) return
-      if (event.target.closest('[data-row-key]')?.getAttribute('data-row-key') !== `workspace:${workspaceId}`) return
-      event.preventDefault(); event.stopPropagation(); show(true)
-    }
-    refresh()
-    const release = subscribeWorkspaces(refresh)
-    document.addEventListener('click', click, true)
-    return () => { lifetime.abort(); release(); document.removeEventListener('click', click, true) }
-  }, 'ipollowork: open the native Recycle Bin workspace')
+    const style = document.createElement('style')
+    document.head.append(style)
+    void request<{ workspaceId: string | null }>('/workspace-trash', { signal: lifetime.signal }).then(({ workspaceId }) => {
+      if (workspaceId && !lifetime.signal.aborted)
+        style.textContent = `[data-slot="sidebar.workspaces"] [data-row-key="${CSS.escape('workspace:' + workspaceId)}"]{display:none!important}`
+    }, () => {})
+    return () => { lifetime.abort(); style.remove() }
+  }, 'ipollowork: hide the legacy synthetic archive workspace')
 }

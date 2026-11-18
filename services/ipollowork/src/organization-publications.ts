@@ -5,8 +5,10 @@ import type { Store, Row } from "./database.js";
 import { audit, enterpriseAccess, isEnterpriseManager, now, uid } from "./domain.js";
 import { audienceOf, grantedTo, replaceAudience, requireUse } from "./grants.js";
 import { ServiceError } from "./errors.js";
+import { isSharedMcpEndpoint, publishEnterpriseMcp } from "./enterprise-mcp.js";
+import { organizationNotice } from "./organization-notice.js";
 
-const kindSchema = z.enum(["plugin", "template", "skill"]);
+const kindSchema = z.enum(["plugin", "template", "skill", "mcp"]);
 const title = z.string().trim().min(1).max(120);
 const description = z.string().trim().max(2000).default("");
 const version = z.string().max(64).refine(value => !value.includes("+") && semver.valid(value) === value);
@@ -23,11 +25,16 @@ const skill = z.object({
   id: publicationId, title, description: z.string().trim().min(1).max(1000), version,
   markdown: z.string().trim().min(1).max(32_000).refine(value => !value.includes("\u0000")),
 }).strict();
+const mcp = z.object({
+  id: publicationId, title, description, version,
+  endpoint: z.string().trim().max(2048).refine(isSharedMcpEndpoint, "需要公开的 HTTPS MCP 地址"),
+}).strict();
 const review = z.object({
   decision: z.enum(["approve", "reject", "publish"]),
   note: z.string().trim().max(1000).default(""),
 }).strict();
 type Publication = Row & { id: string; submitted_by: string; resource_key: string; published_version: string | null };
+const resourceTab = { template:"templates", plugin:"plugins", skill:"skills", mcp:"mcp" } as const;
 const versionFields = "version,status,note,created_at";
 
 /** Organization publications use the existing membership and asset authorization. */
@@ -67,7 +74,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
   app.post(list, async c => {
     const actor = c.get("actor"), id = c.req.param("id"), kind = kindSchema.parse(c.req.param("kind"));
     const raw: unknown = await c.req.json();
-    const input = kind === "plugin" ? plugin.parse(raw) : kind === "skill" ? skill.parse(raw) : template.parse(raw);
+    const input = { plugin, template, skill, mcp }[kind].parse(raw);
     const publication = await store.transaction(async () => {
       await enterpriseAccess(store, actor, id);
       const key = "packageName" in input ? input.packageName : input.id ?? uid();
@@ -84,11 +91,12 @@ export function mountOrganizationPublications(app: App, store: Store) {
           publicationId, id, actor.id, kind, key, input.title, input.description, now(),
         );
         if (!result.changes) throw new ServiceError("PUBLICATION_EXISTS", 409, "该插件已存在，请提交新版本");
-        await replaceAudience(store, id, kind, publicationId, { all: true, departments: [], members: [] });
+        await replaceAudience(store, id, kind, publicationId, { all: false, departments: [], members: [] });
       }
       const result = await store.run(
         "INSERT INTO organization_publication_versions(publication_id,version,content,status,created_at) VALUES(?,?,?,'pending',?) ON CONFLICT DO NOTHING",
-        publicationId, input.version, "html" in input ? input.html : "markdown" in input ? input.markdown : null, now(),
+        publicationId, input.version, "html" in input ? input.html : "markdown" in input ? input.markdown :
+          "endpoint" in input ? new URL(input.endpoint).href : null, now(),
       );
       if (!result.changes) throw new ServiceError("PUBLICATION_VERSION_EXISTS", 409, "该版本已存在");
       await audit(store, actor, "publication.submit", publicationId, id);
@@ -127,6 +135,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
       const record = await store.one("SELECT content FROM organization_publication_versions WHERE publication_id=? AND version=?", publication.id, requested);
       if (!record) throw new ServiceError("PUBLICATION_NOT_FOUND", 404);
       if (kind === "plugin") return { spec: publication.resource_key + "@" + requested };
+      if (kind === "mcp") return { endpoint: record.content };
       return kind === "skill" ? { markdown:record.content } : { html:record.content };
     });
     return c.json(data);
@@ -137,15 +146,27 @@ export function mountOrganizationPublications(app: App, store: Store) {
     await store.transaction(async () => {
       await enterpriseAccess(store, actor, id, true);
       const publication = await read(id, kind, c.req.param("publicationId"), true);
-      const previous = await store.one("SELECT status FROM organization_publication_versions WHERE publication_id=? AND version=?", publication.id, requested);
+      const previous = await store.one("SELECT status,content FROM organization_publication_versions WHERE publication_id=? AND version=?", publication.id, requested);
       if (!previous) throw new ServiceError("PUBLICATION_NOT_FOUND", 404);
       if (input.decision === "publish") {
         if (previous.status !== "approved") throw new ServiceError("PUBLICATION_REVIEW_REQUIRED", 409, "先审核通过该版本");
+        if (kind === "mcp")
+          await publishEnterpriseMcp(store, publication.id, id, String(publication.title), String(publication.description), String(previous.content));
         await store.run("UPDATE organization_publications SET published_version=? WHERE id=?", requested, publication.id);
+        if (publication.published_version !== requested) {
+          const recipients = await store.all<{user_id:string}>(
+            `SELECT m.user_id FROM members m WHERE m.enterprise_id=? AND m.status='active' AND m.user_id<>? AND
+             (m.role IN ('owner','admin') OR ${grantedTo("?")})`, id, actor.id, kind, publication.id,
+          );
+          await organizationNotice(store, id, recipients.map(row => row.user_id), "resource.published", String(publication.title), resourceTab[kind], publication.id);
+        }
       } else {
         if (publication.published_version === requested) throw new ServiceError("PUBLICATION_ALREADY_PUBLISHED", 409, "请先下架该版本");
         const status = input.decision === "approve" ? "approved" : "rejected";
         await store.run("UPDATE organization_publication_versions SET status=?,note=? WHERE publication_id=? AND version=?", status, input.note, publication.id, requested);
+        if (previous.status !== status && publication.submitted_by !== actor.id)
+          await organizationNotice(store, id, [publication.submitted_by], status === "approved" ? "resource.approved" : "resource.rejected",
+            String(publication.title), resourceTab[kind], publication.id);
       }
       await audit(store, actor, "publication." + input.decision, publication.id, id);
     });
@@ -158,6 +179,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
       const publication = await read(id, kind, c.req.param("publicationId"), true);
       if (!publication.published_version) return;
       await store.run("UPDATE organization_publications SET published_version=NULL WHERE id=?", publication.id);
+      if (kind === "mcp") await store.run("UPDATE enterprise_mcp SET enabled=FALSE WHERE id=? AND enterprise_id=?", publication.id, id);
       await audit(store, actor, "publication.archive", publication.id, id);
     });
     return c.json({ ok: true });

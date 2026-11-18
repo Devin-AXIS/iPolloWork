@@ -5,7 +5,7 @@ import type {
   CredentialStore,
 } from "../shared/types.ts";
 import type { ResolvedConfig } from "./config.ts";
-import { AppDataRejection, StageRejection, SuiteError } from "./errors.ts";
+import { AppDataRejection, InvitationRosterRejection, StageRejection, SuiteError } from "./errors.ts";
 
 const KEY = "ipollowork-suite/account";
 type Grant = { version: 1; origin: string; token: string };
@@ -124,6 +124,8 @@ export class AccountService {
             ? data.code
             : "IPW_ACCOUNT_UNAVAILABLE";
         if(path.startsWith('/api/v1/stage/')&&object(data)&&typeof data.error==='string')throw new StageRejection(code,response.status,data.error.slice(0,500));
+        if (path.endsWith("/join-codes/batch") && object(data) && typeof data.row === "number" && Number.isSafeInteger(data.row) && data.row > 0)
+          throw new InvitationRosterRejection(code, response.status, data.row);
         throw new SuiteError(code, response.status);
       }
       if (path === "/api/auth/sign-up/email" && [400, 409, 422].includes(response.status)) {
@@ -495,17 +497,6 @@ export class AccountService {
     });
     return this.state();
   }
-  /** Ask the configured account service to send a reset email. */
-  async requestPasswordReset(input: unknown): Promise<void> {
-    const email = object(input) && typeof input.email === "string" ? input.email.trim() : "";
-    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      throw new SuiteError("IPW_INVALID_LOGIN");
-    await this.send("/api/auth/request-password-reset", undefined, {
-      email: email.toLowerCase(),
-      redirectTo: new URL("/reset-password", this.config.accountOrigin).href,
-    }, undefined, undefined, 20000);
-  }
-
   /** Disconnect only this suite's local account. DSH provider credentials are untouched. */
   async signOut(): Promise<HostAccountState> {
     ++this.revision;

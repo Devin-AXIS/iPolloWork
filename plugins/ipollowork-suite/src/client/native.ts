@@ -57,6 +57,7 @@ export interface ClientContext {
   }):()=>void };
   conversation: { input: { for(ctx:object):{insertQuote(text:string,summary:{label:string;title:string;body:string}):boolean}; requestDraftInitialization(binding:NativeSessionBinding,options:{prompt:string;whenDraftExists:'keep'}):'applied'|'preserved'|'blocked' } };
   sessions: {
+    refresh: ISessions['refresh'];
     create(options:{workspaceId:string;sessionId:string}):Promise<string>;
     using<T>(id:string,options:{source:string},operation:(ref:{binding:NativeSessionBinding})=>Promise<T>):Promise<T>;
     list: ISessions['list'];

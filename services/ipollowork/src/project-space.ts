@@ -16,6 +16,7 @@ import { ServiceError } from "./errors.js";
 import { createHash } from "node:crypto";
 import type { Config } from "./config.js";
 import type { Storage } from "./storage.js";
+import { organizationNotice } from "./organization-notice.js";
 
 const title = z.string().trim().min(1).max(120);
 /** Shared memory is a compact summary with at most two heading levels. Originals remain separate. */
@@ -324,7 +325,17 @@ export function mountProjectSpace(
           now(),
         );
         if (bodyKey) await storage.retain(bodyKey);
-        await audit(store, actor, "project.submit", id);
+        await audit(store, actor, "project.submit", id, p.enterprise_id ?? undefined);
+        if (p.enterprise_id) {
+          const maintainers = await store.all<{user_id:string}>(
+            `SELECT m.user_id FROM members m WHERE m.enterprise_id=? AND m.status='active' AND m.user_id<>?
+             AND (m.user_id=? OR m.role IN ('owner','admin') OR EXISTS (
+               SELECT 1 FROM project_grants g WHERE g.project_id=? AND g.role='maintain' AND
+                ((g.kind='member' AND g.subject_id=m.user_id) OR (g.kind='department' AND g.subject_id=m.department_id))
+             ))`, p.enterprise_id, actor.id, p.owner_id, p.id,
+          );
+          await organizationNotice(store, p.enterprise_id, maintainers.map(row => row.user_id), "project.submitted", String(p.title), "projects", p.id);
+        }
         return { id, retained: true };
       });
       retained = result.retained;
@@ -438,7 +449,9 @@ export function mountProjectSpace(
           acceptedContent,
           change.id,
         );
-        await audit(store, actor, "project.accept", change.id);
+        await audit(store, actor, "project.accept", change.id, p.enterprise_id ?? undefined);
+        if (p.enterprise_id && change.author_id !== actor.id)
+          await organizationNotice(store, p.enterprise_id, [change.author_id], "project.accepted", String(p.title), "projects", p.id);
         return { ok: true };
       });
       retained = Boolean(bodyKey && !("duplicate" in result));

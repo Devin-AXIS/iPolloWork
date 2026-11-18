@@ -68,10 +68,10 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
         </>}
       </Section>
     </div>
-    <div className={css.organizationSettingsCard}>
+    {canManage && <div className={css.organizationSettingsCard}>
       <Section title={t.serviceAddress}>
         <CopyLink url={serviceAddress} t={t} label={t.serviceAddress}/>
       </Section>
-    </div>
+    </div>}
   </div>
 }

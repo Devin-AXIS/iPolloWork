@@ -382,23 +382,11 @@ it('shows an occupied email and clears the registration password before retry', 
   expect(document.getElementById('login-name')).toBeNull()
 })
 
-it('requests a password reset from the login page and surfaces delivery failure', async () => {
+it('keeps password recovery out of the login form', () => {
   const original = mount('zh-CN')
   original.unmount()
-  const requestPasswordReset = vi.fn<() => Promise<WelcomeSaveResult>>()
-    .mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: true })
-  render(<Welcome api={{ ...original.api, signInAccount: async () => ({ ok: false }), requestPasswordReset }} />)
+  render(<Welcome api={{ ...original.api, signInAccount: async () => ({ ok: false }) }} />)
   fireEvent.click(document.getElementById('sign-in')!)
-  fireEvent.click(document.querySelector('#login-form button')!)
-  expect(document.getElementById('login-password')).toBeNull()
-  fireEvent.change(document.getElementById('login-email')!, { target: { value: 'member@example.test' } })
-  fireEvent.submit(document.getElementById('login-form')!)
-  await vi.waitFor(() => {
-    expect(document.querySelector('#login-form [role="alert"]')?.textContent).toContain('暂时无法发送')
-  })
-  fireEvent.submit(document.getElementById('login-form')!)
-  await vi.waitFor(() => {
-    expect(document.querySelector('#login-form [role="status"]')?.textContent).toContain('如果该邮箱已注册')
-  })
-  expect(requestPasswordReset.mock.calls).toEqual([['member@example.test'], ['member@example.test']])
+  expect(document.getElementById('login-password')).not.toBeNull()
+  expect(document.getElementById('login-form')?.textContent).not.toContain('忘记密码')
 })

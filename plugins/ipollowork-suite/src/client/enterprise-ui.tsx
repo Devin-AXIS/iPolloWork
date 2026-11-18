@@ -1,5 +1,5 @@
 /** Shared enterprise-page building blocks over native DSH primitives. */
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button, IconRefreshOutlineRegular, MarkdownText, Modal, Toast, UserMessageBubble, useClipboardCopy, relativeTime, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { SharedMessage } from '../shared/enterprise.ts'
 import type { EnterpriseState } from './enterprise-controller.ts'
@@ -18,16 +18,16 @@ export function useRecord<T>(path: string | null, call: Call, revision: number) 
     call<T>(path).then(value => { if (active) setData(value) }, (e: unknown) => { if (active) setError(e instanceof Error ? e.message : '') })
     return () => { active = false }
   }, [path, call, revision, local])
-  return { data, error, reload: () => setLocal(v => v + 1) }
+  return { data, error, reload: useCallback(() => setLocal(v => v + 1), []) }
 }
 
 /** Run one user action at a time and keep its failure visible beside the form. */
-export function useTask(t: EnterpriseLabels) {
+export function useTask(t: EnterpriseLabels, errorMessage = (error: unknown) => enterpriseError(error instanceof Error ? error.message : '', t)) {
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
   const run = async (action: () => Promise<void>) => {
     if (busy) return
     setBusy(true); setError('')
-    try { await action() } catch (e) { setError(enterpriseError(e instanceof Error ? e.message : '', t)) } finally { setBusy(false) }
+    try { await action() } catch (e) { setError(errorMessage(e)) } finally { setBusy(false) }
   }
   return { busy, error, setError, run }
 }

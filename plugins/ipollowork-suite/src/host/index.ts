@@ -53,7 +53,7 @@ import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from "./app
 import type { IpolloData } from "../shared/app-data.ts";
 import { readMarket, type NativePluginManager } from "./market.ts";
 import { BRAND_PATH, brandIndex, serveBrand } from "./brand.ts";
-import { AppDataRejection, SuiteError } from "./errors.ts";
+import { AppDataRejection, InvitationRosterRejection, SuiteError } from "./errors.ts";
 import {
   blocksSuiteManagement,
   MANAGEMENT_DENIAL,
@@ -72,6 +72,7 @@ export const inject = [
   "profileContext",
   "workspaceRegistry",
   "sessionQuery",
+  "sessionPersistence",
   "systemPrompt",
   "tools",
   "fs",
@@ -552,11 +553,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               json(response, 200, publicAccountState(state));
               return;
             }
-            if (request.method === "POST" && path === "/account/request-password-reset" && config.account) {
-              await account.requestPasswordReset(await body(request));
-              json(response, 200, { ok: true });
-              return;
-            }
             if (request.method === "GET" && path === "/workspace-trash" && workspaceTrash) {
               json(response, 200, await workspaceTrash.state());
               return;
@@ -564,6 +560,10 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             if (request.method === "POST" && path === "/workspace-trash/restore" && workspaceTrash) {
               await workspaceTrash.restore(await body(request));
               json(response, 200, { ok: true });
+              return;
+            }
+            if (request.method === "POST" && path === "/workspace-trash/reveal" && workspaceTrash) {
+              json(response, 200, await workspaceTrash.reveal(await body(request)));
               return;
             }
             if (request.method === "GET" && path === "/membership" && config.account) {
@@ -774,7 +774,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               );
               if (
                 request.method !== "GET" &&
-                /^\/enterprise\/organizations\/[^/]+\/(skills|mcp|grants|services|members|departments)/.test(
+                /^\/enterprise\/organizations\/[^/]+\/(?:skills|mcp|grants|services|members|departments|publications\/(?:skill|mcp))(?:\/|$)/.test(
                   path,
                 )
               )
@@ -807,6 +807,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                       ? "IPW_INVALID_INPUT"
                       : "IPW_SERVICE_UNAVAILABLE",
                 ...(error instanceof AppDataRejection ? { message: error.reason } : {}),
+                ...(error instanceof InvitationRosterRejection ? { row: error.row } : {}),
               },
             );
           }

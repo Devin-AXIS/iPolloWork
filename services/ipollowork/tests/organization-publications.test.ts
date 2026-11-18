@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { IncomingMessage } from "node:http";
 import { Socket } from "node:net";
@@ -44,6 +45,30 @@ test("organization invitations, publication review, and member notices share exi
     assert.equal((await request(member.token,acceptance,{})).data.enterpriseId,org.data.id);
     assert.deepEqual((await request(member.token,"enterprises")).data.items.map((row:{id:string})=>row.id),[org.data.id]);
 
+    const bystander = await account("bystander");
+    const otherInvite = await request(owner.token,base + "/invitations",{email:bystander.email});
+    assert.equal((await request(bystander.token,"invitations/" + otherInvite.data.code + "/accept",{})).status,200);
+    const shares = base + "/conversation-shares", shareId = randomUUID();
+    const snapshot = { requestId:shareId, title:"Shared plan", recipients:[member.id],
+      transcript:[{role:"user",content:"Project status?"},{role:"assistant",content:"The file is ready."}] };
+    assert.equal((await request(owner.token,shares,{...snapshot,recipients:[stranger.id]})).data.code,"SHARE_RECIPIENT_INVALID");
+    assert.equal((await request(owner.token,shares,snapshot)).status,201);
+    assert.equal((await request(owner.token,shares,snapshot)).status,201);
+    assert.equal((await request(member.token,shares)).data.items.length,1);
+    assert.equal((await request(bystander.token,shares)).data.items.length,0);
+    assert.equal((await request(bystander.token,shares + "/" + shareId)).status,404);
+    assert.equal((await request(stranger.token,shares)).status,403);
+    assert.deepEqual((await request(member.token,shares + "/" + shareId)).data.transcript,snapshot.transcript);
+    const shareNotices = (await request(member.token,"me/organization-notices?include=all")).data.items;
+    assert.equal(shareNotices.filter((row:{kind:string})=>row.kind==="conversation.shared").length,1);
+    assert.equal((await request(member.token,shares + "/" + shareId,undefined,"DELETE")).status,404);
+    assert.equal((await request(owner.token,shares + "/" + shareId,undefined,"DELETE")).status,200);
+    assert.equal((await request(member.token,shares + "/" + shareId)).status,404);
+    const auditResult = await request(owner.token,base + "/activity?actor=OWNER");
+    assert.ok(auditResult.data.items.some((row:{action:string})=>row.action==="conversation.share"));
+    assert.ok(auditResult.data.items.every((row:{actor:string})=>row.actor==="owner"));
+    assert.equal((await request(member.token,base + "/activity?actor=owner")).status,403);
+
     const parent = await request(owner.token,base + "/departments",{name:"Engineering"});
     const child = await request(owner.token,base + "/departments",{name:"Platform",parentId:parent.data.id});
     const cycle = await request(owner.token,base + "/departments/" + parent.data.id,{name:"Engineering",parentId:child.data.id},"PATCH");
@@ -57,11 +82,21 @@ test("organization invitations, publication review, and member notices share exi
     assert.equal(added.status,201);
     const item = plugins + "/" + added.data.id;
     const release = item + "/versions/" + plugin.version;
-    assert.equal((await request(member.token,release)).status,404);
+    assert.equal((await request(member.token,release)).status,403);
     assert.equal((await request(member.token,release,{decision:"approve"},"PUT")).status,403);
     assert.equal((await request(owner.token,release,{decision:"publish"},"PUT")).data.code,"PUBLICATION_REVIEW_REQUIRED");
     assert.equal((await request(owner.token,release,{decision:"approve",note:"Approved for the team"},"PUT")).status,200);
+    assert.ok((await request(member.token,"me/organization-notices?include=all")).data.items.some(
+      (row:{kind:string;target_tab:string;target_id:string})=>row.kind==="resource.approved" && row.target_tab==="plugins" && row.target_id===added.data.id,
+    ));
     assert.equal((await request(owner.token,release,{decision:"publish"},"PUT")).status,200);
+    assert.equal((await request(member.token,release)).status,403);
+    const grantMember = async (kind: string, assetId: string) => {
+      assert.equal((await request(owner.token,base + "/grants",{
+        kind,assetId,audience:{all:false,departments:[],members:[member.id]},
+      },"PUT")).status,200);
+    };
+    await grantMember("plugin", added.data.id);
     assert.deepEqual((await request(member.token,release)).data,{spec:"@team/notes@1.2.3"});
     assert.equal((await request(owner.token,base + "/grants",{
       kind:"plugin",assetId:added.data.id,audience:{all:false,departments:[child.data.id],members:[]},
@@ -73,6 +108,7 @@ test("organization invitations, publication review, and member notices share exi
     const templateRelease = templates + "/" + template.data.id + "/versions/1.0.0";
     assert.equal((await request(member.token,templates)).data.items.length,0);
     assert.equal((await request(owner.token,templateRelease,{decision:"approve"},"PUT")).status,200);
+    await grantMember("template", template.data.id);
     assert.equal((await request(owner.token,templateRelease,{decision:"publish"},"PUT")).status,200);
     assert.deepEqual((await request(member.token,templateRelease)).data,{html:"<h1>Quarterly update</h1>"});
 
@@ -82,8 +118,35 @@ test("organization invitations, publication review, and member notices share exi
     const skillVersion = skills + "/" + skill.data.id + "/versions/1.0.0";
     assert.equal((await request(member.token,"me/enterprise-skills")).data.items.length,0);
     assert.equal((await request(owner.token,skillVersion,{decision:"approve"},"PUT")).status,200);
+    await grantMember("skill", skill.data.id);
     assert.equal((await request(owner.token,skillVersion,{decision:"publish"},"PUT")).status,200);
     assert.equal((await request(member.token,"me/enterprise-skills")).data.items[0].content,"Use the project notes.");
+
+    const mcps = base + "/publications/mcp";
+    const unassigned = await account("unassigned");
+    const unassignedInvite = await request(owner.token,base + "/invitations",{email:unassigned.email});
+    assert.equal((await request(unassigned.token,"invitations/" + unassignedInvite.data.code + "/accept",{})).status,200);
+    const submission = {title:"Public docs",version:"1.0.0",endpoint:"https://mcp.example.com/mcp"};
+    assert.equal((await request(member.token,mcps,{...submission,endpoint:"http://127.0.0.1/mcp"})).status,400);
+    assert.equal((await request(member.token,mcps,{...submission,key:"test-key"})).status,400);
+    const submittedMcp = await request(member.token,mcps,submission);
+    assert.equal(submittedMcp.status,201);
+    const mcpItem = mcps + "/" + submittedMcp.data.id;
+    const mcpVersion = mcpItem + "/versions/1.0.0";
+    assert.equal((await request(member.token,mcpVersion,{decision:"approve"},"PUT")).status,403);
+    assert.equal((await request(owner.token,mcpVersion,{decision:"publish"},"PUT")).data.code,"PUBLICATION_REVIEW_REQUIRED");
+    assert.equal((await request(owner.token,mcpVersion,{decision:"approve"},"PUT")).status,200);
+    await grantMember("mcp", submittedMcp.data.id);
+    assert.equal((await request(member.token,"me/enterprise-mcp")).data.items.length,0);
+    assert.equal((await request(owner.token,mcpVersion,{decision:"publish"},"PUT")).status,200);
+    assert.deepEqual((await request(member.token,"me/enterprise-mcp")).data.items.map((row:{id:string})=>row.id),[submittedMcp.data.id]);
+    assert.equal((await request(member.token,base + "/mcp")).data.items[0].endpoint,undefined);
+    assert.equal((await request(unassigned.token,base + "/mcp")).data.items.length,0);
+    assert.equal((await request(unassigned.token,mcpVersion)).status,403);
+    assert.equal((await request(stranger.token,"me/enterprise-mcp")).data.items.length,0);
+    assert.equal((await request(owner.token,mcpItem,undefined,"DELETE")).status,200);
+    assert.equal((await request(member.token,"me/enterprise-mcp")).data.items.length,0);
+    assert.equal((await request(owner.token,base + "/mcp/" + submittedMcp.data.id,{...submission,version:undefined,enabled:true},"PATCH")).data.code,"MCP_REVIEW_REQUIRED");
 
     const changed = await request(owner.token,base + "/members/" + member.id,{role:"member",departmentId:child.data.id,employeeNumber:"0007"},"PATCH");
     assert.equal(changed.status,200);
@@ -136,6 +199,37 @@ test("organization invitations, publication review, and member notices share exi
       csv:"名称,工号,邮箱,部门名称\nNew colleague,0146,old-address@example.test,Platform",
     });
     assert.equal(batchCode.status,200);
+    const batchPath = base + "/join-codes/batch";
+    const missingDepartment = await request(owner.token,batchPath,{
+      csv:'名称,工号,部门名称\r\n"New\r\nname",0147,Platform\r\n\r\nMissing,0148,Development',
+    });
+    assert.equal(missingDepartment.status,400);
+    assert.equal(missingDepartment.data.code,"DEPARTMENT_MISMATCH");
+    assert.equal(missingDepartment.data.row,5);
+    assert.match(missingDepartment.data.error,/Development/);
+    const malformed = await request(owner.token,batchPath,{csv:"名称,工号\n\nMissing,"});
+    assert.equal(malformed.data.code,"INVITATION_CSV_INVALID");
+    assert.equal(malformed.data.row,3);
+    assert.equal((await request(owner.token,batchPath,{csv:"名称,工号\n"})).data.code,"INVITATION_CSV_EMPTY");
+    const duplicate = await request(owner.token,batchPath,{csv:"名称,工号\nFirst,A001\nSecond,a001"});
+    assert.equal(duplicate.data.code,"INVITATION_DUPLICATE");
+    assert.equal(duplicate.data.row,3);
+    const rolledBack = await request(owner.token,batchPath,{
+      csv:"名称,工号,部门名称\nFirst,0147,Development\nExisting number,0146,Platform",createMissingDepartments:true,
+    });
+    assert.equal(rolledBack.status,409);
+    assert.equal(rolledBack.data.code,"INVITATION_EMPLOYEE_NUMBER_IN_USE");
+    assert.equal(rolledBack.data.row,3);
+    const afterRollback = (await request(owner.token,base)).data;
+    assert.ok(!afterRollback.departments.some((row:{name:string})=>row.name === "Development"));
+    assert.ok(!afterRollback.invitations.some((row:{employee_number:string})=>row.employee_number === "0147"));
+    const createdDepartments = await request(owner.token,batchPath,{
+      csv:"\uFEFF名称,工号,部门名称\r\nFirst,0147,Development\r\nSecond,0148,Development",createMissingDepartments:true,
+    });
+    assert.equal(createdDepartments.status,200);
+    assert.deepEqual(createdDepartments.data.items.map((row:{employeeNumber:string})=>row.employeeNumber),["0147","0148"]);
+    const departments = (await request(owner.token,base)).data.departments.filter((row:{name:string})=>row.name === "Development");
+    assert.equal(departments.length,1);
     assert.equal(batchCode.data.items[0].email,undefined);
     assert.equal(batchCode.data.items[0].url,undefined);
     const batchPending = (await request(owner.token,base)).data.invitations.find((row:{id:string})=>row.id===batchCode.data.items[0].id);
@@ -145,6 +239,7 @@ test("organization invitations, publication review, and member notices share exi
     })).status,409);
     const invitee = await account("new-colleague");
     assert.equal((await request(invitee.token,"invitations/" + batchCode.data.items[0].code + "/accept",{})).data.enterpriseId,org.data.id);
+    assert.equal((await request(owner.token,base)).data.members.find((row:{user_id:string})=>row.user_id===invitee.id).employee_number,"0146");
     assert.ok((await request(owner.token,base + "/activity")).data.items.some((row:{action:string})=>row.action === "publication.publish"));
     assert.equal((await request(owner.token,base,{description:"An existing team",tabOrder:["plugins","templates"]},"PATCH")).status,200);
     assert.equal((await request(member.token,base)).data.enterprise.tab_order,'["plugins","templates"]');

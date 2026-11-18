@@ -18,7 +18,6 @@ const api: WelcomeApi = {
   signInAccount: (email, password) => ipcRenderer.invoke(WELCOME_IPC.signInAccount, email, password) as Promise<WelcomeAccountResult>,
   signUpAccount: (name, email, password) =>
     ipcRenderer.invoke(WELCOME_IPC.signUpAccount, name, email, password) as Promise<WelcomeAccountResult>,
-  requestPasswordReset: email => ipcRenderer.invoke(WELCOME_IPC.requestPasswordReset, email) as Promise<WelcomeSaveResult>,
   startSignIn: () => ipcRenderer.invoke(WELCOME_IPC.start) as Promise<AccountView>,
   cancelSignIn: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.cancel, id) as Promise<AccountView>,
   copySignInLink: (id: SignInAttemptId) => ipcRenderer.invoke(WELCOME_IPC.copyLink, id) as Promise<void>,

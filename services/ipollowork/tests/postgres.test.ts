@@ -213,6 +213,7 @@ test("concurrent membership payments stack both terms when no credits are grante
 
 async function removeOrganizationSpaceMigration(store: {run(sql:string):Promise<unknown>}) {
   await store.run(`
+    DROP TABLE organization_conversation_recipients, organization_conversation_shares;
     DROP TABLE enterprise_mcp_oauth_pending, organization_member_notices,
       organization_publication_versions, organization_publications;
     ALTER TABLE enterprises DROP COLUMN description, DROP COLUMN logo, DROP COLUMN tab_order;
@@ -252,7 +253,7 @@ test("schema seven removes the old per-account running-request constraint", asyn
     await migrate(service.store, config);
     await migrate(service.store, config);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM pg_indexes WHERE schemaname=current_schema() AND indexname='service_calls_one_running'"))?.total, 0);
-    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 17);
+    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 19);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM information_schema.columns WHERE table_schema=current_schema() AND ((table_name='plans' AND column_name IN ('daily_points','weekly_points')) OR (table_name='orders' AND column_name='checkout'))"))?.total, 3);
   } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });
@@ -282,7 +283,7 @@ for (const history of ["mcp", "notifications"] as const) {
       }
       await migrate(service.store, config);
       await migrate(service.store, config);
-      assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 17);
+      assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 19);
       assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM enterprise_mcp"))?.total, history === "mcp" ? 1 : 0);
       assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM organization_notifications"))?.total, history === "notifications" ? 1 : 0);
       assert.equal((await service.store.one("SELECT name FROM enterprises WHERE id='org'"))?.name, "Fixture");

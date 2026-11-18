@@ -67,7 +67,7 @@ export const agentInputSchema = z.object(definition.shape).omit({ id: true, revi
 })
 export type AgentInput = z.input<typeof agentInputSchema>
 
-/** Domain defaults; deleting a definition is deliberately not part of this API. */
+/** Domain defaults for a new profile. */
 export const initialState: AgentState = { agents: [], accounts: [], memories: [] }
 /** Stable native preset identity; revisions are managed by DSH's retained preset scopes. */
 export function presetId(id: string): string { return `ipollo-agent-${id}` }
@@ -120,6 +120,16 @@ export class AgentStore {
       if (previous) state.agents[state.agents.indexOf(previous)] = parsed.data
       else state.agents.push(parsed.data)
       return parsed.data
+    })
+  }
+  deleteAgent(id: string, revision: number): Promise<void> {
+    return this.mutate(state => {
+      const index = state.agents.findIndex(item => item.id === id)
+      const previous = state.agents[index]
+      if (!previous) return
+      if (previous.revision !== revision)
+        throw new AgentError('Reload before deleting a newer revision', 'IPOLLO_STALE_REVISION')
+      state.agents.splice(index, 1)
     })
   }
   async addAccount(name: string, writeSecret: (ref: string) => Promise<unknown>): Promise<AgentAccount> {
