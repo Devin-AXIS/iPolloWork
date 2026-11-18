@@ -35,7 +35,7 @@ function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: str
     || !('mode' in value) || (value.mode !== 'download' && value.mode !== 'saveAs')) throw new Error('Invalid file save request')
   const url = new URL(value.url)
   const projectDownload = url.protocol === 'dsh-app:' && url.host === 'app' && !url.search &&
-    value.mode === 'download' && typeof value.name === 'string' && !!value.name.trim() &&
+    value.mode === 'download' && 'name' in value && typeof value.name === 'string' && !!value.name.trim() &&
     /^\/ipollowork-suite\/enterprise\/(?:download\/[\w-]{1,200}|projects\/[\w-]{1,200}\/memory-versions\/\d+)$/u.test(url.pathname)
   if ((!projectDownload && !['https:', 'http:', 'blob:', 'data:'].includes(url.protocol)) || url.username || url.password)
     throw new Error('Unsupported file source')
