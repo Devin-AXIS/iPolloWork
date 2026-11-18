@@ -39,8 +39,8 @@ export function assertOfficeSkillsLoadable(results: ReadonlyArray<{ readonly nam
 export async function smokeDesktopRuntime(
   root: string, node: string, runtime: DesktopRuntimeDescriptor, environment: NodeJS.ProcessEnv, resourcesRuntime: string,
 ): Promise<void> {
-  // Intel macOS runners can take longer on the Office conversion fixtures.
-  const officeTimeoutMs = runtime.platform === 'darwin' && runtime.arch === 'x64' ? 180_000 : 60_000
+  // LibreOffice conversion fixtures can take longer on hosted macOS runners.
+  const officeTimeoutMs = runtime.platform === 'darwin' ? 180_000 : 60_000
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   const profile = join(home, 'profiles', 'desktop')
   const hostEnvironment = {
