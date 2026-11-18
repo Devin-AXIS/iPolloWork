@@ -107,4 +107,6 @@ The [Stage adapter](plugins/stage/README.md) is included in the complete desktop
 
 ## Independent plugins
 
+[Plugin development standard (Chinese)](docs/plugin-development.zh.md) · [Word document](docs/plugin-development.zh.docx) · [Plugin development skill](.agents/skills/ipollowork-plugin-development/SKILL.md)
+
 [Data annotation training](plugins/data-annotation/README.md) and [Operation recorder](plugins/operation-recorder/README.md) are separately installable DSH bundles. They reuse official authentication, workspaces and plugin lifecycle; neither modifies the DSH runtime. Recorder exports installable DSH Skill bundles. Independent plugins are distributed separately through the plugin marketplace; do not bundle them in the iPolloWork application installer.
