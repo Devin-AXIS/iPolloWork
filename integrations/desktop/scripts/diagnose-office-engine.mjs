@@ -1,7 +1,7 @@
 import {spawn} from 'node:child_process';
-import {mkdir,mkdtemp,readFile,writeFile,rm} from 'node:fs/promises';
+import {mkdir,mkdtemp,readFile,writeFile,rm,readdir,cp} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-import {join,resolve} from 'node:path';
+import {join,resolve,dirname} from 'node:path';
 import {tmpdir} from 'node:os';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 
@@ -11,7 +11,7 @@ if(!mode){
  const require=createRequire(join(resolve(installation),'package.json'));
  const electron=require('electron');
  const results=[];
- for(const [name,executable] of [['node',process.execPath],['electron',electron],['electron-bounded',electron],['electron-wasm',electron],['electron-scratch',electron]]){
+ for(const [name,executable] of [['node',process.execPath],['electron',electron],['electron-bounded',electron],['electron-wasm',electron],['electron-scratch',electron],['electron-copy',electron]]){
   if(process.env.OFFICE_PROBE_CASE && process.env.OFFICE_PROBE_CASE!==name) continue;
   const home=await mkdtemp(join(tmpdir(),'office-intel-probe-'));
   const code=await new Promise((resolveResult,reject)=>{
@@ -26,11 +26,20 @@ if(!mode){
  const {createConverter}=await import(pathToFileURL(join(resolve(installation),'node_modules/@deepseek-ai/libreoffice-kit/lib/index.js')).href);
  const output=await mkdtemp(join(tmpdir(),'office-intel-output-'));
  const resolver=createRequire(join(resolve(installation),'package.json'));
+ let copiedEngine;
+ if(mode==='electron-copy'){
+  const nativeRoot=dirname(resolver.resolve('@deepseek-ai/libreoffice-kit-darwin-x64/package.json'));
+  const entries=await readdir(nativeRoot,{recursive:true,withFileTypes:true});
+  console.log(JSON.stringify({event:'engine-aliases',aliases:entries.filter(entry=>entry.isSymbolicLink()).map(entry=>join(entry.parentPath,entry.name).slice(nativeRoot.length))}));
+  copiedEngine=join(await mkdtemp(join(tmpdir(),'ipollo-prepared-immutable-runtime-')),'node_modules','@deepseek-ai','libreoffice-kit-darwin-x64');
+  await cp(nativeRoot,copiedEngine,{recursive:true,dereference:true});
+ }
  const wasmResolver=name=>{
   if(name!=='@deepseek-ai/libreoffice-kit-wasm'){const error=Error('The probe selects the supported WASM engine');error.code='MODULE_NOT_FOUND';throw error;}
   return resolver.resolve(name+'/package.json');
  };
- const converter=await createConverter({timeoutMs:180000,maxImageResolution:192,maxInputBytes:50*1024*1024,maxOutputBytes:100*1024*1024,...(mode==='electron-wasm'?{resolveEnginePackage:wasmResolver}:{})});
+ const copiedResolver=name=>name==='@deepseek-ai/libreoffice-kit-darwin-x64'?join(copiedEngine,'package.json'):resolver.resolve(name+'/package.json');
+ const converter=await createConverter({timeoutMs:180000,maxImageResolution:192,maxInputBytes:50*1024*1024,maxOutputBytes:100*1024*1024,...(mode==='electron-wasm'?{resolveEnginePackage:wasmResolver}:copiedEngine?{resolveEnginePackage:copiedResolver}:{})});
  console.log(JSON.stringify({mode,platform:process.platform,arch:process.arch,versions:process.versions}));
  const operation=async(label,work)=>{
   const started=Date.now();console.log(JSON.stringify({event:'begin',mode,label,time:new Date().toISOString()}));
@@ -38,7 +47,7 @@ if(!mode){
   catch(error){console.error(JSON.stringify({event:'fail',mode,label,milliseconds:Date.now()-started,code:error?.code,message:error?.message}));throw error;}
  };
  const withInput=async(extension,work)=>{
-  if(mode!=='electron-scratch') return work(join(inputRoot,'input.'+extension));
+  if(mode!=='electron-scratch'&&mode!=='electron-copy') return work(join(inputRoot,'input.'+extension));
   const directory=await mkdtemp(join(tmpdir(),'dsh-office-kit-'));
   const inputPath=join(directory,'source.'+extension);
   await writeFile(inputPath,await readFile(join(inputRoot,'input.'+extension)),{flag:'wx',mode:0o600});
