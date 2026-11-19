@@ -25,5 +25,5 @@ jobs:
       - name: Reproduce official provider lifecycle and source handling
         run: |
           home="$(mktemp -d "$RUNNER_TEMP/office-provider-home.XXXXXX")"
-          electron="$RUNNER_TEMP/office-probe/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+          electron="$(node -p 'require(process.argv[1])' "$RUNNER_TEMP/office-probe/node_modules/electron")"
           HOME="$home" USERPROFILE="$home" XDG_CONFIG_HOME="$home" XDG_CACHE_HOME="$home" XDG_STATE_HOME="$home" APPDATA="$home" LOCALAPPDATA="$home" ELECTRON_RUN_AS_NODE=1 "$electron" --expose-internals integrations/desktop/scripts/diagnose-office-provider.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"
