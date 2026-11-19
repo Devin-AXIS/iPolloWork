@@ -59,7 +59,7 @@ if (action === 'configure') {
     const task = builder = startBuild()
     task.once('error', error => { console.error(error.message); finish() })
     task.once('exit', code => {
-      if (code === 0) console.log('iPolloWork: build ready for native DSH HMR')
+      if (code === 0) console.log('iPolloWork: build ready for native DSH HMR; verify changed Host endpoints before claiming they reloaded (restart the development app if needed)')
       else console.error('iPolloWork: build failed; save a correction to rebuild')
       finish()
     })

@@ -22,7 +22,7 @@ async function fixture(entry) {
     loader:{'.css':'empty','.module.css':'text'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']})
   const module = {exports:{}}
   runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,require:name=>name==='@deepseek-ai/dsh-client-ui-primitives'?primitives:require(name),
-    ...globals,URL,TextEncoder,crypto,DataTransfer:class { items={add:file=>this.files.push(file)};files=[] }})
+    ...globals,Error,URL,TextEncoder,crypto,DataTransfer:class { items={add:file=>this.files.push(file)};files=[] }})
   const root = createRoot(dom.window.document.getElementById('root'))
   return {dom,root,component:module.exports,button:text=>[...dom.window.document.querySelectorAll('button')].find(node=>node.textContent===text),
     async close(){await act(async()=>root.unmount());dom.window.close();for(const [key,value] of Object.entries(saved)){if(value)Object.defineProperty(globalThis,key,value);else delete globalThis[key]}}}
@@ -72,6 +72,39 @@ test('project refresh updates overview, files and local counts, and access edits
     await act(async()=>ui.button('Save').click())
     assert.deepEqual(JSON.parse(JSON.stringify(writes)),[{mode:'selected',grants:[{kind:'member',subjectId:'member',role:'participate'}]}])
   } finally {await ui.close()}
+})
+
+test('an older Host gets workspace-specific restart guidance; retries recover and permission errors remain failures',async()=>{
+  const ui = await fixture('src/client/collaboration.tsx')
+  let failure = 'IPW_NOT_FOUND'
+  const space={project:{id:'project',title:'Project',enterpriseId:'team',role:'view'},memory:{text:'',version:0},fileVersion:0,files:[],changes:[]}
+  const call=async path=>{
+    if(path.endsWith('/local-workspaces')){
+      if(failure)throw new Error(failure)
+      return {items:[]}
+    }
+    if(path.endsWith('/overview'))return {people:[],memoryVersion:0,outputs:{count:0}}
+    return space
+  }
+  const t=new Proxy({loading:'Loading',refresh:'Refresh',operationFailed:'Generic failure',signInRequired:'Sign in to continue'}, {get:(target,key)=>target[key] ?? String(key)})
+  const view={language:'en',revision:0,t,call,controller:{load:async()=>{},back:()=>{}},catalog:{projects:[],sharedProjects:[]},actions:{openProject:()=>{}}}
+  try {
+    await act(async()=>ui.root.render(React.createElement(ui.component.ProjectView,{id:'project',view})))
+    const alert=()=>ui.dom.window.document.querySelector('[role="alert"]')
+    assert.match(alert().textContent,/local backend.*Restart the app/)
+    assert.match(alert().textContent,/IPW_NOT_FOUND/)
+    assert(!alert().textContent.includes('Generic failure'))
+    assert(!ui.dom.window.document.body.textContent.includes('No linked workspace'))
+    failure=''
+    await act(async()=>alert().querySelector('button').click())
+    assert.equal(alert(),null)
+    assert.match(ui.dom.window.document.body.textContent,/No linked workspace/)
+    failure='IPW_SIGN_IN_REQUIRED'
+    await act(async()=>ui.button('Refresh').click())
+    assert.match(alert().textContent,/Sign in to continue/)
+    assert(!alert().textContent.includes('Restart the app'))
+    assert(!ui.dom.window.document.body.textContent.includes('No linked workspace'))
+  }finally{await ui.close()}
 })
 
 test('file picker supports cancel, removal, required feedback, disabled selection and controlled reset',async()=>{

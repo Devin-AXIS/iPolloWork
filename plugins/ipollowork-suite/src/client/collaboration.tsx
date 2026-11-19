@@ -241,12 +241,13 @@ export function ProjectView({ id, view: sourceView }: { id: string; view: ViewPr
       <section className={css.projectGuide} aria-label={c.workflow}>
         <div>
           <span>{c.local}</span>
-          {local.data ? (local.data.items.length ? local.data.items.map(item =>
+          {!local.error && (local.data ? (local.data.items.length ? local.data.items.map(item =>
             <div key={item.id} className={css.projectLocalStatus}>
               <span>{item.title} · {format(c.localSessions, { count: item.sessionCount })}</span>
               <Button size="sm" variant="outline" onClick={() => view.actions.openProject(item.id)}>{c.openLocal}</Button>
-            </div>) : <p className={css.muted}>{c.localUnlinked}</p>) : !local.error && <p className={css.muted}>{t.loading}</p>}
-          <Notice error={local.error} t={t} retry={local.reload}/>
+            </div>) : <p className={css.muted}>{c.localUnlinked}</p>) : <p className={css.muted}>{t.loading}</p>)}
+          <Notice error={local.error} t={t} retry={local.reload}
+            {...(local.error === 'IPW_NOT_FOUND' ? { fallback: c.localHostOutdated } : {})}/>
         </div>
         <details><summary>{c.workflow}</summary>
           <p>{c.localHint}</p>
