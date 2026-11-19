@@ -17,7 +17,7 @@ import type { MarketEntry, CredentialStore } from "../shared/types.ts";
 import { membershipSchema, membershipOrderSchema, membershipCheckoutSchema } from "../shared/membership.ts";
 import { initializeAccountModel } from "./default-model.ts";
 import { mountServiceModels } from "./service-models.ts";
-import { mountEnterpriseMcp, type EnterpriseMcpScope } from "./enterprise-mcp.ts";
+import { mountEnterpriseMcp, type EnterpriseMcpScope, type EnterpriseMcpRefresh } from "./enterprise-mcp.ts";
 import { mountOutputContinuation } from "./output-continuation.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
@@ -26,7 +26,6 @@ import { Services } from "./services.ts";
 import type { ServiceCenter, ServiceChoice } from "../shared/services.ts";
 import { AccountService, publicAccountState } from "./account.ts";
 import { mountCapabilityTools } from "./capability-tools.ts";
-import { mountWorkspaceTrash } from "./workspace-trash.ts";
 import {
   sharingStatus,
   nativeShareAudience,
@@ -257,11 +256,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   const lifetime = new AbortController();
   ctx.effect(() => () => lifetime.abort(), "ipollowork-suite: requests");
   const account = new AccountService(ctx.credentials, config, lifetime.signal);
-  let workspaceTrash: ReturnType<typeof mountWorkspaceTrash> | undefined;
-  ctx.inject?.(["workspaceRegistry", "storageDomain", "sessionQuery"], scope => {
-    workspaceTrash = mountWorkspaceTrash(scope, ctx.profileContext.home);
-    scope.effect(() => () => { workspaceTrash = undefined; });
-  });
   if (config.account) ctx.provide?.("ipolloStage", {
     request: async (action: string, input?: unknown, signal?: AbortSignal) => {
       const paths = new Set(["status", "connect", "disconnect", "launch", "catalog", "document", "generate", "export", "task", "source"]);
@@ -277,6 +271,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   let refreshModels = async () => {};
   let refreshSkills = async () => {};
   let refreshMcp = async () => {};
+  let enterpriseMcp: EnterpriseMcpRefresh | undefined;
   // Account changes and enterprise grant edits change both the official model list and the granted enterprise skills.
   const refreshAccount = async () => {
     await Promise.all([refreshModels(), refreshSkills(), refreshMcp()]);
@@ -342,14 +337,16 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     refreshSkills = mountEnterpriseSkills(scope, account);
     void refreshSkills().catch(() => {});
   });
-  if (config.account && !account.cloudOnly) ctx.inject?.(["mcpManager"], (scope) => {
+  if (config.account) ctx.inject?.(["mcpManager"], (scope) => {
     const web = ctx.webServer;
     if (!web.getOrigin) return;
-    refreshMcp = mountEnterpriseMcp(scope, {
+    const bridge = mountEnterpriseMcp(scope, {
       register: route => web.register(route),
       getOrigin: () => web.getOrigin!(),
     }, account);
-    scope.effect(() => () => { refreshMcp = async () => {}; });
+    refreshMcp = bridge;
+    enterpriseMcp = bridge;
+    scope.effect(() => () => { refreshMcp = async () => {}; enterpriseMcp = undefined; });
     void refreshMcp().catch(() => {});
   });
   if (config.account)
@@ -553,19 +550,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               json(response, 200, publicAccountState(state));
               return;
             }
-            if (request.method === "GET" && path === "/workspace-trash" && workspaceTrash) {
-              json(response, 200, await workspaceTrash.state());
-              return;
-            }
-            if (request.method === "POST" && path === "/workspace-trash/restore" && workspaceTrash) {
-              await workspaceTrash.restore(await body(request));
-              json(response, 200, { ok: true });
-              return;
-            }
-            if (request.method === "POST" && path === "/workspace-trash/reveal" && workspaceTrash) {
-              json(response, 200, await workspaceTrash.reveal(await body(request)));
-              return;
-            }
             if (request.method === "GET" && path === "/membership" && config.account) {
               json(response, 200, membershipSchema.parse(await account.request("/api/v1/me/membership")));
               return;
@@ -765,6 +749,21 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             }
             if (path === "/enterprise" || path.startsWith("/enterprise/")) {
               if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);
+              if (path === '/enterprise/mcp-connections' && request.method === 'GET') {
+                const bridge = enterpriseMcp;
+                if (!bridge) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+                await bridge();
+                json(response, 200, { items: bridge.connections() });
+                return;
+              }
+              const reconnect = /^\/enterprise\/mcp-connections\/([A-Za-z0-9_-]+)\/restart$/.exec(path);
+              if (reconnect && request.method === 'POST') {
+                const bridge = enterpriseMcp;
+                if (!bridge) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+                await bridge.restart(reconnect[1]!);
+                json(response, 200, { ok: true });
+                return;
+              }
               const value = await enterprise.request(
                 request.method ?? "GET",
                 path.slice("/enterprise".length),

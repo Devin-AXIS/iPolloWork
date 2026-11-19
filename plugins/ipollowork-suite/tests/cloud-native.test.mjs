@@ -12,10 +12,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 const suite=fileURLToPath(new URL('..',import.meta.url));
 const cli=fileURLToPath(new URL('../../../.upstream/dsh/apps/cli/lib/bin.js',import.meta.url));
 
-test('official cloud profile loads the suite, creates a workspace and rejects revoked project access',{skip:!existsSync(cli),timeout:90000},async()=>{
+test('official cloud profile loads models and MCP, creates a workspace and rejects revoked project access',{skip:!existsSync(cli),timeout:120000},async()=>{
  const home=await mkdtemp(join(tmpdir(),'ipw-cloud-native-'));
  const workspace=join(home,'workspace');await mkdir(workspace);
- let allowed=true,activity=0;
+ let allowed=true,activity=0,mcpCatalog=0;
  const account=createServer((req,res)=>{
   res.setHeader('Content-Type','application/json');
   if(req.url.startsWith('/api/v1/cloud-runtime/')){
@@ -24,6 +24,7 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
   }
   if(req.url==='/api/auth/get-session'){res.end(JSON.stringify({user:{id:'fixture',name:'Fixture',email:'fixture@example.test'}}));return;}
   if(req.url==='/api/v1/me/summary'){res.end('{"points":{"balance":100},"enterprises":[]}');return;}
+  if(req.url==='/api/v1/me/enterprise-mcp'){assert.equal(req.headers.authorization,'Bearer fixture-runtime');mcpCatalog++;res.end('{"items":[]}');return;}
   if(req.url==='/api/v1/services'){res.end(JSON.stringify({points:100,items:[{id:'team',title:'Enterprise model',provider:'deepseek',capabilities:['chat'],origin:'https://provider.test',basePath:'/v1',models:[{id:'cloud-model',name:'Cloud model',contextWindow:32768,maxTokens:2048}],routes:[],available:true,enterprise:{id:'enterprise',name:'Enterprise'}}]}));return;}
   res.statusCode=404;res.end('{}');
  });
@@ -33,7 +34,7 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
  const env={...process.env,DSH_HOME:home,IPOLLO_CLOUD_RUNTIME_TOKEN:'fixture-runtime'};
  let child,logs='';
  try{
-  execFileSync(process.execPath,[cli,'plugin','--profile','web','add','link:'+suite],{env,stdio:'pipe',timeout:10000});
+  execFileSync(process.execPath,[cli,'plugin','--profile','web','add','link:'+suite],{env,stdio:'pipe',timeout:30000});
   const fixture=join(home,'model-catalog.mjs');
   await writeFile(fixture,`export const inject=['webServer','sessionController'];export function apply(ctx){ctx.effect(()=>ctx.webServer.register({kind:'exact',path:'/test-model-catalog',handler:async(req,res)=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(await ctx.sessionController.modelCatalog()));}}));}`);
   const patch=join(home,'cloud.json');
@@ -64,6 +65,10 @@ test('official cloud profile loads the suite, creates a workspace and rejects re
   }
   assert.deepEqual(catalog.groups.map(group=>group.id),['ipollo-team']);
   assert.equal(catalog.groups[0].models[0].id,'cloud-model');
+  const mcp=await fetch(new URL('/ipollowork-suite/enterprise/mcp-connections',url),{headers});
+  assert.equal(mcp.status,200,'Cloud runtimes must mount the native organization MCP bridge');
+  assert.deepEqual(await mcp.json(),{items:[]});
+  assert(mcpCatalog>0,'The cloud runtime credential must load member MCP grants');
   assert(activity>0,'Cloud bootstrap must authorize actual HTTP requests');
   const state=JSON.parse(await readFile(join(home,'storages/workspace.json'),'utf8'));
   const canonicalWorkspace=await realpath(workspace);

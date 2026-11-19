@@ -9,8 +9,7 @@ DSH 基准由[运行时固定记录](upstream.json)指定。本次盘点基于 `
 | 功能与产品代码 | DSH 依赖 | 验证 |
 | --- | --- | --- |
 | [插件后台安装](../../plugins/ipollowork-suite/src/client/market-installation.ts)与[原生添加插件入口](../../plugins/ipollowork-suite/src/client/add-plugin.ts) | DSH Plugin Manager 的安装请求 ID、`plugin-manager/install-state`、`plugin-manager/changed`、连接重置、`shell.overlay`、`plugins.tab`。原生工具栏的 DOM 是额外依赖，涉及 `data-plugin-toolbar`、菜单角色和本地化标签。 | 分别从工具栏主按钮、下拉菜单和市场开始安装。关闭弹窗并切换页面，确认安装继续、重新打开可见进度、安装结束按钮自动刷新。上游提供可替换的安装入口后移除 DOM 拦截。 |
-| [会话删除](../../plugins/ipollowork-suite/src/client/session-delete.tsx) | `session` 和 `sessionHeader` 菜单、`workspace/archiveSession` 操作权限、`archiveSession` 的 `stopActivity` 选项及工作区快照的归档 ID。会话仍可通过 DSH 的归档界面恢复。 | 用空闲和运行中的会话验证确认、从列表移除和恢复。无权限会话需隐藏操作。 |
-| [本地回收站](../../plugins/ipollowork-suite/src/client/workspace-trash.tsx) | 使用 `sidebar.footer.action`、原生归档及会话摘要，不注册工作区。旧版空的模拟工作区按确切 `data-row-key` 隐藏。通过 `Workspace.attachSession` 恢复，桌面只显示 `SessionPersistence.stat` 返回的归档会话文件。 | 归档会话后在回收站选中，确认可以查看本地文件并恢复同一会话。检查没有工作区菜单，新配置仍可初始化默认工作区。 |
+| 原生会话归档与工作区移除 | 会话菜单、归档确认、已归档筛选、取消归档和工作区移除均由 DSH 负责。产品回收站、额外删除入口、移除工作区后的归档监听和归档文件 IPC 已在 `dsh-v0.2.2-rc.3` 上移除。已有归档数据继续由 DSH 管理。 | 确认侧栏没有产品回收站，会话菜单没有额外删除入口。通过 DSH 归档和取消归档，再移除可丢弃的测试工作区，核对原生行为。 |
 | [组织资源共享](../../services/ipollowork/src/organization-publications.ts) | Work 保存审核过的插件包名和固定版本，DSH 插件管理器负责检查、确认及安装。已发布且授权的 Skill 进入 DSH 技能注册表。成员打开组织或资源页时刷新授权，Host 也在后台定期刷新。 | 成员保持登录时发布版本。打开资源页，在新会话用原生斜杠菜单选择 Skill。验证撤回授权会移除对应 Skill，插件由原生管理器检查且初始禁用。 |
 | [Windows 开发版热更新](../desktop/scripts/start-local-hot.ps1) | 启动器构建已链接的 Work 套件，分别由 DSH 的 `hmr` 和 `client-hmr` 接管重载。套件先发布 CSS，再替换 `client.js`，由官方监听器通告完整版本。 | 用同一开发 profile 启动，保存套件源码，确认原生 `/plugins/events` 发布了新版本，且 Electron 进程和会话保持。通过本机服务接口验证 Host 代码也已更新。 |
 | 总助手选择 | `conversation.hero.agentPreset` 和 `conversation.input.model` 由原生预设与模型选择器负责。总助手仍是可选的 Host 预设。 | 在新会话中选择总助手后切换到其他预设，再在总助手会话的输入区切换两个模型。 |
@@ -40,7 +39,15 @@ Design `1.0.0-beta.32` 在同一版本的 DSH 上使用测试模型验证了 38 
 
 Design `1.0.0-beta.33` 将模板身份保存到原生 HTML 绑定，通过 `systemPrompt.context` 给模板会话补充上下文，并用 `tools/pre-execute` 阻止该会话调用 `present` 交付 Office 幻灯片或 PDF。桌面实测从 38 页模板发送「做个 PPT」，写回 HTML 后由对话卡片重新打开 Design。
 
+Design `1.0.0-beta.34` 将 HTML 交付约束应用于所有已激活的 Design 文档，包括直接从导航打开的文档。`surface.tsx` 等待鉴权后的 `/document` 继续编辑操作完成，再打开原生对话与右侧面板。会话级动态 `systemPrompt.section` 和必需的 `systemPrompt.context` 在关闭可选上下文时仍保留当前文件；`tools/pre-execute` 先恢复持久化绑定，再检查 `present`。升级时分别验证直接打开和使用模板，覆盖编辑器首次加载、已创建的 Agent 和插件重启。两条链路均先尝试返回 PPTX，再交付 HTML，由原生文件卡片重新打开并将编辑保存到同一个 HTML 文件。独立插件仓库的 CI 在 macOS 和 Windows 上运行该已安装归档的浏览器回归。
+
+2026 年 11 月 19 日，同一份 beta.34 归档（`a17735f6e7f7e86680e0bacdecc6113baa19dacf41928691831ba50d8c6485fc`）在 Windows 和 [macOS](https://github.com/Devin-AXIS/deepseek-design/actions/runs/44454238252) 上通过了两种对话入口的回归。测试模型先尝试返回 PPTX，再写入并交付 HTML；原生文件卡片能重新打开 Design，手动编辑保存到同一个文件，模板保留全部 38 页。Windows 还通过了 Design/Video 同时安装的验证，现有开发配置已通过原生管理器更新并启用。macOS 验证使用原生 DSH Host 和浏览器，未操作用户已有的 Electron 安装版；该安装版仍需更新插件。两端的构建、类型检查和全部 129 项源码测试均通过。较大范围的 Linux Video 安装冒烟遇到了外部 GPU 依赖下载失败。
+
 ## 更新和验证
+
+Suite `0.1.36` 与 Design `1.0.0-beta.35` 通过可选客户端服务 `ipolloDesignTemplates` 注册组织模板来源。Cordis 注入与释放控制组织空间的模板页，账号凭证变化时清理旧账号来源。元数据来自已鉴权的账号目录；使用模板先重新校验指定版本的权限，再通过 `/document` 和带版本校验的 `/file` 创建新的 Design 文档。验证停用/启用 Design、不同授权的成员、撤权、切换账号，以及生成 HTML 后继续编辑。组织凭证不传递给 Design。
+
+组织 MCP 使用原生公开的 `mcpManager.list`、`register`、`restart`。原生设置页只读取不含凭证的状态，重新连接前刷新授权。云运行凭证仅开放成员目录和连接传输所需方法，服务端仍逐次校验成员和资源权限。验证本地与云运行时的工具发现、原生 Agent 实际调用、撤权和退出登录。模型/工具弹窗通过原生 Modal 的 `contentClassName` 与 `footer` 保持接口路径可滚动、操作按钮可见；表单样式只匹配直接的原始输入框，保留添加插件的原生 Input 外层。以 390px 和两种主题检查，并验证提交资源能区分缺少元数据、非法版本和版本冲突。
 
 1. 修改涉及 DSH 的功能时，同步更新本记录的中英文版本。记录产品入口、使用的 DSH 接口或选择器、验证方式，以及已验证的 DSH 版本。上游实现接替本地适配后，记录移除原因和首次验证的版本。
 2. 在新工作树评估候选 DSH。同步更新固定记录、依赖清单和锁文件，使用候选版本自己的源码和产物。优先使用上游公开的扩展点与类型。可选能力通过宿主能力检测接入；遇到缺失的必要接口时，在采用新 pin 前完成适配和验证。
@@ -48,5 +55,9 @@ Design `1.0.0-beta.33` 将模板身份保存到原生 HTML 绑定，通过 `syst
 4. 按[桌面验证说明](../desktop/tests/README.zh.md)用隔离 profile 跑上表受影响的流程，记录候选源码提交、平台、测试结果和未覆盖项。当前 pin 的测试通过只证明当前版本。
 
 ## 最近验证
+
+Design beta.35 的 [CI](https://github.com/Devin-AXIS/deepseek-design/actions/runs/44461150839) 在 Windows、macOS 上通过构建、类型检查、全部 131 项源码测试、打包检查和已安装原生插件的对话回归。独立的 Linux Video 冒烟因外部 CUDA 依赖下载失败。该验证未覆盖用户已有 Mac 安装包内的组织 Suite 界面，该客户端仍需更新 Suite 和 Design。
+
+2026-11-19，Suite `0.1.36` 通过 176 项测试（11 项可选跳过），账号服务通过 89 项，根目录工具通过 11 项测试及上游、文档检查。两个隔离 Windows 原生配置实际安装 Suite 与 Design beta.35 归档，使用合成管理员/成员账号，验证具体版本异常、名称/说明必填、模板授权过滤、Design 开关、新建 HTML 后手动编辑保存、MCP 设置状态及 Agent 的 `ping`/`pong` 调用。撤权后原生 MCP 工具被移除，模板读取和 MCP 重连均被拒绝。模型/工具弹窗在 390px、1280px 和原生明暗主题下，内容可滚动且底部按钮始终位于 600px 高的窗口内。MCP 测试仅替换合成服务的传输目的地，真实业务授权仍然执行。Windows 开发版沿用原配置重启，Design beta.35 通过原生管理器更新。根目录初始化拒绝覆盖已有的真实 `apps` 目录，该目录保持原样。生产部署仍等待控制台登录。
 
 2026-11-17，Windows Electron 开发版使用当前 pin 和已有登录会话，成功打开组织 MCP 列表及共享表单。迁移和授权回归使用隔离 PostgreSQL，覆盖从业务 schema `11` 升到 `13`、原组织与登录会话保留、管理员共享及撤销。桌面端共 19 项相关回归通过。真实第三方 MCP 的连接和调用需要配置服务后验证。

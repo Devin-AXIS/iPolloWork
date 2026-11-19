@@ -78,7 +78,7 @@ function McpDialog({ path, t, call, controller, close, item, language }: AssetPr
     });
   };
   return <Modal open title={zh ? "编辑 MCP" : "Edit MCP"} description={t.mcpEndpointHint} closeLabel={t.close}
-    className={css.enterpriseModal!} onClose={() => { if (!task.busy) close(); }}>
+    className={css.enterpriseModal!} contentClassName={css.enterpriseModalContent!} onClose={() => { if (!task.busy) close(); }}>
     <form onSubmit={submit} className={css.enterpriseForm}>
       <Field label={t.name}><input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} /></Field>
       <Field label={t.skillDescription}><input maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} /></Field>

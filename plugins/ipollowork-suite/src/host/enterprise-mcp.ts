@@ -10,7 +10,16 @@ import type { ModelWebServer } from "./service-models.ts";
 export interface EnterpriseMcpScope extends Pick<Context, "effect"> {
   mcpManager: { register(name: string, entry: {
     transport: "streamable-http"; url: string; headers: Record<string, string>;
-  }): () => void };
+  }): () => void;
+    list(): { name: string; status: { state: string } }[];
+    restart(name: string): Promise<void>;
+  };
+}
+export interface EnterpriseMcpConnection { id: string; title: string; serverName: string; state: string }
+export interface EnterpriseMcpRefresh {
+  (): Promise<void>;
+  connections(): EnterpriseMcpConnection[];
+  restart(id: string): Promise<void>;
 }
 
 const catalog = z.object({ items: z.array(z.object({ id: z.uuid(), title: z.string().max(120) })).max(100) });
@@ -20,9 +29,9 @@ const responseHeaders = ["content-type", "mcp-session-id"];
 const maxRequest = 1024 * 1024;
 
 /** Register the account's grants with DSH while the suite and membership are active. */
-export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer, account: AccountService): () => Promise<void> {
+export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer, account: AccountService): EnterpriseMcpRefresh {
   const lifetime = new AbortController();
-  const registrations = new Map<string, { dispose(): void; signal: AbortSignal }>();
+  const registrations = new Map<string, { title: string; name: string; dispose(): void; signal: AbortSignal }>();
   const auth = "Bearer " + randomBytes(32).toString("base64url");
   let generation = -1;
   let pending: Promise<void> | undefined;
@@ -118,7 +127,8 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
           registrations.delete(id);
         }
         for (const { id, title } of items) {
-          if (registrations.has(id)) continue;
+          const existing = registrations.get(id);
+          if (existing) { existing.title = title; continue; }
           const label = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 15) || "team-mcp";
           const name = label + "-" + id.replaceAll("-", "").slice(0, 16);
           const server = new AbortController();
@@ -127,11 +137,11 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
             url: web.getOrigin() + path + "/" + id,
             headers: { authorization: auth },
           });
-          registrations.set(id, { signal: server.signal, dispose() { server.abort(); unregister(); } });
+          registrations.set(id, { title, name, signal: server.signal, dispose() { server.abort(); unregister(); } });
         }
       } catch (error) {
         if (account.generation === next) release();
-        throw error;
+        throw new SuiteError('IPW_MCP_SYNC_FAILED', 503, { cause: error });
       }
     };
     const task = pending = load().finally(() => {
@@ -143,11 +153,23 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
   ctx.effect(() => {
     const timer = setInterval(() => { void refresh().catch(() => {}); }, 60_000);
     timer.unref();
-    return () => {
+    return async () => {
       clearInterval(timer);
       lifetime.abort();
       release();
+      await pending?.catch(() => {});
     };
   });
-  return refresh;
+  return Object.assign(refresh, {
+    connections() {
+      const states = new Map(ctx.mcpManager.list().map(item => [item.name, item.status.state]));
+      return Array.from(registrations, ([id, item]) => ({ id, title: item.title, serverName: item.name, state: states.get(item.name) ?? 'connecting' }));
+    },
+    async restart(id: string) {
+      await refresh();
+      const current = registrations.get(id);
+      if (!current) throw new SuiteError('IPW_MCP_FORBIDDEN', 403);
+      await ctx.mcpManager.restart(current.name);
+    },
+  });
 }

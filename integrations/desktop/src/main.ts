@@ -12,7 +12,7 @@ import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-prod
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   app,
@@ -891,22 +891,6 @@ async function main(): Promise<void> {
       return Promise.resolve(new Response(null, { status: 503 }))
     }
     return forwardWebRequest(request, hostUrl, hostCookie)
-  })
-  ipcMain.handle(DESKTOP_IPC.revealArchivedSession, async (event, sessionId: unknown) => {
-    assertMainApplication(event)
-    if (typeof sessionId !== 'string' || !/^[\w-]{1,128}$/u.test(sessionId) || !backend.host || !hostUrl || !hostCookie)
-      throw new Error('Archived conversation unavailable')
-    const response = await forwardWebRequest(new Request(`${SCHEME}://app/ipollowork-suite/workspace-trash/reveal`, {
-      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ sessionId }),
-      signal: AbortSignal.timeout(8_000),
-    }), hostUrl, hostCookie)
-    if (!response.ok) { await response.body?.cancel(); throw new Error('Archived conversation unavailable') }
-    const value: unknown = await response.json()
-    if (!value || typeof value !== 'object' || !('path' in value) || typeof value.path !== 'string' || !isAbsolute(value.path))
-      throw new Error('Archived conversation unavailable')
-    await access(value.path)
-    assertMainApplication(event)
-    shell.showItemInFolder(value.path)
   })
   ipcMain.on(PLATFORM_IPC.bootstrap, (event) => {
     try { event.returnValue = platformView.bootstrap(event) }

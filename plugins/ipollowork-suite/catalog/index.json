@@ -54,7 +54,7 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.33",
+          "version": "1.0.0-beta.35",
           "publishTimestamp": 1794986790,
           "source": {
             "type": "npm"

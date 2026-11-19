@@ -12,6 +12,7 @@ export interface SlotOptions<P> {
   children?: Record<string, { kind: 'single'; scope: 'session' }>;
 }
 export interface ClientContext {
+  inject(dependencies: readonly ['ipolloDesignTemplates'], callback: (scope: ClientContext & { ipolloDesignTemplates: import('../shared/design-templates.ts').DesignTemplateSources }) => void): unknown;
   inject(dependencies: readonly ['remote.pluginManager'], callback: (scope: ClientContext) => void): unknown;
   inject(dependencies: readonly ['remoteAccess'], callback: (scope: ClientContext) => void): unknown;
   inject(dependencies: readonly ['remote.liveshareShares'], callback: (scope: {

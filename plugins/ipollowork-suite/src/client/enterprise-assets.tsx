@@ -6,6 +6,7 @@ import {
 /** Enterprise departments, skills and models, with grants for everyone or selected departments and people. */
 import {
   useMemo,
+  useId,
   useRef,
   useState,
   type FormEvent,
@@ -1377,6 +1378,7 @@ function ModelDialog({
   close,
   language,
 }: AssetProps & { model: EnterpriseModel | null; close(): void }) {
+  const formId = useId();
   const task = useTask(t);
   const [mode, setMode] = useState<"shared" | "member">(model?.credentialMode ?? "shared");
   const [category, setCategory] = useState<ServiceCategory>(
@@ -1490,11 +1492,16 @@ function ModelDialog({
       title={model ? model.title : t.newModel}
       closeLabel={t.close}
       className={css.enterpriseModal!}
+      contentClassName={css.enterpriseModalContent!}
+      footer={<>
+        <Button variant="outline" type="button" disabled={task.busy} onClick={close}>{t.cancel}</Button>
+        <Button variant="primary" type="submit" form={formId} disabled={task.busy || !title.trim() || !baseUrl || (mode === "shared" && !model && !key) || (category !== "tool" && !chosen.length)}>{t.save}</Button>
+      </>}
       onClose={() => {
         if (!task.busy) close();
       }}
     >
-      <form className={css.assetForm} onSubmit={save}>
+      <form id={formId} className={css.assetForm} onSubmit={save}>
         <label className={css.stackField}>
           <span>{t.capabilityType}</span>
           <select
@@ -1634,29 +1641,6 @@ function ModelDialog({
           />
         </details>
         <FormError message={task.error} />
-        <div className={css.dialogFooter}>
-          <Button
-            variant="outline"
-            type="button"
-            disabled={task.busy}
-            onClick={close}
-          >
-            {t.cancel}
-          </Button>
-          <Button
-            variant="primary"
-            type="submit"
-            disabled={
-              task.busy ||
-              !title.trim() ||
-              !baseUrl ||
-              (mode === "shared" && !model && !key) ||
-              (category !== "tool" && !chosen.length)
-            }
-          >
-            {t.save}
-          </Button>
-        </div>
       </form>
     </Modal>
   );

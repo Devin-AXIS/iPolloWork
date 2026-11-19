@@ -5,6 +5,7 @@ import { readJson, type AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
 import { linkProject } from "./project-context.ts";
 import { pinnedPlugin } from "./enterprise-plugin.ts";
+import { publicationInputError } from "../shared/publication-validation.ts";
 import { organizationTabs } from "../shared/enterprise.ts";
 import type {
   EnterpriseAssets,
@@ -457,6 +458,8 @@ export class EnterpriseService {
     if (parts.length === 1) {
       if (method === "GET") return publicationList.parse(await this.organizationCapability(root));
       if (method === "POST") {
+        const invalid = publicationInputError(input);
+        if (invalid) throw new SuiteError(invalid, 400);
         const common = { id: id.optional(), title: name, description, version: publicationVersion };
         if (kind === "plugin") {
           const data = z.object({ ...common, packageName: z.string().max(214) }).strict().parse(input);
@@ -506,6 +509,14 @@ export class EnterpriseService {
     input?: unknown,
   ): Promise<unknown> {
     const parts = path.split("/").filter(Boolean);
+    if (method === 'GET' && path === '/design-templates') {
+      return z.object({ items: z.array(z.object({ id, enterpriseId: id, title: name, description,
+        version: publicationVersion, sourceName: name })).max(1000) }).parse(
+          await this.organizationCapability('me/organization-templates'));
+    }
+    if (method === 'GET' && parts[0] === 'design-templates' && parts.length === 4) {
+      return this.publications('enterprises/' + id.parse(parts[1]), ['template', id.parse(parts[2]), 'versions', publicationVersion.parse(parts[3])], method, undefined);
+    }
     if (path === "/conversation-share-preview" && method === "POST") {
       await this.signedIn();
       const { sessionId } = z.object({ sessionId: id }).strict().parse(input);

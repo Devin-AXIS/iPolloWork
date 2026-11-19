@@ -14,7 +14,6 @@ export const DESKTOP_FIXED_UPDATE_CHANNEL_ARGUMENT = '--ipollo-fixed-update-chan
 /** IPC channel names kept private to the desktop application bundle. */
 export const DESKTOP_IPC = {
   fileSave: 'dsh-desktop:file-save',
-  revealArchivedSession: 'dsh-desktop:reveal-archived-session',
   clipboardImageRead: 'dsh-desktop:clipboard-image-read',
   shortcutsInput: 'dsh-desktop:shortcuts-input',
   shortcutsCloseWindow: 'dsh-desktop:shortcuts-close-window',
@@ -96,7 +95,6 @@ export interface DesktopUpdatePresentation {
 /** Product documents cannot supply update versions, package URLs, or installation authorization. */
 export interface DshDesktopProductApi {
   readonly fileActions: DesktopFileActions
-  revealArchivedSession(sessionId: string): Promise<void>
   readonly protocolVersion: 1
   readonly version?: string
   readonly appVersion: () => Promise<string>

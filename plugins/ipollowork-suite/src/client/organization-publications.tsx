@@ -7,6 +7,8 @@ import type { EnterpriseController, EnterpriseState } from "./enterprise-control
 import { format, type EnterpriseLabels } from "./enterprise-locale.ts";
 import { BellGlyph } from "./glyphs.tsx";
 import css from "./suite.module.css";
+import { publicationInputError } from "../shared/publication-validation.ts";
+import { enterpriseError } from "./enterprise-locale.ts";
 
 type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void>; target?: string | undefined };
 
@@ -55,14 +57,17 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
   const task = useTask(t);
   const zh = language.startsWith("zh");
   return <Modal open title={publication ? (zh ? "提交新版本" : "Submit a new version") : (zh ? "提交资源" : "Submit resource")}
-    closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close(); }}>
+    closeLabel={t.close} className={css.enterpriseModal!} contentClassName={css.enterpriseModalContent!} onClose={() => { if (!task.busy) close(); }}>
     <form className={css.enterpriseForm} onSubmit={event => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
+      const metadata = { title: String(form.get("title") ?? "").trim(), description: String(form.get("description") ?? "").trim(), version: String(form.get("version") ?? "").trim() };
+      const invalid = publicationInputError(metadata);
+      if (invalid) { task.setError(enterpriseError(invalid, t)); return; }
       void task.run(async () => {
         await call(path, {
           ...(publication ? {id:publication.id} : {}),
-          title: form.get("title"), description: form.get("description"), version: form.get("version"),
+          ...metadata,
           ...(kind === "plugin" ? { packageName: form.get("packageName") } : kind === "skill" ? {markdown:form.get("markdown")} :
             kind === "mcp" ? {endpoint: form.get("endpoint")} : { html }),
         });
@@ -72,7 +77,7 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
     }}>
       <Field label={t.name}><input name="title" maxLength={120} required defaultValue={publication?.title}/></Field>
       <Field label={zh ? "说明" : "Description"}><textarea name="description" maxLength={kind === "skill" ? 1000 : 2000}
-        required={kind === "skill"} rows={2} defaultValue={publication?.description}/></Field>
+        required rows={2} defaultValue={publication?.description}/></Field>
       {kind === "plugin" ? <Field label={zh ? "DSH 插件包名" : "DSH plugin package"}>
         <input name="packageName" required maxLength={214} placeholder="@team/plugin" readOnly={!!publication} defaultValue={publication?.packageName}/>
       </Field> : kind === "skill" ? <Field label="SKILL.md"><textarea name="markdown" rows={8} maxLength={32000} required/></Field>

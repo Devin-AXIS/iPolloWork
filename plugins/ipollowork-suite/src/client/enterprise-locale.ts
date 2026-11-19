@@ -297,6 +297,12 @@ const en = {
   loading: "Loading…",
   saved: "Saved",
   operationFailed: "Could not complete the operation. Retry after refreshing.",
+  publicationVersionInvalid: "Enter a full version, such as 1.0.0 or 1.0.0-beta.1.",
+  publicationTitleRequired: "Enter a resource name.",
+  publicationDescriptionRequired: "Enter a resource description.",
+  publicationVersionExists: "This version already exists. Use a new version.",
+  publicationExists: "This plugin already exists. Submit a new version of the existing resource.",
+  publicationPackageMismatch: "Use the same plugin package name for a new version.",
   organizationListLoadFailed: "Could not refresh the organization list.",
   organizationDetailsLoadFailed: "Could not load the organization details.",
   analyticsLoadFailed: "Could not load organization analytics.",
@@ -390,9 +396,6 @@ const en = {
   deleteMcpTitle: "Remove “{name}”?",
   deleteMcpBody: "Members will lose access to this shared MCP server.",
   mcpReviewRequired: "Submit a new version for review to change the MCP address.",
-  deleteSessionTitle: "Delete “{name}”?",
-  deleteSessionBody: "Running tasks will stop. You can restore this conversation from Archived.",
-  deleteSession: "Delete conversation",
   deleteProject: "Delete project",
   deleteProjectTitle: "Delete project “{name}”?",
   deleteProjectBody: "This removes the project from organization space and revokes its collaboration links. The workspace folder and its files are retained.",
@@ -735,6 +738,12 @@ const zh: typeof en = {
   loading: "正在加载…",
   saved: "已保存",
   operationFailed: "操作未完成，请刷新后重试",
+  publicationVersionInvalid: "版本号格式不正确，请填写完整版本号，例如 1.0.0 或 1.0.0-beta.1。",
+  publicationTitleRequired: "请填写资源名称。",
+  publicationDescriptionRequired: "请填写资源说明。",
+  publicationVersionExists: "该版本已存在，请使用新的版本号。",
+  publicationExists: "该插件已存在，请在现有资源中提交新版本。",
+  publicationPackageMismatch: "新版本必须使用同一个插件包名。",
   organizationListLoadFailed: "组织列表加载失败",
   organizationDetailsLoadFailed: "组织详情加载失败",
   analyticsLoadFailed: "组织数据分析加载失败",
@@ -826,9 +835,6 @@ const zh: typeof en = {
   deleteMcpTitle: "移除「{name}」？",
   deleteMcpBody: "已获授权的成员将无法继续使用此共享 MCP。",
   mcpReviewRequired: "变更 MCP 地址请提交新版本审核",
-  deleteSessionTitle: "删除会话「{name}」？",
-  deleteSessionBody: "正在运行的任务会停止。之后可在「已归档」中恢复此会话。",
-  deleteSession: "删除会话",
   deleteProject: "删除项目",
   deleteProjectTitle: "删除项目「{name}」？",
   deleteProjectBody: "项目会从组织空间移除，协作链接将失效。工作区文件夹及文件会保留。",
@@ -920,6 +926,12 @@ export function format(
   );
 }
 export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.operationFailed): string {
+  if (code === "PUBLICATION_VERSION_INVALID" || code === "IPW_DSH_PINNED_PLUGIN_REQUIRED") return t.publicationVersionInvalid;
+  if (code === "PUBLICATION_TITLE_REQUIRED") return t.publicationTitleRequired;
+  if (code === "PUBLICATION_DESCRIPTION_REQUIRED") return t.publicationDescriptionRequired;
+  if (code === "PUBLICATION_VERSION_EXISTS") return t.publicationVersionExists;
+  if (code === "PUBLICATION_EXISTS") return t.publicationExists;
+  if (code === "PUBLICATION_PACKAGE_MISMATCH") return t.publicationPackageMismatch;
   if(['IPW_CLOUD_DISABLED','CLOUD_DISABLED'].includes(code))return t.cloudDisabled;
   if(['IPW_CLOUD_START_FAILED','CLOUD_START_FAILED'].includes(code))return t.cloudFailed;
   if(code==='CLOUD_PROJECT_BUSY')return t.cloudBusy;

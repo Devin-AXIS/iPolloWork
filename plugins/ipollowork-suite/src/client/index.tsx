@@ -12,14 +12,13 @@ import { mountAddPlugin } from './add-plugin.ts'
 import { AccountPanel, AccountLauncher } from './account.tsx'
 import { AccountController } from './account-controller.ts'
 import { mountAgents } from './agents.tsx'
-import { mountWorkspaceTrash } from './workspace-trash.tsx'
 import { mountEnterprise } from './enterprise.tsx'
 import { mountData } from './data.tsx'
 import { createBrowserAppData } from './data-service.ts'
 import { mountConnections } from './connections.tsx'
+import { mountMcpConnections } from './mcp-connections.tsx'
 import { mountOutputContinuationPresentation } from './output-continuation.tsx'
 import { mountChatErrors } from './chat-errors.tsx'
-import { mountSessionDelete } from './session-delete.tsx'
 import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
 export const inject = ['slots', 'theme', 'locale', 'remote', 'layout', 'uiWorkspace', 'connection', 'sessions', 'workspaces', 'contextMenus', 'conversation', 'configForms']
 export async function apply(ctx: ClientContext): Promise<void> {
@@ -35,8 +34,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
   const labels = labelSource(ctx)
   mountOutputContinuationPresentation(ctx)
   mountChatErrors(ctx)
-  mountSessionDelete(ctx)
-  mountWorkspaceTrash(ctx)
   mountConnections(ctx)
   mountAgents(ctx)
   mountIm(ctx)
@@ -66,6 +63,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     }, MarketPanel))
   })
   if (info.account) {
+    mountMcpConnections(ctx)
     const account = new AccountController()
     ctx.effect(() => {
       const refresh = () => { void account.refresh() }

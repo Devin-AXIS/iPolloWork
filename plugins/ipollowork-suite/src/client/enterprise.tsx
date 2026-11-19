@@ -68,6 +68,7 @@ import {
   useTask,
 } from "./enterprise-ui.tsx";
 import css from "./suite.module.css";
+import { organizationTemplateSource } from './organization-templates.ts';
 
 const PANEL = "ipollowork-enterprise";
 
@@ -83,6 +84,7 @@ export interface Props
   useEnterpriseState<T>(selector: (state: EnterpriseState) => T): T;
   useEnterpriseLabels<T>(selector: (labels: EnterpriseLabels) => T): T;
   useLocale<T>(selector: (value: string) => T): T;
+  useDesignAvailable<T>(selector: (value: boolean) => T): T;
   controller: EnterpriseController;
   actions: CollaborationActions;
   openAccountSettings(): boolean;
@@ -156,6 +158,7 @@ function EnterpriseFeedback({ useEnterpriseState, useEnterpriseLabels, useLocale
 }
 
 function EnterprisePanel(props: Props) {
+  const designAvailable = props.useDesignAvailable(value => value);
   const t = props.useEnterpriseLabels((v) => v),
     state = props.useEnterpriseState((v) => v),
     language = props.useLocale((v) => v);
@@ -283,6 +286,7 @@ function EnterprisePanel(props: Props) {
               refreshing={state.loading}
               publicationTarget={state.publicationTarget}
               installEnterprisePlugin={props.installEnterprisePlugin}
+              designAvailable={designAvailable}
             />
           )}
         </>
@@ -305,6 +309,7 @@ function EnterpriseBody({
   refreshing,
   publicationTarget,
   installEnterprisePlugin,
+  designAvailable,
 }: {
   enterpriseId: string;
   userId: string;
@@ -318,6 +323,7 @@ function EnterpriseBody({
   refreshing: boolean;
   publicationTarget: string | undefined;
   installEnterprisePlugin(spec: string): Promise<void>;
+  designAvailable: boolean;
 }) {
   const detail = useRecord<EnterpriseDetail>(
     "/organizations/" + enterpriseId,
@@ -345,7 +351,7 @@ function EnterpriseBody({
     id: "ipw-enterprise-tab-" + value,
     panelId: "ipw-enterprise-panel-" + value,
   }));
-  const tabs = labels.filter(item => item.value !== "activity" || detail.data?.canManage);
+  const tabs = labels.filter(item => (item.value !== "activity" || detail.data?.canManage) && (item.value !== 'templates' || designAvailable));
   const active = tabs.find((item) => item.value === tab) ?? tabs[0]!;
   const assetProps = detail.data
     ? {
@@ -753,6 +759,24 @@ export function mountEnterprise(
 ): void {
   const controller = new EnterpriseController(),
     labels = enterpriseLabels(ctx);
+  let designEnabled = false;
+  const designListeners = new Set<() => void>();
+  const designAvailable = { getSnapshot: () => designEnabled, subscribe(listener: () => void) {
+    designListeners.add(listener); return () => { designListeners.delete(listener); };
+  } };
+  const setDesign = (value: boolean) => { designEnabled = value; for (const listener of designListeners) listener(); };
+  ctx.inject(['ipolloDesignTemplates'], scope => {
+    scope.effect(() => {
+      let lifetime = new AbortController();
+      let off = scope.ipolloDesignTemplates.register(organizationTemplateSource(lifetime.signal, enterpriseCopy(ctx).templatesTab));
+      const changed = scope.remote.$on('credentials/record-updated', () => {
+        lifetime.abort(); off(); lifetime = new AbortController();
+        off = scope.ipolloDesignTemplates.register(organizationTemplateSource(lifetime.signal, enterpriseCopy(ctx).templatesTab));
+      });
+      setDesign(true);
+      return () => { changed(); lifetime.abort(); off(); setDesign(false); };
+    }, 'ipollowork: organization Design templates');
+  });
   const locale = {
     getSnapshot: () => language(ctx),
     subscribe: (listener: () => void) => ctx.locale.subscribe(listener),
@@ -822,7 +846,7 @@ export function mountEnterprise(
   });
   const props = () => ({
     ...creationProps(),
-    hooks: { enterpriseState: controller, enterpriseLabels: labels, locale },
+    hooks: { enterpriseState: controller, enterpriseLabels: labels, locale, designAvailable },
     controller,
     actions,
     openAccountSettings: account.openAccountSettings,
