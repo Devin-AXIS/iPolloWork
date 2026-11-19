@@ -1,12 +1,15 @@
 /** Resume the sealed 093bd559 application on a clean CI host, retaining all payload and Apple checks. */
 import assert from 'node:assert/strict';
-import {spawn,execFileSync} from 'node:child_process';
+import {spawn,execFile,execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync,mkdirSync} from 'node:fs';
 import {createReadStream} from 'node:fs';
+import {mkdtemp,rm} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 import {resolve,join} from 'node:path';
-import {pathToFileURL} from 'node:url';
+import {tmpdir} from 'node:os';
+import {promisify} from 'node:util';
+import {pathToFileURL,fileURLToPath} from 'node:url';
 
 const commit='093bd559ed0d290cfe787287e01a241b45deaa08';
 const version='1.0.8';
@@ -42,10 +45,30 @@ execFileSync('/usr/bin/ditto',[original,app],{stdio:'inherit'});
 const {resolveMacOSSigningEnvironment}=await module('integrations/desktop/scripts/desktop-release-environment.mjs');
 const {verifyMacOSSignature}=await module('integrations/desktop/scripts/verify-macos-signature.mjs');
 verifyMacOSSignature(app,resolveMacOSSigningEnvironment(environment));
-const {smokePreparedRuntime}=await module('integrations/desktop/scripts/smoke-prepared-runtime.ts');
+const {verifyRuntimeArchive}=await module('integrations/desktop/scripts/verify-runtime-archive.ts');
+const {desktopNodeEnvironment}=await module('integrations/desktop/src/node-environment.ts');
+const {scrubWindowsSigningEnvironment}=await module('integrations/desktop/scripts/windows-sign.mjs');
 for(let iteration=1;iteration<=2;iteration++){
  console.log(JSON.stringify({event:'sealed-runtime-full-smoke-begin',commit,version,iteration}));
- await smokePreparedRuntime(join(app,'Contents/Resources/app.asar/dsh'),join(app,'Contents/MacOS/iPollo'),join(app,'Contents/Resources/runtime'),descriptor);
+ await verifyRuntimeArchive(join(app,'Contents/Resources/app.asar'),descriptor);
+ const executable=join(app,'Contents/MacOS/iPollo');
+ const resources=join(app,'Contents/Resources/runtime');
+ const root=join(app,'Contents/Resources/app.asar/dsh');
+ const cache=await mkdtemp(join(tmpdir(),'sealed-runtime-native-'));
+ const env=desktopNodeEnvironment(executable,join(resources,'bin'),{...scrubWindowsSigningEnvironment(environment),
+  NODE_OPTIONS:'',NARB_NATIVE_CACHE_DIR:cache,NARB_DISABLE_NATIVE_CACHE:'0'});
+ try{
+  const payload=await promisify(execFile)(executable,['--expose-internals',join(source,'integrations/desktop/tests/fixtures/runtime-payload-smoke.mjs'),root,resources],
+   {env,timeout:120000,maxBuffer:8*1024*1024});
+  process.stdout.write(payload.stdout);
+  const host=await promisify(execFile)(executable,['--expose-internals','--experimental-transform-types',fileURLToPath(new URL('./check-sealed-intel-host.mjs',import.meta.url)),source,root,resources],
+   {env,timeout:600000,maxBuffer:8*1024*1024});
+  process.stdout.write(host.stdout);
+ }catch(error){
+  if(typeof error.stdout==='string')process.stdout.write(error.stdout);
+  if(typeof error.stderr==='string')process.stderr.write(error.stderr);
+  throw error;
+ }finally{await rm(cache,{recursive:true,force:true});}
  console.log(JSON.stringify({event:'sealed-runtime-full-smoke-passed',iteration}));
 }
 const {withMacOSSigningKeychain}=await module('integrations/desktop/scripts/macos-signing-keychain.mjs');
