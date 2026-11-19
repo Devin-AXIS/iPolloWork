@@ -6,6 +6,8 @@ DSH 基准由[运行时固定记录](upstream.json)指定。本次盘点基于 `
 
 ## 升级前复核的功能
 
+Suite `0.1.39` 携带 Design `1.0.0-beta.36`，使用原生 `ctx.skills.register`、`ctx.tools.register`、必需的 `systemPrompt.context`、工作区归属和沙箱策略处理模板生成。随包的 `ipollowork-design` Skill 和带 revision 的 `design_edit_text` 只替换文字，保留其余 HTML。模板清单作为有界来源数据处理；文档切换与工具写入共用插件生命周期队列。原编辑器在像素属性控件展示前解析 CSS 单位和主题变量，浮动元素操作直接打开“元素”页。企业 VI 模板保留默认几何并接入主题变量，固定原生幻灯片隐藏无效的全局几何控件；PDF 后台导出有计时兜底。升级时复测 Skill 发现/加载、必需模型上下文、过期版本/只读/跨工作区拒绝、HTML 卡片与链接、本地媒体、元素属性、主题持久化、38 页可编辑 PPTX/PDF、明暗主题和 390px。详见[验收记录](../../docs/design-template-fidelity-2026-11-19.md)。Agent 和 DSH 源码保持不变。
+
 新增 [MCP 连接入口](../../plugins/ipollowork-suite/src/host/mcp-connections.ts) 使用原生 `mcpManager.list/restart`，并在 web-app 的 `mcp-manager` 命名空间中通过带 revision 的 `settings.mutate` 修改单个服务器的 `enabled` 字段或移除仅用户层存在的条目，保留同级配置和凭据引用。继承配置与插件注册条目不可删除，编辑仍打开原生配置文件。组织 MCP 的断开选择通过原生凭据提供方仅保存在本机，按已验证账号身份和服务来源隔离。没有历史选择时仍只请求授权目录；读取已保存选择时每个账号代次增加一次身份查询，不依赖积分接口。升级时复测工具撤回、连接、刷新和重启保持状态、切换账号、版本冲突、保存失败、删除确认及明暗主题和窄设置页，确认原生配置编辑和插件生命周期仍正常；不修改 DSH 源码。
 
 | 功能与产品代码 | DSH 依赖 | 验证 |

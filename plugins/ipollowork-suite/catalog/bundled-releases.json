@@ -3,9 +3,9 @@
   "plugins": [
     {
       "name": "deepseek-idesign",
-      "version": "1.0.0-beta.35",
-      "file": "deepseek-idesign-1.0.0-beta.35-ff2a5de7efc0.tgz",
-      "sha256": "ff2a5de7efc06d33a2d7d5f4dac4b8c83038ab07b770faed85905012bf2742c1"
+      "version": "1.0.0-beta.36",
+      "file": "deepseek-idesign-1.0.0-beta.36-23c7a669df15.tgz",
+      "sha256": "23c7a669df15ed52271082575debdb2481c732573600baab900ba2311a7cf15a"
     },
     {
       "name": "deepseek-ivideo",
