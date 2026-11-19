@@ -1,4 +1,4 @@
-name: Diagnose Intel Office operations
+name: Diagnose Intel packaged Office operations
 on:
   push:
     branches: [ci/office-intel-diagnostic-20261119]
@@ -7,7 +7,173 @@ permissions:
 jobs:
   probe:
     runs-on: macos-15-intel
-    timeout-minutes: 30
+    timeout-minutes: 90
+    env:
+      RELEASE_TAG: v1.0.8
+      RELEASE_VERSION: 1.0.8
+      PACKAGE_TARGET: mac-x64
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Verify the selected macOS SDK and Swift compiler
+        run: |
+          xcodebuild -version
+          xcrun swift --version
+      - name: Restore notarized helpers for the identical pinned DSH release
+        id: cua_helper
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # This donor ships the identical immutable DSH source and both helper architectures.
+          pin="$(git hash-object integrations/runtime/upstream.json)"
+          if [[ "$pin" != 772d5fb3ed2890b4548b8685ae532cb6b7e06cf6 ]]; then
+            exit 0
+          fi
+          directory="$(mktemp -d "$RUNNER_TEMP/ipollo-helper-donor.XXXXXX")"
+          archive="$directory/iPollo-1.0.1-mac-arm64.dmg"
+          gh release download v1.0.1 --repo "$GITHUB_REPOSITORY" --dir "$directory" --pattern "$(basename "$archive")"
+          printf '%s  %s\n' aee5a694e5e77534fbc099cb956ac39bcbc1ffee9c0ce30578f4ffc818b960dd "$archive" | shasum -a 256 -c -
+          volume="$directory/mount"
+          mkdir "$volume"
+          hdiutil attach "$archive" -readonly -nobrowse -mountpoint "$volume" -quiet
+          trap 'hdiutil detach "$volume" -quiet' EXIT
+          source="$volume/iPollo.app/Contents/Resources/app.asar.unpacked/dsh/node_modules/@deepseek-ai/dsh-cua-macos/native/bin"
+          test -f "$source/darwin-arm64/current.json"
+          test -f "$source/darwin-x64/current.json"
+          destination="integrations/desktop/.desktop-build/cua-helper/native"
+          mkdir -p "$destination"
+          ditto "$source" "$destination/bin"
+          for arch in arm64 x64; do
+            architecture="$destination/bin/darwin-$arch"
+            receipt="$(node -e 'process.stdout.write(JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8")).bundle)' "$architecture/current.json")"
+            [[ "$receipt" =~ ^[a-f0-9]{64}$ ]]
+            helper="$architecture/$receipt/DSH Computer Use.app"
+            /usr/bin/codesign --verify --deep --strict "$helper"
+            for attempt in 1 2 3 4; do
+              if /usr/bin/xcrun stapler validate "$helper"; then
+                break
+              else
+                result=$?
+                if (( result != 68 || attempt == 4 )); then exit "$result"; fi
+              fi
+              sleep "$((attempt * 15))"
+            done
+          done
+          printf 'reused=true\n' >> "$GITHUB_OUTPUT"
+      - name: Set Intel pnpm store path
+        if: success()
+        run: echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TEMP/ipollo-intel-pnpm-store" >> "$GITHUB_ENV"
+      - name: Restore Intel build dependencies
+        if: success()
+        id: intel_deps
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: |
+            ${{ runner.temp }}/ipollo-intel-pnpm-store
+            ~/.npm/_cacache
+          key: ipollo-intel-deps-v1-node24.15.0-${{ hashFiles('integrations/runtime/upstream.json', 'integrations/publisher/package-lock.json', 'plugins/ipollowork-suite/package-lock.json', 'plugins/stage/package-lock.json') }}
+      - name: Install pinned build dependencies
+        run: node integrations/tooling/setup.mjs --plugins
+      - name: Save Intel build dependencies
+        if: success() && steps.intel_deps.outputs.cache-primary-key != '' && steps.intel_deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            ${{ runner.temp }}/ipollo-intel-pnpm-store
+            ~/.npm/_cacache
+          key: ${{ steps.intel_deps.outputs.cache-primary-key }}
+      - name: Prepare Apple signing configuration
+        env:
+          CERTIFICATE_P12: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for required in CERTIFICATE_P12 NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER; do
+            if [[ -z "${!required}" ]]; then
+              echo "Missing signing configuration $required" >&2
+              exit 1
+            fi
+          done
+          export MAC_CERT_FILE="$RUNNER_TEMP/ipollo-signing.p12"
+          export MAC_NOTARY_FILE="$RUNNER_TEMP/ipollo-notary.p8"
+          printf '%s' "$CERTIFICATE_P12" | base64 -D > "$MAC_CERT_FILE"
+          printf '%s' "$NOTARY_KEY_P8" | base64 -D > "$MAC_NOTARY_FILE"
+          inspect="$RUNNER_TEMP/ipollo-certificate-inspection.keychain-db"
+          trap 'security delete-keychain "$inspect" >/dev/null 2>&1 || true' EXIT
+          inspection_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$inspection_password" "$inspect"
+          security unlock-keychain -p "$inspection_password" "$inspect"
+          security import "$MAC_CERT_FILE" -k "$inspect" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          export MAC_IDENTITY
+          MAC_IDENTITY="$(security find-identity -p codesigning "$inspect" | sed -nE 's/^[^"]*"(Developer ID Application: [^"]+)"[^"]*$/\1/p' | sort -u)"
+          export MAC_TEAM
+          MAC_TEAM="$(printf '%s\n' "$MAC_IDENTITY" | sed -nE 's/^Developer ID Application: .+ \(([A-Z0-9]{10})\)$/\1/p')"
+          if [[ ! "$MAC_TEAM" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo 'Expected one Developer ID Application identity' >&2
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs'
+          import { parseEnv } from 'node:util'
+          const values = {
+            DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
+            DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+            DSH_DESKTOP_UPDATE_CHANNEL: 'stable',
+            DSH_DESKTOP_UPDATE_URL: 'https://github.com/' + process.env.GITHUB_REPOSITORY + '/releases/latest/download',
+            DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://cloud.ipollo.net',
+            DSH_DESKTOP_MACOS_SIGNING_IDENTITY: process.env.MAC_IDENTITY.replace(/^Developer ID Application: /, ''),
+            DSH_DESKTOP_MACOS_TEAM_ID: process.env.MAC_TEAM,
+            DSH_DESKTOP_MACOS_PACK_CONCURRENCY: '1',
+            CSC_LINK: process.env.MAC_CERT_FILE,
+            CSC_KEY_PASSWORD: process.env.CERTIFICATE_PASSWORD ?? '',
+            APPLE_API_KEY: process.env.MAC_NOTARY_FILE,
+            APPLE_API_KEY_ID: process.env.NOTARY_KEY_ID,
+            APPLE_API_ISSUER: process.env.NOTARY_ISSUER,
+          }
+          const lines = Object.entries(values).map(([key, value]) => {
+            const quote = ["'", '"', String.fromCharCode(96)].find(character => !value.includes(character))
+            if (!quote || /[\r\n]/u.test(value)) throw new Error('Invalid signing setting ' + key)
+            const line = key + '=' + quote + value + quote
+            if (parseEnv(line)[key] !== value) throw new Error('Could not encode signing setting ' + key)
+            return line
+          })
+          writeFileSync('integrations/desktop/.env.macos', lines.join('\n') + '\n', { mode: 0o600 })
+          NODE
+      - name: Build and notarize the native Computer Use helpers
+        if: steps.cua_helper.outputs.reused != 'true'
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process'
+          import { loadDesktopPackageEnvironment } from './integrations/desktop/scripts/desktop-package-environment.mjs'
+          import { withMacOSSigningKeychain } from './integrations/desktop/scripts/macos-signing-keychain.mjs'
+          const configuration = loadDesktopPackageEnvironment('darwin')
+          await withMacOSSigningKeychain(configuration, async environment => {
+            execFileSync(process.execPath, ['--import', 'tsx/esm', 'integrations/desktop/scripts/prepare-cua-helper.ts'], {
+              env: { ...process.env, ...environment }, stdio: 'inherit',
+            })
+          })
+          NODE
+      - name: Build and verify macOS DMG
+        run: |
+          node integrations/desktop/scripts/diagnose-office-processes.mjs &
+          monitor=$!
+          trap 'kill "$monitor" 2>/dev/null || true' EXIT
+          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
+  provider:
+    runs-on: macos-15-intel
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,14 +182,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Prepare exact Office engine and fixture tools
+      - name: Prepare exact provider and engine
         run: |
           npm install --prefix "$RUNNER_TEMP/office-probe" --no-audit --no-fund @deepseek-ai/libreoffice-kit@0.2.3 @deepseek-ai/dsh-office-kit@0.2.2-rc.3 @deepseek-ai/cordis@4.1.0 electron@44.7.0
           python -m pip install python-docx==1.2.0 openpyxl==3.1.5 python-pptx==1.0.2
           mkdir "$RUNNER_TEMP/office-inputs"
           python integrations/desktop/tests/fixtures/office-conversion-inputs.py "$RUNNER_TEMP/office-inputs"
-      - name: Reproduce official provider lifecycle and source handling
+      - name: Run the official provider using the package executable
         run: |
-          home="$(mktemp -d "$RUNNER_TEMP/office-provider-home.XXXXXX")"
-          electron="$(node -p 'require(process.argv[1])' "$RUNNER_TEMP/office-probe/node_modules/electron")"
-          HOME="$home" USERPROFILE="$home" XDG_CONFIG_HOME="$home" XDG_CACHE_HOME="$home" XDG_STATE_HOME="$home" APPDATA="$home" LOCALAPPDATA="$home" ELECTRON_RUN_AS_NODE=1 "$electron" --expose-internals integrations/desktop/scripts/diagnose-office-provider.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"
+          node --input-type=module <<'NODE'
+          import {createRequire} from 'node:module';
+          import {spawnSync} from 'node:child_process';
+          import {mkdtempSync} from 'node:fs';
+          import {join} from 'node:path';
+          import {tmpdir} from 'node:os';
+          const installation=join(process.env.RUNNER_TEMP,'office-probe');
+          const require=createRequire(join(installation,'package.json'));
+          const electron=require('electron');
+          const home=mkdtempSync(join(tmpdir(),'office-provider-home-'));
+          const result=spawnSync(electron,['--expose-internals','integrations/desktop/scripts/diagnose-office-provider.mjs',installation,join(process.env.RUNNER_TEMP,'office-inputs')],{
+            stdio:'inherit',env:{...process.env,HOME:home,USERPROFILE:home,XDG_CONFIG_HOME:home,XDG_CACHE_HOME:home,XDG_STATE_HOME:home,APPDATA:home,LOCALAPPDATA:home,ELECTRON_RUN_AS_NODE:'1'},
+          });
+          if(result.error) throw result.error;
+          process.exitCode=result.status??1;
+          NODE

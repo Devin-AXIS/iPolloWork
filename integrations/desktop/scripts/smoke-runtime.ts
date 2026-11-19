@@ -105,6 +105,17 @@ export function apply(ctx) {
 import { Context } from '@deepseek-ai/cordis'
 import { inspect } from 'node:util'
 import { readFile } from 'node:fs/promises'
+async function officeOperation(label, work) {
+  const started = Date.now()
+  console.log('desktop Office begin: ' + label)
+  try {
+    const result = await work()
+    console.log('desktop Office passed: ' + label + ' in ' + (Date.now() - started) + 'ms')
+    return result
+  } catch (cause) {
+    throw new Error('desktop Office failed: ' + label + ' in ' + (Date.now() - started) + 'ms', { cause })
+  }
+}
 export function apply(ctx) {
   if (!(ctx instanceof Context)) throw new Error('desktop runtime: external plugin loaded another Cordis instance')
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/desktop-smoke',
@@ -138,9 +149,9 @@ export function apply(ctx) {
       async handler(_request, response) {
         try {
           const bytes = Buffer.from(input.bytes, 'base64')
-          const result = await ctx.officeKit.convert({ extension: input.extension, priority: 'foreground',
+          const result = await officeOperation(input.extension + ' PDF', () => ctx.officeKit.convert({ extension: input.extension, priority: 'foreground',
             source: { key: 'desktop-smoke-' + input.extension, version: 'fixture', bytes: bytes.length,
-              async read() { return { bytes, version: 'fixture' } } } })
+              async read() { return { bytes, version: 'fixture' } } } }))
           response.end(Buffer.from(result.pdf))
         } catch (error) {
           response.statusCode = 500
@@ -153,14 +164,14 @@ export function apply(ctx) {
           const bytes = Buffer.from(input.bytes, 'base64')
           const source = (operation) => ({ key: 'desktop-smoke-' + operation + '-' + input.extension, version: 'fixture', bytes: bytes.length,
             async read() { return { bytes, version: 'fixture' } } })
-          const rendered = await ctx.officeKit.renderImages({ extension: input.extension, source: source('images'),
-            maxImages: 4, maxPixels: 16777216, maxDimension: 8192, maxBytes: 64 * 1024 * 1024 })
+          const rendered = await officeOperation(input.extension + ' images', () => ctx.officeKit.renderImages({ extension: input.extension, source: source('images'),
+            maxImages: 4, maxPixels: 16777216, maxDimension: 8192, maxBytes: 64 * 1024 * 1024 }))
           const format = { docx: 'odt', xlsx: 'ods', pptx: 'odp' }[input.extension]
-          const converted = await ctx.officeKit.convertTo({ extension: input.extension, format,
-            source: source('convert'), output: { owner: 'desktop-smoke', name: 'converted.' + format } })
+          const converted = await officeOperation(input.extension + ' convert', () => ctx.officeKit.convertTo({ extension: input.extension, format,
+            source: source('convert'), output: { owner: 'desktop-smoke', name: 'converted.' + format } }))
           const recalculated = input.extension === 'xlsx'
-            ? await ctx.officeKit.recalculate({ extension: 'xlsx', format: 'xlsx', source: source('recalculate'),
-              output: { owner: 'desktop-smoke', name: 'recalculated.xlsx' } })
+            ? await officeOperation('xlsx recalculate', () => ctx.officeKit.recalculate({ extension: 'xlsx', format: 'xlsx', source: source('recalculate'),
+              output: { owner: 'desktop-smoke', name: 'recalculated.xlsx' } }))
             : undefined
           response.end(JSON.stringify({
             images: rendered.images.map(image => Buffer.from(image.png.subarray(0, 8)).toString('hex')),
