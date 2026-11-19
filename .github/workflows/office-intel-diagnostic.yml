@@ -1,28 +1,37 @@
-name: Diagnose Intel engine materialization
+name: Inspect Mac notarization queue
 on:
   push:
     branches: [ci/office-intel-diagnostic-20261119]
 permissions:
   contents: read
 jobs:
-  probe:
-    runs-on: macos-15-intel
-    timeout-minutes: 20
+  queue:
+    runs-on: macos-15
+    timeout-minutes: 10
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24.15.0'
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.13'
-      - name: Prepare the exact Office engine
-        run: |
-          npm install --prefix "$RUNNER_TEMP/office-probe" --no-audit --no-fund @deepseek-ai/libreoffice-kit@0.2.3 electron@44.7.0
-          python -m pip install python-docx==1.2.0 openpyxl==3.1.5 python-pptx==1.0.2
-          mkdir "$RUNNER_TEMP/office-inputs"
-          python integrations/desktop/tests/fixtures/office-conversion-inputs.py "$RUNNER_TEMP/office-inputs"
-      - name: Check the copied engine with flattened filesystem aliases
+      - name: Inspect only recent iPollo submission metadata
         env:
-          OFFICE_PROBE_CASE: electron-app-bundle
-        run: node integrations/desktop/scripts/diagnose-office-engine.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"
+          NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
+        run: |
+          node --input-type=module <<'NODE'
+          import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
+          import {tmpdir} from 'node:os';
+          import {join} from 'node:path';
+          import {execFileSync} from 'node:child_process';
+          const directory=mkdtempSync(join(tmpdir(),'ipollo-notary-history-'));
+          const key=join(directory,'key.p8');
+          try {
+            writeFileSync(key,Buffer.from(process.env.NOTARY_KEY_P8??'','base64'),{mode:0o600});
+            const output=execFileSync('/usr/bin/xcrun',['notarytool','history','--key',key,'--key-id',process.env.NOTARY_KEY_ID,'--issuer',process.env.NOTARY_ISSUER,'--output-format','json'],{timeout:90000,maxBuffer:4*1024*1024,stdio:['ignore','pipe','pipe']});
+            const result=JSON.parse(output.toString());
+            const history=(result.history??[]).filter(item=>/iPollo/i.test(item.name??'')&&Date.parse(item.createdDate)>=Date.parse('2026-11-19T14:50:00Z'));
+            console.log(JSON.stringify({checkedAt:new Date().toISOString(),submissions:history.map(({id,name,status,createdDate})=>({id,name,status,createdDate}))},null,2));
+          } catch(error) {
+            console.error(JSON.stringify({message:'Could not read notary submission metadata',status:error.status,signal:error.signal}));
+            process.exitCode=1;
+          } finally {rmSync(directory,{recursive:true,force:true});}
+          NODE
