@@ -10,6 +10,7 @@ import css from "./suite.module.css";
 import { publicationInputError } from "../shared/publication-validation.ts";
 import { enterpriseError } from "./enterprise-locale.ts";
 import { maxSkillFileBytes, parseSkillFile } from './skill-upload.ts';
+import { FilePicker } from './file-picker.tsx';
 
 type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void>; target?: string | undefined };
 
@@ -84,9 +85,9 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
         required rows={2} defaultValue={publication?.description}/></Field>
       {kind === "plugin" ? <Field label={zh ? "DSH 插件包名" : "DSH plugin package"}>
         <input name="packageName" required maxLength={214} placeholder="@team/plugin" readOnly={!!publication} defaultValue={publication?.packageName}/>
-      </Field> : kind === "skill" ? <Field label={t.skillFile} hint={t.skillFileHint}>
-        <input name="skillFile" type="file" accept=".md,.markdown" required onChange={event => {
-          const input = event.currentTarget, file = input.files?.[0];
+      </Field> : kind === "skill" ? <FilePicker label={t.skillFile} hint={t.skillFileHint} language={language}
+        name="skillFile" accept=".md,.markdown" required disabled={task.busy} onSelect={(files, input) => {
+          const file = files[0];
           setMarkdown(''); setFileError(''); setReadingSkill(false);
           if (!file) return;
           if (file.size > maxSkillFileBytes) { setFileError(t.skillFileTooLarge); return; }
@@ -100,14 +101,12 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
             if (input.files?.[0] === file) setFileError(t.skillFileReadFailed);
           }).finally(() => { if (input.files?.[0] === file) setReadingSkill(false); });
         }}/>
-      </Field>
         : kind === "mcp" ? <Field label={t.mcpEndpoint} hint={t.mcpEndpointHint}>
           <input name="endpoint" type="url" maxLength={2048} required />
         </Field>
-        : <Field label={zh ? "HTML 模板" : "HTML template"}>
-        <input type="file" accept=".html,.htm,text/html" required onChange={event => {
-          const input = event.currentTarget;
-          const file = input.files?.[0];
+        : <FilePicker label={zh ? "HTML 模板" : "HTML template"} language={language}
+        hint={zh ? 'HTML 文件，最大 110 KB' : 'HTML file, up to 110 KB'} accept=".html,.htm,text/html" required disabled={task.busy} onSelect={(files, input) => {
+          const file = files[0];
           setHtml("");
           setFileError("");
           if (!file) return;
@@ -123,8 +122,7 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
           }, () => {
             if (input.files?.[0] === file) setFileError(zh ? "无法读取模板" : "Could not read the template");
           });
-        }}/>
-      </Field>}
+        }}/>}
       <Field label={kind === 'mcp' ? t.mcpPublicationVersion : zh ? "版本" : "Version"}
         hint={kind === 'plugin' ? t.pluginPublicationVersionHint : kind === 'mcp' ? t.mcpPublicationVersionHint : t.customPublicationVersionHint}>
         <input name="version" placeholder={kind === 'plugin' ? '1.0.0' : zh ? '例如：初版' : 'e.g. first'} maxLength={64} required/>

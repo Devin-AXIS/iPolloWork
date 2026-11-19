@@ -8,8 +8,9 @@ import { RosterRequestError } from './api.ts'
 import { CopyLink, EmptyState, Field, FormError, ListSkeleton, Notice, roleName, useRecord, useTask, type Call } from './enterprise-ui.tsx'
 import { MailGlyph, Monogram } from './glyphs.tsx'
 import css from './suite.module.css'
+import { FilePicker } from './file-picker.tsx'
 
-interface MembersProps { enterpriseId: string; userId: string; revision: number; t: EnterpriseLabels; call: Call; controller: EnterpriseController }
+interface MembersProps { enterpriseId: string; userId: string; revision: number; language?: string; t: EnterpriseLabels; call: Call; controller: EnterpriseController }
 
 /** A small chip that opens a native menu of choices and applies the selection immediately. */
 function ChoiceChip({ label, value, options, onChoose, disabled = false, tone = 'plain' }: { label: string; value: string; options: { id: string; label: string }[]; onChoose(id: string): Promise<void>; disabled?: boolean; tone?: 'plain' | 'strong' }) {
@@ -29,7 +30,7 @@ function MemberMenu({ t, onRemove }: { t: EnterpriseLabels; onRemove(): void }) 
     onSelect={() => { setOpen(false); onRemove() }}/>
 }
 
-export function MembersTab({ enterpriseId, userId, revision, t, call, controller }: MembersProps) {
+export function MembersTab({ enterpriseId, userId, revision, t, call, controller, language = 'zh' }: MembersProps) {
   const detail = useRecord<EnterpriseDetail>('/organizations/' + enterpriseId, call, revision)
   const [query, setQuery] = useState(''), [department, setDepartment] = useState<string | null>(null)
   const [addingDepartment, setAddingDepartment] = useState(false), [departmentName, setDepartmentName] = useState('')
@@ -114,7 +115,7 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
         </div>
       })}
     </div>
-    {data.canManage && batch && <BatchCodesDialog enterpriseId={enterpriseId} t={t} call={call} controller={controller} close={() => setBatch(false)}/>}
+    {data.canManage && batch && <BatchCodesDialog enterpriseId={enterpriseId} t={t} call={call} controller={controller} language={language} close={() => setBatch(false)}/>}
     {data.canManage && editingCode && <CodeExpiryDialog key={editingCode.id} invitation={editingCode}
       enterpriseId={enterpriseId} t={t} call={call} controller={controller} close={() => setEditingCode(undefined)}/>}
   </div>
@@ -257,7 +258,7 @@ function rosterError(error: unknown, t: EnterpriseLabels) {
   return row === undefined ? message : format(t.rosterErrorRow, { row }) + ' · ' + message
 }
 
-export function BatchCodesDialog({enterpriseId,t,call,controller,close}:{enterpriseId:string;t:EnterpriseLabels;call:Call;controller:EnterpriseController;close():void}) {
+export function BatchCodesDialog({enterpriseId,t,call,controller,close,language = 'zh'}:{enterpriseId:string;t:EnterpriseLabels;call:Call;controller:EnterpriseController;close():void;language?:string}) {
   const [days,setDays] = useState('')
   const [result,setResult] = useState<{ csv: string; count: number }>()
   const task = useTask(t, error => rosterError(error, t))
@@ -292,7 +293,7 @@ export function BatchCodesDialog({enterpriseId,t,call,controller,close}:{enterpr
       });
     }}>
       <div><Button type="button" variant="outline" onClick={() => downloadCsv("employee-roster-template.csv", t.rosterHeaders + "\r\n")}>{t.downloadRoster}</Button></div>
-      <Field label={t.invitationCsv} hint={t.invitationCsvHint}><input name="roster" type="file" accept=".csv,text/csv" required disabled={task.busy} onChange={() => task.setError('')}/></Field>
+      <FilePicker label={t.invitationCsv} hint={t.invitationCsvHint} language={language} name="roster" accept=".csv,text/csv" required disabled={task.busy} onSelect={() => { task.setError(''); setResult(undefined) }}/>
       <label><input name="createMissingDepartments" type="checkbox" disabled={task.busy}/> {t.rosterCreateDepartments}</label>
       <DaysField t={t} days={days} setDays={setDays} busy={task.busy}/>
       <FormError message={task.error}/>

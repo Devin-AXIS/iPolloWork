@@ -3,7 +3,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { readJson, type AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
-import { linkProject } from "./project-context.ts";
+import { linkProject, linkedProjectWorkspaces } from "./project-context.ts";
 import { pinnedPlugin } from "./enterprise-plugin.ts";
 import { publicationInputError, validPublicationVersion } from "../shared/publication-validation.ts";
 import { organizationTabs } from "../shared/enterprise.ts";
@@ -531,6 +531,14 @@ export class EnterpriseService {
     }
     if (method === "DELETE" && parts[0] === "projects" && parts.length === 2)
       return this.cloud("projects/" + id.parse(parts[1]), undefined, "DELETE");
+    if (method === 'GET' && parts[0] === 'projects' && parts.length === 3 && parts[2] === 'local-workspaces') {
+      const generation = this.account.generation;
+      const projectId = id.parse(parts[1]);
+      await this.cloud('projects/' + projectId + '/space');
+      const items = await linkedProjectWorkspaces(this.native.workspaceRegistry.list(), this.origin, projectId);
+      if (generation !== this.account.generation) throw new SuiteError('IPW_ACCOUNT_CHANGED', 409);
+      return { items };
+    }
     if (
       parts[0] === "projects" &&
       parts[1] &&
@@ -563,12 +571,14 @@ export class EnterpriseService {
       parts[1] &&
       parts[2] === "link"
     ) {
+      const generation = this.account.generation;
       const data = z.object({ workspaceId: id }).parse(input);
       const workspace = this.native.workspaceRegistry
         .list()
         .find((p) => p.id === data.workspaceId);
       if (!workspace) throw new SuiteError("IPW_PROJECT_NOT_FOUND", 404);
       await this.cloud("projects/" + id.parse(parts[1]) + "/space");
+      if (generation !== this.account.generation) throw new SuiteError('IPW_ACCOUNT_CHANGED', 409);
       await linkProject(workspace.path, this.origin, parts[1]);
       return { ok: true };
     }

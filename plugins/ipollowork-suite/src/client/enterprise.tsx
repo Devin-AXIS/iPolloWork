@@ -235,7 +235,7 @@ function EnterprisePanel(props: Props) {
     >
       {top ? (
         <div key={JSON.stringify(top)} className={css.enterpriseView}>
-          {<ProjectView id={top.id} view={view} />}
+          {<ProjectView key={top.id} id={top.id} view={view} />}
         </div>
       ) : (
         <>

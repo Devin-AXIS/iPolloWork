@@ -327,6 +327,29 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .projectContent { min-height:220px; padding-block:20px; }
 .projectLocal { margin-top:24px; color:var(--text-secondary); font-size:13px; }
 .projectLocal > summary { cursor:pointer; padding-block:10px; }
+.projectGuide { display:grid;gap:12px;padding:16px;border:1px solid var(--ipw-border);border-radius:12px;margin-block:16px;color:var(--ipw-text);font-size:13px;line-height:1.7; }
+.projectGuide h2,.projectGuide p { margin:0; }
+.projectGuide h2 { font-size:14px;font-weight:500; }
+.projectGuide summary { cursor:pointer;color:var(--ipw-muted); }
+.projectGuide details[open] summary { margin-bottom:8px; }
+.projectGuide ol { margin:0;padding-inline-start:20px; }
+.projectLocalStatus { display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-block:8px; }
+.filePickerField { display:flex;flex-direction:column;gap:6px;min-width:0;font-size:13px; }
+.filePickerLabel { font-weight:500; }
+.filePickerZone { min-width:0;padding:14px;border:1px dashed var(--ipw-border);border-radius:12px;background:var(--ipw-muted-surface); }
+.filePickerZone[data-dragging] { border-color:var(--ipw-accent);outline:2px solid var(--ipw-accent);outline-offset:2px; }
+.filePickerZone[data-disabled] { opacity:.6; }
+.filePickerPrompt { display:flex;flex-wrap:wrap;align-items:center;gap:10px; }
+.filePickerHelp { color:var(--ipw-muted);font-size:12px;line-height:18px;overflow-wrap:anywhere; }
+.filePickerList { list-style:none;padding:0;margin:12px 0 0;min-width:0; }
+.filePickerList > li { display:flex;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--ipw-border); }
+.filePickerList > li > button { flex-shrink:0; }
+.filePickerName { flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.5; }
+.filePickerName small { display:block;color:var(--ipw-muted);font-size:12px; }
+/* Existing native/plugin file inputs share the product treatment without changing the runtime. */
+:global(body[data-ipw-suite] input[type="file"]:not([hidden]):not([data-ipw-file-input])) { max-width:100%;min-width:0;box-sizing:border-box;padding:8px;font:inherit;font-size:13px;line-height:20px;color:var(--ipw-text);background:var(--ipw-muted-surface);border:1px solid var(--ipw-border);border-radius:10px; }
+:global(body[data-ipw-suite] input[type="file"]::file-selector-button) { margin-inline-end:12px;padding:7px 12px;font:inherit;color:inherit;background:var(--ipw-surface);border:1px solid var(--ipw-border);border-radius:8px;cursor:pointer; }
+:global(body[data-ipw-suite] input[type="file"]:disabled::file-selector-button) { cursor:default;opacity:.6; }
 .projectDownload { color:inherit; text-decoration:none; font-size:13px; }
 .projectDownload:hover { text-decoration:underline; }
 

@@ -5,14 +5,16 @@ import type { EnterpriseController } from './enterprise-controller.ts'
 import type { EnterpriseLabels } from './enterprise-locale.ts'
 import { CopyLink, Field, FormError, Row, Section, useTask, type Call } from './enterprise-ui.tsx'
 import css from './suite.module.css'
+import { FilePicker } from './file-picker.tsx'
 
-export function EnterpriseSettings({ detail, t, call, controller, serviceAddress }: {
-  detail: EnterpriseDetail; t: EnterpriseLabels; call: Call; controller: EnterpriseController; serviceAddress: string;
+export function EnterpriseSettings({ detail, t, call, controller, serviceAddress, language = 'zh' }: {
+  detail: EnterpriseDetail; t: EnterpriseLabels; call: Call; controller: EnterpriseController; serviceAddress: string; language?: string;
 }) {
   const { enterprise, canManage } = detail
   const [name, setName] = useState<string>()
   const [description, setDescription] = useState<string>()
   const [logo, setLogo] = useState<string | null>()
+  const [logoFiles, setLogoFiles] = useState<File[]>([])
   const task = useTask(t)
   const value = name ?? enterprise.name
   const summary = description ?? detail.description ?? ''
@@ -31,6 +33,7 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
             setName(saved.name)
             setDescription(saved.description)
             setLogo(saved.logo)
+            setLogoFiles([])
             controller.notify(t.settingsSaved)
             await controller.load()
           })
@@ -42,22 +45,25 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
             </div>
             <div className={css.organizationBrand}>
               {shownLogo && <img className={css.organizationLogo} src={shownLogo} alt={t.organizationLogo}/>}
-              <Field label={t.organizationLogo}><input type="file" accept="image/png,image/jpeg,image/webp" disabled={task.busy} onChange={event=>{
-                const input = event.currentTarget, file = input.files?.[0]
-                if (!file) return
+              <FilePicker label={t.organizationLogo} language={language} files={logoFiles} accept="image/png,image/jpeg,image/webp" disabled={task.busy} onSelect={(files,input)=>{
+                const file = files[0]
+                setLogoFiles(files)
+                if (!file) { setLogo(enterprise.logo); return }
                 if (file.size > 35_000 || !/^image\/(png|jpeg|webp)$/.test(file.type)) {
                   task.setError(t.organizationLogoInvalid)
+                  setLogoFiles([])
                   input.value = ''
                   return
                 }
                 task.setError('')
                 const reader = new FileReader()
+                reader.onerror = () => { if (input.files?.[0] === file) task.setError(t.organizationLogoInvalid) }
                 reader.onload = () => {
                   if (input.files?.[0] === file && typeof reader.result === 'string') setLogo(reader.result)
                 }
                 reader.readAsDataURL(file)
-              }}/></Field>
-              {shownLogo && <div><Button variant="outline" type="button" disabled={task.busy} onClick={()=>setLogo(null)}>{t.remove}</Button></div>}
+              }}/>
+              {shownLogo && <div><Button variant="outline" type="button" disabled={task.busy} onClick={()=>{setLogo(null);setLogoFiles([])}}>{t.remove}</Button></div>}
             </div>
           </div>
           <FormError message={task.error}/>

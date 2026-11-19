@@ -14,6 +14,7 @@ import {
   When,
 } from "./enterprise-ui.tsx";
 import { projectCopy } from "./project-copy.ts";
+import { FilePicker } from "./file-picker.tsx";
 import css from "./suite.module.css";
 
 interface Artifact {
@@ -265,12 +266,13 @@ export function ProjectFiles({
       </div>
       {participate && listing.policy.outputs && (
         <div className={css.enterpriseForm}>
-          <input
-            aria-label={c.chooseFiles}
-            type="file"
+          <FilePicker
+            label={c.chooseFiles}
+            language={view.language}
             multiple
             disabled={task.busy}
-            onChange={(event) => setFiles(Array.from(event.target.files ?? []))}
+            files={files}
+            onSelect={setFiles}
           />
           <Button
             variant="outline"
