@@ -327,13 +327,6 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .projectContent { min-height:220px; padding-block:20px; }
 .projectLocal { margin-top:24px; color:var(--text-secondary); font-size:13px; }
 .projectLocal > summary { cursor:pointer; padding-block:10px; }
-.projectGuide { display:grid;gap:12px;padding:16px;border:1px solid var(--ipw-border);border-radius:12px;margin-block:16px;color:var(--ipw-text);font-size:13px;line-height:1.7; }
-.projectGuide h2,.projectGuide p { margin:0; }
-.projectGuide h2 { font-size:14px;font-weight:500; }
-.projectGuide summary { cursor:pointer;color:var(--ipw-muted); }
-.projectGuide details[open] summary { margin-bottom:8px; }
-.projectGuide ol { margin:0;padding-inline-start:20px; }
-.projectLocalStatus { display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-block:8px; }
 .filePickerField { display:flex;flex-direction:column;gap:6px;min-width:0;font-size:13px; }
 .filePickerLabel { font-weight:500; }
 .filePickerZone { min-width:0;padding:14px;border:1px dashed var(--ipw-border);border-radius:12px;background:var(--ipw-muted-surface); }

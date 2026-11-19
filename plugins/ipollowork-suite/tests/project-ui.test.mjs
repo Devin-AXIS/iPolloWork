@@ -28,9 +28,9 @@ async function fixture(entry) {
     async close(){await act(async()=>root.unmount());dom.window.close();for(const [key,value] of Object.entries(saved)){if(value)Object.defineProperty(globalThis,key,value);else delete globalThis[key]}}}
 }
 
-test('project refresh updates overview, files and local counts, and access edits contain only named members',async()=>{
+test('project refresh updates overview and files, and access edits contain only named members',async()=>{
   const ui = await fixture('src/client/collaboration.tsx'), calls=[],writes=[]
-  let count=1,outputs=1,interval
+  let outputs=1,interval
   ui.dom.window.setInterval = callback=>{interval=callback;return 1}
   ui.dom.window.clearInterval=()=>{}
   const space={project:{id:'project',enterpriseId:'team',title:'Team project',role:'maintain',accessMode:'enterprise'},memory:{text:'',version:1},fileVersion:0,files:[],changes:[]}
@@ -38,7 +38,6 @@ test('project refresh updates overview, files and local counts, and access edits
     calls.push(path)
     if(method==='PUT'){writes.push(data);return {ok:true}}
     if(path.endsWith('/space'))return space
-    if(path.endsWith('/local-workspaces'))return {items:[{id:'local',title:'My work',sessionCount:count}]}
     if(path.endsWith('/overview'))return {people:[{id:'me',name:'Tester',outputs,contributions:0,updated_at:0}],memoryVersion:1,outputs:{count:outputs}}
     if(path.endsWith('/access'))return {mode:'enterprise',grants:[{kind:'department',subjectId:'eng',role:'participate'}]}
     if(path==='/organizations/team')return {canManage:true,members:[{userId:'member',name:'Member',email:'member@example.test',departmentId:'eng',role:'member'}],departments:[{id:'eng',name:'Engineering'}]}
@@ -50,11 +49,9 @@ test('project refresh updates overview, files and local counts, and access edits
   const view={language:'en',revision:0,t,call,controller:{load:async()=>{},back:()=>{},notify:()=>{}},catalog:{sharedProjects:[],projects:[]},actions:{openProject:()=>{}}}
   try {
     await act(async()=>ui.root.render(React.createElement(ui.component.ProjectView,{id:'project',view})))
-    assert.match(ui.dom.window.document.body.textContent,/1 local conversations/)
     assert.match(ui.dom.window.document.body.textContent,/Outputs 1/)
-    count=2;outputs=3
+    outputs=3
     await act(async()=>ui.button('Refresh').click())
-    assert.match(ui.dom.window.document.body.textContent,/2 local conversations/)
     assert.match(ui.dom.window.document.body.textContent,/Outputs 3/)
     outputs=4
     await act(async()=>interval())
@@ -72,39 +69,6 @@ test('project refresh updates overview, files and local counts, and access edits
     await act(async()=>ui.button('Save').click())
     assert.deepEqual(JSON.parse(JSON.stringify(writes)),[{mode:'selected',grants:[{kind:'member',subjectId:'member',role:'participate'}]}])
   } finally {await ui.close()}
-})
-
-test('an older Host gets workspace-specific restart guidance; retries recover and permission errors remain failures',async()=>{
-  const ui = await fixture('src/client/collaboration.tsx')
-  let failure = 'IPW_NOT_FOUND'
-  const space={project:{id:'project',title:'Project',enterpriseId:'team',role:'view'},memory:{text:'',version:0},fileVersion:0,files:[],changes:[]}
-  const call=async path=>{
-    if(path.endsWith('/local-workspaces')){
-      if(failure)throw new Error(failure)
-      return {items:[]}
-    }
-    if(path.endsWith('/overview'))return {people:[],memoryVersion:0,outputs:{count:0}}
-    return space
-  }
-  const t=new Proxy({loading:'Loading',refresh:'Refresh',operationFailed:'Generic failure',signInRequired:'Sign in to continue'}, {get:(target,key)=>target[key] ?? String(key)})
-  const view={language:'en',revision:0,t,call,controller:{load:async()=>{},back:()=>{}},catalog:{projects:[],sharedProjects:[]},actions:{openProject:()=>{}}}
-  try {
-    await act(async()=>ui.root.render(React.createElement(ui.component.ProjectView,{id:'project',view})))
-    const alert=()=>ui.dom.window.document.querySelector('[role="alert"]')
-    assert.match(alert().textContent,/local backend.*Restart the app/)
-    assert.match(alert().textContent,/IPW_NOT_FOUND/)
-    assert(!alert().textContent.includes('Generic failure'))
-    assert(!ui.dom.window.document.body.textContent.includes('No linked workspace'))
-    failure=''
-    await act(async()=>alert().querySelector('button').click())
-    assert.equal(alert(),null)
-    assert.match(ui.dom.window.document.body.textContent,/No linked workspace/)
-    failure='IPW_SIGN_IN_REQUIRED'
-    await act(async()=>ui.button('Refresh').click())
-    assert.match(alert().textContent,/Sign in to continue/)
-    assert(!alert().textContent.includes('Restart the app'))
-    assert(!ui.dom.window.document.body.textContent.includes('No linked workspace'))
-  }finally{await ui.close()}
 })
 
 test('file picker supports cancel, removal, required feedback, disabled selection and controlled reset',async()=>{

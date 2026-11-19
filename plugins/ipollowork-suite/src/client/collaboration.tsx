@@ -152,9 +152,6 @@ export function ProjectView({ id, view: sourceView }: { id: string; view: ViewPr
     call,
     view.revision,
   );
-  const local = useRecord<{ items: { id: string; title: string; sessionCount: number }[] }>(
-    '/projects/' + id + '/local-workspaces', call, view.revision,
-  );
   const [tab, setTab] = useState<"overview" | "files" | "memory" | "changes">(
       "overview",
     ),
@@ -238,22 +235,6 @@ export function ProjectView({ id, view: sourceView }: { id: string; view: ViewPr
     <>
       <Header title={space.project.title} view={view} refresh={reload} />
       <Notice error={record.error} t={t} retry={record.reload} />
-      <section className={css.projectGuide} aria-label={c.workflow}>
-        <div>
-          <span>{c.local}</span>
-          {!local.error && (local.data ? (local.data.items.length ? local.data.items.map(item =>
-            <div key={item.id} className={css.projectLocalStatus}>
-              <span>{item.title} · {format(c.localSessions, { count: item.sessionCount })}</span>
-              <Button size="sm" variant="outline" onClick={() => view.actions.openProject(item.id)}>{c.openLocal}</Button>
-            </div>) : <p className={css.muted}>{c.localUnlinked}</p>) : <p className={css.muted}>{t.loading}</p>)}
-          <Notice error={local.error} t={t} retry={local.reload}
-            {...(local.error === 'IPW_NOT_FOUND' ? { fallback: c.localHostOutdated } : {})}/>
-        </div>
-        <details><summary>{c.workflow}</summary>
-          <p>{c.localHint}</p>
-          <ol><li>{c.workflowFiles}</li><li>{c.workflowMemory}</li><li>{c.workflowShare}</li></ol>
-        </details>
-      </section>
       <div className={css.projectToolbar}>
         <span className={css.muted}>{c[space.project.role]}</span>
         <span className={css.spacer} />
