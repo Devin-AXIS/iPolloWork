@@ -172,7 +172,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(inputs.macos_target == 'both' && '["mac-arm64","mac-x64"]' || inputs.macos_target == 'mac-arm64' && '["mac-arm64"]' || '["mac-x64"]') }}
-    runs-on: ${{ matrix.target == 'mac-arm64' && 'macos-15' || 'macos-15-intel' }}
+    runs-on: macos-15
     timeout-minutes: 120
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
@@ -190,6 +190,9 @@ jobs:
         run: |
           xcodebuild -version
           xcrun swift --version
+      - name: Verify Intel execution through Rosetta
+        if: matrix.target == 'mac-x64'
+        run: arch -x86_64 /usr/bin/true
       - name: Restore notarized helpers for the identical pinned DSH release
         id: cua_helper
         env:
