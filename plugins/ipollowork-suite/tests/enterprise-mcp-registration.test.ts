@@ -12,12 +12,16 @@ import type { ModelWebServer } from '../src/host/service-models.ts'
 test('granted MCP connections appear with native status, reconnect through the manager, and withdraw on revocation', async () => {
   const id = '00000000-0000-4000-8000-000000000001'
   let granted = true
+  let signedIn = true, catalogFailure = false
+  const requests: string[] = []
   const effects: Array<() => void | Promise<void>> = []
   const live = new Map<string, object>(), restarts: string[] = []
-  const account = new AccountService({ readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: 'https://account.test', token: 'test-session' } }),
+  const account = new AccountService({ readRecord: async () => signedIn ? ({ kind: 'grant', payload: { version: 1, origin: 'https://account.test', token: 'test-session' } }) : undefined,
     modifyRecord: async () => undefined, deleteRecord: async () => {} }, resolveConfig({ accountOrigin: 'https://account.test' }), new AbortController().signal,
     async input => {
       const path = new URL(String(input)).pathname
+      requests.push(path)
+      if (catalogFailure) return Response.json({ code: 'MCP_CATALOG_UNAVAILABLE' }, { status: 503 })
       if (path === '/api/auth/get-session') return Response.json({ user: { id: 'member', name: 'Member', email: 'member@example.test' } })
       if (path === '/api/v1/me/summary') return Response.json({ points: { balance: 1 } })
       return Response.json({ items: granted ? [{ id, title: '团队搜索' }] : [] })
@@ -33,6 +37,7 @@ test('granted MCP connections appear with native status, reconnect through the m
   const bridge = mountEnterpriseMcp({ effect: scope.effect.bind(scope), mcpManager: manager }, { register: () => () => {}, getOrigin: () => 'http://127.0.0.1:1234' }, account)
   try {
     await bridge()
+    assert.deepEqual(requests, ['/api/v1/me/enterprise-mcp'], 'MCP discovery must not depend on balance or extra session requests')
     const connection = bridge.connections()[0]!
     assert.equal(connection.title, '团队搜索')
     assert.equal(connection.state, 'connected')
@@ -44,6 +49,14 @@ test('granted MCP connections appear with native status, reconnect through the m
     await bridge()
     assert.equal(live.size, 0)
     await assert.rejects(bridge.restart(id), { code: 'IPW_MCP_FORBIDDEN' })
+    catalogFailure = true
+    await assert.rejects(bridge(), { code: 'MCP_CATALOG_UNAVAILABLE' })
+    catalogFailure = false
+    signedIn = false
+    const beforeSignOut = requests.length
+    await bridge()
+    assert.deepEqual(bridge.connections(), [])
+    assert.equal(requests.length, beforeSignOut, 'signed-out discovery must not send a request')
   } finally { for (const off of effects.reverse()) await off() }
 });
 

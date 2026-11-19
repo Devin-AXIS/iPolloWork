@@ -115,10 +115,13 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
     if (pending) return pending;
     const load = async () => {
       try {
-        const state = await account.state();
-        const items = state.status === "signed-in"
-          ? catalog.parse(await account.request("/api/v1/me/enterprise-mcp", undefined, "GET", lifetime.signal)).items
-          : [];
+        // The catalog authenticates the grant itself. Optional balance/session
+        // reads must not delay or fail MCP discovery.
+        const result = await account.request("/api/v1/me/enterprise-mcp", undefined, "GET", lifetime.signal).catch(error => {
+          if (error instanceof SuiteError && error.code === "IPW_SIGN_IN_REQUIRED") return { items: [] };
+          throw error;
+        });
+        const items = catalog.parse(result).items;
         if (lifetime.signal.aborted || account.generation !== next) return;
         const ids = new Set(items.map(item => item.id));
         for (const [id, active] of registrations) {
@@ -141,6 +144,7 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
         }
       } catch (error) {
         if (account.generation === next) release();
+        if (error instanceof SuiteError) throw error;
         throw new SuiteError('IPW_MCP_SYNC_FAILED', 503, { cause: error });
       }
     };
