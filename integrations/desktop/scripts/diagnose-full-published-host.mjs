@@ -15,7 +15,8 @@ const hooks=registerHooks({resolve(specifier,context,next){
 const fixture=new URL('./.diagnostic-smoke-runtime.ts',import.meta.url);
 const cache=mkdtempSync(join(tmpdir(),'published-host-native-cache-'));
 try{
- const source=readFileSync(new URL('./smoke-runtime.ts',import.meta.url),'utf8');
+ const source=readFileSync(new URL('./smoke-runtime.ts',import.meta.url),'utf8')
+  .replace('../../../packages/skill/tool-workspace-dependencies/src/index.ts','@deepseek-ai/dsh-tool-workspace-dependencies');
  const start=source.indexOf('    if (dedicatedSuite) {');
  const end=source.indexOf('    const pluginResponse = ',start);
  if(start<0||end<0) throw Error('Could not locate the newer Suite assertions in the baseline fixture');
