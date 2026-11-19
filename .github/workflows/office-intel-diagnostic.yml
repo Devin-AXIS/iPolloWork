@@ -23,5 +23,7 @@ jobs:
           mkdir "$RUNNER_TEMP/office-inputs"
           python integrations/desktop/tests/fixtures/office-conversion-inputs.py "$RUNNER_TEMP/office-inputs"
       - name: Compare Node and Electron, full-sheet and bounded-sheet rendering
+        env:
+          OFFICE_PROBE_CASE: electron-wasm
         run: |
           node integrations/desktop/scripts/diagnose-office-engine.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"

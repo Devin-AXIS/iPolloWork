@@ -11,7 +11,8 @@ if(!mode){
  const require=createRequire(join(resolve(installation),'package.json'));
  const electron=require('electron');
  const results=[];
- for(const [name,executable] of [['node',process.execPath],['electron',electron],['electron-bounded',electron]]){
+ for(const [name,executable] of [['node',process.execPath],['electron',electron],['electron-bounded',electron],['electron-wasm',electron]]){
+  if(process.env.OFFICE_PROBE_CASE && process.env.OFFICE_PROBE_CASE!==name) continue;
   const home=await mkdtemp(join(tmpdir(),'office-intel-probe-'));
   const code=await new Promise((resolveResult,reject)=>{
    const child=spawn(executable,[fileURLToPath(import.meta.url),installation,inputRoot,name],{stdio:'inherit',env:{...process.env,HOME:home,USERPROFILE:home,XDG_CACHE_HOME:join(home,'cache'),ELECTRON_RUN_AS_NODE:'1'}});
@@ -24,7 +25,12 @@ if(!mode){
 }else{
  const {createConverter}=await import(pathToFileURL(join(resolve(installation),'node_modules/@deepseek-ai/libreoffice-kit/lib/index.js')).href);
  const output=await mkdtemp(join(tmpdir(),'office-intel-output-'));
- const converter=await createConverter({timeoutMs:180000,maxImageResolution:192,maxInputBytes:50*1024*1024,maxOutputBytes:100*1024*1024});
+ const resolver=createRequire(join(resolve(installation),'package.json'));
+ const wasmResolver=name=>{
+  if(name!=='@deepseek-ai/libreoffice-kit-wasm'){const error=Error('The probe selects the supported WASM engine');error.code='MODULE_NOT_FOUND';throw error;}
+  return resolver.resolve(name+'/package.json');
+ };
+ const converter=await createConverter({timeoutMs:180000,maxImageResolution:192,maxInputBytes:50*1024*1024,maxOutputBytes:100*1024*1024,...(mode==='electron-wasm'?{resolveEnginePackage:wasmResolver}:{})});
  console.log(JSON.stringify({mode,platform:process.platform,arch:process.arch,versions:process.versions}));
  const operation=async(label,work)=>{
   const started=Date.now();console.log(JSON.stringify({event:'begin',mode,label,time:new Date().toISOString()}));
