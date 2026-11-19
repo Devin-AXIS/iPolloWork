@@ -291,20 +291,19 @@ export function MemberNoticeHistory({ controller, state, t, language }: {
   return <>
     <Tooltip side="bottom" label={label}>
       <Button variant="outline" className={css.memberNoticeButton} aria-label={label} aria-haspopup="dialog" aria-expanded={open}
-        icon={<BellGlyph size={18} />} onClick={() => { setOpen(true); void controller.loadNotices(); }}>
+        icon={<BellGlyph size={18} />} onClick={() => { setOpen(true); void controller.openNotices(); }}>
         {count > 0 && <span aria-hidden="true" className={css.memberNoticeBadge}>{count > 99 ? "99+" : count}</span>}
       </Button>
     </Tooltip>
     {open && <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => setOpen(false)}>
-      <MemberNoticeList controller={controller} state={state} count={count} t={t} language={language} close={() => setOpen(false)}/>
+      <MemberNoticeList controller={controller} state={state} t={t} language={language} close={() => setOpen(false)}/>
     </Modal>}
   </>;
 }
 
-function MemberNoticeList({ controller, state, count, t, language, close }: {
+function MemberNoticeList({ controller, state, t, language, close }: {
   controller: EnterpriseController;
   state: Pick<EnterpriseState, "memberNotices" | "memberNoticeError">;
-  count: number;
   t: EnterpriseLabels;
   language: string;
   close(): void;
@@ -312,16 +311,9 @@ function MemberNoticeList({ controller, state, count, t, language, close }: {
   const task = useTask(t);
   const { memberNotices: feed, memberNoticeError: error } = state;
   return <>
-    <Notice error={error} t={t} retry={() => void controller.loadNotices()}/>
+    <Notice error={error} t={t} retry={() => void controller.openNotices()}/>
     <FormError message={task.error}/>
     {!feed ? (!error && <ListSkeleton/>) : <>
-      {count > 0 && <div className={css.memberNoticeActions}>
-        <Button size="sm" variant="ghost" disabled={task.busy} onClick={() => void task.run(async () => {
-          await controller.readNotices(feed.unreadCount === undefined
-            ? { ids: feed.items.filter(row => row.readAt === null).map(row => row.id) }
-            : { all: true });
-        })}>{t.markMemberNoticesRead}</Button>
-      </div>}
       {feed.items.length ? feed.items.map(row => {
         const { enterpriseId, tab } = row;
         const canOpen = enterpriseId && tab && controller.getSnapshot().catalog?.enterprises.some(item => item.id === enterpriseId);

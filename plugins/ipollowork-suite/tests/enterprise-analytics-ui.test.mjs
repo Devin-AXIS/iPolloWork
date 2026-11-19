@@ -34,7 +34,7 @@ test('analytics replaces stale data, retries errors and hides administrator data
     assert.equal(requests.at(-1).days,7);
     assert(!dom.window.document.body.textContent.includes('77'));
     await act(async()=>finish.reject(new Error('Failed')));
-    assert.match(dom.window.document.querySelector('[role="alert"]').textContent, /analyticsLoadFailed/);
+    assert.match(dom.window.document.querySelector('[role="alert"]').textContent, /accountUnavailable \(IPW_ACCOUNT_UNAVAILABLE\)/);
     await act(async()=>dom.window.document.querySelector('button').click());
     await act(async()=>finish.resolve(fixture));
     assert.match(dom.window.document.body.textContent,/77/);

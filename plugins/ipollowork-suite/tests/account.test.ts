@@ -29,6 +29,30 @@ const success: typeof fetch = async (input, init) => {
   if (path.endsWith('/get-session')) return json({ user, session: { token: 'never-return-this' } })
   return json({ points: { balance: 42 } })
 }
+test('business failures retain safe codes even when a gateway returns HTML', async () => {
+  const store: CredentialStore = {
+    readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: config.accountOrigin, token: 'private-token' } }),
+    modifyRecord: async () => undefined, deleteRecord: async () => {},
+  }
+  for (const [status, code] of [[401, 'IPW_SIGN_IN_REQUIRED'], [403, 'RESOURCE_FORBIDDEN'], [429, 'RATE_LIMITED'], [503, 'IPW_ACCOUNT_UNAVAILABLE']] as const) {
+    const account = new AccountService(store, config, new AbortController().signal, async () => new Response('<html>private proxy diagnostic</html>', { status }))
+    await assert.rejects(account.request('/api/v1/enterprises'), { code, status })
+  }
+  const account = new AccountService(store, config, new AbortController().signal, async () => json({ code: 'SERVICE_QUEUE_TIMEOUT', error: 'private diagnostic' }, 503))
+  await assert.rejects(account.request('/api/v1/enterprises'), { code: 'SERVICE_QUEUE_TIMEOUT', status: 503 })
+})
+test('account timeouts are distinct from connection failures', async () => {
+  const store: CredentialStore = {
+    readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: config.accountOrigin, token: 'private-token' } }),
+    modifyRecord: async () => undefined, deleteRecord: async () => {},
+  }
+  const stalled: typeof fetch = async (_url, init) => new Promise((_resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('fixture did not cancel')), 2000)
+    init?.signal?.addEventListener('abort', () => { clearTimeout(timer); reject(init.signal?.reason) }, { once: true })
+  })
+  const account = new AccountService(store, resolveConfig({ accountOrigin: config.accountOrigin, requestTimeoutMs: 1000 }), new AbortController().signal, stalled)
+  await assert.rejects(account.request('/api/v1/enterprises'), { code: 'IPW_ACCOUNT_TIMEOUT', status: 504 })
+})
 test('registration uses the configured service and retains only the session grant', async () => {
   const fixture = credentials()
   let submitted: unknown

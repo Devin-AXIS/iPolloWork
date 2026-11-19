@@ -210,7 +210,6 @@
 .enterpriseActions { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
 .memberNoticeButton { position:relative;flex:none;width:36px;padding-inline:0; }
 .memberNoticeBadge { position:absolute;top:-4px;right:-3px;min-width:16px;height:16px;padding:0 3px;box-sizing:border-box;display:grid;place-items:center;border-radius:999px;background:var(--dsw-static-red-600);color:var(--dsw-static-neutral-bluish-00);box-shadow:0 0 0 2px var(--dsw-alias-bg-base);font-size:10px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1;pointer-events:none; }
-.memberNoticeActions { display:flex;justify-content:flex-end; }
 .enterpriseTabs { margin-bottom:24px; }
 .osTabs { display:flex; flex-wrap:wrap; gap:8px; margin:20px 0; }
 .osChoice { display:flex; align-items:center; gap:8px; margin:6px 0; }
@@ -235,6 +234,8 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .emptyState h2 { margin:0;font-size:15px; }
 .page .emptyState p { margin:0 0 8px;max-width:380px;font-size:13px;color:var(--ipw-muted); }
 .notice { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 16px;padding:8px 8px 8px 14px;border-radius:8px;background:var(--ipw-wash, var(--dsw-alias-bg-base));font-size:13px; }
+.notice > span { min-width:0;overflow-wrap:anywhere; }
+.notice > button { flex-shrink:0;white-space:nowrap; }
 .page .formError { margin:0;font-size:13px;color:var(--dsw-alias-state-error, #d13b3b); }
 .listSkeleton { display:flex;flex-direction:column; }
 .listSkeleton > div { display:flex;flex-direction:column;gap:8px;padding:14px 0;border-bottom:.5px solid var(--ipw-border); }

@@ -82,6 +82,9 @@ export class AccountService {
     maximum=this.config.maxResponseBytes,
   ): Promise<unknown> {
     let response: Response;
+    const requestSignal = AbortSignal.any([
+      this.signal, ...(signal ? [signal] : []), AbortSignal.timeout(timeoutMs),
+    ]);
     try {
       response = await this.fetcher(this.config.accountOrigin + path, {
         method: method ?? (body === undefined ? "GET" : "POST"),
@@ -91,15 +94,13 @@ export class AccountService {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         },
-        signal: AbortSignal.any([
-          this.signal,
-          ...(signal ? [signal] : []),
-          AbortSignal.timeout(timeoutMs),
-        ]),
+        signal: requestSignal,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch (cause) {
       if (signal?.aborted) throw signal.reason;
+      if (requestSignal.aborted && requestSignal.reason instanceof Error && requestSignal.reason.name === 'TimeoutError')
+        throw new SuiteError('IPW_ACCOUNT_TIMEOUT', 504, { cause });
       throw new SuiteError("IPW_ACCOUNT_UNAVAILABLE", 502, { cause });
     }
     if (!response.ok) {
@@ -116,13 +117,15 @@ export class AccountService {
         throw new AppDataRejection(code, response.status, reason);
       }
       if (path.startsWith("/api/v1/")) {
-        const data = await readJson(response, maximum);
+        const data = await readJson(response, maximum).catch(() => undefined);
         const code =
           object(data) &&
           typeof data.code === "string" &&
-          /^[A-Z_]+$/.test(data.code)
+          /^[A-Z][A-Z0-9_]{0,79}$/.test(data.code)
             ? data.code
-            : "IPW_ACCOUNT_UNAVAILABLE";
+            : response.status === 401 ? 'IPW_SIGN_IN_REQUIRED'
+              : response.status === 403 ? 'RESOURCE_FORBIDDEN'
+                : response.status === 429 ? 'RATE_LIMITED' : 'IPW_ACCOUNT_UNAVAILABLE';
         if(path.startsWith('/api/v1/stage/')&&object(data)&&typeof data.error==='string')throw new StageRejection(code,response.status,data.error.slice(0,500));
         if (path.endsWith("/join-codes/batch") && object(data) && typeof data.row === "number" && Number.isSafeInteger(data.row) && data.row > 0)
           throw new InvitationRosterRejection(code, response.status, data.row);

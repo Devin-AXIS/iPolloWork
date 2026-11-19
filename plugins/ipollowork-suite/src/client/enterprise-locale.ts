@@ -140,7 +140,6 @@ const en = {
   memberSuspendedHint: "Suspended members lose access to this organization until reactivated.",
   memberNotices: "Membership notices",
   memberNoticesUnread: "Membership notices ({count} unread)",
-  markMemberNoticesRead: "Mark all as read",
   noMemberNotices: "No membership notices.",
   inviteTitle: "Invite a colleague",
   inviteReady:
@@ -304,6 +303,16 @@ const en = {
   publicationExists: "This plugin already exists. Submit a new version of the existing resource.",
   publicationPackageMismatch: "Use the same plugin package name for a new version.",
   organizationListLoadFailed: "Could not refresh the organization list.",
+  accountUnavailable: "Cannot connect to the account service. Check your network and retry.",
+  accountTimeout: "The account service did not respond in time. Retry shortly.",
+  hostUnavailable: "Cannot connect to the app. Reopen the app and retry.",
+  serviceBusy: "The service is busy. Retry shortly.",
+  serviceRestarting: "The service is restarting. Retry shortly.",
+  databaseUnavailable: "The service database is temporarily unavailable. Retry shortly.",
+  invalidResponse: "The service returned an unexpected response. Update the app and retry.",
+  invalidRequest: "Some request fields are invalid. Check your input and retry.",
+  internalFailure: "The service could not process this request. Retry; if it persists, report the error code.",
+  accountChanged: "The account changed during this request. Refresh and retry.",
   organizationDetailsLoadFailed: "Could not load the organization details.",
   analyticsLoadFailed: "Could not load organization analytics.",
   signInRequired: "Sign in to your account first.",
@@ -599,7 +608,6 @@ const zh: typeof en = {
   memberSuspendedHint: "停用后，成员将失去该组织的访问权限，恢复正常后可重新访问。",
   memberNotices: "成员通知",
   memberNoticesUnread: "成员通知，{count} 条未读",
-  markMemberNoticesRead: "全部标为已读",
   noMemberNotices: "暂无成员通知。",
   inviteTitle: "邀请同事",
   inviteReady: "把链接发给 {email}，对方用该邮箱登录后才能加入",
@@ -745,6 +753,16 @@ const zh: typeof en = {
   publicationExists: "该插件已存在，请在现有资源中提交新版本。",
   publicationPackageMismatch: "新版本必须使用同一个插件包名。",
   organizationListLoadFailed: "组织列表加载失败",
+  accountUnavailable: "无法连接账户服务，请检查网络后重试",
+  accountTimeout: "账户服务响应超时，请稍后重试",
+  hostUnavailable: "无法连接本机应用服务，请重新打开软件后重试",
+  serviceBusy: "当前请求较多或排队超时，请稍后重试",
+  serviceRestarting: "服务正在重启，请稍后重试",
+  databaseUnavailable: "服务数据库暂时繁忙或不可用，请稍后重试",
+  invalidResponse: "服务返回的数据格式异常，请更新软件后重试",
+  invalidRequest: "请求参数不正确，请检查填写内容后重试",
+  internalFailure: "服务处理请求时发生异常，请重试；若仍失败，请反馈错误码",
+  accountChanged: "请求期间账户发生变化，请刷新后重试",
   organizationDetailsLoadFailed: "组织详情加载失败",
   analyticsLoadFailed: "组织数据分析加载失败",
   signInRequired: "请先登录账户",
@@ -926,6 +944,17 @@ export function format(
   );
 }
 export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.operationFailed): string {
+  const diagnostic = /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? ` (${code})` : '';
+  if (code === 'IPW_ACCOUNT_UNAVAILABLE') return t.accountUnavailable + diagnostic;
+  if (code === 'IPW_ACCOUNT_TIMEOUT') return t.accountTimeout + diagnostic;
+  if (code === 'IPW_HOST_UNAVAILABLE') return t.hostUnavailable + diagnostic;
+  if (['SERVICE_BUSY', 'SERVICE_QUEUE_TIMEOUT', 'RATE_LIMITED', 'TOO_MANY_REQUESTS'].includes(code)) return t.serviceBusy + diagnostic;
+  if (code === 'SERVICE_DRAINING') return t.serviceRestarting + diagnostic;
+  if (code === 'DATABASE_UNAVAILABLE') return t.databaseUnavailable + diagnostic;
+  if (['IPW_INVALID_RESPONSE', 'IPW_RESPONSE_TOO_LARGE'].includes(code)) return t.invalidResponse + diagnostic;
+  if (['INVALID_INPUT', 'INVALID_JSON', 'IPW_INVALID_INPUT'].includes(code)) return t.invalidRequest + diagnostic;
+  if (['INTERNAL_ERROR', 'IPW_SERVICE_UNAVAILABLE'].includes(code)) return t.internalFailure + diagnostic;
+  if (code === 'IPW_ACCOUNT_CHANGED') return t.accountChanged;
   if (code === "PUBLICATION_VERSION_INVALID" || code === "IPW_DSH_PINNED_PLUGIN_REQUIRED") return t.publicationVersionInvalid;
   if (code === "PUBLICATION_TITLE_REQUIRED") return t.publicationTitleRequired;
   if (code === "PUBLICATION_DESCRIPTION_REQUIRED") return t.publicationDescriptionRequired;
@@ -983,5 +1012,5 @@ export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.
   if (code === "IPW_ENTERPRISE_CAPABILITIES_UNAVAILABLE") return t.organizationCapabilitiesUnavailable;
   if (code === "IPW_INVITATION_SERVICE_MISMATCH") return t.invitationServiceMismatch;
   if (code === "DEPARTMENT_CYCLE") return t.departmentCycle;
-  return fallback;
+  return fallback + diagnostic;
 }

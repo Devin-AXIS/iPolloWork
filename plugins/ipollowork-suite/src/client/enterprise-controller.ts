@@ -144,6 +144,21 @@ export class EnterpriseController {
     if (account === this.noticeAccount) await this.loadNotices();
     return account === this.noticeAccount;
   };
+  /** Opening the bell acknowledges the current account's notifications, including older pages. */
+  openNotices = async () => {
+    const account = this.noticeAccount;
+    const feed = await this.loadNotices();
+    if (!feed || account !== this.noticeAccount) return;
+    const ids = feed.items.filter(row => row.readAt === null).map(row => row.id);
+    if (!(feed.unreadCount ?? ids.length)) return;
+    try {
+      await this.readNotices(feed.unreadCount === undefined ? { ids } : { all: true });
+    } catch (error) {
+      if (account === this.noticeAccount) this.publish({
+        memberNoticeError: error instanceof Error ? error.message : 'IPW_SERVICE_UNAVAILABLE',
+      });
+    }
+  };
   load = async () => {
     if (!this.state.signedIn) return;
     const generation = ++this.generation;
