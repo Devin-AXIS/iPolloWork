@@ -1,55 +1,70 @@
-name: Compare published Intel application runtime
+name: Diagnose the retained Intel runtime
 on:
   push:
     branches: [ci/office-intel-diagnostic-20261119]
+env:
+  FAILED_RUN: '44562262558'
 permissions:
   contents: read
+  actions: read
 jobs:
-  published:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [macos-15-intel]
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+  retained:
+    runs-on: macos-15-intel
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.13'
-      - name: Prepare the same small documents
-        run: |
-          python -m pip install python-docx==1.2.0 openpyxl==3.1.5 python-pptx==1.0.2
-          mkdir "$RUNNER_TEMP/office-inputs"
-          python integrations/desktop/tests/fixtures/office-conversion-inputs.py "$RUNNER_TEMP/office-inputs"
-      - name: Download and verify the published signed Intel application
+          node-version: '24.15.0'
+      - name: Download the exact failed application
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release download v1.0.7 --repo "$GITHUB_REPOSITORY" --dir "$RUNNER_TEMP" --pattern ipollowork-mac-x64-1.0.7.dmg
-          printf '%s  %s\n' 957d51904ac44e2df70560fec69977f314140ce2777c7e55d584a2c2ed86bb91 "$RUNNER_TEMP/ipollowork-mac-x64-1.0.7.dmg" | shasum -a 256 -c -
-      - name: Compare native dependencies and Office in the notarized application
+          [[ "$FAILED_RUN" =~ ^[0-9]+$ ]]
+          directory="$RUNNER_TEMP/retained"
+          mkdir "$directory"
+          gh run download "$FAILED_RUN" --repo "$GITHUB_REPOSITORY" --name "diagnostic-mac-x64-$FAILED_RUN" --dir "$directory"
+          test "$(cat "$directory/source-commit.txt")" = 093bd559ed0d290cfe787287e01a241b45deaa08
+          archive="$directory/application.zip"
+          if [[ ! -f "$archive" ]]; then archive="$directory/prepared-runtime.tgz"; fi
+          test -f "$archive"
+          digest="$(awk '{print $1}' "$directory/SHA256SUMS.txt")"
+          [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s  %s\n' "$digest" "$archive" | shasum -a 256 -c -
+          if [[ "$archive" = *.zip ]]; then
+            ditto -x -k "$archive" "$directory"
+            codesign --verify --deep --strict "$directory/iPollo.app"
+          else
+            tar -xzf "$archive" -C "$directory"
+          fi
+      - name: Run the full payload and Host checks on the retained application
         run: |
           set -euo pipefail
-          volume="$RUNNER_TEMP/ipollo-published-mount"
-          mkdir "$volume"
-          hdiutil attach "$RUNNER_TEMP/ipollowork-mac-x64-1.0.7.dmg" -readonly -nobrowse -mountpoint "$volume" -quiet
-          trap 'hdiutil detach "$volume" -quiet || true' EXIT
-          app="$volume/iPollo.app"
-          codesign --verify --deep --strict "$app"
-          xcrun stapler validate "$RUNNER_TEMP/ipollowork-mac-x64-1.0.7.dmg"
-          executable="$app/Contents/MacOS/iPollo"
-          root="$app/Contents/Resources/app.asar/dsh"
-          resources="$app/Contents/Resources/runtime"
-          probe_home="$(mktemp -d "$RUNNER_TEMP/published-smoke-home.XXXXXX")"
+          directory="$RUNNER_TEMP/retained"
+          if [[ -d "$directory/iPollo.app" ]]; then
+            executable="$directory/iPollo.app/Contents/MacOS/iPollo"
+            root="$directory/iPollo.app/Contents/Resources/app.asar/dsh"
+            resources="$directory/iPollo.app/Contents/Resources/runtime"
+          else
+            executable="$directory/electron/Electron.app/Contents/MacOS/Electron"
+            root="$directory/dsh"
+            resources="$directory/runtime"
+          fi
+          probe_home="$(mktemp -d "$RUNNER_TEMP/retained-home.XXXXXX")"
           export HOME="$probe_home" USERPROFILE="$probe_home" DSH_HOME="$probe_home" XDG_CACHE_HOME="$probe_home" ELECTRON_RUN_AS_NODE=1 NARB_NATIVE_CACHE_DIR="$probe_home/native-cache" NARB_DISABLE_NATIVE_CACHE=0
           unset NODE_OPTIONS NODE_REPL_EXTERNAL_MODULE
-          node --input-type=module <<'NODE'
-          import {readFileSync,writeFileSync} from 'node:fs';
-          const file='integrations/desktop/tests/fixtures/runtime-payload-smoke.mjs';
-          writeFileSync(file,"const diagnosticLog=console.error.bind(console);console.error=(...args)=>diagnosticLog(new Date().toISOString(),...args);\n"+readFileSync(file,'utf8'));
-          NODE
-          caffeinate -dimsu "$executable" --expose-internals integrations/desktop/tests/fixtures/runtime-payload-smoke.mjs "$root" "$resources"
-          caffeinate -dimsu "$executable" --expose-internals integrations/desktop/scripts/diagnose-office-provider.mjs "$root" "$RUNNER_TEMP/office-inputs"
-          caffeinate -dimsu "$executable" --expose-internals --experimental-transform-types integrations/desktop/scripts/diagnose-full-published-host.mjs "$root" "$resources"
+          caffeinate -dimsu -t 1500 &
+          awake=$!
+          node integrations/desktop/scripts/diagnose-office-processes.mjs > "$RUNNER_TEMP/office-process-samples.log" 2>&1 &
+          sampler=$!
+          trap 'kill "$sampler" "$awake" 2>/dev/null || true' EXIT
+          "$executable" --expose-internals integrations/desktop/tests/fixtures/runtime-payload-smoke.mjs "$root" "$resources"
+          export DIAGNOSTIC_CURRENT_RELEASE=1
+          "$executable" --expose-internals --experimental-transform-types integrations/desktop/scripts/diagnose-full-published-host.mjs "$root" "$resources"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retained-office-process-samples
+          path: ${{ runner.temp }}/office-process-samples.log
+          retention-days: 1

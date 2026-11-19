@@ -22,7 +22,7 @@ try{
  if(start<0||end<0) throw Error('Could not locate the newer Suite assertions in the baseline fixture');
  // The older release keeps its real Host and Suite composition. This diagnostic
  // compares Office, not features that may have been added after that release.
- writeFileSync(fixture,source.slice(0,start)+source.slice(end));
+ writeFileSync(fixture,process.env.DIAGNOSTIC_CURRENT_RELEASE==='1' ? source : source.slice(0,start)+source.slice(end));
  const {readDesktopRuntime}=await import('../src/runtime-tree.ts');
  const {smokeDesktopRuntime}=await import(fixture.href);
  console.log(JSON.stringify({event:'published-full-host-begin',root,arch:process.arch,time:new Date().toISOString()}));
