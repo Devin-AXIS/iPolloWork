@@ -24,5 +24,5 @@ jobs:
           python integrations/desktop/tests/fixtures/office-conversion-inputs.py "$RUNNER_TEMP/office-inputs"
       - name: Check the copied engine with flattened filesystem aliases
         env:
-          OFFICE_PROBE_CASE: electron-copy
+          OFFICE_PROBE_CASE: electron-app-bundle
         run: node integrations/desktop/scripts/diagnose-office-engine.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"

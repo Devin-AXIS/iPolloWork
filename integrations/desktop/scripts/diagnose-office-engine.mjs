@@ -11,7 +11,7 @@ if(!mode){
  const require=createRequire(join(resolve(installation),'package.json'));
  const electron=require('electron');
  const results=[];
- for(const [name,executable] of [['node',process.execPath],['electron',electron],['electron-bounded',electron],['electron-wasm',electron],['electron-scratch',electron],['electron-copy',electron]]){
+ for(const [name,executable] of [['node',process.execPath],['electron',electron],['electron-bounded',electron],['electron-wasm',electron],['electron-scratch',electron],['electron-copy',electron],['electron-app-bundle',electron]]){
   if(process.env.OFFICE_PROBE_CASE && process.env.OFFICE_PROBE_CASE!==name) continue;
   const home=await mkdtemp(join(tmpdir(),'office-intel-probe-'));
   const code=await new Promise((resolveResult,reject)=>{
@@ -27,11 +27,19 @@ if(!mode){
  const output=await mkdtemp(join(tmpdir(),'office-intel-output-'));
  const resolver=createRequire(join(resolve(installation),'package.json'));
  let copiedEngine;
- if(mode==='electron-copy'){
+ if(mode==='electron-copy'||mode==='electron-app-bundle'){
   const nativeRoot=dirname(resolver.resolve('@deepseek-ai/libreoffice-kit-darwin-x64/package.json'));
   const entries=await readdir(nativeRoot,{recursive:true,withFileTypes:true});
   console.log(JSON.stringify({event:'engine-aliases',aliases:entries.filter(entry=>entry.isSymbolicLink()).map(entry=>join(entry.parentPath,entry.name).slice(nativeRoot.length))}));
-  copiedEngine=join(await mkdtemp(join(tmpdir(),'ipollo-prepared-immutable-runtime-')),'node_modules','@deepseek-ai','libreoffice-kit-darwin-x64');
+  const copyRoot=await mkdtemp(join(tmpdir(),'ipollo-prepared-immutable-runtime-'));
+  let runtimeRoot=copyRoot;
+  if(mode==='electron-app-bundle'){
+   const contents=join(copyRoot,'iPollo.app','Contents');
+   await mkdir(join(contents,'MacOS'),{recursive:true});
+   await writeFile(join(contents,'Info.plist'),'<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.deepseek.harness</string><key>CFBundleExecutable</key><string>iPollo</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>1.0.8</string><key>CFBundleName</key><string>iPollo</string><key>NSPrincipalClass</key><string>NSApplication</string></dict></plist>');
+   runtimeRoot=join(contents,'Resources','app.asar.unpacked','dsh');
+  }
+  copiedEngine=join(runtimeRoot,'node_modules','@deepseek-ai','libreoffice-kit-darwin-x64');
   await cp(nativeRoot,copiedEngine,{recursive:true,dereference:true});
  }
  const wasmResolver=name=>{
@@ -47,7 +55,7 @@ if(!mode){
   catch(error){console.error(JSON.stringify({event:'fail',mode,label,milliseconds:Date.now()-started,code:error?.code,message:error?.message}));throw error;}
  };
  const withInput=async(extension,work)=>{
-  if(mode!=='electron-scratch'&&mode!=='electron-copy') return work(join(inputRoot,'input.'+extension));
+  if(!['electron-scratch','electron-copy','electron-app-bundle'].includes(mode)) return work(join(inputRoot,'input.'+extension));
   const directory=await mkdtemp(join(tmpdir(),'dsh-office-kit-'));
   const inputPath=join(directory,'source.'+extension);
   await writeFile(inputPath,await readFile(join(inputRoot,'input.'+extension)),{flag:'wx',mode:0o600});
