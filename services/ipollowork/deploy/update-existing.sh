@@ -36,7 +36,7 @@ old=before["services"]["work"]; new=after["services"]["work"]
 assert new["image"]==sys.argv[2]
 assert old.get("environment",{}).get("NODE_OPTIONS","") in ("","--max-old-space-size=1024"), "Existing Node flags need review"
 assert old.get("logging",{}).get("driver","json-file")=="json-file", "Existing logging needs review"
-assert new["mem_limit"]==2147483648 and new["pids_limit"]==256
+assert int(new["mem_limit"])==2147483648 and new["pids_limit"]==256
 assert new["stop_grace_period"]=="40s"
 assert new["environment"]["NODE_OPTIONS"]=="--max-old-space-size=1024"
 assert new["logging"]=={"driver":"json-file","options":{"max-size":"10m","max-file":"3"}}
