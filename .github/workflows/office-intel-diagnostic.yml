@@ -1,0 +1,27 @@
+name: Diagnose Intel Office operations
+on:
+  push:
+    branches: [ci/office-intel-diagnostic-20261119]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: macos-15-intel
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Prepare exact Office engine and fixture tools
+        run: |
+          npm install --prefix "$RUNNER_TEMP/office-probe" --no-audit --no-fund @deepseek-ai/libreoffice-kit@0.2.3 electron@44.7.0
+          python -m pip install python-docx==1.2.0 openpyxl==3.1.5 python-pptx==1.0.2
+          mkdir "$RUNNER_TEMP/office-inputs"
+          python integrations/desktop/tests/fixtures/office-conversion-inputs.py "$RUNNER_TEMP/office-inputs"
+      - name: Compare Node and Electron, full-sheet and bounded-sheet rendering
+        run: |
+          node integrations/desktop/scripts/diagnose-office-engine.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"
