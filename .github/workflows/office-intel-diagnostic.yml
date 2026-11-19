@@ -38,12 +38,12 @@ jobs:
           trap 'hdiutil detach "$volume" -quiet || true' EXIT
           app="$volume/iPollo.app"
           codesign --verify --deep --strict "$app"
-          xcrun stapler validate "$app"
+          xcrun stapler validate "$RUNNER_TEMP/ipollowork-mac-x64-1.0.7.dmg"
           executable="$app/Contents/MacOS/iPollo"
           root="$app/Contents/Resources/app.asar/dsh"
           resources="$app/Contents/Resources/runtime"
-          home="$(mktemp -d "$RUNNER_TEMP/published-smoke-home.XXXXXX")"
-          export HOME="$home" USERPROFILE="$home" DSH_HOME="$home" XDG_CACHE_HOME="$home" ELECTRON_RUN_AS_NODE=1 NARB_NATIVE_CACHE_DIR="$home/native-cache" NARB_DISABLE_NATIVE_CACHE=0
+          probe_home="$(mktemp -d "$RUNNER_TEMP/published-smoke-home.XXXXXX")"
+          export HOME="$probe_home" USERPROFILE="$probe_home" DSH_HOME="$probe_home" XDG_CACHE_HOME="$probe_home" ELECTRON_RUN_AS_NODE=1 NARB_NATIVE_CACHE_DIR="$probe_home/native-cache" NARB_DISABLE_NATIVE_CACHE=0
           unset NODE_OPTIONS NODE_REPL_EXTERNAL_MODULE
           node --input-type=module <<'NODE'
           import {readFileSync,writeFileSync} from 'node:fs';
