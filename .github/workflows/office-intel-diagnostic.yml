@@ -18,12 +18,12 @@ jobs:
           python-version: '3.13'
       - name: Prepare exact Office engine and fixture tools
         run: |
-          npm install --prefix "$RUNNER_TEMP/office-probe" --no-audit --no-fund @deepseek-ai/libreoffice-kit@0.2.3 electron@44.7.0
+          npm install --prefix "$RUNNER_TEMP/office-probe" --no-audit --no-fund @deepseek-ai/libreoffice-kit@0.2.3 @deepseek-ai/dsh-office-kit@0.2.2-rc.3 @deepseek-ai/cordis@4.1.0 electron@44.7.0
           python -m pip install python-docx==1.2.0 openpyxl==3.1.5 python-pptx==1.0.2
           mkdir "$RUNNER_TEMP/office-inputs"
           python integrations/desktop/tests/fixtures/office-conversion-inputs.py "$RUNNER_TEMP/office-inputs"
-      - name: Reproduce host scratch input lifecycle and environment
-        env:
-          OFFICE_PROBE_CASE: electron-scratch
+      - name: Reproduce official provider lifecycle and source handling
         run: |
-          node integrations/desktop/scripts/diagnose-office-engine.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"
+          home="$(mktemp -d "$RUNNER_TEMP/office-provider-home.XXXXXX")"
+          electron="$RUNNER_TEMP/office-probe/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron"
+          HOME="$home" USERPROFILE="$home" XDG_CONFIG_HOME="$home" XDG_CACHE_HOME="$home" XDG_STATE_HOME="$home" APPDATA="$home" LOCALAPPDATA="$home" ELECTRON_RUN_AS_NODE=1 "$electron" --expose-internals integrations/desktop/scripts/diagnose-office-provider.mjs "$RUNNER_TEMP/office-probe" "$RUNNER_TEMP/office-inputs"
