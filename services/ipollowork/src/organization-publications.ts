@@ -10,7 +10,7 @@ import { organizationNotice } from "./organization-notice.js";
 
 const kindSchema = z.enum(["plugin", "template", "skill", "mcp"]);
 const title = z.string().trim().min(1).max(120);
-const description = z.string().trim().max(2000).default("");
+const description = z.string().trim().min(1).max(2000);
 const version = z.string().max(64).refine(value => !value.includes("+") && semver.valid(value) === value);
 const publicationId = z.uuid().optional();
 const plugin = z.object({
@@ -39,6 +39,16 @@ const versionFields = "version,status,note,created_at";
 
 /** Organization publications use the existing membership and asset authorization. */
 export function mountOrganizationPublications(app: App, store: Store) {
+  app.get('/api/v1/me/organization-templates', async c => {
+    const actor = c.get('actor');
+    const items = await store.all(
+      `SELECT p.id,p.enterprise_id AS "enterpriseId",p.title,p.description,p.published_version AS version,e.name AS "sourceName"
+       FROM members m JOIN organization_publications p ON p.enterprise_id=m.enterprise_id JOIN enterprises e ON e.id=p.enterprise_id
+       WHERE m.user_id=? AND m.status='active' AND p.kind='template' AND p.published_version IS NOT NULL
+       AND (m.role IN('owner','admin') OR p.submitted_by=? OR ${grantedTo('p.id')})
+       ORDER BY e.name,p.title,p.id LIMIT 1000`, actor.id, actor.id, 'template');
+    return c.json({ items });
+  });
   const list = "/api/v1/enterprises/:id/publications/:kind";
   const item = `${list}/:publicationId` as const;
   const release = `${item}/versions/:version` as const;
@@ -74,7 +84,15 @@ export function mountOrganizationPublications(app: App, store: Store) {
   app.post(list, async c => {
     const actor = c.get("actor"), id = c.req.param("id"), kind = kindSchema.parse(c.req.param("kind"));
     const raw: unknown = await c.req.json();
-    const input = { plugin, template, skill, mcp }[kind].parse(raw);
+    const parsed = { plugin, template, skill, mcp }[kind].safeParse(raw);
+    if (!parsed.success) {
+      const field = parsed.error.issues[0]?.path[0];
+      if (field === "version") throw new ServiceError("PUBLICATION_VERSION_INVALID", 400);
+      if (field === "title") throw new ServiceError("PUBLICATION_TITLE_REQUIRED", 400);
+      if (field === "description") throw new ServiceError("PUBLICATION_DESCRIPTION_REQUIRED", 400);
+      throw parsed.error;
+    }
+    const input = parsed.data;
     const publication = await store.transaction(async () => {
       await enterpriseAccess(store, actor, id);
       const key = "packageName" in input ? input.packageName : input.id ?? uid();

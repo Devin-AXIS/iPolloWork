@@ -77,7 +77,9 @@ test("organization invitations, publication review, and member notices share exi
     const plugins = base + "/publications/plugin", templates = base + "/publications/template";
     const plugin = { title:"Team plugin", packageName:"@team/notes", description:"Shared notes", version:"1.2.3" };
     assert.equal((await request(stranger.token,plugins)).status,403);
-    assert.equal((await request(member.token,plugins,{...plugin,version:"latest"})).status,400);
+    assert.equal((await request(member.token,plugins,{...plugin,version:"latest"})).data.code,'PUBLICATION_VERSION_INVALID');
+    assert.equal((await request(member.token,plugins,{...plugin,title:'  '})).data.code,'PUBLICATION_TITLE_REQUIRED');
+    assert.equal((await request(member.token,plugins,{...plugin,description:'  '})).data.code,'PUBLICATION_DESCRIPTION_REQUIRED');
     const added = await request(member.token,plugins,plugin);
     assert.equal(added.status,201);
     const item = plugins + "/" + added.data.id;
@@ -103,14 +105,18 @@ test("organization invitations, publication review, and member notices share exi
     },"PUT")).status,200);
     assert.equal((await request(member.token,release)).status,403);
 
-    const template = await request(owner.token,templates,{title:"Quarterly update",version:"1.0.0",html:"<h1>Quarterly update</h1>"});
+    const template = await request(owner.token,templates,{title:"Quarterly update",description:"A quarterly presentation",version:"1.0.0",html:"<h1>Quarterly update</h1>"});
     assert.equal(template.status,201);
     const templateRelease = templates + "/" + template.data.id + "/versions/1.0.0";
     assert.equal((await request(member.token,templates)).data.items.length,0);
+    assert.equal((await request(member.token,'me/organization-templates')).data.items.length,0);
     assert.equal((await request(owner.token,templateRelease,{decision:"approve"},"PUT")).status,200);
     await grantMember("template", template.data.id);
     assert.equal((await request(owner.token,templateRelease,{decision:"publish"},"PUT")).status,200);
     assert.deepEqual((await request(member.token,templateRelease)).data,{html:"<h1>Quarterly update</h1>"});
+    const grantedTemplates = await request(member.token,'me/organization-templates');
+    assert.equal(grantedTemplates.data.items[0].id, template.data.id);
+    assert.equal((await request(stranger.token,'me/organization-templates')).data.items.length,0);
 
     const skills = base + "/publications/skill";
     const skill = await request(member.token,skills,{title:"Work notes",description:"Explain project notes",version:"1.0.0",markdown:"Use the project notes."});
@@ -126,7 +132,7 @@ test("organization invitations, publication review, and member notices share exi
     const unassigned = await account("unassigned");
     const unassignedInvite = await request(owner.token,base + "/invitations",{email:unassigned.email});
     assert.equal((await request(unassigned.token,"invitations/" + unassignedInvite.data.code + "/accept",{})).status,200);
-    const submission = {title:"Public docs",version:"1.0.0",endpoint:"https://mcp.example.com/mcp"};
+    const submission = {title:"Public docs",description:"Shared public documentation tools",version:"1.0.0",endpoint:"https://mcp.example.com/mcp"};
     assert.equal((await request(member.token,mcps,{...submission,endpoint:"http://127.0.0.1/mcp"})).status,400);
     assert.equal((await request(member.token,mcps,{...submission,key:"test-key"})).status,400);
     const submittedMcp = await request(member.token,mcps,submission);
