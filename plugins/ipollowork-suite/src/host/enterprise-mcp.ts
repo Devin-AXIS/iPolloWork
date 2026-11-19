@@ -24,7 +24,7 @@ export interface EnterpriseMcpRefresh {
 
 const catalog = z.object({ items: z.array(z.object({ id: z.uuid(), title: z.string().max(120) })).max(100) });
 const path = "/ipollo-enterprise-mcp";
-const requestHeaders = ["accept", "content-type", "mcp-protocol-version", "mcp-session-id", "last-event-id"];
+const requestHeaders = ["accept", "content-type", "mcp-protocol-version", "mcp-method", "mcp-name", "mcp-session-id", "last-event-id"];
 const responseHeaders = ["content-type", "mcp-session-id"];
 const maxRequest = 1024 * 1024;
 

@@ -226,6 +226,10 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
     }
     const version = c.req.header("mcp-protocol-version");
     if (version && /^\d{4}-\d{2}-\d{2}$/.test(version)) headers["mcp-protocol-version"] = version;
+    for (const name of ["mcp-method", "mcp-name"]) {
+      const value = c.req.header(name);
+      if (value && /^[\x20-\x7e]{1,2048}$/.test(value)) headers[name] = value;
+    }
     const session = c.req.header("mcp-session-id");
     if (session) {
       headers["mcp-session-id"] = readSession(secret, actor.id, row, session);
@@ -241,10 +245,15 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
     const status = upstream.statusCode ?? 502;
     if (status < 200 || status >= 300) {
       upstream.destroy();
-      if (status === 405 && c.req.method !== "POST") return new Response(null, { status });
-      // Streamable HTTP uses a 404 to request a new MCP session.
-      const code = status === 404 && session ? 404 : 503;
-      throw new ServiceError("MCP_UNAVAILABLE", code, "MCP 服务暂时无法连接");
+      // A 2025 server may reject server/discover with 4xx. Preserve that
+      // negotiation signal so the native client can fall back to initialize.
+      // Upstream bodies can contain credentials and are never forwarded.
+      if (status === 401) throw new ServiceError("MCP_UPSTREAM_UNAUTHORIZED", 401, "MCP 服务拒绝了认证令牌，请检查 MCP 的密钥");
+      if (status === 403) throw new ServiceError("MCP_UPSTREAM_FORBIDDEN", 403, "MCP 服务拒绝访问，请检查令牌权限或来源 IP 限制");
+      if (status === 429) throw new ServiceError("MCP_UPSTREAM_RATE_LIMITED", 429, "MCP 服务请求过于频繁，请稍后重试");
+      if (status >= 400 && status < 500)
+        return Response.json({ code: "MCP_UPSTREAM_REJECTED", error: "MCP 服务不接受此请求" }, { status });
+      throw new ServiceError("MCP_UNAVAILABLE", 503, "MCP 服务暂时无法连接");
     }
     const result = new Headers({ "cache-control": "no-store" });
     const type = upstream.headers["content-type"];
