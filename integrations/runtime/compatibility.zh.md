@@ -6,6 +6,8 @@ DSH 基准由[运行时固定记录](upstream.json)指定。本次盘点基于 `
 
 ## 升级前复核的功能
 
+新增 [MCP 连接入口](../../plugins/ipollowork-suite/src/host/mcp-connections.ts) 使用原生 `mcpManager.list/restart`，并在 web-app 的 `mcp-manager` 命名空间中通过带 revision 的 `settings.mutate` 修改单个服务器的 `enabled` 字段或移除仅用户层存在的条目，保留同级配置和凭据引用。继承配置与插件注册条目不可删除，编辑仍打开原生配置文件。组织 MCP 的断开选择通过原生凭据提供方仅保存在本机，按已验证账号身份和服务来源隔离。没有历史选择时仍只请求授权目录；读取已保存选择时每个账号代次增加一次身份查询，不依赖积分接口。升级时复测工具撤回、连接、刷新和重启保持状态、切换账号、版本冲突、保存失败、删除确认及明暗主题和窄设置页，确认原生配置编辑和插件生命周期仍正常；不修改 DSH 源码。
+
 | 功能与产品代码 | DSH 依赖 | 验证 |
 | --- | --- | --- |
 | [插件后台安装](../../plugins/ipollowork-suite/src/client/market-installation.ts)与[原生添加插件入口](../../plugins/ipollowork-suite/src/client/add-plugin.ts) | DSH Plugin Manager 的安装请求 ID、`plugin-manager/install-state`、`plugin-manager/changed`、连接重置、`shell.overlay`、`plugins.tab`。原生工具栏的 DOM 是额外依赖，涉及 `data-plugin-toolbar`、菜单角色和本地化标签。 | 分别从工具栏主按钮、下拉菜单和市场开始安装。关闭弹窗并切换页面，确认安装继续、重新打开可见进度、安装结束按钮自动刷新。上游提供可替换的安装入口后移除 DOM 拦截。 |

@@ -30,6 +30,8 @@ export interface ClientContext {
   locale: { bind(namespace: string): (key: string) => string; getSnapshot(): { active?: string; locale?: string; language?: string } | string; subscribe(listener: () => void): () => void };
   remote: {
     pluginManager: ClientRemote['pluginManager'];
+    settings: ClientRemote['settings'];
+    $on(event: 'credentials/record-updated', listener: (key: string) => void): () => void;
     $on(event: 'plugin-manager/install-state', listener: (progress: PluginInstallProgress) => void): () => void;
     $on(event: string, listener: () => void): () => void;
   };

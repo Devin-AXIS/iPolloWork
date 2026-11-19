@@ -6,20 +6,23 @@ import { z } from "zod";
 import { SuiteError } from "./errors.ts";
 import type { AccountService } from "./account.ts";
 import type { ModelWebServer } from "./service-models.ts";
+import type { McpPreferences } from './mcp-preferences.ts';
+import type { McpConnection } from '../shared/mcp-connections.ts';
 
 export interface EnterpriseMcpScope extends Pick<Context, "effect"> {
   mcpManager: { register(name: string, entry: {
     transport: "streamable-http"; url: string; headers: Record<string, string>;
   }): () => void;
-    list(): { name: string; status: { state: string } }[];
+    list(): { name: string; configured?: boolean; status: { state: string; toolCount?: number; lastError?: string; result?: { closeConfirmed: boolean; cleanupError?: string } } }[];
     restart(name: string): Promise<void>;
   };
 }
-export interface EnterpriseMcpConnection { id: string; title: string; serverName: string; state: string }
+export type EnterpriseMcpConnection = McpConnection;
 export interface EnterpriseMcpRefresh {
   (): Promise<void>;
   connections(): EnterpriseMcpConnection[];
-  restart(id: string): Promise<void>;
+  restart(id: string, expectedGeneration?: number): Promise<void>;
+  disconnect(id: string, expectedGeneration?: number): Promise<void>;
 }
 
 const catalog = z.object({ items: z.array(z.object({ id: z.uuid(), title: z.string().max(120) })).max(100) });
@@ -29,12 +32,20 @@ const responseHeaders = ["content-type", "mcp-session-id"];
 const maxRequest = 1024 * 1024;
 
 /** Register the account's grants with DSH while the suite and membership are active. */
-export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer, account: AccountService): EnterpriseMcpRefresh {
+export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer, account: AccountService, preferences?: Pick<McpPreferences, 'disabled' | 'setDisabled'>): EnterpriseMcpRefresh {
   const lifetime = new AbortController();
   const registrations = new Map<string, { title: string; name: string; dispose(): void; signal: AbortSignal }>();
   const auth = "Bearer " + randomBytes(32).toString("base64url");
   let generation = -1;
   let pending: Promise<void> | undefined;
+  let tail: Promise<unknown> = Promise.resolve();
+  let granted: { id: string; title: string }[] = [];
+  let disabled = new Set<string>();
+  const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
+    const task = tail.then(operation);
+    tail = task.catch(() => {}); // The caller receives failures; unrelated operations still run.
+    return task;
+  };
   const release = () => {
     for (const active of registrations.values()) active.dispose();
     registrations.clear();
@@ -106,14 +117,14 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
     },
   }));
 
-  const refresh = () => {
+  const load = async () => {
     const next = account.generation;
     if (generation !== next) {
       release();
+      granted = [];
+      disabled = new Set();
       generation = next;
     }
-    if (pending) return pending;
-    const load = async () => {
       try {
         // The catalog authenticates the grant itself. Optional balance/session
         // reads must not delay or fail MCP discovery.
@@ -122,14 +133,18 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
           throw error;
         });
         const items = catalog.parse(result).items;
+        const paused = items.length ? await preferences?.disabled() ?? new Set<string>() : new Set<string>();
         if (lifetime.signal.aborted || account.generation !== next) return;
-        const ids = new Set(items.map(item => item.id));
+        granted = items;
+        disabled = paused;
+        const ids = new Set(items.filter(item => !paused.has(item.id)).map(item => item.id));
         for (const [id, active] of registrations) {
           if (ids.has(id)) continue;
           active.dispose();
           registrations.delete(id);
         }
         for (const { id, title } of items) {
+          if (paused.has(id)) continue;
           const existing = registrations.get(id);
           if (existing) { existing.title = title; continue; }
           const label = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 15) || "team-mcp";
@@ -143,12 +158,15 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
           registrations.set(id, { title, name, signal: server.signal, dispose() { server.abort(); unregister(); } });
         }
       } catch (error) {
-        if (account.generation === next) release();
+        if (account.generation === next) { release(); granted = []; }
         if (error instanceof SuiteError) throw error;
         throw new SuiteError('IPW_MCP_SYNC_FAILED', 503, { cause: error });
       }
-    };
-    const task = pending = load().finally(() => {
+  };
+  const refresh = () => {
+    if (pending) return pending;
+    const next = account.generation;
+    const task = pending = serialize(load).finally(() => {
       pending = undefined;
       if (!lifetime.signal.aborted && account.generation !== next) void refresh().catch(() => {});
     });
@@ -161,19 +179,50 @@ export function mountEnterpriseMcp(ctx: EnterpriseMcpScope, web: ModelWebServer,
       clearInterval(timer);
       lifetime.abort();
       release();
-      await pending?.catch(() => {});
+      await tail;
     };
   });
   return Object.assign(refresh, {
     connections() {
-      const states = new Map(ctx.mcpManager.list().map(item => [item.name, item.status.state]));
-      return Array.from(registrations, ([id, item]) => ({ id, title: item.title, serverName: item.name, state: states.get(item.name) ?? 'connecting' }));
+      const states = new Map(ctx.mcpManager.list().map(item => [item.name, item.status]));
+      return granted.map<McpConnection>(({ id, title }) => {
+        const active = registrations.get(id), status = active ? states.get(active.name) : undefined;
+        return { id, title, serverName: active?.name ?? '', source: 'organization',
+          state: disabled.has(id) ? 'disconnected' : status?.state ?? 'connecting',
+          ...(status?.toolCount === undefined ? {} : { toolCount: status.toolCount }),
+          ...(status?.lastError ? { error: status.lastError } : {}),
+          canDisconnect: true, canReconnect: true, canDelete: false, canEdit: false, revision: generation };
+      });
     },
-    async restart(id: string) {
-      await refresh();
-      const current = registrations.get(id);
-      if (!current) throw new SuiteError('IPW_MCP_FORBIDDEN', 403);
-      await ctx.mcpManager.restart(current.name);
+    async restart(id: string, expectedGeneration?: number) {
+      await serialize(async () => {
+        const before = account.generation;
+        if (expectedGeneration !== undefined && expectedGeneration !== before) throw new SuiteError('IPW_ACCOUNT_CHANGED', 409);
+        await load();
+        if (before !== account.generation) throw new SuiteError('IPW_ACCOUNT_CHANGED', 409);
+        if (!granted.some(item => item.id === id)) throw new SuiteError('IPW_MCP_FORBIDDEN', 403);
+        const paused = disabled.has(id);
+        if (paused) {
+          if (!preferences) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+          await preferences.setDisabled(id, false); await load();
+        }
+        const current = registrations.get(id);
+        if (!current) throw new SuiteError('IPW_MCP_FORBIDDEN', 403);
+        if (!paused) await ctx.mcpManager.restart(current.name);
+      });
+    },
+    async disconnect(id: string, expectedGeneration?: number) {
+      await serialize(async () => {
+        const before = account.generation;
+        if (expectedGeneration !== undefined && expectedGeneration !== before) throw new SuiteError('IPW_ACCOUNT_CHANGED', 409);
+        await load();
+        if (before !== account.generation) throw new SuiteError('IPW_ACCOUNT_CHANGED', 409);
+        if (!granted.some(item => item.id === id)) throw new SuiteError('IPW_MCP_FORBIDDEN', 403);
+        if (!preferences) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+        await preferences.setDisabled(id, true);
+        // Re-read the grant and account generation before changing live registrations.
+        await load();
+      });
     },
   });
 }

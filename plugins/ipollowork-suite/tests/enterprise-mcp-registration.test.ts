@@ -60,6 +60,51 @@ test('granted MCP connections appear with native status, reconnect through the m
   } finally { for (const off of effects.reverse()) await off() }
 });
 
+test('disconnect withdraws granted MCP registrations, persists through refresh/reconstruction, and reconnect rechecks grants', async () => {
+  const id = '00000000-0000-4000-8000-000000000003';
+  let granted = true, paused = new Set<string>(), fail = false;
+  const account = new AccountService({ readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: 'https://account.test', token: 'synthetic-session' } }),
+    modifyRecord: async () => undefined, deleteRecord: async () => {} }, resolveConfig({ accountOrigin: 'https://account.test' }), new AbortController().signal,
+    async () => Response.json({ items: granted ? [{ id, title: 'Shared search' }] : [] }));
+  const preferences = { disabled: async () => new Set(paused), setDisabled: async (key: string, value: boolean) => {
+    if (fail) throw Error('storage failed'); if (value) paused.add(key); else paused.delete(key);
+  } };
+  const fixture = () => {
+    const effects: Array<() => void | Promise<void>> = [], live = new Set<string>();
+    const scope = new Context().extend({ effect(run: () => () => void | Promise<void>) { const off = run(); effects.push(off); return off; } });
+    const bridge = mountEnterpriseMcp({ effect: scope.effect.bind(scope),
+      mcpManager: { register: name => { live.add(name); return () => { live.delete(name); } },
+        list: () => [...live].map(name => ({ name, status: { state: 'connected', toolCount: 1 } })), restart: async () => {} },
+    }, { register: () => () => {}, getOrigin: () => 'http://127.0.0.1:1234' }, account, preferences);
+    return { bridge, live, close: async () => { for (const off of effects.reverse()) await off(); } };
+  };
+  let active = fixture();
+  try {
+    await active.bridge();
+    assert.equal(active.live.size, 1);
+    fail = true;
+    await assert.rejects(active.bridge.disconnect(id), /storage failed/);
+    assert.equal(active.live.size, 1, 'failed persistence leaves the existing connection intact');
+    fail = false;
+    await Promise.all([active.bridge.disconnect(id, 0), active.bridge()]);
+    assert.equal(active.live.size, 0);
+    assert.equal(active.bridge.connections()[0]?.state, 'disconnected');
+    await active.close();
+    active = fixture();
+    await active.bridge();
+    assert.equal(active.live.size, 0, 'restart must not reconnect a deliberately paused organization MCP');
+    await active.bridge.restart(id, 0);
+    assert.equal(active.live.size, 1);
+    assert.equal(paused.size, 0);
+    await assert.rejects(active.bridge.disconnect(id, 1), { code: 'IPW_ACCOUNT_CHANGED' });
+    await active.bridge.disconnect(id, 0);
+    granted = false;
+    await assert.rejects(active.bridge.restart(id, 0), { code: 'IPW_MCP_FORBIDDEN' });
+    assert.equal(active.live.size, 0);
+    assert.equal(paused.has(id), true, 'revocation cannot implicitly clear the user choice');
+  } finally { await active.close(); }
+});
+
 test('organization relay preserves protocol headers and native discovery falls back to a legacy MCP', async () => {
   const id = '00000000-0000-4000-8000-000000000002'
   const effects: Array<() => void | Promise<void>> = []

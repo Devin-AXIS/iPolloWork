@@ -62,8 +62,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
       }),
     }, MarketPanel))
   })
+  mountMcpConnections(ctx)
   if (info.account) {
-    mountMcpConnections(ctx)
     const account = new AccountController()
     ctx.effect(() => {
       const refresh = () => { void account.refresh() }

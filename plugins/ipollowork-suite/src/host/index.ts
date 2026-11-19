@@ -18,6 +18,9 @@ import { membershipSchema, membershipOrderSchema, membershipCheckoutSchema } fro
 import { initializeAccountModel } from "./default-model.ts";
 import { mountServiceModels } from "./service-models.ts";
 import { mountEnterpriseMcp, type EnterpriseMcpScope, type EnterpriseMcpRefresh } from "./enterprise-mcp.ts";
+import { McpPreferences } from './mcp-preferences.ts';
+import { createMcpConnections } from './mcp-connections.ts';
+import type { McpManagementScope } from './mcp-connections.ts';
 import { mountOutputContinuation } from "./output-continuation.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
@@ -85,6 +88,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
     callback: (scope: EnterpriseSkillScope) => void,
   ): unknown;
   inject?(names: ["mcpManager"], callback: (scope: EnterpriseMcpScope) => void): unknown;
+  inject?(names: ["mcpManager", "settings"], callback: (scope: McpManagementScope & Pick<Context, 'effect'>) => void): unknown;
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
   provide?(name: "ipolloData", value: IpolloData): void;
@@ -272,6 +276,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   let refreshSkills = async () => {};
   let refreshMcp = async () => {};
   let enterpriseMcp: EnterpriseMcpRefresh | undefined;
+  let mcpConnections: ReturnType<typeof createMcpConnections> | undefined;
   // Account changes and enterprise grant edits change both the official model list and the granted enterprise skills.
   const refreshAccount = async () => {
     await Promise.all([refreshModels(), refreshSkills(), refreshMcp()]);
@@ -343,11 +348,15 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     const bridge = mountEnterpriseMcp(scope, {
       register: route => web.register(route),
       getOrigin: () => web.getOrigin!(),
-    }, account);
+    }, account, new McpPreferences(ctx.credentials, account, config.accountOrigin));
     refreshMcp = bridge;
     enterpriseMcp = bridge;
     scope.effect(() => () => { refreshMcp = async () => {}; enterpriseMcp = undefined; });
     void refreshMcp().catch(() => {});
+  });
+  ctx.inject?.(['mcpManager', 'settings'], scope => {
+    mcpConnections = createMcpConnections(scope, () => enterpriseMcp);
+    scope.effect(() => () => { mcpConnections = undefined; });
   });
   if (config.account)
     ctx.inject?.(["skills", "ipolloAppDataFeature"], (scope) =>
@@ -397,6 +406,22 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             }
             const url = new URL(request.url ?? "/", "http://localhost");
             const path = url.pathname.slice(API.length);
+            if (path === '/mcp-connections' || path.startsWith('/mcp-connections/')) {
+              const peer = admission.peer;
+              if (!('principal' in peer) || !peer.principal || typeof peer.principal !== 'object'
+                || !('kind' in peer.principal) || peer.principal.kind !== 'owner') throw new SuiteError('IPW_MCP_FORBIDDEN', 403);
+              if (!mcpConnections) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+              if (path === '/mcp-connections' && request.method === 'GET') {
+                json(response, 200, await mcpConnections.list()); return;
+              }
+              const action = /^\/mcp-connections\/([A-Za-z0-9_-]{1,100})\/(disconnect|restart|delete)$/.exec(path);
+              if (action && request.method === 'POST') {
+                const input = cloudSchema.object({ revision: cloudSchema.number().int().nonnegative().optional() }).strict().parse(await body(request, 1024));
+                await mcpConnections.action(action[1]!, action[2] as 'disconnect' | 'restart' | 'delete', input.revision);
+                json(response, 200, { ok: true }); return;
+              }
+              throw new SuiteError('IPW_NOT_FOUND', 404);
+            }
             if(path==='/cloud/availability' && request.method==='GET') {
               const active=Boolean(ctx.get?.('ipolloCloud'));
               json(response,200,active?await account.request('/api/v1/cloud-projects/availability'):{enabled:false});return;
