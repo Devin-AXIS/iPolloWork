@@ -333,9 +333,9 @@ function EnterpriseBody({
   const detailError = !detail.data && !refreshing ? detail.error : "";
   const labels = (
     [
-      ["projects", t.projectsTab],
-      ["members", t.membersTab],
       ["departments", t.departmentsTab],
+      ["members", t.membersTab],
+      ["projects", t.projectsTab],
       ["templates", t.templatesTab],
       ["plugins", t.pluginsTab],
       ["skills", t.skillsTab],

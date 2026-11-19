@@ -60,6 +60,8 @@ Organization MCP uses the public native `mcpManager.list`, `register` and `resta
 
 ## Latest verification
 
+Organization Space's visible tabs begin Departments, Members, Projects; all subsequent tabs keep their prior order. The existing tab IDs, role/Design availability filters and remembered selection remain unchanged. Verify the order and switching among these three panels in the running development client as well as the source bundle; a successful build alone does not establish that the client refreshed.
+
 The project overview's local-workspace status and collaboration guide panel were removed at the user's request. The page no longer polls `/local-workspaces`; its unused copy and CSS were removed. The lower native workspace linking disclosure and shared project refresh behavior remain. The Host metadata endpoint is retained for installed-client compatibility. This retires the panel and its missing-route guidance described below.
 
 The existing Windows development process was separately checked after the project update: its cloud project space returned 200 while the new Host-only local-workspace route still returned 404. A completed source build and client HMR event did not establish Host replacement in that process. Restarting the existing development desktop with the same profile restored the route to 200 and returned one linked workspace with three sessions. The project status now gives specific restart/update guidance for a missing Host route, retains authentication failures, and hides stale local metadata on failure. `watch-local-suite.mjs` logs explicitly require verifying changed Host endpoints. Future development handoffs must probe the running process as well as an isolated archive installation.
