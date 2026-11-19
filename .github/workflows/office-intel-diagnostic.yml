@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [macos-15-intel, macos-15]
+        runner: [macos-15-intel]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
@@ -38,6 +38,7 @@ jobs:
           trap 'hdiutil detach "$volume" -quiet || true' EXIT
           app="$volume/iPollo.app"
           codesign --verify --deep --strict "$app"
+          xcrun stapler validate "$app"
           executable="$app/Contents/MacOS/iPollo"
           root="$app/Contents/Resources/app.asar/dsh"
           resources="$app/Contents/Resources/runtime"
@@ -51,3 +52,4 @@ jobs:
           NODE
           caffeinate -dimsu "$executable" --expose-internals integrations/desktop/tests/fixtures/runtime-payload-smoke.mjs "$root" "$resources"
           caffeinate -dimsu "$executable" --expose-internals integrations/desktop/scripts/diagnose-office-provider.mjs "$root" "$RUNNER_TEMP/office-inputs"
+          caffeinate -dimsu "$executable" --expose-internals --experimental-transform-types integrations/desktop/scripts/diagnose-full-published-host.mjs "$root" "$resources"
