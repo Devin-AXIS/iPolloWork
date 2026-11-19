@@ -26,6 +26,23 @@ services:
       SERVICE_ORIGIN: ${SERVICE_ORIGIN:?Set the public HTTPS origin}
       DATABASE_URL: postgresql://ipollowork:${POSTGRES_PASSWORD}@postgres:5432/ipollowork
       DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-20}
+      DATABASE_CONNECTION_TIMEOUT_MS: ${DATABASE_CONNECTION_TIMEOUT_MS:-3000}
+      DATABASE_STATEMENT_TIMEOUT_MS: ${DATABASE_STATEMENT_TIMEOUT_MS:-15000}
+      DATABASE_LOCK_TIMEOUT_MS: ${DATABASE_LOCK_TIMEOUT_MS:-3000}
+      DATABASE_QUEUE_LIMIT: ${DATABASE_QUEUE_LIMIT:-128}
+      API_CONCURRENCY: ${API_CONCURRENCY:-32}
+      AUTH_CONCURRENCY: ${AUTH_CONCURRENCY:-2}
+      EXECUTION_CONCURRENCY: ${EXECUTION_CONCURRENCY:-8}
+      TRANSFER_CONCURRENCY: ${TRANSFER_CONCURRENCY:-4}
+      MCP_CONCURRENCY: ${MCP_CONCURRENCY:-128}
+      REQUEST_QUEUE_LIMIT: ${REQUEST_QUEUE_LIMIT:-160}
+      API_QUEUE_WAIT_MS: ${API_QUEUE_WAIT_MS:-5000}
+      AUTH_QUEUE_WAIT_MS: ${AUTH_QUEUE_WAIT_MS:-20000}
+      WORK_QUEUE_WAIT_MS: ${WORK_QUEUE_WAIT_MS:-120000}
+      SHUTDOWN_GRACE_MS: ${SHUTDOWN_GRACE_MS:-25000}
+      RELAY_MAX_CONNECTIONS: ${RELAY_MAX_CONNECTIONS:-200}
+      RELAY_MAX_PENDING: ${RELAY_MAX_PENDING:-32}
+      RELAY_REFRESH_INTERVAL_MS: ${RELAY_REFRESH_INTERVAL_MS:-5000}
       HOST: 0.0.0.0
       PORT: 4785
       DATA_DIR: /data
@@ -45,7 +62,18 @@ services:
       APP_DATA_DATABASE_URL: ${APP_DATA_DATABASE_URL:-}
     volumes:
       - work-data:/data
-    stop_grace_period: 30s
+    stop_grace_period: 40s
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:4785/api/health',{signal:AbortSignal.timeout(2000)}).then(r=>process.exit(r.ok?0:1),()=>process.exit(1))"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
 volumes:
   work-data:
   postgres-data:

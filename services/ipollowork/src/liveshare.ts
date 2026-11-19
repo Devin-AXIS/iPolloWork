@@ -78,7 +78,7 @@ export class LiveshareRelay {
       void this.refresh().catch(() =>
         console.error("Share access refresh failed"),
       );
-    }, 1000);
+    }, config.relayRefreshIntervalMs);
     this.timer.unref();
   }
   /** Sign a scoped capability; account tokens never cross the relay wire. */
@@ -294,7 +294,7 @@ export class LiveshareRelay {
         "分享方当前离线，请稍后重试",
       );
     await this.actor(tunnel.owner);
-    if (tunnel.pending.size >= 256)
+    if (tunnel.pending.size >= this.config.relayMaxPending || tunnel.socket.bufferedAmount > 8 * 1024 * 1024)
       throw new ServiceError("LIVESHARE_BUSY", 429);
     await this.push(share, tunnel);
     const id = ++tunnel.nextId;
@@ -333,6 +333,10 @@ export class LiveshareRelay {
     });
   }
   private async push(share: LiveShare, tunnel: Tunnel): Promise<void> {
+    if (tunnel.socket.bufferedAmount > 8 * 1024 * 1024) {
+      tunnel.socket.terminate();
+      throw new ServiceError('LIVESHARE_BUSY', 429);
+    }
     tunnel.socket.send(JSON.stringify(await this.snapshot(share)));
   }
   /** Apply membership changes to open streams and queued native execution. */
@@ -490,6 +494,8 @@ export class LiveshareRelay {
         );
         if (!bound) throw new ServiceError("LIVESHARE_FORBIDDEN", 403);
         await this.admit(bound, ownerActor);
+        if (!this.sockets.has(id) && this.sockets.size >= this.config.relayMaxConnections)
+          throw new ServiceError('LIVESHARE_BUSY', 503);
         this.ws.handleUpgrade(request, socket, head, async (ws) => {
           this.sockets.get(id)?.socket.close(1000, "reconnected");
           const tunnel: Tunnel = {

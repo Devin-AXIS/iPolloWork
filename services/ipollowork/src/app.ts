@@ -1,4 +1,6 @@
 import { mountMarket } from './market.js';
+import { Admission } from './admission.js';
+import { monitorEventLoopDelay } from 'node:perf_hooks';
 import { StageService, validateStageSettings } from './stage.js';
 import { OrganizationMembers } from "./organization-members.js";
 import { InvitationRosterError } from "./organization-invitation-csv.js";
@@ -90,6 +92,8 @@ export async function createService(config: Config) {
     const storage = new Storage(store, settings, config);
     const appFiles=appData?new AppDataFiles(store,appData,storage,config.storageCleanupIntervalMs):undefined;
     const app: App = new Hono();
+    const admission = new Admission(config.admission);
+    const eventLoop = monitorEventLoopDelay({ resolution: 20 });
     const stage = new StageService(store, settings, config.origin);
     const relay = new LiveshareRelay(store, config);
     const accountHeaders = secureHeaders({
@@ -120,21 +124,26 @@ export async function createService(config: Config) {
         ? viewerHeaders(c, next)
         : accountHeaders(c, next);
     });
+    admission.mount(app);
     const regularBody = bodyLimit({
       maxSize: 25 * 1024 * 1024,
       onError: (c) => c.json({ error: "文件不能超过 24 MB" }, 413),
     });
+    const credentialBody = bodyLimit({ maxSize: 16 * 1024, onError: c => c.json({ error: '登录请求过大', code: 'REQUEST_TOO_LARGE' }, 413) });
     app.use("*", (c, next) =>
+      ['/api/auth/sign-in/email', '/api/auth/sign-up/email'].includes(c.req.path) ? credentialBody(c, next) :
       /^\/api\/v1\/projects\/[^/]+\/artifacts\/upload$/.test(c.req.path) || /^\/api\/v1\/publications\/[^/]+\/files\//.test(c.req.path)
         ? next()
         : regularBody(c, next),
     );
     app.onError((error, c) => {
-      if (error instanceof ServiceError)
+      if (error instanceof ServiceError) {
+        if (error.status === 503 || error.status === 429) c.header('Retry-After', '2');
         return c.json({
           error: error.message, code: error.code,
           ...(error instanceof InvitationRosterError && error.row !== undefined ? { row: error.row } : {}),
         }, error.status);
+      }
       if (error instanceof z.ZodError)
         return c.json(
           {
@@ -152,6 +161,14 @@ export async function createService(config: Config) {
         );
       if ("code" in error && error.code === "23505")
         return c.json({ error: "记录已存在", code: "CONFLICT" }, 409);
+      if ('code' in error && ['57014', '55P03', '53300', '57P01', '57P03', '08006', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT'].includes(String(error.code))) {
+        c.header('Retry-After', '2');
+        return c.json({ error: '数据库暂时繁忙或不可用，请稍后重试', code: 'DATABASE_UNAVAILABLE' }, 503);
+      }
+      if (/timeout exceeded when trying to connect|Connection terminated unexpectedly|Connection terminated due to connection timeout/.test(error.message)) {
+        c.header('Retry-After', '2');
+        return c.json({ error: '数据库连接暂时不可用，请稍后重试', code: 'DATABASE_UNAVAILABLE' }, 503);
+      }
       console.error("request failed", error.name, error.message);
       return c.json(
         { error: "服务暂时无法完成请求", code: "INTERNAL_ERROR" },
@@ -165,6 +182,11 @@ export async function createService(config: Config) {
         database: "postgresql",
       }),
     );
+    app.get('/api/ready', async c => {
+      if (admission.isDraining) return c.json({ ok: false }, 503);
+      try { await store.one('SELECT 1 AS ready'); return c.json({ ok: true }); }
+      catch { return c.json({ ok: false }, 503); }
+    });
     stage.mountPublic(app);
     app.get("/.well-known/ipollowork", (c) =>
       c.json({
@@ -258,6 +280,13 @@ export async function createService(config: Config) {
       }
     });
     mountMarket(app, store, settings);
+    app.get('/api/v1/admin/runtime', c => {
+      requireAdmin(c.get('actor'));
+      const pool = (db: Store['db']) => ({ total: db.totalCount, idle: db.idleCount, waiting: db.waitingCount });
+      return c.json({ uptimeSeconds: Math.floor(process.uptime()), draining: admission.isDraining,
+        memory: process.memoryUsage(), eventLoopP99Ms: Number.isFinite(eventLoop.percentile(99)) ? eventLoop.percentile(99) / 1e6 : 0,
+        admission: admission.snapshot(), database: pool(store.db), ...(dataStore ? { appDataDatabase: pool(dataStore.db) } : {}) });
+    });
     stage.mount(app);
     const summary = async (userId: string) => ({
       points: await wallet(store, userId),
@@ -457,6 +486,8 @@ export async function createService(config: Config) {
     storage.start();
     stage.start();
     appData?.start();
+    eventLoop.enable();
+    let closing: Promise<void> | undefined;
     return {
       app,
       store,
@@ -466,7 +497,11 @@ export async function createService(config: Config) {
       relay,
       appData,
       appFiles,
-      close: async () => {
+      admission,
+      beginDrain: () => admission.close(),
+      close: () => closing ??= (async () => {
+        admission.close();
+        eventLoop.disable();
         await stage.close();
         await organizationMembers.close();
         await appFiles?.close();
@@ -474,7 +509,7 @@ export async function createService(config: Config) {
         await relay.close();
         await appData?.close();
         await store.close();
-      },
+      })(),
     };
   } catch (error) {
     await dataStore?.close();

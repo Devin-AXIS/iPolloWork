@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { z } from "zod";
 import { isIP } from "node:net";
+import type { AdmissionConfig } from './admission.js';
 
 const environment = z.object({
   HOST: z.string().default("127.0.0.1"),
@@ -20,6 +21,23 @@ const environment = z.object({
       "PostgreSQL URL required",
     ),
   DATABASE_POOL_SIZE: z.coerce.number().int().min(1).max(100).default(20),
+  DATABASE_CONNECTION_TIMEOUT_MS: z.coerce.number().int().min(100).max(30000).default(3000),
+  DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().min(100).max(60000).default(15000),
+  DATABASE_LOCK_TIMEOUT_MS: z.coerce.number().int().min(100).max(30000).default(3000),
+  DATABASE_QUEUE_LIMIT: z.coerce.number().int().min(1).max(2000).default(128),
+  API_CONCURRENCY: z.coerce.number().int().min(1).max(256).default(32),
+  AUTH_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(2),
+  EXECUTION_CONCURRENCY: z.coerce.number().int().min(1).max(128).default(8),
+  TRANSFER_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  MCP_CONCURRENCY: z.coerce.number().int().min(1).max(512).default(128),
+  REQUEST_QUEUE_LIMIT: z.coerce.number().int().min(1).max(2000).default(160),
+  API_QUEUE_WAIT_MS: z.coerce.number().int().min(100).max(30000).default(5000),
+  AUTH_QUEUE_WAIT_MS: z.coerce.number().int().min(100).max(120000).default(20000),
+  WORK_QUEUE_WAIT_MS: z.coerce.number().int().min(100).max(300000).default(120000),
+  SHUTDOWN_GRACE_MS: z.coerce.number().int().min(1000).max(120000).default(25000),
+  RELAY_MAX_CONNECTIONS: z.coerce.number().int().min(1).max(2000).default(200),
+  RELAY_MAX_PENDING: z.coerce.number().int().min(1).max(128).default(32),
+  RELAY_REFRESH_INTERVAL_MS: z.coerce.number().int().min(1000).max(30000).default(5000),
   DATABASE_SCHEMA: z
     .string()
     .regex(/^[a-z][a-z0-9_]{0,62}$/)
@@ -104,6 +122,15 @@ export interface Config {
   trustedProxyIps: string[];
   databaseUrl: string;
   databasePoolSize: number;
+  databaseConnectionTimeoutMs: number;
+  databaseStatementTimeoutMs: number;
+  databaseLockTimeoutMs: number;
+  databaseQueueLimit: number;
+  admission: AdmissionConfig;
+  shutdownGraceMs: number;
+  relayMaxConnections: number;
+  relayMaxPending: number;
+  relayRefreshIntervalMs: number;
   databaseSchema: string;
   maxArtifactBytes: number;
   requireOss: boolean;
@@ -197,6 +224,21 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     trustedProxyIps,
     databaseUrl: value.DATABASE_URL,
     databasePoolSize: value.DATABASE_POOL_SIZE,
+    databaseConnectionTimeoutMs: value.DATABASE_CONNECTION_TIMEOUT_MS,
+    databaseStatementTimeoutMs: value.DATABASE_STATEMENT_TIMEOUT_MS,
+    databaseLockTimeoutMs: value.DATABASE_LOCK_TIMEOUT_MS,
+    databaseQueueLimit: value.DATABASE_QUEUE_LIMIT,
+    admission: {
+      api: { concurrency: value.API_CONCURRENCY, queue: value.REQUEST_QUEUE_LIMIT, waitMs: value.API_QUEUE_WAIT_MS },
+      auth: { concurrency: value.AUTH_CONCURRENCY, queue: value.REQUEST_QUEUE_LIMIT, waitMs: value.AUTH_QUEUE_WAIT_MS },
+      execution: { concurrency: value.EXECUTION_CONCURRENCY, queue: value.REQUEST_QUEUE_LIMIT, waitMs: value.WORK_QUEUE_WAIT_MS },
+      transfer: { concurrency: value.TRANSFER_CONCURRENCY, queue: value.REQUEST_QUEUE_LIMIT, waitMs: value.WORK_QUEUE_WAIT_MS },
+      mcp: { concurrency: value.MCP_CONCURRENCY, queue: value.REQUEST_QUEUE_LIMIT, waitMs: value.API_QUEUE_WAIT_MS },
+    },
+    shutdownGraceMs: value.SHUTDOWN_GRACE_MS,
+    relayMaxConnections: value.RELAY_MAX_CONNECTIONS,
+    relayMaxPending: value.RELAY_MAX_PENDING,
+    relayRefreshIntervalMs: value.RELAY_REFRESH_INTERVAL_MS,
     databaseSchema: value.DATABASE_SCHEMA,
     maxArtifactBytes: value.MAX_ARTIFACT_BYTES,
     ossRamRole: value.OSS_RAM_ROLE,

@@ -78,7 +78,7 @@ export class Capabilities {
    * @param raw Untrusted invocation JSON.
    * @returns Provider result or a receipt for an unfinished task.
    */
-  async invoke(actor: Actor, id: string, raw: unknown) {
+  async invoke(actor: Actor, id: string, raw: unknown, signal?: AbortSignal) {
     const input = invokeSchema.parse(raw);
     const entry = await this.entry(actor, id);
     const model = input.model ? entry.models.find(model => model.id === input.model) : entry.models.find(model => model.recommended) ?? entry.models[0];
@@ -86,7 +86,7 @@ export class Capabilities {
     const path = invocationPath(entry.service.provider, model, entry.service.routes);
     if (!path) throw new ServiceError("CAPABILITY_ROUTE_UNAVAILABLE", 400);
     const body = capabilityRequest(entry.kind, entry.service.protocol, path, model.id, input.input);
-    const response = await this.execution.invoke(actor, entry.service.id, { requestId: input.requestId, method: "POST", path, contentType: "application/json", body: Buffer.from(JSON.stringify(body)).toString("base64") });
+    const response = await this.execution.invoke(actor, entry.service.id, { requestId: input.requestId, method: "POST", path, contentType: "application/json", body: Buffer.from(JSON.stringify(body)).toString("base64") }, undefined, signal);
     return this.response(input.requestId, entry.kind, response, entry.id, Boolean(entry.service.routes.find(route => route.path === path)?.jobResultField));
   }
   private async response(id: string, kind: CapabilityKind, response: Response, capability?: string, submittedJob = false) {
@@ -101,7 +101,7 @@ export class Capabilities {
    * @param id Original invocation request UUID.
    * @returns Stored result, refreshed task state or an unresolved receipt.
    */
-  async task(actor: Actor, id: string) {
+  async task(actor: Actor, id: string, signal?: AbortSignal) {
     z.uuid().parse(id);
     const call = await this.store.one<CallRow>("SELECT id,service_id,state,response_body,response_type,job_id,points,cost_micros FROM service_calls WHERE id=? AND user_id=?", id, actor.id);
     if (!call) throw new ServiceError("CAPABILITY_TASK_NOT_FOUND", 404);
@@ -123,7 +123,7 @@ export class Capabilities {
     if (!route) throw new ServiceError("CAPABILITY_TASK_POLL_UNAVAILABLE", 409);
     const response = await this.execution.invoke(actor, call.service_id, { requestId: randomUUID(), method: route.method,
       path: route.path.replace(":id", encodeURIComponent(call.job_id)),
-      ...(route.method === "POST" && route.jobField ? { contentType: "application/json", body: Buffer.from(JSON.stringify({ [route.jobField]: call.job_id })).toString("base64") } : {}) });
+      ...(route.method === "POST" && route.jobField ? { contentType: "application/json", body: Buffer.from(JSON.stringify({ [route.jobField]: call.job_id })).toString("base64") } : {}) }, undefined, signal);
     return this.response(id, available.kind, response, available.id);
   }
 }
@@ -134,6 +134,6 @@ export class Capabilities {
 export function mountCapabilities(app: App, capabilities: Capabilities) {
   app.get("/api/v1/capabilities", async c => c.json(await capabilities.list(c.get("actor"), c.req.query("kind"))));
   app.get("/api/v1/capabilities/:id", async c => c.json(await capabilities.describe(c.get("actor"), c.req.param("id"), c.req.query())));
-  app.post("/api/v1/capabilities/:id/invoke", async c => c.json(await capabilities.invoke(c.get("actor"), c.req.param("id"), await c.req.json())));
-  app.get("/api/v1/capability-tasks/:id", async c => c.json(await capabilities.task(c.get("actor"), c.req.param("id"))));
+  app.post("/api/v1/capabilities/:id/invoke", async c => c.json(await capabilities.invoke(c.get("actor"), c.req.param("id"), await c.req.json(), c.req.raw.signal)));
+  app.get("/api/v1/capability-tasks/:id", async c => c.json(await capabilities.task(c.get("actor"), c.req.param("id"), c.req.raw.signal)));
 }

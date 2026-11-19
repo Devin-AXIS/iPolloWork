@@ -1032,7 +1032,8 @@ export class ExecutionService {
       );
     });
   }
-  async invoke(actor: Actor, id: string, raw: unknown, projectId?:string): Promise<Response> {
+  async invoke(actor: Actor, id: string, raw: unknown, projectId?:string, signal?: AbortSignal): Promise<Response> {
+    signal?.throwIfAborted();
     const input = requestSchema.parse(raw),
       row = await this.store.one<ServiceRow>(
         "SELECT * FROM execution_services WHERE id=? AND enabled=1",
@@ -1122,7 +1123,7 @@ export class ExecutionService {
       ))
     ) {
       const parent = await this.store.one<{ service_id: string }>("SELECT c.service_id FROM service_calls c JOIN execution_services s ON s.id=c.service_id WHERE c.user_id=? AND c.job_id=? AND s.provider=? AND s.key_id=? LIMIT 1", actor.id, jobId, s.provider, s.keyId);
-      if (parent && parent.service_id !== s.id) return this.invoke(actor, parent.service_id, raw);
+      if (parent && parent.service_id !== s.id) return this.invoke(actor, parent.service_id, raw, projectId, signal);
       throw new ServiceError("SERVICE_JOB_FORBIDDEN", 403);
     }
     if (!owner && s.billing && input.method === "POST" && !jobId) {
@@ -1224,6 +1225,7 @@ export class ExecutionService {
           input.requestId,
         );
       });
+    const cancellation = new AbortController();
     let response: Response;
     try {
       const speechJob = s.billing?.protocol === "volcengine-speech" && jobId
@@ -1243,7 +1245,7 @@ export class ExecutionService {
         },
         body: input.method === "POST" ? speech?.body ?? upstreamBody : undefined,
         redirect: "error",
-        signal: AbortSignal.timeout(s.timeoutMs),
+        signal: AbortSignal.any([cancellation.signal, ...(signal ? [signal] : []), AbortSignal.timeout(s.timeoutMs)]),
       });
       if (s.billing?.protocol === "volcengine-speech") response = await speechResponse(response, input.path, input.requestId);
     } catch {
@@ -1344,6 +1346,7 @@ export class ExecutionService {
         }
       },
       async cancel() {
+        cancellation.abort();
         await fail("unknown");
         await reader?.cancel();
       },
@@ -1434,6 +1437,7 @@ export function mountExecution(app: App, service: ExecutionService) {
         c.req.param("id"),
         await c.req.json(),
         c.get('cloudGrant')?.projectId ?? c.req.header('X-iPollo-Project'),
+        c.req.raw.signal,
       ),
   );
 }
