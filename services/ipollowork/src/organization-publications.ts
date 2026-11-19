@@ -11,22 +11,28 @@ import { organizationNotice } from "./organization-notice.js";
 const kindSchema = z.enum(["plugin", "template", "skill", "mcp"]);
 const title = z.string().trim().min(1).max(120);
 const description = z.string().trim().min(1).max(2000);
+const versionLabel = z.string().min(1).max(64).refine(value => value.trim() === value && value !== '.' && value !== '..' && !/[\p{C}/\\?#%]/u.test(value));
 const version = z.string().max(64).refine(value => !value.includes("+") && semver.valid(value) === value);
+const requestedVersion = (kind: z.infer<typeof kindSchema>, value: string) => {
+  const parsed = (kind === 'plugin' ? version : versionLabel).safeParse(value);
+  if (!parsed.success) throw new ServiceError(kind === 'plugin' ? 'PUBLICATION_VERSION_INVALID' : 'PUBLICATION_VERSION_LABEL_INVALID', 400);
+  return parsed.data;
+};
 const publicationId = z.uuid().optional();
 const plugin = z.object({
   id: publicationId, title, description, version,
   packageName: z.string().max(214).regex(/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/),
 }).strict();
 const template = z.object({
-  id: publicationId, title, description, version,
+  id: publicationId, title, description, version: versionLabel,
   html: z.string().min(1).refine(value => !value.includes("\u0000") && Buffer.byteLength(JSON.stringify({html:value})) <= 768 * 1024 && Buffer.byteLength(value) <= 512 * 1024 && value.trim().length > 0),
 }).strict();
 const skill = z.object({
-  id: publicationId, title, description: z.string().trim().min(1).max(1000), version,
+  id: publicationId, title, description: z.string().trim().min(1).max(1000), version: versionLabel,
   markdown: z.string().trim().min(1).max(32_000).refine(value => !value.includes("\u0000")),
 }).strict();
 const mcp = z.object({
-  id: publicationId, title, description, version,
+  id: publicationId, title, description, version: versionLabel,
   endpoint: z.string().trim().max(2048).refine(isSharedMcpEndpoint, "需要公开的 HTTPS MCP 地址"),
 }).strict();
 const review = z.object({
@@ -87,7 +93,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
     const parsed = { plugin, template, skill, mcp }[kind].safeParse(raw);
     if (!parsed.success) {
       const field = parsed.error.issues[0]?.path[0];
-      if (field === "version") throw new ServiceError("PUBLICATION_VERSION_INVALID", 400);
+      if (field === "version") throw new ServiceError(kind === 'plugin' ? "PUBLICATION_VERSION_INVALID" : "PUBLICATION_VERSION_LABEL_INVALID", 400);
       if (field === "title") throw new ServiceError("PUBLICATION_TITLE_REQUIRED", 400);
       if (field === "description") throw new ServiceError("PUBLICATION_DESCRIPTION_REQUIRED", 400);
       throw parsed.error;
@@ -142,7 +148,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
   });
   app.get(release, async c => {
     const actor = c.get("actor"), id = c.req.param("id"), kind = kindSchema.parse(c.req.param("kind"));
-    const requested = version.parse(c.req.param("version"));
+    const requested = requestedVersion(kind, c.req.param("version"));
     const data = await store.transaction(async () => {
       await enterpriseAccess(store, actor, id);
       const publication = await read(id, kind, c.req.param("publicationId"));
@@ -160,7 +166,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
   });
   app.put(release, async c => {
     const actor = c.get("actor"), id = c.req.param("id"), kind = kindSchema.parse(c.req.param("kind"));
-    const input = review.parse(await c.req.json()), requested = version.parse(c.req.param("version"));
+    const input = review.parse(await c.req.json()), requested = requestedVersion(kind, c.req.param("version"));
     await store.transaction(async () => {
       await enterpriseAccess(store, actor, id, true);
       const publication = await read(id, kind, c.req.param("publicationId"), true);

@@ -8,6 +8,8 @@ Enterprise spaces opens with manager-only analytics grouped by department, membe
 
 ## Develop
 
+Organization templates and Skills accept custom version labels up to 64 characters. MCP publications label this as the shared configuration version, separate from protocol/server versions. Labels exclude control characters and `/ \\ ? # %`; duplicate versions are rejected. Plugins require the exact published package version. Skill sharing uploads a UTF-8 `.md`/`.markdown` file up to 32 KB through the existing review and grant flow. Update both Suite and the account service before using custom labels.
+
 Node 24.15 or newer is required. In this repository, run `npm run setup:build` from the product root first, then run `npm ci --ignore-scripts --workspaces=false`, `npm run link:workspace`, `npm run check`, and `npm pack` from this directory. The linking command selects matching DSH packages from the ignored official dependency cache; the registry release with the same version may not include this checkout’s native extensions. The package contains its compiled Host and Client entries, styles, brand asset, and the curated catalog. No build script runs during installation.
 
 `dependencies` lists DSH packages, the shared native pi-ai provider library, and `@matrix-org/olm`, whose WASM file is loaded from disk; the build bundles the remaining third-party libraries into `lib`. DSH maps each package name in an enabled bundle's dependency closure to one directory per process. A library name shared with another bundle, such as `yargs` from `qrcode`, would move to that bundle's copy when the suite is disabled, and DSH would then require a restart instead of disabling the suite immediately.

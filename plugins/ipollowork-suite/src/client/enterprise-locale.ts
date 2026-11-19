@@ -297,6 +297,19 @@ const en = {
   saved: "Saved",
   operationFailed: "Could not complete the operation. Retry after refreshing.",
   publicationVersionInvalid: "Enter a full version, such as 1.0.0 or 1.0.0-beta.1.",
+  publicationVersionLabelInvalid: "Enter a version label up to 64 characters, without control characters or / \\ ? # %.",
+  customPublicationVersionHint: "Choose your own version label, such as first, v2 or 2026-11. Each resource version must be unique.",
+  pluginPublicationVersionHint: "Use the exact published version of the third-party plugin package, such as 1.0.0. The version must match the package.",
+  mcpPublicationVersion: "Shared configuration version",
+  mcpPublicationVersionHint: "Choose a version for this organization's shared MCP configuration. This is separate from the MCP protocol and server software versions.",
+  skillFile: "Skill file",
+  skillFileHint: "Upload SKILL.md or another UTF-8 Markdown file, up to 32 KB.",
+  skillFileRequired: "Choose a Skill Markdown file first.",
+  skillFileTooLarge: "The Skill file must be no larger than 32 KB.",
+  skillFileTypeInvalid: "Choose a .md or .markdown file.",
+  skillFileEncodingInvalid: "Use a UTF-8 Markdown file without binary content.",
+  skillFileEmpty: "The Skill file is empty. Choose a file with content.",
+  skillFileReadFailed: "Could not read this Skill file. Choose it again.",
   publicationTitleRequired: "Enter a resource name.",
   publicationDescriptionRequired: "Enter a resource description.",
   publicationVersionExists: "This version already exists. Use a new version.",
@@ -747,6 +760,19 @@ const zh: typeof en = {
   saved: "已保存",
   operationFailed: "操作未完成，请刷新后重试",
   publicationVersionInvalid: "版本号格式不正确，请填写完整版本号，例如 1.0.0 或 1.0.0-beta.1。",
+  publicationVersionLabelInvalid: "版本标识最多 64 个字符，不能包含控制字符或 / \\ ? # %",
+  customPublicationVersionHint: "可自行命名，例如“初版”“v2”“2026-11”；同一资源不能重复使用版本标识",
+  pluginPublicationVersionHint: "请填写第三方插件包已经发布的完整版本号，例如 1.0.0，确保与插件包版本一致",
+  mcpPublicationVersion: "共享配置版本",
+  mcpPublicationVersionHint: "用于管理本组织共享的 MCP 配置，可自行命名；它与 MCP 协议版本、服务端软件版本相互独立",
+  skillFile: "Skill 文件",
+  skillFileHint: "上传 SKILL.md 或其他 UTF-8 编码的 Markdown 文件，最多 32 KB",
+  skillFileRequired: "请先选择 Skill Markdown 文件",
+  skillFileTooLarge: "Skill 文件不能超过 32 KB",
+  skillFileTypeInvalid: "请选择 .md 或 .markdown 文件",
+  skillFileEncodingInvalid: "请上传 UTF-8 编码的 Markdown 文件，不能包含二进制内容",
+  skillFileEmpty: "Skill 文件内容为空，请重新选择",
+  skillFileReadFailed: "无法读取 Skill 文件，请重新选择",
   publicationTitleRequired: "请填写资源名称。",
   publicationDescriptionRequired: "请填写资源说明。",
   publicationVersionExists: "该版本已存在，请使用新的版本号。",
@@ -956,6 +982,11 @@ export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.
   if (['INTERNAL_ERROR', 'IPW_SERVICE_UNAVAILABLE'].includes(code)) return t.internalFailure + diagnostic;
   if (code === 'IPW_ACCOUNT_CHANGED') return t.accountChanged;
   if (code === "PUBLICATION_VERSION_INVALID" || code === "IPW_DSH_PINNED_PLUGIN_REQUIRED") return t.publicationVersionInvalid;
+  if (code === 'PUBLICATION_VERSION_LABEL_INVALID') return t.publicationVersionLabelInvalid;
+  if (code === 'SKILL_FILE_TYPE_INVALID') return t.skillFileTypeInvalid;
+  if (code === 'SKILL_FILE_TOO_LARGE') return t.skillFileTooLarge;
+  if (code === 'SKILL_FILE_ENCODING_INVALID') return t.skillFileEncodingInvalid;
+  if (code === 'SKILL_FILE_EMPTY') return t.skillFileEmpty;
   if (code === "PUBLICATION_TITLE_REQUIRED") return t.publicationTitleRequired;
   if (code === "PUBLICATION_DESCRIPTION_REQUIRED") return t.publicationDescriptionRequired;
   if (code === "PUBLICATION_VERSION_EXISTS") return t.publicationVersionExists;

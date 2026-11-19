@@ -105,9 +105,13 @@ test("organization invitations, publication review, and member notices share exi
     },"PUT")).status,200);
     assert.equal((await request(member.token,release)).status,403);
 
-    const template = await request(owner.token,templates,{title:"Quarterly update",description:"A quarterly presentation",version:"1.0.0",html:"<h1>Quarterly update</h1>"});
+    const templateInput = {title:"Quarterly update",description:"A quarterly presentation",version:"2026-11 初版",html:"<h1>Quarterly update</h1>"};
+    for (const version of ['', '..', 'x/y', 'x%2Fy', 'x\ny'])
+      assert.equal((await request(owner.token,templates,{...templateInput,version})).data.code,'PUBLICATION_VERSION_LABEL_INVALID');
+    const template = await request(owner.token,templates,templateInput);
     assert.equal(template.status,201);
-    const templateRelease = templates + "/" + template.data.id + "/versions/1.0.0";
+    const templateRelease = templates + "/" + template.data.id + "/versions/" + encodeURIComponent(templateInput.version);
+    assert.equal((await request(owner.token,templates,{...templateInput,id:template.data.id})).data.code,'PUBLICATION_VERSION_EXISTS');
     assert.equal((await request(member.token,templates)).data.items.length,0);
     assert.equal((await request(member.token,'me/organization-templates')).data.items.length,0);
     assert.equal((await request(owner.token,templateRelease,{decision:"approve"},"PUT")).status,200);
@@ -116,12 +120,13 @@ test("organization invitations, publication review, and member notices share exi
     assert.deepEqual((await request(member.token,templateRelease)).data,{html:"<h1>Quarterly update</h1>"});
     const grantedTemplates = await request(member.token,'me/organization-templates');
     assert.equal(grantedTemplates.data.items[0].id, template.data.id);
+    assert.equal(grantedTemplates.data.items[0].version, templateInput.version);
     assert.equal((await request(stranger.token,'me/organization-templates')).data.items.length,0);
 
     const skills = base + "/publications/skill";
-    const skill = await request(member.token,skills,{title:"Work notes",description:"Explain project notes",version:"1.0.0",markdown:"Use the project notes."});
+    const skill = await request(member.token,skills,{title:"Work notes",description:"Explain project notes",version:"v2 团队版",markdown:"Use the project notes."});
     assert.equal(skill.status,201);
-    const skillVersion = skills + "/" + skill.data.id + "/versions/1.0.0";
+    const skillVersion = skills + "/" + skill.data.id + "/versions/" + encodeURIComponent('v2 团队版');
     assert.equal((await request(member.token,"me/enterprise-skills")).data.items.length,0);
     assert.equal((await request(owner.token,skillVersion,{decision:"approve"},"PUT")).status,200);
     await grantMember("skill", skill.data.id);
@@ -132,13 +137,13 @@ test("organization invitations, publication review, and member notices share exi
     const unassigned = await account("unassigned");
     const unassignedInvite = await request(owner.token,base + "/invitations",{email:unassigned.email});
     assert.equal((await request(unassigned.token,"invitations/" + unassignedInvite.data.code + "/accept",{})).status,200);
-    const submission = {title:"Public docs",description:"Shared public documentation tools",version:"1.0.0",endpoint:"https://mcp.example.com/mcp"};
+    const submission = {title:"Public docs",description:"Shared public documentation tools",version:"共享配置 初版",endpoint:"https://mcp.example.com/mcp"};
     assert.equal((await request(member.token,mcps,{...submission,endpoint:"http://127.0.0.1/mcp"})).status,400);
     assert.equal((await request(member.token,mcps,{...submission,key:"test-key"})).status,400);
     const submittedMcp = await request(member.token,mcps,submission);
     assert.equal(submittedMcp.status,201);
     const mcpItem = mcps + "/" + submittedMcp.data.id;
-    const mcpVersion = mcpItem + "/versions/1.0.0";
+    const mcpVersion = mcpItem + "/versions/" + encodeURIComponent(submission.version);
     assert.equal((await request(member.token,mcpVersion,{decision:"approve"},"PUT")).status,403);
     assert.equal((await request(owner.token,mcpVersion,{decision:"publish"},"PUT")).data.code,"PUBLICATION_REVIEW_REQUIRED");
     assert.equal((await request(owner.token,mcpVersion,{decision:"approve"},"PUT")).status,200);

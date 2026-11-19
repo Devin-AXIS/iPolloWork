@@ -5,7 +5,7 @@ import { readJson, type AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
 import { linkProject } from "./project-context.ts";
 import { pinnedPlugin } from "./enterprise-plugin.ts";
-import { publicationInputError } from "../shared/publication-validation.ts";
+import { publicationInputError, validPublicationVersion } from "../shared/publication-validation.ts";
 import { organizationTabs } from "../shared/enterprise.ts";
 import type {
   EnterpriseAssets,
@@ -46,7 +46,7 @@ const audience = z
 const description = z.string().trim().max(2000);
 const tabs = z.array(z.enum(organizationTabs)).max(organizationTabs.length);
 const publicationKind = z.enum(["plugin", "template", "skill", "mcp"]);
-const publicationVersion = z.string().min(1).max(64).regex(/^[0-9A-Za-z.-]+$/);
+const publicationVersion = z.string().refine(value => validPublicationVersion(value, 'template'));
 const mcpOAuth = z.object({
   authorizationUrl:z.url().max(2048), tokenUrl:z.url().max(2048), clientId:z.string().min(1).max(256), scope:z.string().max(512),
 }).strict();
@@ -458,7 +458,7 @@ export class EnterpriseService {
     if (parts.length === 1) {
       if (method === "GET") return publicationList.parse(await this.organizationCapability(root));
       if (method === "POST") {
-        const invalid = publicationInputError(input);
+        const invalid = publicationInputError(input, kind);
         if (invalid) throw new SuiteError(invalid, 400);
         const common = { id: id.optional(), title: name, description, version: publicationVersion };
         if (kind === "plugin") {
@@ -484,7 +484,12 @@ export class EnterpriseService {
       return { items: items.map(row => ({ version: row.version, status: row.status, note: row.note, createdAt: row.created_at })) };
     }
     if (parts[2] === "versions" && parts.length === 4) {
-      const version = publicationVersion.parse(parts[3]), path = item + "/versions/" + version;
+      let decoded: string;
+      try { decoded = decodeURIComponent(parts[3] ?? ''); }
+      catch (cause) { throw new SuiteError('IPW_INVALID_INPUT', 400, { cause }); }
+      if (!validPublicationVersion(decoded, kind))
+        throw new SuiteError(kind === 'plugin' ? 'PUBLICATION_VERSION_INVALID' : 'PUBLICATION_VERSION_LABEL_INVALID', 400);
+      const version = decoded, path = item + "/versions/" + encodeURIComponent(version);
       if (method === "PUT")
         return this.organizationCapability(path, z.object({
           decision: z.enum(["approve", "reject", "publish"]), note: z.string().max(1000).optional(),
@@ -515,7 +520,7 @@ export class EnterpriseService {
           await this.organizationCapability('me/organization-templates'));
     }
     if (method === 'GET' && parts[0] === 'design-templates' && parts.length === 4) {
-      return this.publications('enterprises/' + id.parse(parts[1]), ['template', id.parse(parts[2]), 'versions', publicationVersion.parse(parts[3])], method, undefined);
+      return this.publications('enterprises/' + id.parse(parts[1]), ['template', id.parse(parts[2]), 'versions', parts[3] ?? ''], method, undefined);
     }
     if (path === "/conversation-share-preview" && method === "POST") {
       await this.signedIn();

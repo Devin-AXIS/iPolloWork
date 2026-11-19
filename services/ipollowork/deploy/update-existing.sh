@@ -9,7 +9,7 @@ release=${3:?release directory}
 [[ "$release" =~ ^/opt/ipollowork/releases/[a-zA-Z0-9._-]+$ ]]
 work=ipollowork-work-1
 pg=ipollowork-postgres-1
-tag=ipollowork-work:0.1.13-${revision:0:10}
+tag=ipollowork-work:0.1.14-${revision:0:10}
 mkdir -p "$release"
 exec 9>/var/lock/ipollowork-work-rollout.lock
 flock -n 9
@@ -82,8 +82,8 @@ COPY --from=build /tmp/ipollowork-build/package*.json /app/
 COPY --from=build /tmp/ipollowork-build/dist/server/ /app/dist/server/
 COPY --from=build /tmp/ipollowork-build/dist/web/ /app/dist/web/
 EOF
-    docker build --pull=false --label "org.opencontainers.image.revision=$revision" --label org.opencontainers.image.version=0.1.13 -t "$tag" -f "$release/context/services/ipollowork/Dockerfile.rollout" "$release/context/services/ipollowork" > "$release/build.log" 2>&1 || { tail -n 25 "$release/build.log"; exit 1; }
-    docker run --rm --network=none --entrypoint node "$tag" --input-type=module -e 'import assert from "node:assert/strict";import{readFileSync}from"node:fs";await import("/app/dist/server/app.js");await import("/app/dist/server/http-server.js");assert.match(readFileSync("/app/dist/server/organization-publications.js","utf8"),/organization-templates/);assert.match(readFileSync("/app/dist/server/admission.js","utf8"),/SERVICE_QUEUE_TIMEOUT/);assert.equal(JSON.parse(readFileSync("/app/package.json")).version,"0.1.13");console.log("Candidate imports, catalog, admission and version verified")'
+    docker build --pull=false --label "org.opencontainers.image.revision=$revision" --label org.opencontainers.image.version=0.1.14 -t "$tag" -f "$release/context/services/ipollowork/Dockerfile.rollout" "$release/context/services/ipollowork" > "$release/build.log" 2>&1 || { tail -n 25 "$release/build.log"; exit 1; }
+    docker run --rm --network=none --entrypoint node "$tag" --input-type=module -e 'import assert from "node:assert/strict";import{readFileSync}from"node:fs";await import("/app/dist/server/app.js");await import("/app/dist/server/http-server.js");assert.match(readFileSync("/app/dist/server/organization-publications.js","utf8"),/organization-templates/);assert.match(readFileSync("/app/dist/server/admission.js","utf8"),/SERVICE_QUEUE_TIMEOUT/);assert.equal(JSON.parse(readFileSync("/app/package.json")).version,"0.1.14");console.log("Candidate imports, catalog, admission and version verified")'
     cat > "$release/release.compose.yml" <<EOF
 services:
   work:

@@ -9,6 +9,7 @@ import { BellGlyph } from "./glyphs.tsx";
 import css from "./suite.module.css";
 import { publicationInputError } from "../shared/publication-validation.ts";
 import { enterpriseError } from "./enterprise-locale.ts";
+import { maxSkillFileBytes, parseSkillFile } from './skill-upload.ts';
 
 type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void>; target?: string | undefined };
 
@@ -54,6 +55,8 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
 }) {
   const [fileError, setFileError] = useState("");
   const [html, setHtml] = useState("");
+  const [markdown, setMarkdown] = useState('');
+  const [readingSkill, setReadingSkill] = useState(false);
   const task = useTask(t);
   const zh = language.startsWith("zh");
   return <Modal open title={publication ? (zh ? "提交新版本" : "Submit a new version") : (zh ? "提交资源" : "Submit resource")}
@@ -62,13 +65,14 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
       event.preventDefault();
       const form = new FormData(event.currentTarget);
       const metadata = { title: String(form.get("title") ?? "").trim(), description: String(form.get("description") ?? "").trim(), version: String(form.get("version") ?? "").trim() };
-      const invalid = publicationInputError(metadata);
+      const invalid = publicationInputError(metadata, kind);
       if (invalid) { task.setError(enterpriseError(invalid, t)); return; }
+      if (kind === 'skill' && (readingSkill || !markdown.trim())) { task.setError(t.skillFileRequired); return; }
       void task.run(async () => {
         await call(path, {
           ...(publication ? {id:publication.id} : {}),
           ...metadata,
-          ...(kind === "plugin" ? { packageName: form.get("packageName") } : kind === "skill" ? {markdown:form.get("markdown")} :
+          ...(kind === "plugin" ? { packageName: form.get("packageName") } : kind === "skill" ? {markdown} :
             kind === "mcp" ? {endpoint: form.get("endpoint")} : { html }),
         });
         close();
@@ -80,7 +84,23 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
         required rows={2} defaultValue={publication?.description}/></Field>
       {kind === "plugin" ? <Field label={zh ? "DSH 插件包名" : "DSH plugin package"}>
         <input name="packageName" required maxLength={214} placeholder="@team/plugin" readOnly={!!publication} defaultValue={publication?.packageName}/>
-      </Field> : kind === "skill" ? <Field label="SKILL.md"><textarea name="markdown" rows={8} maxLength={32000} required/></Field>
+      </Field> : kind === "skill" ? <Field label={t.skillFile} hint={t.skillFileHint}>
+        <input name="skillFile" type="file" accept=".md,.markdown" required onChange={event => {
+          const input = event.currentTarget, file = input.files?.[0];
+          setMarkdown(''); setFileError(''); setReadingSkill(false);
+          if (!file) return;
+          if (file.size > maxSkillFileBytes) { setFileError(t.skillFileTooLarge); return; }
+          setReadingSkill(true);
+          void file.arrayBuffer().then(bytes => {
+            if (input.files?.[0] !== file) return;
+            const result = parseSkillFile(file.name, new Uint8Array(bytes));
+            if ('error' in result) setFileError(enterpriseError(result.error, t));
+            else setMarkdown(result.markdown);
+          }, () => {
+            if (input.files?.[0] === file) setFileError(t.skillFileReadFailed);
+          }).finally(() => { if (input.files?.[0] === file) setReadingSkill(false); });
+        }}/>
+      </Field>
         : kind === "mcp" ? <Field label={t.mcpEndpoint} hint={t.mcpEndpointHint}>
           <input name="endpoint" type="url" maxLength={2048} required />
         </Field>
@@ -105,11 +125,14 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
           });
         }}/>
       </Field>}
-      <Field label={zh ? "版本" : "Version"}><input name="version" placeholder="1.0.0" maxLength={64} required/></Field>
+      <Field label={kind === 'mcp' ? t.mcpPublicationVersion : zh ? "版本" : "Version"}
+        hint={kind === 'plugin' ? t.pluginPublicationVersionHint : kind === 'mcp' ? t.mcpPublicationVersionHint : t.customPublicationVersionHint}>
+        <input name="version" placeholder={kind === 'plugin' ? '1.0.0' : zh ? '例如：初版' : 'e.g. first'} maxLength={64} required/>
+      </Field>
       <FormError message={fileError || task.error}/>
       <div className={css.dialogFooter}>
         <Button type="button" variant="outline" disabled={task.busy} onClick={close}>{t.cancel}</Button>
-        <Button type="submit" variant="primary" disabled={task.busy || (kind === "template" && !html.trim())}>{zh ? "提交审核" : "Submit for review"}</Button>
+        <Button type="submit" variant="primary" disabled={task.busy || (kind === "template" && !html.trim()) || (kind === 'skill' && (readingSkill || !markdown.trim()))}>{zh ? "提交审核" : "Submit for review"}</Button>
       </div>
     </form>
   </Modal>;
