@@ -332,7 +332,13 @@ jobs:
           })
           NODE
       - name: Build and verify macOS DMG
-        run: node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
+        run: |
+          set -euo pipefail
+          caffeinate -dimsu -t 7200 &
+          keep_awake=$!
+          trap 'kill "$keep_awake" 2>/dev/null || true' EXIT
+          pmset -g assertions | sed -n '1,16p'
+          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
       - name: Attach verified macOS installer and update files
         id: upload
         env:
@@ -356,4 +362,34 @@ jobs:
             integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*-release.json
           if-no-files-found: error
           include-hidden-files: true
+          compression-level: 0
+      - name: Retain failed runtime for diagnosis
+        if: failure()
+        id: diagnostic
+        run: |
+          set -euo pipefail
+          target="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET"
+          application="$target/artifacts/mac/iPollo.app"
+          if [[ "$PACKAGE_TARGET" = mac-arm64 ]]; then application="$target/artifacts/mac-arm64/iPollo.app"; fi
+          directory="$RUNNER_TEMP/ipollo-failed-$PACKAGE_TARGET"
+          mkdir "$directory"
+          if [[ -d "$application" ]]; then
+            archive="$directory/application.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$application" "$archive"
+          elif [[ -d "$target/dsh" && -d "$target/runtime" && -d "$target/electron" ]]; then
+            archive="$directory/prepared-runtime.tgz"
+            tar -czf "$archive" -C "$target" dsh runtime electron
+          else
+            exit 0
+          fi
+          git rev-parse HEAD > "$directory/source-commit.txt"
+          shasum -a 256 "$archive" > "$directory/SHA256SUMS.txt"
+          printf 'retained=true\n' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.diagnostic.outputs.retained == 'true'
+        with:
+          name: diagnostic-${{ matrix.target }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/ipollo-failed-${{ matrix.target }}/
+          retention-days: 1
+          if-no-files-found: error
           compression-level: 0
