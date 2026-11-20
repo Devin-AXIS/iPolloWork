@@ -81,19 +81,24 @@ export function connectDesktopWelcome(
     const response = await send(new URL('/ipollowork-suite/account' + action, origin).href, {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error',
       headers: { cookie, 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(90_000),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     if (!response.ok) {
+      const failure: unknown = await response.json().catch(() => undefined)
+      const code = record(failure) && typeof failure.error === 'string' ? failure.error : undefined
       if (action === '/sign-in' && (response.status === 401 || response.status === 400)) {
-        const failure: unknown = await response.json()
-        if (record(failure) && (failure.error === 'IPW_INVALID_LOGIN' || (response.status === 401 && failure.error === 'IPW_SIGN_IN_REQUIRED'))) {
+        if (code === 'IPW_INVALID_LOGIN') {
           return { ok: false, reason: 'invalid-credentials' }
         }
+        if (code === 'IPW_SIGN_IN_REQUIRED') return { ok: false, reason: 'session-rejected' }
       }
       if (action === '/sign-up' && response.status === 409) {
-        const failure: unknown = await response.json()
-        if (record(failure) && failure.error === 'IPW_EMAIL_IN_USE') return { ok: false, reason: 'email-in-use' }
+        if (code === 'IPW_EMAIL_IN_USE') return { ok: false, reason: 'email-in-use' }
       }
+      if (response.status === 429) return { ok: false, reason: 'rate-limited' }
+      if (response.status === 504 || code === 'IPW_ACCOUNT_TIMEOUT') return { ok: false, reason: 'timeout' }
+      if (response.status >= 500) return { ok: false, reason: 'service-unavailable' }
       return { ok: false }
     }
     const value: unknown = await response.json()
@@ -126,6 +131,15 @@ export function connectDesktopWelcome(
     return 'system'
   }
   const read = async (): Promise<WelcomeState> => {
+    if (accountMode === 'ipollo') {
+      const response = await send(new URL('/ipollowork-suite/info', origin).href, {
+        headers: { cookie }, redirect: 'error', signal: AbortSignal.timeout(10_000),
+      })
+      const info: unknown = response.ok ? await response.json() : undefined
+      if (!record(info) || info.dedicatedDesktop !== true || info.theme !== true || info.account !== true) {
+        throw new Error('iPolloWork application components are unavailable (IPW_DESKTOP_COMPOSITION_MISMATCH)')
+      }
+    }
     const { settings, ref } = await settingsAndReference()
     const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
     if (!Array.isArray(providers)) throw new Error('desktop welcome: invalid provider directory')
@@ -165,11 +179,11 @@ export function connectDesktopWelcome(
     ...(accountMode === 'ipollo' ? {
       async signUpAccount(name: string, email: string, password: string) {
         try { return await suiteAccount({ name, email, password }) }
-        catch (_error) { return { ok: false } }
+        catch (error) { return { ok: false, reason: error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'service-unavailable' } }
       },
       async signInAccount(email: string, password: string) {
         try { return await suiteAccount({ email, password }) }
-        catch (_error) { return { ok: false } }
+        catch (error) { return { ok: false, reason: error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'service-unavailable' } }
       },
     } : {}),
     async analyticsEnabled() {

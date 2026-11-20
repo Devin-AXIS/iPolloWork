@@ -6,6 +6,8 @@ DSH 基准由[运行时固定记录](upstream.json)指定。本次盘点基于 `
 
 ## 升级前复核的功能
 
+Desktop `1.0.10` 沿用 `initProfile`/`readProfileManifest` 和原生 `dsh.profile.bundles`，补齐已初始化配置缺失的私有 Host；备份原清单后移除重复的公开产品 Bundle 和产品直接依赖。`desktop-runtime.json.sharedPackages` 限定安装包拥有的 Suite/Stage/Host 副本，即使版本相同也恢复为安装包提供。最终原生 Include overlay 仅启用产品入口；Suite 根据 install-anchor 包身份固定该发行版的账号、主题及服务地址，保留其他插件配置和凭据。升级时复测旧 web-only profile、旧及相同版本 Suite、停用条目、已安装 Mac 的真实云端登录、错误密码分类和保持登录后再次进入。欢迎页进入工作区前核验 `/ipollowork-suite/info`，区分凭据错误、会话拒绝、服务异常、超时和限流。详见[升级诊断](../../docs/diagnostics/2026-11-20-mac-login-and-upgrade.md)。
+
 Desktop `1.0.9` 在官方 profile 启动前，使用现有锁和签名应用的 `desktop-runtime.json` 清单，将 profile 中版本不匹配的 DSH/Cordis 核心依赖备份到独立目录。DSH 原生解析保留 profile 优先级，插件停用后留下的旧依赖仍可能覆盖安装包。升级时复测旧 `dsh-llm`/`dsh-typert-protocol`、重复启动、数据保留、相同版本和外部链接；不修改解析器或 Agent。详见[诊断与验证](../../docs/desktop-startup-and-download-fix-2026-11-20.md)。
 
 Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register`、`ctx.tools.register`、必需的 `systemPrompt.context`、工作区归属和沙箱策略处理模板生成。随包的 `ipollowork-design` Skill 和带 revision 的 `design_edit_text` 只替换文字，保留其余 HTML。模板清单作为有界来源数据处理；文档切换与工具写入共用插件生命周期队列。原编辑器在像素属性控件展示前解析 CSS 单位和主题变量，浮动元素操作直接打开“元素”页。企业 VI 模板保留默认几何并接入主题变量，固定原生幻灯片隐藏无效的全局几何控件；PDF 后台导出有计时兜底。升级时复测 Skill 发现/加载、必需模型上下文、过期版本/只读/跨工作区拒绝、HTML 卡片与链接、本地媒体、元素属性、主题持久化、38 页可编辑 PPTX/PDF、明暗主题和 390px。详见[验收记录](../../docs/design-template-fidelity-2026-11-19.md)。Agent 和 DSH 源码保持不变。

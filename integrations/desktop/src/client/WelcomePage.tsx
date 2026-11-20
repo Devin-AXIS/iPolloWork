@@ -144,7 +144,15 @@ export function Welcome({ api }: { api: WelcomeApi }) {
       if (!mounted.current) return
       if (!result.ok) {
         const reason = 'reason' in result ? result.reason : undefined
-        setError(reason === 'invalid-credentials' ? m.welcomeInvalidCredentials : reason === 'email-in-use' ? m.welcomeEmailInUse : failed)
+        const messages = {
+          'invalid-credentials': m.welcomeInvalidCredentials,
+          'email-in-use': m.welcomeEmailInUse,
+          'session-rejected': m.welcomeAuthSessionRejected,
+          'service-unavailable': m.welcomeAuthServiceUnavailable,
+          timeout: m.welcomeAuthTimeout,
+          'rate-limited': m.welcomeAuthRateLimited,
+        }
+        setError(reason === undefined ? failed : messages[reason] ?? failed)
       }
     } catch (_error) { if (mounted.current) setError(failed) }
     finally { busyRef.current = false; if (mounted.current) { setBusy(false); setPassword('') } }

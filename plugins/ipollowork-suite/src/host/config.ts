@@ -48,8 +48,10 @@ export const Config = z.object({
 });
 export type ResolvedConfig = Required<Config>;
 /** Resolve defaults and reject remote unencrypted login destinations before registering routes. */
-export function resolveConfig(input: Config): ResolvedConfig {
-  const result = Config(input) as ResolvedConfig;
+export function resolveConfig(input: Config, applicationOwned = false): ResolvedConfig {
+  const result = Config(applicationOwned ? {
+    ...input, dedicatedDesktop: true, theme: true, account: true, accountOrigin: ACCOUNT_ORIGIN,
+  } : input) as ResolvedConfig;
   if(result.cloudRuntimeTokenEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(result.cloudRuntimeTokenEnv))throw new SuiteError('IPW_INVALID_ACCOUNT_ORIGIN');
   const url = new URL(result.accountOrigin);
   if (

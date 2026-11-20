@@ -12,7 +12,11 @@ import { pathToFileURL } from 'node:url'
 export function writeApplicationOverlay(runtimeDir: string, profileDir: string): string {
   const path = join(profileDir, 'ipollowork-application.overlay.json')
   writeFileSync(path, JSON.stringify([
-    { id: 'ipollowork-application', config: { path: pathToFileURL(join(runtimeDir, 'node_modules', '@ipollo', 'desktop-host', 'application.yml')).href } },
+    { id: 'ipollowork-application', name: '@deepseek-ai/cordis-plugin-include', group: true, disabled: false,
+      config: {
+        path: pathToFileURL(join(runtimeDir, 'node_modules', '@ipollo', 'desktop-host', 'application.yml')).href,
+        patches: [{ id: 'ipollowork-suite', disabled: false }],
+      } },
   ]) + '\n', { mode: 0o600 })
   return path
 }

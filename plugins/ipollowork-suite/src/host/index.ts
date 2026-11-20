@@ -251,7 +251,9 @@ async function relayDownload(
 }
 /** Mount the suite without changing DSH's model, session, or plugin-management implementation. */
 export function apply(ctx: HostContext, input: ConfigInput): void {
-  const config = resolveConfig(input);
+  const anchor = ctx.profileContext.installAnchor;
+  const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown };
+  const config = resolveConfig(input, installation.name === '@ipollo/desktop-runtime');
   ctx.on("tools/pre-execute", async (call, next) =>
     config.dedicatedDesktop && blocksSuiteManagement(call, ctx.fiber.entry?.id)
       ? MANAGEMENT_DENIAL
@@ -376,8 +378,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       )
     : undefined;
   if (config.account) mountProjectContext(ctx, account, config.accountOrigin);
-  const anchor = ctx.profileContext.installAnchor;
-  const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown };
   // The desktop anchor is a private package-manager project, whose version is always 0.0.0.
   const runtime = installation.name === "@ipollo/desktop-runtime"
     ? JSON.parse(readFileSync(createRequire(anchor).resolve("@deepseek-ai/dsh/package.json"), "utf8")) as { version?: unknown }

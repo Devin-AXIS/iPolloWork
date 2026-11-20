@@ -49,3 +49,27 @@ it('keeps matching core copies and unrelated plugin dependencies untouched', () 
   expect(existsSync(join(profile, 'node_modules/@deepseek-ai/cordis/index.js'))).toBe(true)
   expect(existsSync(join(profile, 'node_modules/@ipollo/dsh-suite/index.js'))).toBe(true)
 })
+
+it.each([
+  ['@ipollo/dsh-suite', '0.1.35', '0.1.39'],
+  ['@ipollo/dsh-suite', '0.1.39', '0.1.39'],
+  ['@ipollo/desktop-host', '0.2.2-rc.3', '0.2.2-rc.3'],
+] as const)('always restores shipped application package %s from the installation', (name, previous, expected) => {
+  const root = mkdtempSync(join(tmpdir(), 'ipollo-application-repair-'))
+  roots.push(root)
+  const runtime = join(root, 'runtime')
+  const profile = join(root, 'profile')
+  mkdirSync(profile)
+  const descriptor = runtimeFixture(runtime)
+  writePackage(join(runtime, 'node_modules'), name, { version: expected }, 'application-owned package')
+  writePackage(join(profile, 'node_modules'), name, { version: previous }, 'profile copy of application package')
+  writeFileSync(join(profile, '.credentials.yaml'), 'existing account fixture')
+  const entry = { name, version: expected, path: `node_modules/${name}` }
+  const metadata = { ...descriptor, sharedPackages: [...descriptor.sharedPackages.filter(item => item.name !== name), entry] }
+  const backup = repairProfileRuntime(profile, runtime, metadata)
+  expect(backup).toBeDefined()
+  expect(existsSync(join(profile, 'node_modules', name))).toBe(false)
+  expect(readFileSync(join(backup!, 'node_modules', name, 'index.js'), 'utf8')).toBe('profile copy of application package')
+  expect(readFileSync(join(profile, '.credentials.yaml'), 'utf8')).toBe('existing account fixture')
+  expect(repairProfileRuntime(profile, runtime, metadata)).toBeUndefined()
+})

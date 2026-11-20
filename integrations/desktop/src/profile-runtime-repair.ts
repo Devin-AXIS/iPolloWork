@@ -4,6 +4,8 @@ import { dirname, isAbsolute, join, relative, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { DesktopRuntimeDescriptor } from './runtime-tree.ts'
 
+const APPLICATION_PACKAGES = new Set(['@ipollo/desktop-host', '@ipollo/dsh-suite', '@ipollo/dsh-stage'])
+
 function inside(root: string, path: string): boolean {
   const name = relative(root, path)
   return name !== '..' && !name.startsWith(`..${sep}`) && !isAbsolute(name)
@@ -18,7 +20,8 @@ export function repairProfileRuntime(profile: string, runtime: string, descripto
   const root = realpathSync(profile)
   const conflicts: { name: string; version: string; expected: string; source: string }[] = []
   for (const entry of descriptor.sharedPackages) {
-    if (!/^@deepseek-ai\/(?:dsh(?:-|$)|cordis(?:-|$))/.test(entry.name)) continue
+    const applicationOwned = APPLICATION_PACKAGES.has(entry.name)
+    if (!applicationOwned && !/^@deepseek-ai\/(?:dsh(?:-|$)|cordis(?:-|$))/.test(entry.name)) continue
     const source = join(root, 'node_modules', entry.name)
     let stat
     try { stat = lstatSync(source) }
@@ -33,7 +36,8 @@ export function repairProfileRuntime(profile: string, runtime: string, descripto
       || !('version' in manifest) || typeof manifest.version !== 'string') {
       throw new Error(`desktop profile: invalid core dependency ${entry.name}`)
     }
-    if (manifest.version === entry.version) continue
+    // Private application packages can change between app releases without changing the DSH SDK version.
+    if (!applicationOwned && manifest.version === entry.version) continue
     // Do not move entries through a node_modules/scope junction outside this profile.
     if (!inside(root, realpathSync(dirname(source)))) throw new Error(`desktop profile: core dependency outside profile: ${entry.name}`)
     conflicts.push({ name: entry.name, version: manifest.version, expected: entry.version, source })

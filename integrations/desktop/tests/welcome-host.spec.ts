@@ -10,6 +10,7 @@ function transport(preference?: string) {
     { ns: 'locale', value: preference === undefined ? {} : { preference } },
   ]
   const send = vi.fn<NonNullable<Parameters<typeof connectDesktopWelcome>[2]>>(async (_input, init) => {
+    if (_input.endsWith('/ipollowork-suite/info')) return Response.json({ version: '0.1.39', dedicatedDesktop: true, theme: true, account: true })
     const { rpcId, method, payload } = JSON.parse(init!.body as string) as {
       rpcId: string
       method: string
@@ -126,6 +127,15 @@ describe('desktop welcome Web operations', () => {
   })
 })
 
+it('refuses to silently enter a plain DSH workspace when required product components are absent', async () => {
+  const host = transport()
+  host.keys.set('CUSTOM_DEEPSEEK_KEY', 'fixture-key')
+  const send: typeof fetch = async (input, init) => String(input).endsWith('/ipollowork-suite/info')
+    ? Response.json({ dedicatedDesktop: false, theme: false, account: false }) : host.send(String(input), init)
+  const backend = connectDesktopWelcome(url, cookie, send, 'ipollo')
+  await expect(backend.read()).rejects.toThrow('IPW_DESKTOP_COMPOSITION_MISMATCH')
+})
+
 
 it('uses the iPolloWork account service without returning the session grant', async () => {
   const host = transport()
@@ -149,10 +159,12 @@ it('uses the iPolloWork account service without returning the session grant', as
 })
 
 it.each([
-  [401, 'IPW_SIGN_IN_REQUIRED', { ok: false, reason: 'invalid-credentials' }],
+  [401, 'IPW_SIGN_IN_REQUIRED', { ok: false, reason: 'session-rejected' }],
   [400, 'IPW_INVALID_LOGIN', { ok: false, reason: 'invalid-credentials' }],
   [401, 'UNRELATED_ERROR', { ok: false }],
-  [502, 'IPW_ACCOUNT_UNAVAILABLE', { ok: false }],
+  [502, 'IPW_ACCOUNT_UNAVAILABLE', { ok: false, reason: 'service-unavailable' }],
+  [504, 'IPW_ACCOUNT_TIMEOUT', { ok: false, reason: 'timeout' }],
+  [429, 'IPW_ACCOUNT_UNAVAILABLE', { ok: false, reason: 'rate-limited' }],
 ] as const)('returns a safe sign-in result for HTTP %s with %s', async (status, error, expected) => {
   const backend = connectDesktopWelcome(url, cookie,
     async () => Response.json({ error, message: 'private diagnostic' }, { status }), 'ipollo')

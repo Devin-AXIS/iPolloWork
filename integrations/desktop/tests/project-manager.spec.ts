@@ -394,3 +394,33 @@ it('selects the application bundle without selecting the independently switchabl
   expect(patch).not.toContain('dedicatedDesktop')
   expect(patch).not.toContain('requiredBundles')
 })
+
+it('upgrades an existing web or legacy Suite profile to the required desktop composition without losing data', async () => {
+  const root = temporaryRoot()
+  await createPluginProfile(root)
+  const manifestPath = join(root, 'package.json')
+  const original = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  original.dsh.profile.bundles.push('@ipollo/dsh-suite', 'custom-plugin')
+  original.dependencies['custom-plugin'] = '1.2.3'
+  original.dependencies['@ipollo/dsh-suite'] = '0.1.35'
+  original.customMetadata = { keep: true }
+  const before = JSON.stringify(original)
+  writeFileSync(manifestPath, before)
+  writeFileSync(join(root, '.credentials.yaml'), 'existing account and model credentials')
+  const patch = '# existing settings\n- id: custom-plugin\n  disabled: false\n'
+  writeFileSync(join(root, 'cordis.patch.yml'), patch)
+  await createPluginProfile(root, ['@ipollo/desktop-host'])
+  const updated = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  expect(updated.dsh.profile.bundles).toContain('@ipollo/desktop-host')
+  expect(updated.dsh.profile.bundles).not.toContain('@ipollo/dsh-suite')
+  expect(updated.dsh.profile.bundles).toContain('custom-plugin')
+  expect(updated.dependencies).toEqual({ 'custom-plugin': '1.2.3' })
+  expect(updated.customMetadata).toEqual({ keep: true })
+  expect(readFileSync(join(root, '.credentials.yaml'), 'utf8')).toBe('existing account and model credentials')
+  expect(readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toBe(patch)
+  const backups = readdirSync(root).filter(name => name.startsWith('package.json.ipollo-backup-'))
+  expect(backups).toHaveLength(1)
+  expect(readFileSync(join(root, backups[0]!), 'utf8')).toBe(before)
+  await createPluginProfile(root, ['@ipollo/desktop-host'])
+  expect(readdirSync(root).filter(name => name.startsWith('package.json.ipollo-backup-'))).toEqual(backups)
+})

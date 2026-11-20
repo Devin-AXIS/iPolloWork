@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, writeFile, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { verifyInstalledMacSessions } from './smoke-installed-macos-session.mjs'
 
 assert.equal(process.platform, 'darwin', 'Installed Mac verification requires macOS')
 const app = resolve(process.argv[2])
@@ -87,9 +88,12 @@ try {
   console.log('Installed Mac application opened with legacy core dependencies repaired')
 } finally {
   socket?.close()
-  socket?.close()
   child.kill('SIGTERM')
   await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(3000)])
-  if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
-  await writeFile(join(output, 'application.log'), logs)
+  if (child.exitCode === null && child.signalCode === null) {
+    child.kill('SIGKILL')
+    await Promise.race([new Promise(resolve => child.once('exit', resolve)), delay(2000)])
+  }
+  await writeFile(join(output, 'application.log'), logs.replace(/([?&]token=)[^\s"']+/g, '$1[redacted]'))
 }
+await verifyInstalledMacSessions(app, output, home)

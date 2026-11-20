@@ -345,6 +345,10 @@ it('reports each return to the welcome entry once, including account cancellatio
 
 it.each([
   [{ ok: false, reason: 'invalid-credentials' }, '邮箱或密码不正确，请重试。'],
+  [{ ok: false, reason: 'session-rejected' }, '登录会话验证失败，请重试'],
+  [{ ok: false, reason: 'service-unavailable' }, '无法连接登录服务，请检查网络后重试'],
+  [{ ok: false, reason: 'timeout' }, '登录服务响应超时，请重试'],
+  [{ ok: false, reason: 'rate-limited' }, '登录尝试次数过多，请稍后重试'],
   [{ ok: false }, '登录未完成，请重试。'],
 ] as const)('shows the sign-in outcome %j inside the iPolloWork window', async (result, message) => {
   const original = mount('zh-CN')
