@@ -16,7 +16,7 @@ export async function verifyInstalledMacSessions(application, output, home) {
   const profile = join(home, 'profiles', 'desktop')
   const manifestPath = join(profile, 'package.json')
   const suite = join(profile, 'node_modules', '@ipollo', 'dsh-suite')
-  const currentVersion = JSON.parse(await readFile(new URL('../../../plugins/ipollowork-suite/package.json', import.meta.url), 'utf8')).version
+  const currentVersion = JSON.parse(await readFile(join(process.cwd(), 'plugins/ipollowork-suite/package.json'), 'utf8')).version
   const legacyPatch = '# retained user settings\n- id: ipollowork-application\n  disabled: true\n- id: ipollowork-suite\n  disabled: true\n  config:\n    theme: false\n    account: false\n    accountOrigin: http://localhost:3400\n'
   await writeFile(join(profile, 'cordis.patch.yml'), legacyPatch)
   async function contaminate(version, legacyBundles) {

@@ -70,12 +70,17 @@ try {
     socket.addEventListener('message', receive)
     socket.send(JSON.stringify({ id, method, params }))
   })
-  const result = await command('Runtime.evaluate', {
-    expression: '({ready:document.readyState,text:document.body.innerText,buttons:document.querySelectorAll("button").length})', returnByValue: true,
-  })
-  const view = result.result.value
-  assert.equal(view.ready, 'complete')
-  assert.ok(view.buttons > 0 && /iPollo/i.test(view.text), 'Welcome renderer is blank or missing its controls')
+  let view
+  while (Date.now() < deadline) {
+    const result = await command('Runtime.evaluate', {
+      expression: 'document.body && ({ready:document.readyState,text:document.body.innerText,buttons:document.querySelectorAll("button").length})', returnByValue: true,
+    })
+    view = result.result?.value
+    if (view?.ready === 'complete' && view.buttons > 0 && /iPollo/i.test(view.text)) break
+    await delay(100)
+  }
+  assert.equal(view?.ready, 'complete', 'Welcome document did not finish loading within 120 seconds')
+  assert.ok(view?.buttons > 0 && /iPollo/i.test(view.text), 'Welcome renderer is blank or missing its controls')
   const screenshot = await command('Page.captureScreenshot', { format: 'png' })
   await writeFile(join(output, 'installed-welcome.png'), Buffer.from(screenshot.data, 'base64'))
   const backups = await readdir(join(profile, 'runtime-dependency-backups'))
