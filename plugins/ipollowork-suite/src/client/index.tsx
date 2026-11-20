@@ -20,6 +20,8 @@ import { mountMcpConnections } from './mcp-connections.tsx'
 import { mountOutputContinuationPresentation } from './output-continuation.tsx'
 import { mountChatErrors } from './chat-errors.tsx'
 import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
+import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
+import { shareAudienceCopy } from './share-audience-copy.ts'
 export const inject = ['slots', 'theme', 'locale', 'remote', 'layout', 'uiWorkspace', 'connection', 'sessions', 'workspaces', 'contextMenus', 'conversation', 'configForms']
 export async function apply(ctx: ClientContext): Promise<void> {
   // Shared pages use their scoped native services; the owner's account UI must not be mounted there.
@@ -75,6 +77,33 @@ export async function apply(ctx: ClientContext): Promise<void> {
         document.removeEventListener('visibilitychange', visible)
       }
     }, 'ipollowork-suite: refresh account on return')
+    const prepareShare = async (signal: AbortSignal) => {
+      const t = shareAudienceCopy(language(ctx))
+      await account.refresh()
+      signal.throwIfAborted()
+      const state = account.getSnapshot()
+      if (state.error) return { error: t.connectionFailed }
+      if (state.account?.status !== 'signed-in') {
+        account.openAccountSettings()
+        return { error: t.connectionSignIn }
+      }
+      try {
+        await prepareSharingConnection({
+          suite: (path, body, signal) => request(path, { method: 'POST', body: JSON.stringify(body), signal }),
+          native: callNativeSharing,
+        }, AbortSignal.any([signal, lifetime.signal]))
+        return { connected: true }
+      } catch (_error) {
+        return { error: t.connectionFailed }
+      }
+    }
+    ctx.provide('ipolloProjectConversationShare', async (input, signal) => {
+      const connected = await prepareShare(signal)
+      if (!connected.connected) throw new Error('BOARD_SHARE_UNAVAILABLE')
+      return request('/enterprise/native-sharing/project-board', {
+        method: 'POST', body: JSON.stringify(input), signal: AbortSignal.any([signal, lifetime.signal]),
+      })
+    })
     mountEnterprise(ctx, account, async spec => {
       if (!enterpriseInstaller) throw new Error('IPW_DSH_PLUGIN_UNAVAILABLE')
       await enterpriseInstaller.startManual(spec, '', spec)

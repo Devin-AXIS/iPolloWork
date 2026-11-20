@@ -1,3 +1,4 @@
+import { mountProjectBoard } from "./project-board.js";
 import { mountMarket } from './market.js';
 import { Admission } from './admission.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
@@ -474,6 +475,7 @@ export async function createService(config: Config) {
     mountProjectArchive(app, store, storage, config);
     mountPublications(app, store, storage, config);
     mountCollaboration(app, store);
+    mountProjectBoard(app, store);
     mountPayments(app, store, settings, config);
     mountResources(app, store, storage, config);
     mountStorage(app, store, storage);

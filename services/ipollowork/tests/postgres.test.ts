@@ -211,7 +211,8 @@ test("concurrent membership payments stack both terms when no credits are grante
 });
 
 
-async function removeOrganizationSpaceMigration(store: {run(sql:string):Promise<unknown>}) {
+async function removeOrganizationSpaceMigration(store: {run(sql:string):Promise<unknown>}, keepBoard = false) {
+  if (!keepBoard) await store.run("DROP TABLE project_board_notices, project_board_tasks");
   await store.run(`
     DROP TABLE organization_conversation_recipients, organization_conversation_shares;
     DROP TABLE enterprise_mcp_oauth_pending, organization_member_notices,
@@ -228,6 +229,33 @@ async function removeOrganizationSpaceMigration(store: {run(sql:string):Promise<
     DELETE FROM service_schema WHERE version>=15;
   `);
 }
+
+test("upgrades the local board preview and retains its tasks and notifications", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ipw-board-preview-migration-"));
+  const config = await testConfig({ DATA_DIR: dir, SERVICE_ORIGIN: "http://localhost:4785" });
+  const service = await createService(config);
+  const { store } = service;
+  try {
+    await removeOrganizationSpaceMigration(store, true);
+    await store.run("INSERT INTO service_schema(version) VALUES(15)");
+    const { user } = await service.auth.api.signUpEmail({
+      body: { name: "Owner", email: "board-preview@example.test", password: "Migration-fixture-password" },
+    });
+    await store.run("INSERT INTO enterprises(id,name,owner_id,created_at) VALUES('org','Preview',?,1)", user.id);
+    await store.run("INSERT INTO projects(id,owner_id,enterprise_id,title,created_at) VALUES('project',?,'org','Preview',1)", user.id);
+    await store.run(`INSERT INTO project_board_tasks(project_id,id,title,description,status,priority)
+      VALUES('project','task','Saved task','','todo','normal')`);
+    await store.run(`INSERT INTO project_board_notices(id,project_id,task_id,enterprise_id,recipient_id,kind,created_at,read_at)
+      VALUES('notice','project','task','org',?,'assigned',1,2)`, user.id);
+    await migrate(store, config);
+    await migrate(store, config);
+    assert.equal((await store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 20);
+    assert.equal((await store.one("SELECT title FROM project_board_tasks WHERE id='task'"))?.title, "Saved task");
+    assert.equal((await store.one("SELECT read_at FROM project_board_notices WHERE id='notice'"))?.read_at, 2);
+    assert.equal((await store.one("SELECT description FROM enterprises WHERE id='org'"))?.description, "");
+    assert.equal((await store.one("SELECT COUNT(*) AS count FROM organization_conversation_shares"))?.count, 0);
+  } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
+});
 
 test("schema seven removes the old per-account running-request constraint", async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-parallel-migration-"));
@@ -253,7 +281,7 @@ test("schema seven removes the old per-account running-request constraint", asyn
     await migrate(service.store, config);
     await migrate(service.store, config);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM pg_indexes WHERE schemaname=current_schema() AND indexname='service_calls_one_running'"))?.total, 0);
-    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 19);
+    assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 20);
     assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM information_schema.columns WHERE table_schema=current_schema() AND ((table_name='plans' AND column_name IN ('daily_points','weekly_points')) OR (table_name='orders' AND column_name='checkout'))"))?.total, 3);
   } finally { await service.close(); await rm(dir, { recursive: true, force: true }); }
 });
@@ -283,7 +311,7 @@ for (const history of ["mcp", "notifications"] as const) {
       }
       await migrate(service.store, config);
       await migrate(service.store, config);
-      assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 19);
+      assert.equal((await service.store.one("SELECT MAX(version) AS version FROM service_schema"))?.version, 20);
       assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM enterprise_mcp"))?.total, history === "mcp" ? 1 : 0);
       assert.equal((await service.store.one("SELECT COUNT(*) AS total FROM organization_notifications"))?.total, history === "notifications" ? 1 : 0);
       assert.equal((await service.store.one("SELECT name FROM enterprises WHERE id='org'"))?.name, "Fixture");

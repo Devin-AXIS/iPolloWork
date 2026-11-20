@@ -7,6 +7,11 @@ Run `npm run setup:build` for a fresh checkout. It verifies the official archive
 
 Update the [DSH compatibility record](integrations/runtime/compatibility.md) in the same change whenever a product modification adds, replaces, or relies on DSH behavior. Record the product files, upstream API/event/slot or DOM dependency, and how to verify the behavior on the next pin. Prefer upstream extension points and types. When an upstream release replaces an adaptation, mark the entry as retired and record the first verified release.
 
+Use the [notification source contract](plugins/notification-center/README.md#source-contract)
+for user-facing inbox notifications. Keep delivery, authorization and read state in
+the originating plugin or service. Route notification actions to the source's existing
+authorized detail view.
+
 Keep existing product behavior, accounts, projects and files. New capabilities use official plugins, configuration or independent services. Keep credentials out of browser storage and logs. Reuse the official `dsh` profile launcher; do not create a second Agent runtime.
 
 ## Plugin development

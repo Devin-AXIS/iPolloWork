@@ -34,6 +34,7 @@ import {
   nativeShareAudience,
   configureNativeSharing,
   prepareNativeShare,
+  shareBoardConversation,
   createNativeShare,
   authorizeNativeShare,
   stopNativeShare,
@@ -46,6 +47,7 @@ import {
   type ArchiveSession,
 } from "./project-archive.ts";
 import { EnterpriseService, type EnterpriseNative } from "./enterprise.ts";
+import type { ProjectRosterSource, ProjectBoardGateway } from "../shared/enterprise.ts";
 import {
   mountEnterpriseSkills,
   type EnterpriseSkillScope,
@@ -92,6 +94,8 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
   provide?(name: "ipolloData", value: IpolloData): void;
+  provide?(name: "ipolloProjectBoard", value: ProjectBoardGateway): void;
+  provide?(name: "ipolloProjectRoster", value: ProjectRosterSource): void;
   provide?(name: "ipolloStage", value: import('../shared/stage.ts').StageBridge): void;
   get?(name: "ipolloCloud"): unknown;
   get?(name: "liveshareShares"): NativeSharing | undefined;
@@ -139,7 +143,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
     tapIndex(transform: (html: string) => string): () => void;
   };
   connection: {
-    admit(request: IncomingMessage): { rejection: number } | { peer: object };
+    admit(request: IncomingMessage): { rejection: number } | { peer: { principal?: { kind: string } } };
   };
   credentials: CredentialStore;
   pluginManager: NativePluginManager;
@@ -368,6 +372,9 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       ),
     );
   const enterprise = new EnterpriseService(account, ctx, config.accountOrigin);
+  if (config.account) ctx.provide?.("ipolloProjectBoard", (call, signal) => enterprise.projectBoard(call, signal));
+  if (config.account) ctx.provide?.("ipolloProjectRoster", (workspaceId, signal, sessionId) =>
+    enterprise.projectRoster(workspaceId, signal, sessionId));
   const archive = config.account && config.automaticOutputArchive
     ? new ProjectArchive(
         ctx,
@@ -608,6 +615,21 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 );
                 return;
               }
+            }
+            if (path === "/enterprise/native-sharing/project-board" && request.method === "POST") {
+              if (!config.account || admission.peer.principal?.kind !== "owner" ||
+                  ["same-site", "cross-site"].includes(request.headers["sec-fetch-site"] ?? "")) {
+                throw new SuiteError("LIVESHARE_FORBIDDEN", 403);
+              }
+              const id = cloudSchema.string().min(1).max(128);
+              const { workspaceId, sessionId, sessionTitle, userIds } = cloudSchema.strictObject({
+                workspaceId: id, sessionId: id, sessionTitle: cloudSchema.string().trim().min(1).max(120),
+                userIds: cloudSchema.array(cloudSchema.string().min(1).max(200)).min(1).max(101),
+              }).parse(await body(request));
+              const roster = await enterprise.projectRoster(workspaceId, lifetime.signal, sessionId);
+              json(response, 200, await shareBoardConversation(ctx.get?.("liveshareShares"), account,
+                sessionId, sessionTitle, [...new Set(userIds)], roster));
+              return;
             }
             if (
               path === "/enterprise/native-sharing/configure" &&

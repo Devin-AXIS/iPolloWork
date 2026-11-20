@@ -12,6 +12,10 @@
       name: '@ipollo/dsh-suite'
     - id: ipollowork-agents
       name: '@ipollo/dsh-suite/agents'
+    - id: ipollo-notification-center
+      name: './lib/subplugins/notification-center/host.js'
+    - id: ipollo-collaboration-board
+      name: './lib/subplugins/collaboration-board/host.js'
     - id: ipollowork-im
       name: '@ipollo/dsh-suite/im'
     - id: ipollowork-app-data

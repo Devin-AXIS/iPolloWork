@@ -9,8 +9,11 @@ import { pathToFileURL } from 'node:url'
 export function desktopApplicationEntries(patches, stage, accountOrigin) {
   const entries = [...patches, ...stage].flatMap(patch => patch.insert ?? [])
   if (!entries.some(entry => entry.id === 'ipollowork-suite')) throw new Error('Desktop composition requires the suite entry')
-  return entries.map(entry => entry.id === 'ipollowork-suite'
-    ? { ...entry, config: { ...entry.config, accountOrigin, dedicatedDesktop: true } } : entry)
+  return entries.map(entry => {
+    if (entry.id === 'ipollowork-suite') return { ...entry, config: { ...entry.config, accountOrigin, dedicatedDesktop: true } }
+    if (entry.name?.startsWith('./lib/subplugins/')) return { ...entry, name: '../dsh-suite/' + entry.name.slice(2) }
+    return entry
+  })
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

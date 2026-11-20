@@ -55,6 +55,16 @@ export async function linkProject(
     throw error;
   }
 }
+/** Resolve a saved native-to-service project association without reading credentials. */
+export async function readProjectLink(path: string, signal: AbortSignal) {
+  try {
+    return binding.parse(JSON.parse(await readFile(join(path, ".ipollo", "project.json"), { encoding: "utf8", signal })));
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
 /** Local metadata only: workspace paths and conversation contents stay in the Host. */
 export async function linkedProjectWorkspaces(
   workspaces: readonly { id: string; title: string; path: string; sessionIds: readonly string[] }[],

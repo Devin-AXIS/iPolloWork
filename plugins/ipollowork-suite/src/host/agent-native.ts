@@ -9,7 +9,12 @@ import type { AgentModelChoice } from '../shared/agents.ts'
 export interface Project { id: string; title: string; path: string; sessionIds: readonly string[] }
 export interface AgentRef { session: { header: { cwd?: string } } }
 export interface ModelAgentRef extends AgentRef { model: { select(selection: AgentModelChoice): void } }
-export interface AgentRuntime { store: AgentStore; coordinatorPreset: string; projectFor(agent: AgentRef | undefined): Project }
+export interface AgentRuntime {
+  store: AgentStore;
+  coordinatorPreset: string;
+  projectFor(agent: AgentRef | undefined): Project;
+  boardAgents(): Promise<{ id: string; name: string; preset: string; avatar?: string }[]>;
+}
 export interface NativeFiber { dispose(): Promise<void> }
 export interface NativeEntry { name: string; id?: string | undefined; [key: string]: unknown }
 export interface PresetDefinition { id: string; name: string; description: string; plugins: NativeEntry[] }
@@ -21,7 +26,7 @@ export interface AgentContext {
   plugin(plugin: typeof SubagentTool, config: { provider: string; toolName: string; agentPreset?: string; allowedAgentPresets?: string[] }): NativeFiber;
   logger: { warn(message: string, error: unknown): void };
   webServer: { register(route: { kind: 'prefix'; path: string; handler(request: IncomingMessage, response: ServerResponse): Promise<void> }): () => void };
-  connection: { admit(request: IncomingMessage): { rejection: number } | { peer: { principal: { kind: string } } } };
+  connection: { admit(request: IncomingMessage): { rejection: number } | { peer: { principal?: { kind: string } } } };
   storageDomain: { open(spec: { name: string; version: number; global: { schema: z.ZodType; initial: unknown }; tables: Record<string, never> }): Promise<{ global: AgentGlobal; close(): Promise<void> }> };
   credentials: { describe(ref: string): Promise<{ configured: boolean }>; set(ref: string, value: string): Promise<void> };
   workspaceRegistry: { list(): Project[]; get(id: string): Project | undefined; create(path: string, title?: string): Promise<Project>; archivedSessionIds: readonly string[] };

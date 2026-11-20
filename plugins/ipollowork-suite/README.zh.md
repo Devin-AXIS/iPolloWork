@@ -20,6 +20,12 @@
 
 使用 `dsh plugin --profile <profile> add link:/absolute/path/to/ipollowork-dsh-suite` 安装构建后的本地目录，再通过同一个 `dsh --profile <profile>` 启动器启动。先在独立 profile 中测试，再在工作 profile 中启用。运行时兼容范围限定为已测试的 DSH 版本系列。重新构建或移动链接目录，或将其替换为发布包后，重启对应 DSH profile，使 Host 实现与内置目录使用已安装文件；仅刷新浏览器不会清除 Host 模块路径。不依赖账号登录的 `/info` 路由报告已安装的软件包版本。正常的组件和 Bundle 开关会即时生效，无需重启。
 
+## 内置项目工具
+
+项目看板和通知中心是套件的原生子插件，安装套件即可使用。可在「插件 → iPolloWork」详情内查看两个条目 `ipollo-collaboration-board` 和 `ipollo-notification-center`。看板仍在项目对话顶部，头像旁的铃铛和「设置 → 通知」沿用相同的通知来源和偏好。
+
+如果开发配置曾单独安装这两项，请先用原生插件管理器移除独立的 `@ipollo/dsh-collaboration-board` 和 `@ipollo/dsh-notification-center`，再更新套件。继续使用原配置。如果 `cordis.patch.yml` 中对应条目以 `name` 断言旧包名，只移除这行断言，保留 ID 和其它字段，包括通知偏好。套件沿用原条目 ID 和存储域，继续读取已有看板、定时任务和设置。
+
 ## 模块
 
 | 模块 | 职责 |

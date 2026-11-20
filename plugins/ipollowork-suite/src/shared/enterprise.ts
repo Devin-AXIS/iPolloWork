@@ -37,6 +37,34 @@ export interface EnterpriseMember {
   employeeNumber?: string | null;
   displayName?: string | null;
 }
+/** Minimal member projection for a project-scoped Host extension. */
+export interface ProjectRoster {
+  scope: string;
+  canAssign: boolean;
+  viewerId: string;
+  projectId: string;
+  enterpriseId: string;
+  organizationName: string;
+  canInvite: boolean;
+  members: readonly { userId: string; name: string; email?: string; avatar?: string; canViewConversation?: boolean }[];
+}
+export type ProjectConversationShare = (input: {
+  workspaceId: string; sessionId: string; sessionTitle: string; userIds: string[];
+}, signal: AbortSignal) => Promise<{ link: string }>;
+export const projectBoardPeopleEvent = "ipollo-project-board-people";
+export const projectBoardOwnershipEvent = "ipollo-project-board-ownership";
+export type ProjectBoardPeopleAction =
+  | { kind: "ownership"; workspaceId: string }
+  | { kind: "invite"; projectId: string; enterpriseId: string };
+export type ProjectRosterSource = (workspaceId: string, signal: AbortSignal, sessionId?: string) => Promise<ProjectRoster | null>;
+export type ProjectBoardCall =
+  | { operation: "list"; workspaceId: string; after?: string }
+  | { operation: "get"; workspaceId: string; taskId: string }
+  | { operation: "write"; workspaceId: string; payload: unknown }
+  | { operation: "inbox" }
+  | { operation: "notice" | "read"; noticeId: string }
+  | { operation: "notice-status"; noticeId: string; payload: unknown };
+export type ProjectBoardGateway = (call: ProjectBoardCall, signal: AbortSignal) => Promise<unknown>;
 export interface Department {
   id: string;
   name: string;

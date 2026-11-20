@@ -183,7 +183,7 @@ export async function migrate(store: Store, config: Config): Promise<void> {
         )
       )?.version,
     );
-    if (version > 19)
+    if (version > 20)
       throw new Error("This database requires a newer iPolloWork service");
     if (version < 1) {
       await store.run(
@@ -261,9 +261,13 @@ export async function migrate(store: Store, config: Config): Promise<void> {
       await store.run(await readFile(new URL("./migration-pg-014.sql", import.meta.url), "utf8"));
       await store.run("INSERT INTO service_schema(version) VALUES(14)");
     }
-    if (version < 15) {
+    // The local board preview used version 15 before that number shipped on main.
+    const boardPreview = version === 15 && (await store.one(
+      "SELECT to_regclass('project_board_tasks') IS NOT NULL AND to_regclass('organization_member_notices') IS NULL AS legacy",
+    ))?.legacy === true;
+    if (version < 15 || boardPreview) {
       await store.run(await readFile(new URL("./migration-pg-015.sql", import.meta.url), "utf8"));
-      await store.run("INSERT INTO service_schema(version) VALUES(15)");
+      if (version < 15) await store.run("INSERT INTO service_schema(version) VALUES(15)");
     }
     if (version < 16) {
       await store.run(await readFile(new URL("./migration-pg-016.sql", import.meta.url), "utf8"));
@@ -280,6 +284,10 @@ export async function migrate(store: Store, config: Config): Promise<void> {
     if (version < 19) {
       await store.run(await readFile(new URL("./migration-pg-019.sql", import.meta.url), "utf8"));
       await store.run("INSERT INTO service_schema(version) VALUES(19)");
+    }
+    if (version < 20) {
+      await store.run(await readFile(new URL("./migration-pg-020.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(20)");
     }
     await adoptStoredResources(store, config);
   });

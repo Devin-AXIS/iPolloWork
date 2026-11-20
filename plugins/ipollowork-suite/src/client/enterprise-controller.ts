@@ -12,6 +12,7 @@ export type EnterpriseDialog =
       kind: "joinCode";
       enterpriseId: string;
       projectId?: string;
+      projectRole?: "view" | "participate" | "maintain";
     }
   | { kind: "member"; enterpriseId: string; userId: string }
   | {

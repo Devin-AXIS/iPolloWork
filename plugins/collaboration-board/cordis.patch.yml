@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-collaboration-board
+      name: '@ipollo/dsh-collaboration-board'

@@ -257,10 +257,17 @@ export function apply(ctx) {
       }
       const rows = inventory.result.value?.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
       const optionalModules = new Set(['@ipollo/dsh-suite/aliyun-sandbox', '@ipollo/dsh-suite/cloud'])
+      const subplugins = ['notification-center', 'collaboration-board'].map(name => {
+        const suffix = '/dsh-suite/lib/subplugins/' + name + '/host.js'
+        return inventory.result.value?.filter(row => row.moduleName.endsWith(suffix)) ?? []
+      })
       if (!inventory.result.ok || rows?.length !== 7
         || rows.some(row => (row.fiberPhase !== 'active' && !(optionalModules.has(row.moduleName) && row.fiberPhase === null))
-          || row.readOnlyReason !== 'unaddressable')) {
-        throw new Error('desktop runtime: iPolloWork components are inactive: ' + JSON.stringify({ ok: inventory.result.ok, rows: rows?.map(row => ({ moduleName: row.moduleName, fiberPhase: row.fiberPhase, readOnlyReason: row.readOnlyReason })) }))
+          || row.readOnlyReason !== 'unaddressable')
+        || subplugins.some(matches => matches.length !== 1 || matches[0]?.fiberPhase !== 'active')) {
+        const inactiveRows = [...rows ?? [], ...subplugins.flat()].map(({ moduleName, fiberPhase, readOnlyReason }) =>
+          ({ moduleName, fiberPhase, readOnlyReason }))
+        throw new Error('desktop runtime: iPolloWork components are inactive: ' + JSON.stringify({ ok: inventory.result.ok, rows: inactiveRows }))
       }
       for (const [operation, args, code] of [
         ['setBundleEnabled', { name: '@ipollo/desktop-host', enabled: false }, 'management-required'],

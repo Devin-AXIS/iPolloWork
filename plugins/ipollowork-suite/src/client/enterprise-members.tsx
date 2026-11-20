@@ -166,7 +166,7 @@ export function JoinCodeDialog({ dialog, t, call, controller, departments }: { d
   const [department, setDepartment] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [issued, setIssued] = useState<{code:string;serviceAddress:string;expiresAt:number|null}>()
-  const [projectRole, setProjectRole] = useState<'view' | 'participate' | 'maintain'>('view')
+  const [projectRole, setProjectRole] = useState<'view' | 'participate' | 'maintain'>(dialog.projectRole ?? 'view')
   const [days, setDays] = useState(dialog.projectId ? '7' : '')
   const close = () => controller.open(null)
   const submit = (e: FormEvent) => { e.preventDefault(); void task.run(async () => {

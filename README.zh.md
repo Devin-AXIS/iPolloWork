@@ -43,6 +43,8 @@ iPolloWork 把多 Agent 团队、共享项目、插件、Skills 和可编辑成�
 - **插件与 Skills** — 沿用原生插件生命周期和精选市场，集成即时通信与项目专属智能体指令。
 - **可编辑创作** — 使用 Design、Video 页面制作演示文稿、网站和视觉内容，生成后继续编辑。
 - **共享服务与应用数据** — 通过 HTTP 发现账号获授权的 AI 能力，为小型应用提供记录存储，无需另建数据库。
+- **[项目看板](plugins/collaboration-board/README.zh.md)** — 套件子插件，在对话顶部提供项目任务、排期、前置依赖、组织指派和通知。
+- **[通知中心](plugins/notification-center/README.zh.md)** — 套件子插件，在头像旁汇总会话未读和插件通知。
 
 <a id="run"></a>
 
