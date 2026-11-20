@@ -10,6 +10,10 @@ on:
         description: Also dispatch synchronization to configured mainland storage
         type: boolean
         default: false
+      promote_preview:
+        description: Promote an existing public preview after every platform has qualified
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -32,11 +36,15 @@ jobs:
         with:
           node-version: '24.15.0'
       - name: Require a numeric draft and a version newer than Latest
+        env:
+          PROMOTE_PREVIEW: ${{ inputs.promote_preview }}
         run: |
           release_api=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq .apiUrl)
           gh api "$release_api" > release.json
           gh api "repos/$GITHUB_REPOSITORY/releases/latest" > previous-release.json
-          node integrations/tooling/release-publication.mjs check release.json previous-release.json
+          extra=()
+          if [[ "$PROMOTE_PREVIEW" == true ]]; then extra+=(--promote-preview); fi
+          node integrations/tooling/release-publication.mjs check release.json previous-release.json "${extra[@]}"
       - name: Download and verify every release asset
         run: |
           mkdir release-assets

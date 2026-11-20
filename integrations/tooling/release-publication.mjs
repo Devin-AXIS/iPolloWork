@@ -7,10 +7,11 @@ import { createManifest } from './release-mirror.mjs'
 import { numericReleaseVersion, hashReleaseAsset, updateFeeds, windowsUpdateFilename } from './release-update-feed.mjs'
 import { stageWebsiteDownloads, websiteDownloadSources } from './release-website-downloads.mjs'
 
-export function checkRelease(release, previous) {
+export function checkRelease(release, previous, { promotePreview = false } = {}) {
   const version = numericReleaseVersion(release.tag_name)
-  assert.equal(release.draft, true, 'Publication must start from a draft')
-  assert.equal(release.prerelease, false, 'Formal releases cannot be prereleases')
+  const preview = promotePreview && release.draft === false && release.prerelease === true
+  assert.ok(release.draft === true || preview, 'Publication must start from a draft or explicitly selected preview')
+  assert.ok(release.prerelease === false || preview, 'Formal releases cannot start from draft prereleases')
   assert.match(release.target_commitish ?? '', /^[a-f0-9]{40}$/, 'Draft must point at the packaged commit')
   const prior = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(previous.tag_name)
     ? numericReleaseVersion(previous.tag_name).split('.').map(Number) : null
@@ -95,7 +96,7 @@ export async function verifyPublishedRelease(release, origin, fetcher = fetch, e
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [mode, file, location, directory] = process.argv.slice(2)
   const release = JSON.parse(await readFile(file, 'utf8'))
-  if (mode === 'check') console.log(checkRelease(release, JSON.parse(await readFile(location, 'utf8'))))
+  if (mode === 'check') console.log(checkRelease(release, JSON.parse(await readFile(location, 'utf8')), { promotePreview: directory === '--promote-preview' }))
   else if (mode === 'prepare') console.log(await prepareRelease(release, location))
   else if (mode === 'verify') {
     assert.ok(directory, 'Verification requires the directory containing the verified feeds')

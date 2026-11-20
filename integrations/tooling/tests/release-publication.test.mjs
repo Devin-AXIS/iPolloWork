@@ -31,3 +31,12 @@ test('public verification rejects stale, altered or unavailable update payloads'
   await assert.rejects(verifyPublishedRelease(release, 'https://example.com/', async () => new Response('{}'), feeds), /differs/)
   await assert.rejects(verifyPublishedRelease(release, 'https://example.com/', async url => String(url).endsWith('.zip') ? new Response(null, { status: 404 }) : respond(url), feeds), /unavailable/)
 })
+
+test('an explicitly selected public preview still requires every qualified platform and a newer version', () => {
+  const preview = { ...release, draft: false, prerelease: true }
+  assert.throws(() => checkRelease(preview, { tag_name: 'v1.0.2' }), /draft/)
+  assert.equal(checkRelease(preview, { tag_name: 'v1.0.2' }, { promotePreview: true }), version)
+  assert.throws(() => checkRelease({ ...preview, assets: preview.assets.slice(1) }, { tag_name: 'v1.0.2' }, { promotePreview: true }), /Missing/)
+  assert.throws(() => checkRelease(preview, { tag_name: 'v1.0.3' }, { promotePreview: true }), /newer/)
+  assert.throws(() => checkRelease({ ...preview, prerelease: false }, { tag_name: 'v1.0.2' }, { promotePreview: true }), /draft/)
+})
