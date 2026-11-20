@@ -1,4 +1,4 @@
-export const organizationTabs = ["analytics", "projects", "members", "departments", "templates", "plugins", "skills", "mcp", "models", "messages", "activity", "settings"] as const;
+export const organizationTabs = ["analytics", "projects", "members", "departments", "packages", "templates", "plugins", "skills", "mcp", "models", "messages", "activity", "settings"] as const;
 export type EnterpriseTab = typeof organizationTabs[number];
 
 export interface MemberNotice {
@@ -36,6 +36,19 @@ export interface EnterpriseMember {
   departmentId: string | null;
   employeeNumber?: string | null;
   displayName?: string | null;
+  projectRole?: ProjectRole | null;
+}
+export interface MemberPage {
+  items: EnterpriseMember[];
+  more: boolean;
+}
+export interface MemberQuery {
+  query?: string;
+  department?: string;
+  userId?: string;
+  projectId?: string;
+  active?: boolean;
+  page?: number;
 }
 /** Minimal member projection for a project-scoped Host extension. */
 export interface ProjectRoster {
@@ -69,6 +82,7 @@ export interface Department {
   id: string;
   name: string;
   parentId?: string | null;
+  memberCount?: number;
 }
 export interface Invitation {
   projectId?: string | null;
@@ -108,6 +122,8 @@ export interface PublicationVersion {
   status: "pending" | "approved" | "rejected";
   note: string;
   createdAt: number;
+  title?: string | null;
+  description?: string | null;
 }
 export interface OrganizationActivity {
   id: string;
@@ -259,9 +275,22 @@ export interface EnterpriseSkill {
   updatedAt: number;
   audience: Audience;
 }
+export interface EnterprisePackage {
+  id: string;
+  title: string;
+  description: string;
+  audience: Audience;
+  fileCount: number;
+  bytes: number;
+  updatedAt: number;
+}
+export interface PackageDetail {
+  files: { id: string; name: string; bytes: number; mime: string; addedAt: number; addedBy: string }[];
+}
 export interface EnterpriseAssets {
   canManage: boolean;
   skills: EnterpriseSkill[];
+  packages?: EnterprisePackage[] | undefined;
 }
 export interface EnterpriseMcp {
   id: string;

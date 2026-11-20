@@ -296,7 +296,7 @@ export function mountEnterpriseAssets(
         packageId,
         input.audience ?? everyone,
       );
-      await audit(store, actor, "package.create", packageId);
+      await audit(store, actor, "package.create", packageId, id);
     });
     return c.json({ id: packageId }, 201);
   });
@@ -311,13 +311,13 @@ export function mountEnterpriseAssets(
         description: z.string().trim().max(2000).optional(),
       })
       .parse(await c.req.json());
-    await store.run(
-      "UPDATE file_packages SET title=?,description=?,updated_at=? WHERE id=?",
-      input.title ?? row.title,
-      input.description ?? row.description,
-      now(),
-      row.id,
-    );
+    await store.transaction(async () => {
+      await store.run(
+        "UPDATE file_packages SET title=?,description=?,updated_at=? WHERE id=?",
+        input.title ?? row.title, input.description ?? row.description, now(), row.id,
+      );
+      await audit(store, actor, "package.update", row.id, id);
+    });
     return c.json({ ok: true });
   });
   app.delete("/api/v1/enterprises/:id/packages/:packageId", async (c) => {
@@ -331,7 +331,7 @@ export function mountEnterpriseAssets(
         row.id,
       );
       await store.run("DELETE FROM file_packages WHERE id=?", row.id);
-      await audit(store, actor, "package.remove", row.id);
+      await audit(store, actor, "package.remove", row.id, id);
     });
     return c.json({ ok: true });
   });
@@ -416,7 +416,7 @@ export function mountEnterpriseAssets(
         now(),
         row.id,
       );
-      await audit(store, actor, "package.file.add", resourceId);
+      await audit(store, actor, "package.file.add", resourceId, id);
     });
     return c.json({ id: resourceId, name }, 201);
   });
@@ -443,7 +443,7 @@ export function mountEnterpriseAssets(
           now(),
           row.id,
         );
-        await audit(store, actor, "package.file.remove", c.req.param("fileId"));
+        await audit(store, actor, "package.file.remove", c.req.param("fileId"), id);
       });
       return c.json({ ok: true });
     },

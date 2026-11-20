@@ -93,7 +93,7 @@ export function mountProjectArchive(
         Number(input.outputs),
         project.id,
       );
-      await audit(store, actor, "project.archive-policy", project.id);
+      await audit(store, actor, "project.archive-policy", project.id, project.enterprise_id);
     });
     return c.json({ ok: true });
   });
@@ -253,7 +253,7 @@ export function mountProjectArchive(
           now(),
         );
         await storage.retain(blob.storageKey);
-        await audit(store, actor, "project.archive", id);
+        await audit(store, actor, "project.archive", id, current.enterprise_id);
         return { id, resourceId, version };
       });
       retained = result.resourceId === resourceId;

@@ -1,7 +1,7 @@
 import type { ClientContext } from "./native.ts";
 import { language } from "./locale.ts";
 const en = {
-  batchInvite: "Invite in bulk", batchHint: "One email per line. Invitations use the selected department and role.", batchEmails: "Employee emails", invitationDays: "Valid for (days)", invitationLinks: "Invitation links",
+  batchInvite: "Invite by email", batchHint: "One email per line. Invitations use the selected department and role.", batchEmails: "Employee emails", invitationDays: "Valid for (days)", invitationLinks: "Invitation links",
   identityNotifications: "Member change notifications", notificationEndpoint: "HTTPS receiver", notificationEnabled: "Send member changes", notificationSecret: "Signing secret — copy once to your receiver", rotateSecret: "Rotate signing secret",
   credentialMode: "API key ownership", sharedKey: "Organization key", memberKey: "Each member supplies a key",
   ownKey: "My API key", clearKey: "Remove my key", memberKeyHint: "Your key is used only for this organization's projects. Other members cannot read it.",
@@ -138,6 +138,12 @@ const en = {
   memberActive: "Active",
   memberSuspended: "Suspended",
   memberSuspendedHint: "Suspended members lose access to this organization until reactivated.",
+  previousPage: "Previous page",
+  nextPage: "Next page",
+  markNoticeRead: "Mark as read",
+  markAllNoticesRead: "Mark all as read",
+  openNotice: "Open",
+  packagesTab: "File packages",
   memberNotices: "Membership notices",
   memberNoticesUnread: "Membership notices ({count} unread)",
   noMemberNotices: "No membership notices.",
@@ -492,7 +498,7 @@ const en = {
   modelEnabled: "Enabled",
 };
 const zh: typeof en = {
-  batchInvite: "批量邀请", batchHint: "每行一个员工邮箱，使用当前选择的部门和角色。", batchEmails: "员工邮箱", invitationDays: "有效天数", invitationLinks: "邀请链接",
+  batchInvite: "批量邮箱邀请", batchHint: "每行一个员工邮箱，使用当前选择的部门和角色。", batchEmails: "员工邮箱", invitationDays: "有效天数", invitationLinks: "邀请链接",
   identityNotifications: "身份变更通知", notificationEndpoint: "HTTPS 接收地址", notificationEnabled: "发送成员变更通知", notificationSecret: "签名密钥，请复制到接收系统，仅此次显示", rotateSecret: "更换签名密钥",
   credentialMode: "凭证模式", sharedKey: "组织共用 Key", memberKey: "每位成员填写自己的 Key",
   ownKey: "我的 API Key", clearKey: "删除我的 Key", memberKeyHint: "仅用于本组织的项目，其他成员无法读取你的 Key。",
@@ -619,6 +625,12 @@ const zh: typeof en = {
   memberActive: "正常",
   memberSuspended: "已停用",
   memberSuspendedHint: "停用后，成员将失去该组织的访问权限，恢复正常后可重新访问。",
+  previousPage: "上一页",
+  nextPage: "下一页",
+  markNoticeRead: "标为已读",
+  markAllNoticesRead: "全部标为已读",
+  openNotice: "打开",
+  packagesTab: "文件包",
   memberNotices: "成员通知",
   memberNoticesUnread: "成员通知，{count} 条未读",
   noMemberNotices: "暂无成员通知。",

@@ -1,11 +1,11 @@
 /** Members, departments and invitations of one enterprise, managed inline on the enterprise page. */
 import { useState, type FormEvent } from 'react'
 import { Button, IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular, IconSearchOutlineRegular, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { EnterpriseDetail, Invitation } from '../shared/enterprise.ts'
+import type { EnterpriseDetail, EnterpriseMember, Invitation } from '../shared/enterprise.ts'
 import type { EnterpriseController, EnterpriseDialog } from './enterprise-controller.ts'
 import { enterpriseError, format, type EnterpriseLabels } from './enterprise-locale.ts'
 import { RosterRequestError } from './api.ts'
-import { CopyLink, EmptyState, Field, FormError, ListSkeleton, Notice, roleName, useRecord, useTask, type Call } from './enterprise-ui.tsx'
+import { CopyLink, DirectoryStatus, EmptyState, Field, FormError, ListSkeleton, Notice, roleName, useMemberDirectory, useRecord, useTask, type Call } from './enterprise-ui.tsx'
 import { MailGlyph, Monogram } from './glyphs.tsx'
 import css from './suite.module.css'
 import { FilePicker } from './file-picker.tsx'
@@ -35,12 +35,13 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
   const [query, setQuery] = useState(''), [department, setDepartment] = useState<string | null>(null)
   const [addingDepartment, setAddingDepartment] = useState(false), [departmentName, setDepartmentName] = useState('')
   const [batch, setBatch] = useState(false)
+  const [emailInvites, setEmailInvites] = useState(false)
   const [editingCode, setEditingCode] = useState<Invitation>()
   const task = useTask(t)
+  const directory = useMemberDirectory(enterpriseId, call, revision, { query, ...(department === null ? {} : { department }) })
   if (!detail.data) return detail.error ? <Notice error={detail.error} t={t} retry={detail.reload}/> : <ListSkeleton/>
-  const data = detail.data, needle = query.trim().toLocaleLowerCase()
-  const members = data.members.filter(m => (department === null || m.departmentId === department)
-    && (!needle || [m.name, m.email, m.employeeNumber].some(value => value?.toLocaleLowerCase().includes(needle))))
+  const data = detail.data
+  const members = directory.data?.items ?? []
   const pending = data.invitations.filter(i => !i.accepted && !i.revoked)
   const departmentOptions = [{ id: '', label: t.unassigned }, ...data.departments.map(d => ({ id: d.id, label: d.name }))]
   const roleOptions = [{ id: 'member', label: t.member }, { id: 'admin', label: t.admin }]
@@ -54,15 +55,16 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
   }) }
   return <div className={css.teamView}>
     {data.canManage && <div className={css.tabActions}>
+      <Button variant="outline" onClick={() => setEmailInvites(true)}>{t.batchInvite}</Button>
       <Button variant="outline" onClick={() => setBatch(true)}>{t.batchJoinCodes}</Button>
       <Button variant="primary" icon={<IconPlusOutlineRegular size={14}/>}
         onClick={() => controller.open({kind:'joinCode',enterpriseId})}>{t.addEmployee}</Button>
     </div>}
     <div className={css.teamBar}>
       <div className={css.chipRow} role="group" aria-label={t.departments}>
-        <button type="button" className={css.filterChip} aria-pressed={department === null} onClick={() => setDepartment(null)}>{t.allDepartments}<small>{data.members.length}</small></button>
+        <button type="button" className={css.filterChip} aria-pressed={department === null} onClick={() => setDepartment(null)}>{t.allDepartments}<small>{data.enterprise.memberCount}</small></button>
         {data.departments.map(d => <button key={d.id} type="button" className={css.filterChip} aria-pressed={department === d.id} onClick={() => setDepartment(d.id)}>
-          {d.name}<small>{data.members.filter(m => m.departmentId === d.id).length}</small></button>)}
+          {d.name}{d.memberCount !== undefined && <small>{d.memberCount}</small>}</button>)}
         {data.canManage && (addingDepartment
           ? <form className={css.chipInput} onSubmit={addDepartment}><input autoFocus aria-label={t.departmentName} placeholder={t.departmentName} maxLength={120} value={departmentName} disabled={task.busy}
               onChange={e => setDepartmentName(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { setAddingDepartment(false); setDepartmentName('') } }}
@@ -70,7 +72,7 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
             <button type="submit" aria-label={t.addDepartment} disabled={task.busy || !departmentName.trim()}><IconCheckOutlineRegular size={13}/></button></form>
           : <button type="button" className={css.filterChip} data-add="" onClick={() => setAddingDepartment(true)}><IconPlusOutlineRegular size={12}/>{t.newDepartment}</button>)}
       </div>
-      <label className={css.miniSearch}><IconSearchOutlineRegular size={14}/><input placeholder={t.searchMembers} aria-label={t.searchMembers} value={query} onChange={e => setQuery(e.target.value)}/></label>
+      <label className={css.miniSearch}><IconSearchOutlineRegular size={14}/><input placeholder={t.searchMembers} aria-label={t.searchMembers} maxLength={120} value={query} onChange={e => setQuery(e.target.value)}/></label>
     </div>
     <FormError message={task.error}/>
     <div className={css.peopleList}>
@@ -97,7 +99,8 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
               run: async () => { await call('/organizations/' + enterpriseId + '/members/' + m.userId, undefined, 'DELETE'); controller.notify(t.memberRemoved); await controller.load() } })}/>
         </>}</span>
       </div>)}
-      {!members.length && <p className={css.quietLine}>{t.noMembersMatch}</p>}
+      {directory.data && !members.length && <p className={css.quietLine}>{t.noMembersMatch}</p>}
+      <DirectoryStatus directory={directory} t={t}/>
       {data.canManage && pending.map(i => {
         const expired = i.expiresAt !== null && i.expiresAt <= Date.now()
         return <div key={i.id} className={css.person} data-pending="">
@@ -115,6 +118,8 @@ export function MembersTab({ enterpriseId, userId, revision, t, call, controller
         </div>
       })}
     </div>
+    {data.canManage && emailInvites && <EmailInvitesDialog {...{enterpriseId, t, call, controller}} departments={data.departments}
+      close={() => setEmailInvites(false)}/>}
     {data.canManage && batch && <BatchCodesDialog enterpriseId={enterpriseId} t={t} call={call} controller={controller} language={language} close={() => setBatch(false)}/>}
     {data.canManage && editingCode && <CodeExpiryDialog key={editingCode.id} invitation={editingCode}
       enterpriseId={enterpriseId} t={t} call={call} controller={controller} close={() => setEditingCode(undefined)}/>}
@@ -198,13 +203,24 @@ export function JoinCodeDialog({ dialog, t, call, controller, departments }: { d
 }
 
 export function MemberDialog({ enterpriseId, userId, t, call, controller, detail }: { enterpriseId: string; userId: string; t: EnterpriseLabels; call: Call; controller: EnterpriseController; detail: EnterpriseDetail }) {
-  const member = detail.members.find(m => m.userId === userId), task = useTask(t)
+  const directory = useMemberDirectory(enterpriseId, call, 0, { userId })
+  const member = directory.data?.items[0]
+  if (!member) return <Modal open title={t.editMember} closeLabel={t.close} onClose={() => controller.open(null)}>
+    <DirectoryStatus directory={directory} t={t}/>
+    {directory.data && <EmptyState title={t.noMembersMatch}/>}
+  </Modal>
+  return <MemberForm member={member} enterpriseId={enterpriseId} t={t} call={call} controller={controller} detail={detail}/>
+}
+
+function MemberForm({ member, enterpriseId, t, call, controller, detail }: {
+  member: EnterpriseMember; enterpriseId: string; t: EnterpriseLabels; call: Call; controller: EnterpriseController; detail: EnterpriseDetail;
+}) {
+  const task = useTask(t), userId = member.userId
   const [role, setRole] = useState(member?.role === 'admin' ? 'admin' : 'member'), [department, setDepartment] = useState(member?.departmentId ?? '')
   const [status, setStatus] = useState(member?.status ?? 'active')
   const [employeeNumber, setEmployeeNumber] = useState(member?.employeeNumber ?? '')
   const [displayName, setDisplayName] = useState(member?.displayName ?? member?.name ?? '')
   const close = () => controller.open(null)
-  if (!member) return null
   return <Modal open title={t.editMember} description={`${member.name} · ${member.email}`} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close() }}>
     <form className={css.enterpriseForm} onSubmit={e => { e.preventDefault(); void task.run(async () => {
       await call('/organizations/' + enterpriseId + '/members/' + userId, { role, departmentId: department || null,
@@ -312,4 +328,43 @@ function downloadCsv(filename: string, csv: string) {
   link.download = filename
   link.click()
   setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function EmailInvitesDialog({ enterpriseId, departments, t, call, controller, close }: {
+  enterpriseId: string; departments: EnterpriseDetail["departments"]; t: EnterpriseLabels;
+  call: Call; controller: EnterpriseController; close(): void;
+}) {
+  const task = useTask(t, error => rosterError(error, t));
+  const [links, setLinks] = useState<{ email: string; url: string }[]>();
+  return <Modal open title={t.batchInvite} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close(); }}>
+    {links ? <div className={css.enterpriseForm}>
+      <Field label={t.invitationLinks}><textarea rows={8} readOnly value={links.map(link => link.email + " " + link.url).join("\n")}/></Field>
+      <Button type="button" variant="outline" onClick={() => downloadCsv("organization-invitations.csv",
+        [t.batchEmails + "," + t.invitationLinks, ...links.map(link =>
+          [link.email, link.url].map(cell => '"' + (/^[=+\-@\t\r]/.test(cell) ? "'" : "") + cell.replaceAll('"', '""') + '"').join(","),
+        )].join("\r\n"))}>{t.invitationExport}</Button>
+    </div> : <form className={css.enterpriseForm} onSubmit={event => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      void task.run(async () => {
+        const emails = String(form.get("emails") ?? "").split(/\r?\n/).map(email => email.trim()).filter(Boolean);
+        if (!emails.length || emails.length > 500) throw new Error("INVITATION_CSV_TOO_MANY_ROWS");
+        const departmentId = String(form.get("department") ?? "") || null;
+        const role = String(form.get("role") ?? "member");
+        const { items } = await call<{ items: { email: string; url: string }[] }>("/organizations/" + enterpriseId + "/invitations/batch",
+          { people: emails.map(email => ({ email, departmentId, role })), days: Number(form.get("days")) });
+        setLinks(items);
+        await controller.load();
+      });
+    }}>
+      <Field label={t.batchEmails} hint={t.batchHint}><textarea name="emails" rows={7} maxLength={130000} required disabled={task.busy}/></Field>
+      <Field label={t.department}><select name="department" disabled={task.busy}>
+        <option value="">{t.unassigned}</option>{departments.map(dept => <option key={dept.id} value={dept.id}>{dept.name}</option>)}
+      </select></Field>
+      <Field label={t.role}><select name="role" disabled={task.busy}><option value="member">{t.member}</option><option value="admin">{t.admin}</option></select></Field>
+      <Field label={t.invitationDays}><input name="days" type="number" min={1} max={30} defaultValue={7} required disabled={task.busy}/></Field>
+      <FormError message={task.error}/>
+      <div className={css.dialogFooter}><Button type="submit" variant="primary" disabled={task.busy}>{t.batchInvite}</Button></div>
+    </form>}
+  </Modal>;
 }

@@ -1,6 +1,6 @@
 import type { OrganizationMembers } from "./organization-members.js";
 import type { CloudProjects } from './cloud-projects.js';
-import { projectListings } from "./project-space.js";
+import { projectAccessInput, projectListings, replaceProjectAccess } from "./project-space.js";
 import { createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import type { App } from "./http.js";
@@ -23,8 +23,8 @@ import { dropAudience } from "./grants.js";
 const name = z.string().trim().min(1).max(120);
 const email = z.email().transform((v) => v.toLowerCase());
 const hash = (v: string) => createHash("sha256").update(v).digest("hex");
-const tabs = z.enum(["analytics", "projects", "members", "departments", "templates", "plugins", "skills", "mcp", "models", "messages", "activity", "settings"]);
-const tabOrder = z.array(tabs).max(12).refine(items => new Set(items).size === items.length);
+const tabs = z.enum(["analytics", "projects", "members", "departments", "packages", "templates", "plugins", "skills", "mcp", "models", "messages", "activity", "settings"]);
+const tabOrder = z.array(tabs).max(13).refine(items => new Set(items).size === items.length);
 const logo = z.string().max(48_000).regex(/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/);
 
 export async function checkDepartmentParent(store: Store, enterpriseId: string, parentId?: string | null, departmentId?: string) {
@@ -84,21 +84,64 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
     const enterprise = await enterpriseAccess(store, actor, id);
     const canManage = await isEnterpriseManager(store, actor, id);
     return c.json({
-      enterprise,
+      enterprise: { ...enterprise, member_count: Number((await store.one(
+        "SELECT COUNT(*) AS count FROM members WHERE enterprise_id=?", id,
+      ))?.count ?? 0) },
       canManage,
       members: await store.all(
         'SELECT m.*,COALESCE(m.display_name,u.name) AS name,u.email FROM members m JOIN "user" u ON u.id=m.user_id WHERE m.enterprise_id=? ORDER BY m.created_at LIMIT 500',
         id,
       ),
       departments: await store.all(
-        "SELECT * FROM departments WHERE enterprise_id=? ORDER BY name LIMIT 200",
-        id,
+        `SELECT d.*,COALESCE(counts.member_count,0) AS member_count FROM departments d
+           LEFT JOIN (SELECT department_id,COUNT(*) AS member_count FROM members WHERE enterprise_id=? GROUP BY department_id) counts
+             ON counts.department_id=d.id
+           WHERE d.enterprise_id=? ORDER BY d.name LIMIT 200`,
+        id, id,
       ),
       invitations: canManage ? await store.all(
         "SELECT id,email,invitee_name,employee_number,role,department_id,expires_at,accepted_by,revoked_at,project_id,project_role FROM invitations WHERE enterprise_id=? AND accepted_by IS NULL AND revoked_at IS NULL ORDER BY created_at DESC",
         id,
       ) : [],
     });
+  });
+  app.get("/api/v1/enterprises/:id/members", async (c) => {
+    const id = c.req.param("id"), actor = c.get("actor");
+    const input = z.object({
+      query: z.string().trim().max(120).default(""),
+      department: z.string().max(200).optional(),
+      userId: z.string().min(1).max(200).optional(),
+      active: z.enum(["true", "false"]).default("false"),
+      page: z.coerce.number().int().min(1).max(100000).default(1),
+      projectId: z.string().min(1).max(200).optional(),
+    }).parse(c.req.query());
+    await enterpriseAccess(store, actor, id);
+    const project = input.projectId ? await projectAccess(store, actor, input.projectId, true) : undefined;
+    if (project && project.enterprise_id !== id) throw new ServiceError("PROJECT_NOT_FOUND", 404);
+    const items = await store.all(
+      `SELECT page.*,
+        CASE WHEN ?::text IS NULL THEN NULL
+          WHEN EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=? AND g.role='maintain' AND
+            ((g.kind='member' AND g.subject_id=page.user_id) OR (g.kind='department' AND g.subject_id=page.department_id))) THEN 'maintain'
+          WHEN EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=? AND g.role='participate' AND
+            ((g.kind='member' AND g.subject_id=page.user_id) OR (g.kind='department' AND g.subject_id=page.department_id))) THEN 'participate'
+          WHEN ?='enterprise' OR EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=? AND g.role='view' AND
+            ((g.kind='member' AND g.subject_id=page.user_id) OR (g.kind='department' AND g.subject_id=page.department_id))) THEN 'view' END AS project_role
+        FROM (
+          SELECT m.user_id,m.display_name,m.employee_number,m.role,m.status,m.department_id,m.created_at,
+                 COALESCE(m.display_name,u.name) AS name,u.email
+          FROM members m JOIN "user" u ON u.id=m.user_id
+          WHERE m.enterprise_id=? AND (?::text IS NULL OR COALESCE(m.department_id,'')=?)
+            AND (?::text IS NULL OR m.user_id=?) AND (?='false' OR (m.status='active' AND COALESCE(u.banned,false)=false))
+            AND (?='' OR strpos(lower(COALESCE(m.display_name,u.name)),lower(?))>0
+              OR strpos(lower(u.email),lower(?))>0 OR strpos(lower(COALESCE(m.employee_number,'')),lower(?))>0)
+          ORDER BY m.created_at,m.user_id LIMIT 51 OFFSET ?
+        ) page ORDER BY page.created_at,page.user_id`,
+      project?.id ?? null, project?.id ?? null, project?.id ?? null, project?.access_mode ?? null, project?.id ?? null,
+      id, input.department ?? null, input.department ?? null, input.userId ?? null, input.userId ?? null,
+      input.active, input.query, input.query, input.query, input.query, (input.page - 1) * 50,
+    );
+    return c.json({ items: items.slice(0, 50), more: items.length > 50 });
   });
   app.patch("/api/v1/enterprises/:id", async (c) => {
     const id = c.req.param("id"), actor = c.get("actor");
@@ -129,16 +172,21 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
   });
   app.get("/api/v1/enterprises/:id/activity", async (c) => {
     const id = c.req.param("id"), actor = c.get("actor");
-    const search = z.string().trim().max(120).optional().parse(c.req.query("actor")) ?? "";
+    const { actor: search, before } = z.object({
+      actor: z.string().trim().max(120).default(""),
+      before: z.string().regex(/^[1-9][0-9]{0,18}$/).optional(),
+    }).parse(c.req.query());
     await enterpriseAccess(store, actor, id, true);
-    return c.json({ items: await store.all(
-      `SELECT a.id,a.action,a.created_at,COALESCE(m.display_name,u.name) AS actor
+    const items = await store.all<{ id: string | number }>(
+      `SELECT a.id::text AS id,a.action,a.created_at,COALESCE(m.display_name,u.name) AS actor
        FROM audit a LEFT JOIN "user" u ON u.id=a.actor_id LEFT JOIN members m ON m.enterprise_id=? AND m.user_id=a.actor_id
        WHERE (a.enterprise_id=? OR (a.enterprise_id IS NULL AND a.target=? AND a.action IN('enterprise.create','enterprise.update')))
        AND (?='' OR strpos(lower(COALESCE(m.display_name,u.name,'')),lower(?))>0 OR strpos(lower(COALESCE(m.employee_number,'')),lower(?))>0)
-       ORDER BY a.id DESC LIMIT 100`,
-      id, id, id, search, search, search,
-    ) });
+       AND (?::bigint IS NULL OR a.id<?::bigint)
+       ORDER BY a.id DESC LIMIT 101`,
+      id, id, id, search, search, search, before ?? null, before ?? null,
+    );
+    return c.json({ items: items.slice(0,100), next: items.length > 100 ? String(items[99]!.id) : null });
   });
   app.post("/api/v1/enterprises/:id/departments", async (c) => {
     const id = c.req.param("id"),
@@ -416,7 +464,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
     const grant=c.get("cloudGrant");
     return c.json({ items:grant?items.filter(item=>item.id===grant.projectId):items });
   });
-  app.post("/api/v1/projects", async (c) => {
+  app.on("POST", ["/api/v1/projects", "/api/v1/projects/with-access"], async (c) => {
     const input = z
       .object({
         title: name,
@@ -424,10 +472,13 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         nativeId: z.string().max(200).nullable().default(null),
         executionMode: z.enum(["local","cloud"]).default("local"),
         creationKey: z.uuid().optional(),
+        access: projectAccessInput.optional(),
       })
       .parse(await c.req.json());
     const actor = c.get("actor"),
       id = uid();
+    const { access, ...record } = input;
+    if (c.req.path.endsWith('/with-access') && !access) throw new ServiceError('INVALID_INPUT', 400);
     if(input.executionMode==='cloud') {
       if(!cloud)throw new ServiceError('CLOUD_DISABLED',503);
       await cloud.requireAvailable();
@@ -436,18 +487,34 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
     return await store.transaction(async () => {
       if (input.enterpriseId)
         await enterpriseAccess(store, actor, input.enterpriseId);
+      if (input.nativeId) await store.run(
+        "SELECT pg_advisory_xact_lock(hashtextextended(?,0))", JSON.stringify(["native-project",actor.id,input.nativeId]));
+      const returnExisting = async (existing: { id: string; access_mode: unknown }) => {
+        if (access) {
+          const same = await store.one(
+            `SELECT (SELECT count(*) FROM project_grants WHERE project_id=?) = jsonb_array_length(?::jsonb)
+               AND NOT EXISTS (SELECT 1 FROM jsonb_to_recordset(?::jsonb) AS requested(kind text,"subjectId" text,role text)
+                 WHERE NOT EXISTS (SELECT 1 FROM project_grants p WHERE p.project_id=? AND
+                   p.kind=requested.kind AND p.subject_id=requested."subjectId" AND p.role=requested.role)) AS equal`,
+            existing.id, JSON.stringify(access.grants), JSON.stringify(access.grants), existing.id,
+          );
+          if (existing.access_mode !== access.mode || same?.equal !== true)
+            throw new ServiceError("PROJECT_CREATION_CONFLICT", 409, "项目已经存在且访问权限不同，请重新打开项目检查权限");
+        }
+        return c.json({ id: existing.id, ...record });
+      };
       if(input.creationKey) {
         await store.run('SELECT pg_advisory_xact_lock(hashtextextended(?,0))',actor.id+input.creationKey);
-        const existing=await store.one('SELECT * FROM projects WHERE owner_id=? AND creation_key=?',actor.id,input.creationKey);
+        const existing=await store.one('SELECT * FROM projects WHERE owner_id=? AND creation_key=? FOR UPDATE',actor.id,input.creationKey);
         if(existing){
           if(existing.deleted_at != null)throw new ServiceError('PROJECT_NOT_FOUND',404,'项目已删除');
           if(existing.title!==input.title || existing.enterprise_id!==input.enterpriseId || existing.execution_mode!==input.executionMode || existing.native_id!==input.nativeId)throw new ServiceError('PROJECT_CREATION_CONFLICT',409);
-          return c.json({id:existing.id,...input});
+          return await returnExisting({ id: String(existing.id), access_mode: existing.access_mode });
         }
       }
       const previous = input.nativeId
         ? await store.one(
-            "SELECT * FROM projects WHERE owner_id=? AND native_id=?",
+            "SELECT * FROM projects WHERE owner_id=? AND native_id=? FOR UPDATE",
             actor.id,
             input.nativeId,
           )
@@ -459,7 +526,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
             409,
             "项目已有归属，请编辑现有项目",
           );
-        return c.json({ id: previous.id, ...input });
+        return await returnExisting({ id: String(previous.id), access_mode: previous.access_mode });
       }
       await store.run(
         "INSERT INTO projects(id,owner_id,enterprise_id,title,native_id,created_at,execution_mode,creation_key) VALUES(?,?,?,?,?,?,?,?)",
@@ -472,16 +539,20 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         input.executionMode,
         input.creationKey ?? null,
       );
-      return c.json({ id, ...input }, 201);
+      if (access) await replaceProjectAccess(store, id, input.enterpriseId, access);
+      await audit(store, actor, "project.create", id, input.enterpriseId);
+      return c.json({ id, ...record }, 201);
     });
   });
-  app.patch("/api/v1/projects/:id", async (c) => {
+  app.on("PATCH", ["/api/v1/projects/:id", "/api/v1/projects/:id/with-access"], async (c) => {
     const input = z
-      .object({ enterpriseId: z.string().nullable(), title: name.optional() })
+      .object({ enterpriseId: z.string().nullable(), title: name.optional(), access: projectAccessInput.optional() })
       .parse(await c.req.json());
     const actor = c.get("actor"),
       id = c.req.param("id");
+    if (c.req.path.endsWith('/with-access') && !input.access) throw new ServiceError('INVALID_INPUT', 400);
     await store.transaction(async () => {
+      await store.one("SELECT id FROM projects WHERE id=? FOR UPDATE", id);
       const project = await projectAccess(store, actor, id, true);
       if (input.enterpriseId)
         await enterpriseAccess(store, actor, input.enterpriseId);
@@ -499,7 +570,13 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
         input.title ?? project.title,
         id,
       );
-      await audit(store, actor, "project.update", id);
+      if (input.access) {
+        await replaceProjectAccess(store, id, input.enterpriseId, input.access);
+        await store.run("UPDATE shares SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL", now(), id);
+      }
+      await audit(store, actor, "project.update", id, input.enterpriseId);
+      if (project.enterprise_id && project.enterprise_id !== input.enterpriseId)
+        await audit(store, actor, "project.move-out", id, project.enterprise_id);
     });
     return c.json({ ok: true });
   });
@@ -514,7 +591,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
       await store.run("UPDATE shares SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL", deleted, id);
       await store.run("UPDATE live_shares SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL", deleted, id);
       await store.run("UPDATE invitations SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL AND accepted_by IS NULL", deleted, id);
-      await audit(store, actor, "project.delete", id);
+      await audit(store, actor, "project.delete", id, project.enterprise_id);
     });
     return c.json({ ok: true });
   });

@@ -105,8 +105,6 @@ iPolloWork 自有代码使用原有的 [iPolloWork Source Available License](LIC
 
 固定发布入口为 **Actions → Publish verified iPolloWork release**（`ipollo-publish.yml`）。先将已签名公证的 Apple Silicon／Intel DMG、更新 ZIP、blockmap、干净构建记录、Windows 安装器及当前设计／套件插件上传到纯数字版本草稿，再输入该标签启动流程。流程会拒绝缺包和旧版本，逐个核对 GitHub 下载文件的哈希，生成两个更新索引及校验文件，发布 Latest，并检查公开更新索引和下载地址。公开检查失败会恢复上一版 Latest。镜像流程接收同一批最终文件，不重新构建。不要手动发布草稿，也不要把带测试后缀的版本设为 Latest。
 
-[Stage 适配插件](plugins/stage/README.zh.md)随完整桌面安装包交付。用户手动打开，首次关联已有 Stage 账号，并单独允许工作区的对话工具调用。Stage 编辑器与服务独立运行；平台官方模型按实际 Token 结算 Work 积分，不冻结余额。
-
 ## 独立插件
 
 [插件开发规范](docs/plugin-development.zh.md) · [Word 版](docs/plugin-development.zh.docx) · [插件开发 Skill](.agents/skills/ipollowork-plugin-development/SKILL.md)

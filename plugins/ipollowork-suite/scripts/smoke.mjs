@@ -21,9 +21,12 @@ for (const path of ['/info', '/catalog?language=zh', '/account', '/assets/client
   }
   if (path.startsWith('/catalog')) {
     const value = await response.json()
-    assert(value.items.length >= 4)
+    const releases = JSON.parse(await readFile(new URL('../catalog/bundled-releases.json', import.meta.url), 'utf8'))
     assert.deepEqual(value.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
-    assert(value.items.slice(0, 2).every(item => item.spec.startsWith('file:') && item.version === '1.0.0-beta.1'))
+    for (const release of releases.plugins) {
+      const item = value.items.find(candidate => candidate.name === release.name)
+      assert(item?.spec.startsWith('file:') && item.version === release.version, release.name)
+    }
     assert.equal(value.categories[0].title, '效率')
   }
 }

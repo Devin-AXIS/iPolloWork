@@ -36,11 +36,11 @@ test('project refresh updates overview and files, and access edits contain only 
   const space={project:{id:'project',enterpriseId:'team',title:'Team project',role:'maintain',accessMode:'enterprise'},memory:{text:'',version:1},fileVersion:0,files:[],changes:[]}
   const call=async(path,data,method)=>{
     calls.push(path)
-    if(method==='PUT'){writes.push(data);return {ok:true}}
+    if(method==='PATCH'){writes.push(data);return {ok:true}}
     if(path.endsWith('/space'))return space
     if(path.endsWith('/overview'))return {people:[{id:'me',name:'Tester',outputs,contributions:0,updated_at:0}],memoryVersion:1,outputs:{count:outputs}}
-    if(path.endsWith('/access'))return {mode:'enterprise',grants:[{kind:'department',subjectId:'eng',role:'participate'}]}
-    if(path==='/organizations/team')return {canManage:true,members:[{userId:'member',name:'Member',email:'member@example.test',departmentId:'eng',role:'member'}],departments:[{id:'eng',name:'Engineering'}]}
+    if(path==='/organizations/team/member-directory')return {items:[{userId:'member',name:'Member',email:'member@example.test',
+      departmentId:'eng',role:'member',projectRole:'participate'}],more:false}
     if(path.endsWith('/artifacts'))return {items:[],policy:{outputs:true}}
     if(path.endsWith('/storage'))return {used:0,limit:100000}
     return {items:[]}
@@ -66,8 +66,14 @@ test('project refresh updates overview and files, and access edits contain only 
     assert(!dialog.textContent.includes('Engineering'))
     assert.equal(dialog.querySelectorAll('select').length,1)
     assert.equal(dialog.querySelector('select').value,'participate')
+    assert.equal(ui.button('Save').disabled,true)
+    await act(async()=>{
+      const picker=dialog.querySelector('select')
+      picker.value='maintain'
+      picker.dispatchEvent(new ui.dom.window.Event('change',{bubbles:true}))
+    })
     await act(async()=>ui.button('Save').click())
-    assert.deepEqual(JSON.parse(JSON.stringify(writes)),[{mode:'selected',grants:[{kind:'member',subjectId:'member',role:'participate'}]}])
+    assert.deepEqual(JSON.parse(JSON.stringify(writes)),[[{subjectId:'member',role:'maintain'}]])
   } finally {await ui.close()}
 })
 
@@ -114,3 +120,21 @@ test('file picker supports cancel, removal, required feedback, disabled selectio
     assert(!ui.dom.window.document.body.textContent.includes('long project name'))
   }finally{await ui.close()}
 })
+
+test('switching record paths never renders the previous resource while the new request is pending', async () => {
+  const ui = await fixture('src/client/enterprise-ui.tsx');
+  let resolveMcp;
+  const call = path => path === '/skill' ? Promise.resolve('Previous Skill') : new Promise(resolve => { resolveMcp = resolve });
+  function Record({path}) {
+    const {data} = ui.component.useRecord(path, call, 0);
+    return React.createElement('p', null, data ?? 'Loading');
+  }
+  try {
+    await act(async()=>ui.root.render(React.createElement(Record,{path:'/skill'})));
+    assert.match(ui.dom.window.document.body.textContent,/Previous Skill/);
+    await act(async()=>ui.root.render(React.createElement(Record,{path:'/mcp'})));
+    assert.equal(ui.dom.window.document.body.textContent,'Loading');
+    await act(async()=>resolveMcp('Current MCP'));
+    assert.equal(ui.dom.window.document.body.textContent,'Current MCP');
+  } finally { await ui.close(); }
+});

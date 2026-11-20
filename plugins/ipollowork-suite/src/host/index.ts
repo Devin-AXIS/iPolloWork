@@ -436,8 +436,10 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             if(path==='/cloud/projects' && request.method==='POST') {
               if(!ctx.get?.('ipolloCloud'))throw new SuiteError('IPW_CLOUD_DISABLED',409);
               const data=cloudSchema.object({projectId:cloudSchema.uuid().optional(),title:cloudSchema.string().trim().min(1).max(120).optional(),enterpriseId:cloudSchema.string().nullable().optional(),creationKey:cloudSchema.uuid().optional(),access:cloudSchema.json().optional()}).strict().parse(await body(request));
-              const created=data.projectId?{id:data.projectId}:cloudSchema.object({id:cloudSchema.uuid()}).parse(await account.request('/api/v1/projects',{title:data.title,enterpriseId:data.enterpriseId??null,creationKey:data.creationKey,executionMode:'cloud'}));
-              if(data.access && !data.projectId)await account.request('/api/v1/projects/'+created.id+'/access',data.access,'PUT');
+              const created=data.projectId?{id:data.projectId}:cloudSchema.object({id:cloudSchema.uuid()}).parse(await account.request(data.access ? '/api/v1/projects/with-access' : '/api/v1/projects',{
+                title:data.title, enterpriseId:data.enterpriseId??null, creationKey:data.creationKey, executionMode:'cloud',
+                ...(data.access ? {access:data.access} : {}),
+              }));
               const result=cloudSchema.object({url:cloudSchema.url()}).parse(await account.openCloudProject(created.id));
               if(!ctx.get?.('ipolloCloud'))throw new SuiteError('IPW_CLOUD_DISABLED',409);
               const target=new URL(result.url);
@@ -695,6 +697,19 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               );
               return;
             }
+            const packageFile = /^\/enterprise\/organizations\/([A-Za-z0-9_-]{1,200})\/packages\/([A-Za-z0-9_-]{1,200})\/files(?:\/([A-Za-z0-9_-]{1,200})\/download)?$/.exec(path);
+            if (packageFile) {
+              const upstream = "/api/v1/enterprises/" + packageFile[1] + "/packages/" + packageFile[2] + "/files";
+              if (request.method === "POST" && !packageFile[3]) {
+                const result = await account.transfer(upstream, await readForm(request));
+                json(response, 201, await result.json());
+                return;
+              }
+              if (request.method === "GET" && packageFile[3]) {
+                await relayDownload(await account.transfer(upstream + "/" + packageFile[3] + "/download"), response, config.maxArtifactBytes);
+                return;
+              }
+            }
             if (path === "/enterprise/upload" && request.method === "POST") {
               const form = await readForm(request);
               const result = await account.transfer("/api/v1/resources", form);
@@ -815,7 +830,8 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 request.method ?? "GET",
                 path.slice("/enterprise".length),
                 ["POST", "PATCH", "PUT"].includes(request.method ?? "")
-                  ? await body(request, config.maxRequestBytes)
+                  ? await body(request, request.method === "POST" && /^\/enterprise\/organizations\/[^/]+\/publications\/template$/.test(path)
+                    ? Math.max(config.maxRequestBytes, 800 * 1024) : config.maxRequestBytes)
                   : undefined,
               );
               if (request.method === "GET" && (path === "/enterprise" ||

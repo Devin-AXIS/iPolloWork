@@ -61,6 +61,7 @@ test("organization invitations, publication review, and member notices share exi
     assert.deepEqual((await request(member.token,shares + "/" + shareId)).data.transcript,snapshot.transcript);
     const shareNotices = (await request(member.token,"me/organization-notices?include=all")).data.items;
     assert.equal(shareNotices.filter((row:{kind:string})=>row.kind==="conversation.shared").length,1);
+    assert.equal(shareNotices.find((row:{kind:string})=>row.kind==="conversation.shared").target_id, shareId);
     assert.equal((await request(member.token,shares + "/" + shareId,undefined,"DELETE")).status,404);
     assert.equal((await request(owner.token,shares + "/" + shareId,undefined,"DELETE")).status,200);
     assert.equal((await request(member.token,shares + "/" + shareId)).status,404);
@@ -122,6 +123,21 @@ test("organization invitations, publication review, and member notices share exi
     assert.equal(grantedTemplates.data.items[0].id, template.data.id);
     assert.equal(grantedTemplates.data.items[0].version, templateInput.version);
     assert.equal((await request(stranger.token,'me/organization-templates')).data.items.length,0);
+
+    const templatePath = templates + "/" + template.data.id;
+    const revised = { ...templateInput, id: template.data.id, version: "第二版", title: "Revised title", description: "Revised description" };
+    const revisedPath = templatePath + "/versions/" + encodeURIComponent(revised.version);
+    assert.equal((await request(owner.token, templates, revised)).status, 201);
+    assert.equal((await request(member.token, templatePath)).data.title, templateInput.title);
+    assert.equal((await request(bystander.token, templatePath)).status, 403);
+    const pending = (await request(owner.token, templatePath + "/versions")).data.items.find((row:{version:string}) => row.version === revised.version);
+    assert.equal(pending.title, revised.title);
+    assert.equal(pending.description, revised.description);
+    await request(owner.token, revisedPath, {decision:"approve"}, "PUT");
+    await request(owner.token, revisedPath, {decision:"publish"}, "PUT");
+    assert.equal((await request(member.token, templatePath)).data.title, revised.title);
+    await request(owner.token, templateRelease, {decision:"publish"}, "PUT");
+    assert.equal((await request(member.token, templatePath)).data.title, templateInput.title);
 
     const skills = base + "/publications/skill";
     const skill = await request(member.token,skills,{title:"Work notes",description:"Explain project notes",version:"v2 团队版",markdown:"Use the project notes."});

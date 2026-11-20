@@ -1,4 +1,6 @@
-import { MemberNoticeHistory, OrganizationActivityTab, OrganizationNotices, OrganizationPublications } from "./organization-publications.tsx";
+import { OrganizationFilePackages } from "./organization-file-packages.tsx";
+import { AnalyticsTab } from "./enterprise-analytics.tsx";
+import { MemberNoticeDialog, MemberNoticeHistory, noticeMessage, OrganizationActivityTab, OrganizationNotices, OrganizationPublications } from "./organization-publications.tsx";
 import { ConversationShareAction, OrganizationMessages } from "./conversation-shares.tsx";
 import { McpTab } from "./enterprise-mcp.tsx";
 import { useEffect, useState, type FormEvent } from "react";
@@ -339,11 +341,13 @@ function EnterpriseBody({
       ["members", t.membersTab],
       ["projects", t.projectsTab],
       ["templates", t.templatesTab],
+      ["packages", t.packagesTab],
       ["plugins", t.pluginsTab],
       ["skills", t.skillsTab],
       ["mcp", t.mcpTab],
       ["models", t.modelsTab],
       ["messages", t.messagesTab],
+      ["analytics", t.analyticsTab],
       ["activity", t.activityTab],
       ["settings", t.settingsTab],
     ] as const
@@ -353,7 +357,7 @@ function EnterpriseBody({
     id: "ipw-enterprise-tab-" + value,
     panelId: "ipw-enterprise-panel-" + value,
   }));
-  const tabs = labels.filter(item => (item.value !== "activity" || detail.data?.canManage) && (item.value !== 'templates' || designAvailable));
+  const tabs = labels.filter(item => (item.value !== "activity" && item.value !== "analytics") || detail.data?.canManage);
   const active = tabs.find((item) => item.value === tab) ?? tabs[0]!;
   const assetProps = detail.data
     ? {
@@ -401,6 +405,7 @@ function EnterpriseBody({
           <MembersTab
             enterpriseId={enterpriseId}
             userId={userId}
+            language={language}
             revision={revision}
             t={t}
             call={controller.call}
@@ -411,11 +416,16 @@ function EnterpriseBody({
         ) : active.value === "departments" ? (
           <DepartmentsTab {...assetProps} />
         ) : active.value === "templates" || active.value === "plugins" ? (
-          <OrganizationPublications key={active.value} {...assetProps} target={publicationTarget} kind={active.value === "templates" ? "template" : "plugin"} install={installEnterprisePlugin} />
+          <OrganizationPublications key={active.value} {...assetProps} target={publicationTarget}
+            designAvailable={designAvailable} kind={active.value === "templates" ? "template" : "plugin"} install={installEnterprisePlugin} />
+        ) : active.value === "packages" ? (
+          <OrganizationFilePackages {...assetProps} />
+        ) : active.value === "analytics" ? (
+          <AnalyticsTab {...assetProps} canManage={assetProps.detail.canManage} />
         ) : active.value === "activity" ? (
           <OrganizationActivityTab {...assetProps} />
         ) : active.value === "messages" ? (
-          <OrganizationMessages key={enterpriseId} {...assetProps} openSession={view.actions.openSession} />
+          <OrganizationMessages key={enterpriseId} {...assetProps} target={publicationTarget} openSession={view.actions.openSession} />
         ) : active.value === "skills" ? (
           <>
             <OrganizationPublications {...assetProps} target={publicationTarget} kind="skill" install={installEnterprisePlugin} />
@@ -639,6 +649,7 @@ function DialogHost(props: Props) {
   const { controller } = props,
     dialog = state.dialog,
     close = () => controller.open(null);
+  const language = props.useLocale(value => value);
   if (!dialog || !state.signedIn) return null;
   switch (dialog.kind) {
     case "create":
@@ -694,6 +705,8 @@ function DialogHost(props: Props) {
           )}
         </WithDetail>
       );
+    case "memberNotices":
+      return <MemberNoticeDialog controller={controller} state={state} t={t} language={language} noticeId={dialog.noticeId} close={close}/>;
     case "member":
       return (
         <WithDetail
@@ -702,7 +715,7 @@ function DialogHost(props: Props) {
           controller={controller}
         >
           {(detail) => (
-            <MemberDialog
+            <MemberDialog key={dialog.userId}
               enterpriseId={dialog.enterpriseId}
               userId={dialog.userId}
               t={t}
@@ -789,6 +802,33 @@ export function mountEnterprise(
     window.addEventListener("focus", controller.refreshIfStale);
     return () => window.removeEventListener("focus", controller.refreshIfStale);
   }, "ipollowork-suite: refresh collaboration");
+  ctx.inject(["ipolloNotificationCenter", "layout"], scope => scope.effect(() =>
+    scope.ipolloNotificationCenter.registerSource("ipollo.organization", {
+      label: () => enterpriseCopy(ctx).memberNotices,
+      getSnapshot: () => {
+        const t = enterpriseCopy(ctx);
+        const zh = language(ctx) === "zh";
+        return controller.getSnapshot().memberNotices?.items.map(row => ({
+          id: row.id, title: row.name, summary: noticeMessage(row, t, zh),
+          createdAt: row.createdAt, read: row.readAt !== null,
+        })) ?? [];
+      },
+      subscribe(listener) {
+        let feed = controller.getSnapshot().memberNotices;
+        const stop = controller.subscribe(() => {
+          const next = controller.getSnapshot().memberNotices;
+          if (next !== feed) { feed = next; listener(); }
+        });
+        const stopLocale = ctx.locale.subscribe(listener);
+        return () => { stop(); stopLocale(); };
+      },
+      async markRead(id) { await controller.readNotices({ ids: [id] }); },
+      async open(id) {
+        const row = controller.getSnapshot().memberNotices?.items.find(item => item.id === id);
+        if (!row) throw new Error("IPW_NOT_FOUND");
+        await controller.openOrganizationNotice(row, () => scope.layout.selectPanel(PANEL));
+      },
+    }), "iPolloWork organization notifications"));
   const pendingOwnership = new Set<string>();
   const actions: CollaborationActions = {
     openSession: async (id) => {
@@ -823,23 +863,12 @@ export function mountEnterprise(
             pendingOwnership.has(projectId)
           ) {
             pendingOwnership.add(projectId);
-            await controller.call("/assign", { projectId, enterpriseId });
+            await controller.call("/assign", { projectId, enterpriseId, ...(access ? { access } : {}) });
             pendingOwnership.delete(projectId);
           }
         },
       });
       await controller.load();
-      if (access) {
-        const saved = controller
-          .getSnapshot()
-          .catalog?.projects.find((p) => p.id === project.workspaceId);
-        if (!saved?.cloudId) throw new Error("IPW_PROJECT_NOT_FOUND");
-        await controller.call(
-          "/projects/" + saved.cloudId + "/access",
-          access,
-          "PUT",
-        );
-      }
       return project;
     },
   };

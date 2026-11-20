@@ -90,7 +90,7 @@ test('toasts are replaced by newer ones and only the current toast can be dismis
   controller.dispose()
 })
 
-test('opening the bell acknowledges all unread notices including older pages, then refreshes the badge', async () => {
+test('opening the bell preserves unread notices until the explicit mark-all action', async () => {
   const original = globalThis.fetch, writes: unknown[] = []
   let read = false
   globalThis.fetch = async (input, init) => {
@@ -104,6 +104,9 @@ test('opening the bell acknowledges all unread notices including older pages, th
   try {
     controller.accountChanged(true)
     await controller.openNotices()
+    assert.deepEqual(writes, [])
+    assert.equal(controller.getSnapshot().memberNotices?.unreadCount, 102)
+    await controller.readNotices({ all: true })
     assert.deepEqual(writes, [{ all: true }])
     assert.equal(controller.getSnapshot().memberNotices?.unreadCount, 0)
     await controller.openNotices()
@@ -130,10 +133,10 @@ test('legacy notice feeds use exact unread ids and failed acknowledgements remai
   try {
     controller.accountChanged(true)
     await controller.openNotices()
-    assert.equal(controller.getSnapshot().memberNoticeError, 'DATABASE_UNAVAILABLE')
+    await assert.rejects(controller.readNotices({ ids: ['unread'] }), { message: 'DATABASE_UNAVAILABLE' })
     assert.equal(controller.getSnapshot().memberNotices?.items[0]?.readAt, null)
     reject = false
-    await controller.openNotices()
+    await controller.readNotices({ ids: ['unread'] })
     assert.deepEqual(writes, [{ ids: ['unread'] }, { ids: ['unread'] }])
     assert.equal(controller.getSnapshot().memberNoticeError, '')
     assert.equal(controller.getSnapshot().memberNotices?.items[0]?.readAt, 2)
@@ -159,3 +162,35 @@ test('an account switch while opening the bell cannot acknowledge another accoun
     assert.equal(controller.getSnapshot().memberNotices, null)
   } finally { controller.dispose(); globalThis.fetch = original }
 })
+
+test('a conversation notice resolves the exact authorized record before navigation and acknowledgement', async () => {
+  const original = globalThis.fetch, operations: string[] = [];
+  let available = false, shown = false;
+  globalThis.fetch = async (input, init) => {
+    const path = String(input);
+    if (path.endsWith('/organizations/team/messages/share')) {
+      operations.push('authorize');
+      return available ? Response.json({ id: 'share' }) : Response.json({ error: 'SHARE_NOT_FOUND' }, { status: 404 });
+    }
+    if (path.endsWith('/notices') && init?.method === 'PUT') {
+      operations.push('acknowledge');
+      return Response.json({ ok: true });
+    }
+    if (path.endsWith('/notices')) return Response.json({ items: [] });
+    return Response.json(catalog(['team']));
+  };
+  const controller = new EnterpriseController();
+  const notice = { id:'notice', kind:'conversation.shared', name:'Team', value:'Chat', createdAt:1, readAt:null,
+    enterpriseId:'team', tab:'messages' as const, targetId:'share' };
+  try {
+    controller.accountChanged(true);
+    await assert.rejects(controller.openOrganizationNotice(notice, () => { shown = true; }), { message:'SHARE_NOT_FOUND' });
+    assert.equal(shown, false);
+    assert.deepEqual(operations, ['authorize']);
+    available = true;
+    await controller.openOrganizationNotice(notice, () => { shown = true; operations.push('navigate'); });
+    assert.equal(controller.getSnapshot().tab, 'messages');
+    assert.equal(controller.getSnapshot().publicationTarget, 'share');
+    assert.deepEqual(operations, ['authorize', 'authorize', 'navigate', 'acknowledge']);
+  } finally { controller.dispose(); globalThis.fetch = original; }
+});

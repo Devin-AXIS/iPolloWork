@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Plus, ArrowLeft, Copy, Download, Search } from "lucide-react";
 import { StorageQuota } from "./storage.js";
-import { OrganizationActivity, OrganizationDepartments, OrganizationMcp, OrganizationPublications, OrganizationSettings } from "./organization-admin.js";
+import { OrganizationActivity, OrganizationAnalytics, OrganizationDepartments, OrganizationMcp, OrganizationMembershipWebhook, OrganizationPackages, OrganizationPager, OrganizationPublications, OrganizationSettings } from "./organization-admin.js";
 import { planBudget } from "../src/pricing.js";
 import { api, count, date, text, type Row, type User } from "./api.js";
 import {
@@ -186,7 +186,6 @@ function Enterprise({
   const result = useData<{
     enterprise: Row;
     canManage: boolean;
-    members: Row[];
     departments: Row[];
     invitations: Row[];
   }>(path);
@@ -196,16 +195,22 @@ function Enterprise({
     [tab, setTab] = useState("members"),
     [edit, setEdit] = useState<Row>(),
     [message, setMessage] = useState("");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const directory = useData<{items:Row[];more:boolean}>(path + "/members?" + new URLSearchParams({query,page:String(page)}));
+  const [emailLinks, setEmailLinks] = useState<{email:string;url:string}[]>();
   const refresh = () => {
+    setEmailLinks(undefined);
     setModal("");
     setIssued(undefined);
     setExpiry(undefined);
     setEdit(undefined);
     result.reload();
+    directory.reload();
   };
   const tabs = [
-    ["members","成员"], ["departments","部门"], ["templates","模板"], ["plugins","插件"], ["skills","Skill"], ["mcp","MCP"],
-    ...(result.data?.canManage ? [["activity","操作记录"]] : []), ["settings","设置"],
+    ["members","成员"], ["departments","部门"], ["templates","模板"], ["packages","文件包"], ["plugins","插件"], ["skills","Skill"], ["mcp","MCP"],
+    ...(result.data?.canManage ? [["analytics","数据分析"],["activity","操作记录"]] : []), ["settings","设置"],
   ] as const;
   async function remove(userId: string) {
     try {
@@ -215,6 +220,7 @@ function Enterprise({
         "DELETE",
       );
       result.reload();
+      directory.reload();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : "操作失败");
     }
@@ -241,8 +247,10 @@ function Enterprise({
         canManage={result.data.canManage} reload={result.reload}/>}
       {result.data && (tab === "templates" || tab === "plugins" || tab === "skills") && <OrganizationPublications key={tab} path={path}
         kind={tab === "templates" ? "template" : tab === "skills" ? "skill" : "plugin"}
-        members={result.data.members} departments={result.data.departments}/>}
-      {result.data && tab === "mcp" && <OrganizationMcp path={path} members={result.data.members} departments={result.data.departments}/>}
+        departments={result.data.departments}/>}
+      {result.data && tab === "mcp" && <OrganizationMcp path={path} departments={result.data.departments}/>}
+      {result.data && tab === "packages" && <OrganizationPackages path={path} departments={result.data.departments} canManage={result.data.canManage}/>}
+      {result.data?.canManage && tab === "analytics" && <OrganizationAnalytics path={path}/>}
       {result.data?.canManage && tab === "activity" && <OrganizationActivity path={path}/>}
       {result.data && tab === "settings" && <OrganizationSettings path={path} enterprise={result.data.enterprise} canManage={result.data.canManage} reload={result.reload}/>}
       {result.data?.canManage && tab === "settings" && <section className="panel organization-settings">
@@ -251,17 +259,23 @@ function Enterprise({
         </div>
         <CopyValue value={location.origin} label="组织服务地址"/>
       </section>}
+      {result.data?.canManage && tab === "settings" && <OrganizationMembershipWebhook path={path}/>}
       {result.data && tab === "members" && (
         <section className="panel">
           <div className="panel-heading organization-member-heading">
             <h2>成员</h2>
             {result.data.canManage && <div className="actions">
+              <button onClick={() => setModal("email")}>批量邮箱邀请</button>
               <button onClick={() => setModal("batch")}>从 CSV 批量生成</button>
               <Add onClick={() => setModal("code")}>添加员工</Add>
             </div>}
           </div>
-          <Table
-            rows={result.data.members}
+          <input type="search" aria-label="搜索成员" placeholder="姓名、邮箱或工号" maxLength={120} value={query}
+            onChange={event => { setQuery(event.target.value); setPage(1); }}/>
+          <Status error={directory.error} loading={!directory.data}/>
+          {directory.error && <button onClick={directory.reload}>重试</button>}
+          {directory.data && <Table
+            rows={directory.data.items}
             columns={[
               {
                 label: "成员",
@@ -308,7 +322,9 @@ function Enterprise({
                   ),
               }] : []),
             ]}
-          />
+          />}
+          <OrganizationPager previous={page > 1 ? () => setPage(page - 1) : undefined}
+            next={directory.data?.more ? () => setPage(page + 1) : undefined}/>
           {result.data.canManage && result.data.invitations.length > 0 && <>
             <div className="panel-heading"><h2>待使用的邀请码</h2></div>
             <Table rows={result.data.invitations} columns={[
@@ -316,7 +332,13 @@ function Enterprise({
               {label:"工号",cell:r=>text(r.employee_number) || "—"},
               {label:"有效期",cell:r=>r.expires_at === null ? "永久有效" : date(r.expires_at)},
               {label:"状态",cell:r=>r.expires_at !== null && Number(r.expires_at) <= Date.now() ? "已过期" : "待使用"},
-              {label:"操作",cell:r=>!r.email && !r.project_id && <button onClick={()=>setExpiry(r)}>修改有效期</button>},
+              {label:"操作",cell:r=><div className="actions">
+                {!r.email && !r.project_id && <button onClick={()=>setExpiry(r)}>修改有效期</button>}
+                <button onClick={async () => {
+                  try { await api(path + "/invitations/" + r.id,undefined,"DELETE"); refresh(); }
+                  catch (error) { setMessage(error instanceof Error ? error.message : "撤销失败"); }
+                }}>撤销邀请</button>
+              </div>},
             ]}/>
           </>}
         </section>
@@ -355,6 +377,29 @@ function Enterprise({
           <CodeDays initial={expiry.expires_at === null ? undefined : Math.max(1, Math.min(30, Math.ceil((Number(expiry.expires_at) - Date.now()) / 86_400_000)))}/>
           <p>留空则永久有效。</p>
         </ActionForm>
+      </Modal>}
+      {modal === "email" && <Modal title="批量邮箱邀请" close={refresh}>
+        {emailLinks ? <>
+          <Field label="邀请链接"><textarea readOnly rows={8} value={emailLinks.map(row => row.email + " " + row.url).join("\n")}/></Field>
+          <button onClick={() => downloadCsv("organization-invitations.csv", ["邮箱,邀请链接", ...emailLinks.map(row =>
+            [row.email,row.url].map(cell => '"' + (/^[=+\-@\t\r]/.test(cell) ? "'" : "") + cell.replaceAll('"','""') + '"').join(","),
+          )].join("\r\n"))}>导出邀请链接</button>
+        </> : <ActionForm label="生成邀请链接" submit={async form => {
+          const addresses = value(form,"emails").split(/\r?\n/).map(email=>email.trim()).filter(Boolean);
+          if (!addresses.length || addresses.length > 500) throw new Error("请输入 1 到 500 个邮箱");
+          const role = value(form,"role"), departmentId = value(form,"department") || null;
+          const response = await api<{items:{email:string;url:string}[]}>(path + "/invitations/batch", {
+            people: addresses.map(email=>({email,role,departmentId})), days:Number(value(form,"days")),
+          });
+          setEmailLinks(response.items); result.reload();
+        }}>
+          <Field label="员工邮箱，每行一个"><textarea name="emails" rows={7} required maxLength={130000}/></Field>
+          <Field label="部门"><select name="department"><option value="">未分配</option>
+            {result.data?.departments.map(row => <option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
+          </select></Field>
+          <Field label="身份"><select name="role"><option value="member">普通成员</option><option value="admin">管理员</option></select></Field>
+          <Field label="有效天数"><input type="number" name="days" min={1} max={30} defaultValue={7} required/></Field>
+        </ActionForm>}
       </Modal>}
       {modal === "batch" && <Modal title="从 CSV 批量生成" close={refresh}>
         <ActionForm label="导出邀请码" submit={async form => {

@@ -17,6 +17,7 @@ import type {
   Enterprise,
   EnterpriseCatalog,
   EnterpriseDetail,
+  EnterpriseMember,
   EnterpriseProject,
   ProjectRoster,
   ProjectBoardCall,
@@ -46,6 +47,12 @@ const audience = z
     includeSubdepartments: z.boolean().optional(),
   })
   .strict();
+const projectAccess = z.object({
+  mode: z.enum(["enterprise", "selected"]),
+  grants: z.array(z.object({
+    kind: z.enum(["member", "department"]), subjectId: id, role: z.enum(["view", "participate", "maintain"]),
+  })).max(500),
+}).strict();
 const description = z.string().trim().max(2000);
 const tabs = z.array(z.enum(organizationTabs)).max(organizationTabs.length);
 const publicationKind = z.enum(["plugin", "template", "skill", "mcp"]);
@@ -60,13 +67,11 @@ const publicMcpList = z.object({ items:z.array(z.object({
     return url.protocol==="https:" && !url.username && !url.password && !url.search && !url.hash;
   }),
 })).max(100) });
-const publicationList = z.object({
-  canManage: z.boolean(),
-  items: z.array(z.object({
+const publicationRecord = z.object({
     id, title: name, description, packageName: z.string().max(214).optional(),
     publishedVersion: publicationVersion.nullable(), canSubmit: z.boolean(), audience: audience.optional(),
-  })).max(200),
 });
+const publicationList = z.object({ canManage: z.boolean(), items: z.array(publicationRecord).max(200) });
 const modelEntry = z
   .object({
     id: z.string().min(1).max(200),
@@ -92,8 +97,19 @@ const key = z
   .string()
   .max(8192)
   .refine((value) => !/[\r\n]/.test(value));
+function member(row: Record<string, unknown>): EnterpriseMember {
+  const role = row.project_role;
+  return {
+    userId: string(row.user_id), name: string(row.name), email: string(row.email), role: string(row.role),
+    status: row.status === "suspended" ? "suspended" as const : "active" as const,
+    departmentId: nullableString(row.department_id), employeeNumber: nullableString(row.employee_number),
+    displayName: nullableString(row.display_name),
+    projectRole: role === "view" || role === "participate" || role === "maintain" ? role : null,
+  };
+}
 const assetsResponse = z.object({
   canManage: z.boolean(),
+  packages: z.array(z.object({ id, title: name, description, audience, fileCount: z.number(), bytes: z.number(), updatedAt: z.number() })).max(200).optional(),
   skills: z
     .array(
       z.object({
@@ -370,20 +386,12 @@ export class EnterpriseService {
       description: nullableString(result.enterprise.description) ?? "",
       tabOrder: typeof result.enterprise.tab_order === "string"
         ? tabs.parse(JSON.parse(result.enterprise.tab_order)) : [],
-      members: result.members.map((r) => ({
-        userId: string(r.user_id),
-        name: string(r.name),
-        email: string(r.email),
-        role: string(r.role),
-        status: r.status === "suspended" ? "suspended" : "active",
-        departmentId: nullableString(r.department_id),
-        employeeNumber: nullableString(r.employee_number),
-        displayName: nullableString(r.display_name),
-      })),
+      members: result.members.map(member),
       departments: result.departments.map((r) => ({
         id: string(r.id),
         name: string(r.name),
         parentId: nullableString(r.parent_id),
+        ...(typeof r.member_count === "number" ? { memberCount: r.member_count } : {}),
       })),
       invitations: result.invitations.map((r) => ({
         projectId: nullableString(r.project_id),
@@ -402,7 +410,7 @@ export class EnterpriseService {
   }
   async assign(input: unknown) {
     const data = z
-      .object({ projectId: id, enterpriseId: id.nullable() })
+      .object({ projectId: id, enterpriseId: id.nullable(), access: projectAccess.optional() }).strict()
       .parse(input);
     const catalog = await this.catalog();
     const project = catalog.projects.find((p) => p.id === data.projectId);
@@ -412,16 +420,18 @@ export class EnterpriseService {
       !catalog.enterprises.some((e) => e.id === data.enterpriseId)
     )
       throw new SuiteError("ENTERPRISE_FORBIDDEN", 403);
+    const access = data.access ? { access: data.access } : {};
     const result = project.cloudId
       ? await this.cloud(
-          "projects/" + project.cloudId,
-          { enterpriseId: data.enterpriseId, title: project.title },
+          "projects/" + project.cloudId + (data.access ? "/with-access" : ""),
+          { enterpriseId: data.enterpriseId, title: project.title, ...access },
           "PATCH",
         )
-      : await this.cloud("projects", {
+      : await this.cloud(data.access ? "projects/with-access" : "projects", {
           title: project.title,
           nativeId: project.id,
           enterpriseId: data.enterpriseId,
+          ...access,
         });
     const cloudId = project.cloudId ?? z.object({ id }).parse(result).id;
     await linkProject(project.path, this.origin, cloudId);
@@ -558,13 +568,14 @@ export class EnterpriseService {
     }
     if (!parts[1]) throw new SuiteError("IPW_NOT_FOUND", 404);
     const item = root + "/" + id.parse(parts[1]);
+    if (parts.length === 2 && method === "GET") return publicationRecord.parse(await this.organizationCapability(item));
     if (parts.length === 2 && method === "DELETE") return this.organizationCapability(item, undefined, method);
     if (parts[2] === "versions" && parts.length === 3 && method === "GET") {
       const { items } = z.object({ items: z.array(z.object({
         version: publicationVersion, status: z.enum(["pending", "rejected", "approved"]),
-        note: z.string(), created_at: z.number(),
+        note: z.string(), created_at: z.number(), title: name.nullish(), description: description.nullish(),
       })).max(200) }).parse(await this.organizationCapability(item + "/versions"));
-      return { items: items.map(row => ({ version: row.version, status: row.status, note: row.note, createdAt: row.created_at })) };
+      return { items: items.map(row => ({ version: row.version, status: row.status, note: row.note, createdAt: row.created_at, title: row.title, description: row.description })) };
     }
     if (parts[2] === "versions" && parts.length === 4) {
       let decoded: string;
@@ -598,9 +609,16 @@ export class EnterpriseService {
   ): Promise<unknown> {
     const parts = path.split("/").filter(Boolean);
     if (method === 'GET' && path === '/design-templates') {
-      return z.object({ items: z.array(z.object({ id, enterpriseId: id, title: name, description,
+      const { items } = z.object({ items: z.array(z.object({ id, enterpriseId: id, title: name, description,
         version: publicationVersion, sourceName: name })).max(1000) }).parse(
           await this.organizationCapability('me/organization-templates'));
+      // Design manifests require a SemVer-shaped version. Reserve a prefix for stable aliases of arbitrary labels.
+      const prefix = '0.0.0-org.';
+      return { items: items.map(item => ({
+        ...item,
+        designVersion: /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(item.version) && !item.version.startsWith(prefix)
+          ? item.version : prefix + createHash('sha256').update(item.version).digest('hex').slice(0, 48),
+      })) };
     }
     if (method === 'GET' && parts[0] === 'design-templates' && parts.length === 4) {
       return this.publications('enterprises/' + id.parse(parts[1]), ['template', id.parse(parts[2]), 'versions', parts[3] ?? ''], method, undefined);
@@ -741,6 +759,12 @@ export class EnterpriseService {
           return this.organizationCapability(route, { requestId:data.requestId, title:data.title,
             recipients:data.recipients, transcript:current.transcript });
         }
+        if (parts.length === 4 && method === "GET") {
+          const share = z.object({ id, title: name, transcript: z.array(z.object({
+            role: z.enum(["user","assistant"]), content: z.string(),
+          })).max(200) }).parse(await this.organizationCapability(route + "/" + id.parse(parts[3])));
+          return share;
+        }
         if (parts.length === 4 && method === "DELETE") return this.organizationCapability(route + "/" + id.parse(parts[3]), undefined, method);
         if (parts.length === 5 && parts[4] === "copy" && method === "POST") {
           const user = await this.signedIn(), shareId = id.parse(parts[3]);
@@ -763,11 +787,39 @@ export class EnterpriseService {
       if (parts[2] === "publications" && parts[3])
         return this.publications(base, parts.slice(3), method, input);
       if ((method === "GET" || method === "POST") && parts[2] === "activity" && parts.length === 3) {
-        const search = method === "POST" ? z.object({ actor: z.string().trim().max(120) }).strict().parse(input).actor : "";
-        const { items } = z.object({ items: z.array(z.object({
+        const search = method === "POST" ? z.object({
+          actor: z.string().trim().max(120).optional(), before: z.string().regex(/^[1-9][0-9]{0,18}$/).optional(),
+        }).strict().parse(input) : {};
+        const query = new URLSearchParams();
+        if (search.actor) query.set("actor", search.actor);
+        if (search.before) query.set("before", search.before);
+        const { items, next } = z.object({ items: z.array(z.object({
           id: z.union([z.string(), z.number()]), action: z.string(), actor: z.string().nullable(), created_at: z.number(),
-        })).max(100) }).parse(await this.organizationCapability(base + "/activity" + (search ? "?actor=" + encodeURIComponent(search) : "")));
-        return { items: items.map(row => ({ id: String(row.id), action: row.action, actor: row.actor, createdAt: row.created_at })) };
+        })).max(100), next: z.string().nullish() }).parse(await this.organizationCapability(base + "/activity?" + query));
+        return { next, items: items.map(row => ({ id: String(row.id), action: row.action, actor: row.actor, createdAt: row.created_at })) };
+      }
+      if (method === "POST" && parts[2] === "member-directory" && parts.length === 3) {
+        const filter = z.object({
+          query: z.string().trim().max(120).optional(), department: id.or(z.literal("")).optional(),
+          userId: id.optional(), active: z.boolean().optional(), page: z.number().int().min(1).max(100000).optional(),
+          projectId: id.optional(),
+        }).strict().parse(input);
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries(filter)) if (value !== undefined) query.set(key, String(value));
+        const { items, more } = z.object({ items: z.array(row).max(50), more: z.boolean() }).parse(
+          await this.organizationCapability(base + "/members?" + query));
+        return { items: items.map(member), more };
+      }
+      if (parts[2] === "packages") {
+        const path = base + "/packages" + (parts[3] ? "/" + id.parse(parts[3]) : "");
+        if (parts.length === 3 && method === "POST")
+          return this.organizationCapability(path, z.object({ title: name, description, audience: audience.optional() }).strict().parse(input));
+        if (parts.length === 4 && (method === "GET" || method === "DELETE"))
+          return this.organizationCapability(path, undefined, method);
+        if (parts.length === 4 && method === "PATCH")
+          return this.organizationCapability(path, z.object({ title: name, description }).strict().parse(input), method);
+        if (parts.length === 6 && parts[4] === "files" && method === "DELETE")
+          return this.organizationCapability(path + "/files/" + id.parse(parts[5]), undefined, method);
       }
       if (method === "POST" && parts[2] === "analytics" && parts.length === 3)
         return enterpriseAnalyticsSchema.parse(await this.cloud(base + "/analytics", z.object({
@@ -870,7 +922,7 @@ export class EnterpriseService {
           base + "/grants",
           z
             .object({
-                kind: z.enum(["skill", "service", "mcp", "plugin", "template"]),
+                kind: z.enum(["package", "skill", "service", "mcp", "plugin", "template"]),
               assetId: id,
               audience,
             })

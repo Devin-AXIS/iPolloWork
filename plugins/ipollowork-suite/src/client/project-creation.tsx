@@ -7,13 +7,15 @@ import {
 } from "./project-creation-actions.ts";
 import type { EnterpriseState } from "./enterprise-controller.ts";
 import { enterpriseError, type EnterpriseLabels } from "./enterprise-locale.ts";
-import type { EnterpriseDetail, ProjectGrant } from "../shared/enterprise.ts";
-import { useRecord } from "./enterprise-ui.tsx";
+import type { ProjectGrant } from "../shared/enterprise.ts";
+import { DirectoryStatus, useMemberDirectory, type Call } from "./enterprise-ui.tsx";
 import { request } from "./api.ts";
 import { projectCopy } from "./project-copy.ts";
 import css from "./suite.module.css";
 
-const callEnterprise = <T,>(path: string) => request<T>("/enterprise" + path);
+const callEnterprise: Call = (path, data) => request("/enterprise" + path, {
+  method: "POST", body: JSON.stringify(data),
+});
 
 export interface DirectoryLevel {
   path: string;
@@ -69,11 +71,11 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
     [enterpriseId, setEnterpriseId] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const directory = useRecord<EnterpriseDetail>(
-    enterpriseId ? "/organizations/" + enterpriseId : null,
-    callEnterprise,
-    0,
-  );
+  const [memberQuery, setMemberQuery] = useState("");
+  const [shareName, setShareName] = useState("");
+  const directory = useMemberDirectory(props.open ? enterpriseId || null : null, callEnterprise, state.revision, {
+    query: memberQuery, active: true,
+  });
   const [browsing, setBrowsing] = useState(false),
     [level, setLevel] = useState<DirectoryLevel | null>(null),
     [draft, setDraft] = useState(""),
@@ -88,6 +90,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
     if (props.open) {
       void props.refreshEnterprises();
       setPath("");
+      setShareWith(""); setShareName(""); setMemberQuery("");
       setMode("local");setCloudName("");creationKey.current=crypto.randomUUID();
       setEnterpriseId(props.organizationId ?? "");
       setError("");
@@ -379,7 +382,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
               disabled={disabled || !state.signedIn || state.loading}
               onChange={(e) => {
                 setEnterpriseId(e.target.value);
-                setShareWith("");
+                setShareWith(""); setShareName(""); setMemberQuery("");
               }}
             >
               <option value="">{t.personal}</option>
@@ -395,19 +398,24 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
           <div className={css.enterpriseColumns}>
             <label className={css.enterpriseField}>
               <span>{t.visibility}</span>
-              <select
+              <input type="search" maxLength={120} value={memberQuery} placeholder={t.searchMembers} aria-label={t.searchMembers}
+                onChange={event => setMemberQuery(event.target.value)}/>
+              <select aria-label={t.visibility}
                 value={shareWith}
-                disabled={disabled || !directory.data}
-                onChange={(e) => setShareWith(e.target.value)}
+                disabled={disabled || (!directory.data && !shareWith)}
+                onChange={(e) => { setShareWith(e.target.value); setShareName(e.currentTarget.selectedOptions[0]?.text ?? ""); }}
               >
                 <option value="">{c.selected}</option>
-                {directory.data?.members.map((m) => (
+                {shareWith && !directory.data?.items.some(m => "m:" + m.userId === shareWith) &&
+                  <option value={shareWith}>{shareName}</option>}
+                {directory.data?.items.map((m) => (
                   <option key={m.userId} value={"m:" + m.userId}>
                     {m.name || m.email}
                   </option>
                 ))}
               </select>
             </label>
+            <DirectoryStatus directory={directory} t={t}/>
             {shareWith && (
               <label className={css.enterpriseField}>
                 <span>{t.permission}</span>

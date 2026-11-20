@@ -10,9 +10,7 @@ import {
 } from "@deepseek-ai/dsh-client-ui-primitives";
 import type {
   EnterpriseCatalog,
-  EnterpriseDetail,
   ProjectSpace,
-  ProjectGrant,
   ProjectRole,
   ProjectChange,
 } from "../shared/enterprise.ts";
@@ -20,6 +18,7 @@ import type { EnterpriseController } from "./enterprise-controller.ts";
 import { format, type EnterpriseLabels } from "./enterprise-locale.ts";
 import { RowMenu } from "./enterprise-assets.tsx";
 import {
+  DirectoryStatus,
   EmptyState,
   Field,
   FormError,
@@ -29,13 +28,13 @@ import {
   Row,
   Section,
   When,
+  useMemberDirectory,
   useRecord,
   useTask,
   type Call,
 } from "./enterprise-ui.tsx";
 import { request } from "./api.ts";
 import { projectCopy } from "./project-copy.ts";
-import { memberProjectAccess } from '../shared/project-access.ts';
 import {
   ProjectDownload,
   ProjectFiles,
@@ -738,126 +737,51 @@ function AccessDialog({
   close(): void;
   done(): Promise<void>;
 }) {
-  const c = projectCopy(view.language),
-    task = useTask(view.t),
-    [draft, setDraft] = useState<{
-      mode: "enterprise" | "selected";
-      grants: ProjectGrant[];
-    } | null>(null);
-  const record = useRecord<{
-    mode: "enterprise" | "selected";
-    grants: ProjectGrant[];
-  }>("/projects/" + space.project.id + "/access", view.call, 0);
-  const org = useRecord<EnterpriseDetail>(
-    "/organizations/" + space.project.enterpriseId,
-    view.call,
-    0,
-  );
-  const value = draft ?? (record.data && org.data ? memberProjectAccess(record.data, org.data.members) : undefined);
-  const select = (
-    subjectId: string,
-    role: ProjectRole | "none",
-  ) => {
-    if (value)
-      setDraft({
-        ...value,
-        grants: [
-          ...value.grants.filter(
-            (g) => g.subjectId !== subjectId,
-          ),
-          ...(role === "none" ? [] : [{ kind: "member" as const, subjectId, role }]),
-        ],
-      });
-  };
-  const picker = (subjectId: string) => (
-    <select
-      aria-label={c.member}
-      disabled={task.busy}
-      value={
-        value?.grants.find((g) => g.subjectId === subjectId)
-          ?.role ?? "none"
-      }
-      onChange={(e) =>
-        select(subjectId, e.target.value as ProjectRole | "none")
-      }
-    >
-      <option value="none">{c.none}</option>
-      {(["view", "participate", "maintain"] as const).map((role) => (
-        <option key={role} value={role}>
-          {c[role]}
-        </option>
-      ))}
-    </select>
-  );
-  return (
-    <Modal
-      open
-      title={c.people}
-      closeLabel={c.close}
-      className={css.enterpriseModal + " " + css.enterpriseWide}
-      contentClassName={css.enterpriseModalContent!}
-      onClose={() => {
-        if (!task.busy) close();
-      }}
-    >
-      {!value || !org.data ? (
-        <>
-          {record.error || org.error ? (
-            <Notice
-              error={record.error || org.error}
-              t={view.t}
-              retry={() => {
-                record.reload();
-                org.reload();
-              }}
-            />
-          ) : (
-            <ListSkeleton />
-          )}
-        </>
-      ) : (
-        <div className={css.enterpriseForm}>
-          <div className={css.enterpriseList}>
-            {org.data.members.map((m) => (
-              <Row
-                key={m.userId}
-                title={m.name || m.email}
-                meta={m.email}
-                actions={
-                  m.role === "owner" || m.role === "admin" ? (
-                    <Tag tone="outline">{c.maintain}</Tag>
-                  ) : (
-                    picker(m.userId)
-                  )
-                }
-              />
-            ))}
-          </div>
-          <FormError message={task.error} />
-          <div className={css.dialogFooter}>
-            <Button variant="outline" disabled={task.busy} onClick={close}>
-              {c.cancel}
-            </Button>
-            <Button
-              variant="primary"
-              disabled={task.busy}
-              onClick={() =>
-                void task.run(async () => {
-                  await view.call(
-                    "/projects/" + space.project.id + "/access",
-                    value,
-                    "PUT",
-                  );
-                  close();
-                  await done();
-                })
-              }
-            >
-              {c.save}
-            </Button>
-          </div>
-        </div>
-      )}
-    </Modal>
-  );
+  const c = projectCopy(view.language);
+  const task = useTask(view.t);
+  const [query, setQuery] = useState("");
+  const [edits, setEdits] = useState<Record<string, ProjectRole | null>>({});
+  const directory = useMemberDirectory(space.project.enterpriseId, view.call, view.revision, {
+    query, projectId: space.project.id,
+  });
+  const roles = ["view", "participate", "maintain"] as const;
+  const changes = Object.entries(edits).map(([subjectId, role]) => ({ subjectId, role }));
+  return <Modal open title={c.people} closeLabel={c.close} className={css.enterpriseModal + " " + css.enterpriseWide}
+    contentClassName={css.enterpriseModalContent!} onClose={() => { if (!task.busy) close(); }}>
+    <div className={css.enterpriseForm}>
+      <Field label={view.t.searchMembers}><input type="search" maxLength={120} value={query}
+        onChange={event => setQuery(event.target.value)} /></Field>
+      <div className={css.enterpriseList}>
+        {directory.data?.items.map(member => <Row key={member.userId} title={member.name || member.email}
+          meta={[member.email, member.employeeNumber].filter(Boolean).join(" · ")}
+          actions={member.role === "owner" || member.role === "admin" ? <Tag tone="outline">{c.maintain}</Tag> :
+            <select aria-label={c.member + " · " + member.name} disabled={task.busy}
+              value={(Object.hasOwn(edits, member.userId) ? edits[member.userId] : member.projectRole) ?? "none"}
+              onChange={event => {
+                const value = event.target.value;
+                const role = value === "none" ? null : value as ProjectRole;
+                setEdits(previous => {
+                  const next = {...previous};
+                  if (role === (member.projectRole ?? null)) delete next[member.userId];
+                  else next[member.userId] = role;
+                  return next;
+                });
+              }}>
+              <option value="none">{c.none}</option>
+              {roles.map(role => <option key={role} value={role}>{c[role]}</option>)}
+            </select>}/>)}
+      </div>
+      {directory.data && !directory.data.items.length && <p>{view.t.noMembersMatch}</p>}
+      <DirectoryStatus directory={directory} t={view.t}/>
+      <FormError message={task.error}/>
+      <div className={css.dialogFooter}>
+        <Button variant="outline" disabled={task.busy} onClick={close}>{c.cancel}</Button>
+        <Button variant="primary" disabled={task.busy || !changes.length} onClick={() => void task.run(async () => {
+          await view.call("/projects/" + space.project.id + "/access", changes, "PATCH");
+          close();
+          await done();
+        })}>{c.save}</Button>
+      </div>
+    </div>
+  </Modal>;
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api, date, operation, text, type Row } from "./api.js";
 import { ActionForm, Field, Modal, Status, Table, useData, value } from "./components.js";
 
@@ -98,10 +98,10 @@ export function OrganizationDepartments({ path, departments, canManage, reload }
 type Kind = "plugin" | "template" | "skill";
 type Audience = { all:boolean; departments:string[]; members:string[]; includeSubdepartments?:boolean };
 type Publication = { id:string; title:string; description:string; packageName?:string; publishedVersion:string|null; canSubmit:boolean; audience?:Audience };
-type Version = { version:string; status:"pending"|"approved"|"rejected"; note:string; created_at:number };
+type Version = { version:string; status:"pending"|"approved"|"rejected"; note:string; created_at:number; title?:string; description?:string };
 
-export function OrganizationPublications({ path, kind, members, departments }: {
-  path:string; kind:Kind; members:Row[]; departments:Row[];
+export function OrganizationPublications({ path, kind, departments }: {
+  path:string; kind:Kind; departments:Row[];
 }) {
   const root = path + "/publications/" + kind;
   const list = useData<{ canManage:boolean; items:Publication[] }>(root);
@@ -119,7 +119,7 @@ export function OrganizationPublications({ path, kind, members, departments }: {
         <span>{[item.packageName, item.publishedVersion].filter(Boolean).join(" · ")}</span>
       </div>
       {selected === item.id && <PublicationDetails root={root + "/" + item.id} item={item} kind={kind}
-        canManage={list.data!.canManage} enterprisePath={path} members={members} departments={departments}
+        canManage={list.data!.canManage} enterprisePath={path} departments={departments}
         refresh={list.reload} edit={() => setEditing(item)}/>}
     </div>)}
     {editing && <Modal title={editing === "new" ? "提交资源" : "提交新版本"} close={() => setEditing(undefined)}>
@@ -150,9 +150,9 @@ export function OrganizationPublications({ path, kind, members, departments }: {
   </section>;
 }
 
-function PublicationDetails({ root,item,kind,canManage,enterprisePath,members,departments,refresh,edit }: {
+function PublicationDetails({ root,item,kind,canManage,enterprisePath,departments,refresh,edit }: {
   root:string; item:Publication; kind:Kind; canManage:boolean; enterprisePath:string;
-  members:Row[]; departments:Row[]; refresh():void; edit():void;
+  departments:Row[]; refresh():void; edit():void;
 }) {
   const versions = useData<{items:Version[]}>(root + "/versions");
   const [error,setError] = useState("");
@@ -181,7 +181,7 @@ function PublicationDetails({ root,item,kind,canManage,enterprisePath,members,de
         const published = item.publishedVersion === row.version;
         return <tr key={row.version}><td>{row.version}</td>
           <td>{published ? "已发布" : {pending:"待审核",approved:"已通过",rejected:"已驳回"}[row.status]}</td>
-          <td>{row.note || "—"}</td><td>{date(row.created_at)}</td>
+          <td>{[row.title, row.description, row.note].filter(Boolean).join(" · ") || "—"}</td><td>{date(row.created_at)}</td>
           <td><div className="actions">
             {kind !== "plugin" && <button disabled={pending} onClick={() => void run(async () => {
               const data = await api<{html?:string;markdown?:string}>(release(row.version));
@@ -222,9 +222,7 @@ function PublicationDetails({ root,item,kind,canManage,enterprisePath,members,de
           {departments.map(row=><option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
         </select></Field>
         <Field label="包含下级部门"><input name="includeSubdepartments" type="checkbox" defaultChecked={item.audience.includeSubdepartments}/></Field>
-        <Field label="允许访问的成员"><select multiple name="member" defaultValue={item.audience.members}>
-          {members.filter(row=>row.role === "member").map(row=><option key={text(row.user_id)} value={text(row.user_id)}>{text(row.name)}</option>)}
-        </select></Field>
+        <OrganizationMemberOptions path={enterprisePath} initial={item.audience.members} name="member"/>
       </ActionForm>
     </Modal>}
     {modal === "archive" && <Modal title="下架资源" close={() => setModal(undefined)}>
@@ -246,22 +244,97 @@ function PublicationDetails({ root,item,kind,canManage,enterprisePath,members,de
 }
 
 export function OrganizationActivity({ path }: {path:string}) {
-  const activity = useData<{items:Row[]}>(path + "/activity");
+  const [query, setQuery] = useState("");
+  const [actor, setActor] = useState("");
+  const [cursors, setCursors] = useState<string[]>([]);
+  const before = cursors.at(-1);
+  const params = new URLSearchParams({actor, ...(before ? {before} : {})});
+  const activity = useData<{items:Row[]; next?:string | null}>(path + "/activity?" + params);
   return <section className="panel">
-    <div className="panel-heading"><h2>操作记录</h2></div>
+    <div className="toolbar"><h2>操作记录</h2>
+      <form onSubmit={event => { event.preventDefault(); setActor(query.trim()); setCursors([]); }}>
+        <input type="search" maxLength={120} aria-label="操作人姓名或工号" value={query} onChange={event => setQuery(event.target.value)}/>
+        <button type="submit">搜索</button>
+      </form>
+    </div>
     <Status error={activity.error} loading={!activity.data}/>
+    {activity.error && <button onClick={activity.reload}>重试</button>}
     {activity.data && <Table rows={activity.data.items} columns={[
       {label:"操作",cell:item=>operation(item.action)},
       {label:"成员",cell:item=>text(item.actor) || "—"},
       {label:"时间",cell:item=>date(item.created_at)},
     ]}/>}
+    <OrganizationPager previous={before ? () => setCursors(current => current.slice(0,-1)) : undefined}
+      next={activity.data?.next ? () => setCursors(current => [...current, activity.data!.next!]) : undefined}/>
   </section>;
 }
 
-type Mcp = {id:string;title:string;description:string;host:string;endpoint?:string;enabled:boolean;oauthRequired:boolean;authorized:boolean;audience:Audience;
+export function OrganizationPager({ previous, next }: { previous?: () => void; next?: () => void }) {
+  if (!previous && !next) return null;
+  return <div className="actions">
+    <button type="button" disabled={!previous} onClick={previous}>上一页</button>
+    <button type="button" disabled={!next} onClick={next}>下一页</button>
+  </div>;
+}
+
+export function OrganizationMemberOptions({ path, initial, name }: { path: string; initial: string[]; name: string }) {
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState(() => new Set(initial));
+  const directory = useData<{items: Row[]; more: boolean}>(path + "/members?" + new URLSearchParams({ query, page: String(page), active: "true" }));
+  return <fieldset>
+    <legend>允许访问的成员 · 已选 {selected.size} 人</legend>
+    <input type="search" aria-label="搜索成员" placeholder="姓名、邮箱或工号" maxLength={120} value={query}
+      onChange={event => { setQuery(event.target.value); setPage(1); }}/>
+    <Status error={directory.error} loading={!directory.data}/>
+    {directory.error && <button type="button" onClick={directory.reload}>重试</button>}
+    {directory.data?.items.filter(row => row.role === "member").map(row => {
+      const id = text(row.user_id);
+      return <label key={id} className="check"><input type="checkbox" checked={selected.has(id)}
+        onChange={event => {
+          const checked = event.target.checked;
+          setSelected(previous => {
+            const next = new Set(previous);
+            if (checked) next.add(id); else next.delete(id);
+            return next;
+          });
+        }}/>{text(row.name)} · {text(row.employee_number) || text(row.email)}</label>;
+    })}
+    {[...selected].map(id => <input key={id} type="hidden" name={name} value={id}/>)}
+    <OrganizationPager previous={page > 1 ? () => setPage(page - 1) : undefined}
+      next={directory.data?.more ? () => setPage(page + 1) : undefined}/>
+  </fieldset>;
+}
+
+type WebhookSettings = {endpoint: string; enabled: boolean; configured: boolean};
+
+export function OrganizationMembershipWebhook({ path }: { path: string }) {
+  const endpoint = path + "/notifications";
+  const info = useData<WebhookSettings>(endpoint);
+  const [saved, setSaved] = useState<(WebhookSettings & {secret?: string})>();
+  const current = saved ?? info.data;
+  const [rotate, setRotate] = useState(false);
+  return <section className="panel">
+    <h2>成员变更通知</h2>
+    <Status error={info.error} loading={!current}/>
+    {info.error && <button onClick={info.reload}>重试</button>}
+    {current && <ActionForm submit={async form => {
+      setSaved(await api(endpoint, {endpoint:value(form,"endpoint").trim(),enabled:form.has("enabled"),rotate}, "PUT"));
+      setRotate(false);
+    }}>
+      <Field label="HTTPS 接收地址"><input type="url" name="endpoint" maxLength={2048} defaultValue={current.endpoint}/></Field>
+      <label className="check"><input name="enabled" type="checkbox" defaultChecked={current.enabled}/>发送成员变更通知</label>
+      {current.configured && <label className="check"><input type="checkbox" checked={rotate} onChange={event => setRotate(event.target.checked)}/>保存时更换签名密钥</label>}
+    </ActionForm>}
+    {saved?.secret && <Field label="签名密钥，请复制到接收系统，仅此次显示"><input readOnly value={saved.secret}/></Field>}
+    {saved && <p role="status">成员变更通知设置已保存</p>}
+  </section>;
+}
+
+type Mcp = {reviewed?:boolean;id:string;title:string;description:string;host:string;endpoint?:string;enabled:boolean;oauthRequired:boolean;authorized:boolean;audience:Audience;
   oauth?:{authorizationUrl:string;tokenUrl:string;clientId:string;scope:string}};
 
-export function OrganizationMcp({path,members,departments}: {path:string;members:Row[];departments:Row[]}) {
+export function OrganizationMcp({path,departments}: {path:string;departments:Row[]}) {
   const root=path+"/mcp";
   const list=useData<{canManage:boolean;items:Mcp[]}>(root);
   const [edit,setEdit]=useState<Mcp|"new">();
@@ -278,7 +351,7 @@ export function OrganizationMcp({path,members,departments}: {path:string;members
       {list.data?.canManage && <div className="actions">
         <button onClick={()=>{setEdit(row);setOAuth(row.oauthRequired);}}>编辑</button>
         <button onClick={()=>setAccess(row)}>访问权限</button>
-        <button onClick={()=>setRemove(row)}>移除</button>
+        {!row.reviewed && <button onClick={()=>setRemove(row)}>移除</button>}
       </div>}
       {!list.data?.canManage && row.oauthRequired && !row.authorized && <span>请在桌面端完成授权</span>}
     </div>)}
@@ -298,7 +371,7 @@ export function OrganizationMcp({path,members,departments}: {path:string;members
       }}>
         <Field label="名称"><input name="title" maxLength={120} required defaultValue={item?.title}/></Field>
         <Field label="说明"><input name="description" maxLength={1000} defaultValue={item?.description}/></Field>
-        <Field label="MCP 地址"><input name="endpoint" type="url" required defaultValue={item?.endpoint}/></Field>
+        <Field label="MCP 地址"><input name="endpoint" type="url" required readOnly={item?.reviewed} defaultValue={item?.endpoint}/></Field>
         <Field label="成员使用 OAuth 授权"><input type="checkbox" checked={oauth} onChange={event=>setOAuth(event.target.checked)}/></Field>
         {oauth ? <>
           <Field label="授权地址"><input name="authorizationUrl" type="url" required defaultValue={item?.oauth?.authorizationUrl}/></Field>
@@ -328,14 +401,156 @@ export function OrganizationMcp({path,members,departments}: {path:string;members
           {departments.map(row=><option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
         </select></Field>
         <Field label="包含下级部门"><input type="checkbox" name="includeSubdepartments" defaultChecked={access.audience.includeSubdepartments}/></Field>
-        <Field label="允许访问的成员"><select name="members" multiple defaultValue={access.audience.members}>
-          {members.filter(row=>row.role==="member").map(row=><option key={text(row.user_id)} value={text(row.user_id)}>{text(row.name)}</option>)}
-        </select></Field>
+        <OrganizationMemberOptions path={path} initial={access.audience.members} name="members"/>
       </ActionForm>
     </Modal>}
     {remove && <Modal title="移除 MCP" close={()=>setRemove(undefined)}>
       <p>移除「{remove.title}」后，成员将无法通过组织使用它。</p>
       <ActionForm label="确认移除" submit={async()=>{await api(root+"/"+remove.id,undefined,"DELETE");setRemove(undefined);list.reload();}}/>
     </Modal>}
+  </section>;
+}
+
+type FilePackage = { id: string; title: string; description: string; audience: Audience };
+
+export function OrganizationPackages({ path, departments, canManage }: { path: string; departments: Row[]; canManage: boolean }) {
+  const root = path + "/packages";
+  const list = useData<{packages: FilePackage[]}>(path + "/assets");
+  const [selected, setSelected] = useState<string>();
+  const [editing, setEditing] = useState<FilePackage | "new">();
+  const [grant, setGrant] = useState<FilePackage>();
+  const [removing, setRemoving] = useState<FilePackage>();
+  const item = editing === "new" ? undefined : editing;
+  return <section className="panel">
+    <div className="toolbar"><h2>文件包</h2>{canManage && <button className="primary" onClick={() => setEditing("new")}>新建文件包</button>}</div>
+    <Status loading={!list.data} error={list.error}/>
+    {list.error && <button onClick={list.reload}>重试</button>}
+    {list.data?.packages.length === 0 && <p className="empty">暂无组织文件包</p>}
+    {list.data?.packages.map(row => <div key={row.id}>
+      <div className="toolbar">
+        <button className="link" aria-expanded={selected === row.id} onClick={() => setSelected(selected === row.id ? undefined : row.id)}>{row.title}</button>
+        <span>{row.description}</span>
+        {canManage && <div className="actions">
+          <button onClick={() => setEditing(row)}>编辑</button><button onClick={() => setGrant(row)}>访问权限</button>
+          <button onClick={() => setRemoving(row)}>移除</button>
+        </div>}
+      </div>
+      {selected === row.id && <PackageFiles path={root + "/" + row.id} canManage={canManage}/>}
+    </div>)}
+    {editing && <Modal title={item ? "编辑文件包" : "新建文件包"} close={() => setEditing(undefined)}>
+      <ActionForm submit={async form => {
+        const data = {title:value(form,"title"),description:value(form,"description")};
+        if (item) await api(root + "/" + item.id, data, "PATCH");
+        else {
+          const created = await api<{id:string}>(root, {...data, audience:{all:false,departments:[],members:[]}});
+          setSelected(created.id);
+        }
+        setEditing(undefined); list.reload();
+      }}>
+        <Field label="名称"><input name="title" required maxLength={120} defaultValue={item?.title}/></Field>
+        <Field label="说明"><textarea name="description" maxLength={2000} defaultValue={item?.description}/></Field>
+      </ActionForm>
+    </Modal>}
+    {grant && <Modal title="文件包访问权限" close={() => setGrant(undefined)}>
+      <ActionForm submit={async form => {
+        const all = form.has("all");
+        await api(path + "/grants", {kind:"package",assetId:grant.id,audience:{
+          all,departments:all ? [] : form.getAll("department"), members:all ? [] : form.getAll("member"),
+          includeSubdepartments:!all && form.has("includeSubdepartments"),
+        }}, "PUT");
+        setGrant(undefined); list.reload();
+      }}>
+        <label className="check"><input type="checkbox" name="all" defaultChecked={grant.audience.all}/>全部成员</label>
+        <Field label="允许访问的部门"><select multiple name="department" defaultValue={grant.audience.departments}>
+          {departments.map(row => <option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
+        </select></Field>
+        <label className="check"><input type="checkbox" name="includeSubdepartments" defaultChecked={grant.audience.includeSubdepartments}/>包含下级部门</label>
+        <OrganizationMemberOptions path={path} initial={grant.audience.members} name="member"/>
+      </ActionForm>
+    </Modal>}
+    {removing && <Modal title="移除文件包" close={() => setRemoving(undefined)}>
+      <p>{removing.title}</p>
+      <ActionForm label="确认移除" submit={async () => {await api(root + "/" + removing.id, undefined, "DELETE"); setRemoving(undefined); list.reload();}}/>
+    </Modal>}
+  </section>;
+}
+
+function PackageFiles({ path, canManage }: { path: string; canManage: boolean }) {
+  const listing = useData<{files: Row[]}>(path);
+  const [removing, setRemoving] = useState<Row>();
+  return <>
+    <Status loading={!listing.data} error={listing.error}/>
+    {listing.error && <button onClick={listing.reload}>重试</button>}
+    {listing.data && <Table rows={listing.data.files} columns={[
+      {label:"文件",cell:row=>text(row.name)}, {label:"上传人",cell:row=>text(row.addedBy)},
+      {label:"操作",cell:row=><div className="actions">
+        <a href={path + "/files/" + encodeURIComponent(text(row.id)) + "/download"}>下载</a>
+        {canManage && <button onClick={() => setRemoving(row)}>移除</button>}
+      </div>},
+    ]}/>}
+    {canManage && <ActionForm label="上传" submit={async form => {
+      const file = form.get("file");
+      if (!(file instanceof File) || !file.name) throw new Error("请选择文件");
+      if (file.size > 24 * 1024 * 1024) throw new Error("单个文件不能超过 24 MB");
+      await api(path + "/files", form);
+      listing.reload();
+    }}><Field label="选择文件"><input type="file" name="file" required/></Field></ActionForm>}
+    {removing && <Modal title="移除文件" close={() => setRemoving(undefined)}>
+      <p>{text(removing.name)}</p>
+      <ActionForm label="确认移除" submit={async () => {
+        await api(path + "/files/" + encodeURIComponent(text(removing.id)), undefined, "DELETE");
+        setRemoving(undefined); listing.reload();
+      }}/>
+    </Modal>}
+  </>;
+}
+
+type Usage = {
+  totals: { tasks: number; measured: number; inputTokens: number; outputTokens: number };
+  rows: Row[]; activityRows: Row[]; pageSize: number; totalRows: number; activityTotalRows: number;
+  projects: number; skills: number; plugins: number;
+};
+
+export function OrganizationAnalytics({ path }: { path: string }) {
+  const [query, setQuery] = useState({ days:30, groupBy:"department", page:1, activityPage:1 });
+  const [revision, retry] = useState(0);
+  const [result, setResult] = useState<{query: typeof query; data?: Usage; error?: string}>();
+  useEffect(() => {
+    const abort = new AbortController();
+    void api<Usage>(path + "/analytics", query, "POST", abort.signal).then(data => setResult({query,data}),
+      error => { if (!abort.signal.aborted) setResult({query,error:error instanceof Error ? error.message : "读取失败"}); });
+    return () => abort.abort();
+  }, [path, query, revision]);
+  const current = result?.query === query ? result : undefined;
+  const data = current?.data;
+  return <section className="panel">
+    <div className="toolbar"><h2>数据分析</h2><div className="actions">
+      <label>时间范围 <select value={query.days} onChange={event => setQuery({...query,days:Number(event.target.value),page:1,activityPage:1})}>
+        {[7,30,90].map(days => <option key={days} value={days}>近 {days} 天</option>)}
+      </select></label>
+      <label>按 <select value={query.groupBy} onChange={event => setQuery({...query,groupBy:event.target.value,page:1,activityPage:1})}>
+        <option value="department">部门</option><option value="member">成员</option><option value="sku">服务 / 模型</option>
+      </select></label>
+    </div></div>
+    <Status error={current?.error} loading={!data}/>
+    {current?.error && <button onClick={() => retry(value => value + 1)}>重试</button>}
+    {data && <>
+      <p>调用 {data.totals.tasks} · 已采集 Token 的调用 {data.totals.measured} · 新增项目 {data.projects} · 现有 Skill {data.skills} · 现有插件 {data.plugins}</p>
+      <Table rows={data.rows} columns={[
+        {label:"名称",cell:row=>text(row.name) || "未分配"}, {label:"调用",cell:row=>text(row.tasks)},
+        {label:"成功",cell:row=>text(row.succeeded)}, {label:"失败",cell:row=>text(row.failed)},
+        {label:"输入 Token",cell:row=>row.measured ? text(row.inputTokens) : "—"},
+        {label:"输出 Token",cell:row=>row.measured ? text(row.outputTokens) : "—"},
+      ]}/>
+      <OrganizationPager previous={query.page > 1 ? () => setQuery({...query,page:query.page-1}) : undefined}
+        next={query.page * data.pageSize < data.totalRows ? () => setQuery({...query,page:query.page+1}) : undefined}/>
+      <h3>Skill 与工具使用</h3>
+      <Table rows={data.activityRows.map(row => ({...row,id:text(row.id)+":"+text(row.kind)}))} columns={[
+        {label:"名称",cell:row=>text(row.name) || "未分配"}, {label:"类型",cell:row=>row.kind === "skill" ? "Skill" : "工具"},
+        {label:"调用",cell:row=>text(row.calls)}, {label:"成功",cell:row=>text(row.succeeded)},
+      ]}/>
+      <OrganizationPager previous={query.activityPage > 1 ? () => setQuery({...query,activityPage:query.activityPage-1}) : undefined}
+        next={query.activityPage * data.pageSize < data.activityTotalRows ? () => setQuery({...query,activityPage:query.activityPage+1}) : undefined}/>
+    </>}
   </section>;
 }

@@ -1,4 +1,4 @@
-import type { EnterpriseCatalog, EnterpriseTab, MemberNoticeFeed } from "../shared/enterprise.ts";
+import type { EnterpriseCatalog, EnterpriseTab, MemberNotice, MemberNoticeFeed } from "../shared/enterprise.ts";
 export type { EnterpriseTab } from "../shared/enterprise.ts";
 import { request } from "./api.ts";
 
@@ -14,6 +14,7 @@ export type EnterpriseDialog =
       projectId?: string;
       projectRole?: "view" | "participate" | "maintain";
     }
+  | { kind: "memberNotices"; noticeId: string }
   | { kind: "member"; enterpriseId: string; userId: string }
   | {
       kind: "confirm";
@@ -145,21 +146,33 @@ export class EnterpriseController {
     if (account === this.noticeAccount) await this.loadNotices();
     return account === this.noticeAccount;
   };
-  /** Opening the bell acknowledges the current account's notifications, including older pages. */
-  openNotices = async () => {
-    const account = this.noticeAccount;
-    const feed = await this.loadNotices();
-    if (!feed || account !== this.noticeAccount) return;
-    const ids = feed.items.filter(row => row.readAt === null).map(row => row.id);
-    if (!(feed.unreadCount ?? ids.length)) return;
-    try {
-      await this.readNotices(feed.unreadCount === undefined ? { ids } : { all: true });
-    } catch (error) {
-      if (account === this.noticeAccount) this.publish({
-        memberNoticeError: error instanceof Error ? error.message : 'IPW_SERVICE_UNAVAILABLE',
-      });
+  openNotices = () => this.loadNotices();
+
+  /** Resolve existing destinations under the current account before switching view. */
+  openOrganizationNotice = async (row: MemberNotice, showPanel?: () => void) => {
+    const generation = this.noticeAccount;
+    const { enterpriseId, tab, targetId } = row;
+    if (!this.state.signedIn) return;
+    if (enterpriseId && tab) {
+      const registry = { templates: "template", skills: "skill", plugins: "plugin", mcp: "mcp" } as const;
+      const root = "/organizations/" + encodeURIComponent(enterpriseId);
+      if (targetId) {
+        const id = encodeURIComponent(targetId);
+        if (tab === "projects") await this.call("/projects/" + id + "/space");
+        else if (tab === "messages") await this.call(root + "/messages/" + id);
+        else if (Object.hasOwn(registry, tab)) await this.call(root + "/publications/" + registry[tab as keyof typeof registry] + "/" + id);
+        else await this.call(root);
+      } else await this.call(root);
+      if (generation !== this.noticeAccount) return;
+      this.open(null);
+      this.openNotice(enterpriseId, tab, targetId ?? undefined);
+      showPanel?.();
+    } else {
+      this.open({ kind: "memberNotices", noticeId: row.id });
     }
+    if (row.readAt === null && generation === this.noticeAccount) await this.readNotices({ ids: [row.id] });
   };
+
   load = async () => {
     if (!this.state.signedIn) return;
     const generation = ++this.generation;
@@ -209,6 +222,7 @@ export class EnterpriseController {
       revision: this.state.revision + 1,
     });
   };
+  clearNoticeTarget = () => this.publish({ publicationTarget: undefined });
   push = (view: EnterpriseView) =>
     this.publish({ views: [...this.state.views, view], dialog: null });
   /** Replace the stack with one view, used when another surface opens a record directly. */

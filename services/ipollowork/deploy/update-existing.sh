@@ -58,7 +58,7 @@ case "$action" in
     http -fsS https://cloud.ipollo.net/api/health
     ;;
   stage)
-    [[ "$(schema)" =~ ^(19|20)$ ]]
+    [[ "$(schema)" =~ ^(19|20|21)$ ]]
     schema > "$release/previous-schema"
     ready
     test ! -e "$release/candidate-id"
@@ -75,7 +75,7 @@ case "$action" in
     [[ "$node_image" =~ ^[a-zA-Z0-9./:_@-]+$ ]]
     docker run --rm --network=none --entrypoint node "$node_image" -e 'if(process.versions.node!=="24.22.3")process.exit(1)'
     docker build --pull=false --target runtime --build-arg "NODE_IMAGE=$node_image" --label "org.opencontainers.image.revision=$revision" --label "org.opencontainers.image.version=$version" -t "$tag" "$release/context/services/ipollowork" > "$release/build.log" 2>&1 || { tail -n 25 "$release/build.log"; exit 1; }
-    docker run --rm --network=none --entrypoint node "$tag" --input-type=module -e 'import assert from "node:assert/strict";import{readFileSync,existsSync}from"node:fs";await import("/app/dist/server/app.js");await import("/app/dist/server/http-server.js");assert.match(readFileSync("/app/dist/server/organization-publications.js","utf8"),/organization-templates/);assert.match(readFileSync("/app/dist/server/admission.js","utf8"),/SERVICE_QUEUE_TIMEOUT/);assert.equal(JSON.parse(readFileSync("/app/package.json")).version,process.argv[1]);for(const name of ["admin","migrate","backup"])assert.ok(existsSync("/app/dist/server/cli/"+name+".js"));assert.ok(existsSync("/app/dist/server/migration-pg-020.sql"));console.log("Candidate imports, compiled operations, migration and version verified")' "$version"
+    docker run --rm --network=none --entrypoint node "$tag" --input-type=module -e 'import assert from "node:assert/strict";import{readFileSync,existsSync}from"node:fs";await import("/app/dist/server/app.js");await import("/app/dist/server/http-server.js");assert.match(readFileSync("/app/dist/server/organization-publications.js","utf8"),/organization-templates/);assert.match(readFileSync("/app/dist/server/admission.js","utf8"),/SERVICE_QUEUE_TIMEOUT/);assert.equal(JSON.parse(readFileSync("/app/package.json")).version,process.argv[1]);for(const name of ["admin","migrate","backup"])assert.ok(existsSync("/app/dist/server/cli/"+name+".js"));assert.ok(existsSync("/app/dist/server/migration-pg-021.sql"));console.log("Candidate imports, compiled operations, migration and version verified")' "$version"
     cat > "$release/release.compose.yml" <<EOF
 services:
   work:
@@ -113,7 +113,7 @@ EOF
     if test -f "$live/.env"; then cp -- "$live/.env" "$backup/service.env"; chmod 600 "$backup/service.env"; fi
     printf 'Database, authentication secret and configuration backup verified\n'
     if "${compose[@]}" -f "$release/release.compose.yml" up -d --no-deps --no-build --pull never work && ready &&
-       test "$(schema)" = 20 && test "$(docker inspect -f '{{.Image}}' "$work")" = "$(cat "$release/candidate-id")" &&
+       test "$(schema)" = 21 && test "$(docker inspect -f '{{.Image}}' "$work")" = "$(cat "$release/candidate-id")" &&
        http -fsS https://cloud.ipollo.net/api/ready >/dev/null &&
        test "$(http -sS -o /dev/null -w '%{http_code}' https://cloud.ipollo.net/api/v1/me/organization-templates)" = 401 &&
        test "$(http -sS -o /dev/null -w '%{http_code}' https://cloud.ipollo.net/api/v1/admin/runtime)" = 401 &&

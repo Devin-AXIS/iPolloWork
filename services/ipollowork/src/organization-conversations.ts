@@ -62,7 +62,7 @@ export function mountOrganizationConversations(app: App, store: Store) {
         "INSERT INTO organization_conversation_recipients(share_id,user_id) SELECT ?, jsonb_array_elements_text(?::jsonb)",
         data.requestId, JSON.stringify(data.recipients),
       );
-      await organizationNotice(store, enterprise, data.recipients, "conversation.shared", data.title, "messages");
+      await organizationNotice(store, enterprise, data.recipients, "conversation.shared", data.title, "messages", data.requestId);
       await audit(store, actor, "conversation.share", data.requestId, enterprise);
     });
     return c.json({ id: data.requestId }, 201);

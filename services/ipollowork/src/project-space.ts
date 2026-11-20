@@ -9,7 +9,6 @@ import {
   now,
   projectAccess,
   projectRole,
-  departmentAccess,
   uid,
 } from "./domain.js";
 import { ServiceError } from "./errors.js";
@@ -30,6 +29,41 @@ const acceptedMemory = z
     "Project memory supports only two heading levels",
   );
 const role = z.enum(["view", "participate", "maintain"]);
+export const projectAccessInput = z.object({
+  mode: z.enum(["enterprise", "selected"]),
+  grants: z.array(z.object({
+    kind: z.enum(["member", "department"]),
+    subjectId: z.string().min(1).max(200),
+    role,
+  })).max(500),
+}).strict();
+
+export async function replaceProjectAccess(store: Store, projectId: string, enterpriseId: string | null, input: z.infer<typeof projectAccessInput>) {
+  if (!enterpriseId) throw new ServiceError("ENTERPRISE_REQUIRED", 400);
+  const keys = new Set(input.grants.map(grant => grant.kind + ":" + grant.subjectId));
+  if (keys.size !== input.grants.length) throw new ServiceError("DUPLICATE_GRANT", 400);
+  const grants = JSON.stringify(input.grants);
+  const invalid = await store.one(
+    `SELECT g.kind FROM jsonb_to_recordset(?::jsonb) AS g(kind text,"subjectId" text)
+       WHERE (g.kind='member' AND NOT EXISTS (SELECT 1 FROM members m WHERE m.enterprise_id=? AND m.user_id=g."subjectId"))
+          OR (g.kind='department' AND NOT EXISTS (SELECT 1 FROM departments d WHERE d.enterprise_id=? AND d.id=g."subjectId")) LIMIT 1`,
+    grants, enterpriseId, enterpriseId,
+  );
+  if (invalid) throw new ServiceError(invalid.kind === "department" ? "DEPARTMENT_MISMATCH" : "RECIPIENT_NOT_FOUND", 400);
+  await store.run("DELETE FROM project_grants WHERE project_id=?", projectId);
+  await store.run(
+    `INSERT INTO project_grants(project_id,kind,subject_id,role)
+       SELECT ?,g.kind,g."subjectId",g.role FROM jsonb_to_recordset(?::jsonb) AS g(kind text,"subjectId" text,role text)`,
+    projectId, grants,
+  );
+  await store.run("UPDATE projects SET access_mode=? WHERE id=?", input.mode, projectId);
+}
+
+async function recordProjectAccessChange(store: Store, actor: Actor, id: string, enterpriseId: string | null) {
+  await store.run("UPDATE shares SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL", now(), id);
+  await audit(store, actor, "project.access", id, enterpriseId);
+}
+
 const filePath = z
   .string()
   .min(1)
@@ -155,68 +189,62 @@ export function mountProjectSpace(
     });
   });
   app.put("/api/v1/projects/:id/access", async (c) => {
-    const input = z
-      .object({
-        mode: z.enum(["enterprise", "selected"]),
-        grants: z
-          .array(
-            z.object({
-              kind: z.enum(["member", "department"]),
-              subjectId: z.string().min(1).max(200),
-              role,
-            }),
-          )
-          .max(500),
-      })
-      .parse(await c.req.json());
-    const actor = c.get("actor");
+    const input = projectAccessInput.parse(await c.req.json());
+    const actor = c.get("actor"), id = c.req.param("id");
     await store.transaction(async () => {
-      const p = await projectAccess(store, actor, c.req.param("id"), true);
-      if (!p.enterprise_id) throw new ServiceError("ENTERPRISE_REQUIRED", 400);
-      const keys = new Set<string>();
-      for (const grant of input.grants) {
-        const key = grant.kind + ":" + grant.subjectId;
-        if (keys.has(key)) throw new ServiceError("DUPLICATE_GRANT", 400);
-        keys.add(key);
-        if (grant.kind === "department")
-          await departmentAccess(
-            store,
-            String(p.enterprise_id),
-            grant.subjectId,
-          );
-        else if (
-          !(await store.one(
-            "SELECT 1 FROM members WHERE enterprise_id=? AND user_id=?",
-            p.enterprise_id,
-            grant.subjectId,
-          ))
-        )
-          throw new ServiceError("RECIPIENT_NOT_FOUND", 400);
-      }
-      await store.run("DELETE FROM project_grants WHERE project_id=?", p.id);
-      for (const grant of input.grants)
-        await store.run(
-          "INSERT INTO project_grants VALUES(?,?,?,?)",
-          p.id,
-          grant.kind,
-          grant.subjectId,
-          grant.role,
-        );
-      await store.run(
-        "UPDATE projects SET access_mode=? WHERE id=?",
-        input.mode,
-        p.id,
-      );
-      // A project access change cannot leave old snapshot links granting broader access.
-      await store.run(
-        "UPDATE shares SET revoked_at=? WHERE project_id=? AND revoked_at IS NULL",
-        now(),
-        p.id,
-      );
-      await audit(store, actor, "project.access", String(p.id));
+      await store.one("SELECT id FROM projects WHERE id=? FOR UPDATE", id);
+      const project = await projectAccess(store, actor, id, true);
+      await replaceProjectAccess(store, id, project.enterprise_id, input);
+      await recordProjectAccessChange(store, actor, id, project.enterprise_id);
     });
     return c.json({ ok: true });
   });
+  app.patch("/api/v1/projects/:id/access", async (c) => {
+    const edits = z.array(z.object({ subjectId: z.string().min(1).max(200), role: role.nullable() }).strict()).min(1).max(500)
+      .refine(rows => new Set(rows.map(row => row.subjectId)).size === rows.length).parse(await c.req.json());
+    const actor = c.get("actor"), id = c.req.param("id");
+    await store.transaction(async () => {
+      await store.one("SELECT id FROM projects WHERE id=? FOR UPDATE", id);
+      const project = await projectAccess(store, actor, id, true);
+      const enterpriseId = project.enterprise_id;
+      if (!enterpriseId) throw new ServiceError("ENTERPRISE_REQUIRED", 400);
+      const input = JSON.stringify(edits);
+      if (await store.one(
+        `SELECT 1 FROM jsonb_to_recordset(?::jsonb) AS item("subjectId" text)
+           WHERE NOT EXISTS (SELECT 1 FROM members WHERE enterprise_id=? AND user_id=item."subjectId") LIMIT 1`,
+        input, enterpriseId,
+      )) throw new ServiceError("RECIPIENT_NOT_FOUND", 400);
+
+      // Preserve the effective access of every untouched member when retiring legacy audiences.
+      await store.run(
+        `WITH effective AS (
+           SELECT m.user_id,MAX(CASE g.role WHEN 'maintain' THEN 3 WHEN 'participate' THEN 2 WHEN 'view' THEN 1
+             ELSE CASE WHEN ?='enterprise' THEN 1 ELSE 0 END END) AS rank
+           FROM members m LEFT JOIN project_grants g ON g.project_id=? AND
+             ((g.kind='member' AND g.subject_id=m.user_id) OR (g.kind='department' AND g.subject_id=m.department_id))
+           WHERE m.enterprise_id=? GROUP BY m.user_id
+         )
+         INSERT INTO project_grants(project_id,kind,subject_id,role)
+           SELECT ?,'member',user_id,CASE rank WHEN 3 THEN 'maintain' WHEN 2 THEN 'participate' ELSE 'view' END
+           FROM effective WHERE rank>0
+         ON CONFLICT(project_id,kind,subject_id) DO UPDATE SET role=EXCLUDED.role`,
+        project.access_mode, id, enterpriseId, id,
+      );
+      await store.run("DELETE FROM project_grants WHERE project_id=? AND kind='department'", id);
+      await store.run(
+        `DELETE FROM project_grants WHERE project_id=? AND kind='member' AND subject_id IN
+           (SELECT item."subjectId" FROM jsonb_to_recordset(?::jsonb) AS item("subjectId" text))`, id, input,
+      );
+      await store.run(
+        `INSERT INTO project_grants(project_id,kind,subject_id,role) SELECT ?,'member',item."subjectId",item.role
+           FROM jsonb_to_recordset(?::jsonb) AS item("subjectId" text,role text) WHERE item.role IS NOT NULL`, id, input,
+      );
+      await store.run("UPDATE projects SET access_mode='selected' WHERE id=?", id);
+      await recordProjectAccessChange(store, actor, id, enterpriseId);
+    });
+    return c.json({ ok: true });
+  });
+
   app.post("/api/v1/projects/:id/changes", async (c) => {
     const input = z
       .object({
@@ -488,7 +516,7 @@ export function mountProjectSpace(
         "UPDATE project_changes SET status='withdrawn' WHERE id=?",
         change.id,
       );
-      await audit(store, actor, "project.withdraw", change.id);
+      await audit(store, actor, "project.withdraw", change.id, p.enterprise_id);
     });
     return c.json({ ok: true });
   });

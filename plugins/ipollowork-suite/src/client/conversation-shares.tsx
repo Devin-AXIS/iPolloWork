@@ -2,11 +2,11 @@ import { useEffect, useState } from "react";
 import { Button, IconShareOutlineRegular, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
-import type { EnterpriseDetail } from "../shared/enterprise.ts";
+import type { SharedMessage } from "../shared/enterprise.ts";
 import type { Props } from "./enterprise.tsx";
 import type { EnterpriseLabels } from "./enterprise-locale.ts";
 import type { AssetProps } from "./enterprise-assets.tsx";
-import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, When, useRecord, useTask } from "./enterprise-ui.tsx";
+import { DirectoryStatus, EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, Transcript, When, useMemberDirectory, useRecord, useTask } from "./enterprise-ui.tsx";
 import styles from "./suite.module.css";
 import trigger from "./sharing/ShareAction.module.css";
 
@@ -67,13 +67,10 @@ function RecipientSelection({ enterpriseId, requestId, sessionId, title, preview
   controller: Props["controller"]; userId: string; t: EnterpriseLabels; zh: boolean; onClose(): void;
 }) {
   const path = "/organizations/" + enterpriseId;
-  const { data, error, reload } = useRecord<EnterpriseDetail>(path, controller.call, 0);
   const [selected, setSelected] = useState<string[]>([]), [query, setQuery] = useState("");
+  const directory = useMemberDirectory(enterpriseId, controller.call, 0, { query, active: true });
   const task = useTask(t);
-  if (!data) return error ? <Notice error={error} t={t} retry={reload}/> : <ListSkeleton rows={2}/>;
-  const members = data.members.filter(member => member.userId !== userId && member.status === "active");
-  if (!members.length) return <EmptyState title={zh ? "没有可分享的组织成员" : "No eligible members to share with"}/>;
-  const filter = query.trim().toLowerCase();
+  const members = directory.data?.items.filter(member => member.userId !== userId) ?? [];
   return <form className={styles.enterpriseStack} onSubmit={event => {
     event.preventDefault();
     if (!preview || !selected.length) return;
@@ -84,15 +81,17 @@ function RecipientSelection({ enterpriseId, requestId, sessionId, title, preview
     });
   }}>
     <Field label={zh ? "选择成员" : "Select members"}>
-      <input type="search" value={query} onChange={event=>setQuery(event.currentTarget.value)} placeholder={zh ? "搜索姓名或工号" : "Search name or employee number"}/>
+      <input type="search" maxLength={120} value={query} onChange={event=>setQuery(event.currentTarget.value)} placeholder={zh ? "搜索姓名或工号" : "Search name or employee number"}/>
     </Field>
     <div className={styles.shareMembers} role="group" aria-label={zh ? "组织成员" : "Organization members"}>
-      {members.filter(member => !filter || (member.name + " " + (member.employeeNumber ?? "")).toLowerCase().includes(filter)).map(member => (
+      {members.map(member => (
         <label key={member.userId}><input type="checkbox" checked={selected.includes(member.userId)} onChange={event => {
           setSelected(ids => event.target.checked ? [...ids,member.userId] : ids.filter(id=>id!==member.userId));
         }}/><span>{member.name}{member.employeeNumber ? <small>{member.employeeNumber}</small> : null}</span></label>
       ))}
     </div>
+    {directory.data && !members.length && <p>{t.noMembersMatch}</p>}
+    <DirectoryStatus directory={directory} t={t}/>
     <FormError message={task.error}/>
     <div className={styles.dialogFooter}>
       <span className={styles.muted}>{zh ? `已选 ${selected.length} 人` : `${selected.length} selected`}</span>
@@ -103,16 +102,18 @@ function RecipientSelection({ enterpriseId, requestId, sessionId, title, preview
   </form>;
 }
 
-export function OrganizationMessages({ enterpriseId, call, revision, controller, t, language, openSession }: AssetProps & { openSession(id: string): Promise<void> }) {
+export function OrganizationMessages({ enterpriseId, call, revision, controller, t, language, openSession, target }: AssetProps & { openSession(id: string): Promise<void>; target?: string | undefined }) {
   const path = "/organizations/" + enterpriseId + "/messages";
   const state = useRecord<Shares>(path,call,revision);
+  const [selected, setSelected] = useState(target);
+  useEffect(() => { setSelected(target); }, [target]);
   const zh = language.startsWith("zh"), task = useTask(t);
   return <Section title={t.messagesTab} actions={<Button size="sm" variant="outline" onClick={state.reload}>{t.refresh}</Button>}>
     <Notice error={state.error} t={t} retry={state.reload}/>
     <FormError message={task.error}/>
     {!state.data ? (!state.error && <ListSkeleton/>) : state.data.items.length ? state.data.items.map(row => {
       const own = row.ownerId === state.data?.userId;
-      return <Row key={row.id} title={row.title} meta={own ? (zh ? "我分享的" : "Shared by me") : row.ownerName}
+      return <Row key={row.id} title={row.title} onOpen={() => setSelected(row.id)} meta={own ? (zh ? "我分享的" : "Shared by me") : row.ownerName}
         aside={<When at={row.createdAt} language={language}/>} actions={own ?
           <Button size="sm" variant="ghost" disabled={task.busy} onClick={() => controller.open({
             kind:"confirm", title:zh ? "撤回分享" : "Withdraw share",
@@ -126,5 +127,30 @@ export function OrganizationMessages({ enterpriseId, call, revision, controller,
           })}>{zh ? "复制并打开" : "Copy and open"}</Button>}/>;
     }) : <EmptyState title={zh ? "暂无共享会话" : "No shared conversations"}
       hint={zh ? "打开任意会话，点击右上角的分享按钮。" : "Open a chat and choose Share in the header."}/>}
+    {selected && <SharedConversationDetail key={selected} path={path + "/" + selected} call={call} revision={revision}
+      openSession={openSession} t={t} zh={zh} close={() => { controller.clearNoticeTarget(); setSelected(undefined); }}/>}
   </Section>;
+}
+
+function SharedConversationDetail({ path, call, revision, openSession, t, zh, close }: {
+  path: string; call: AssetProps["call"]; revision: number; openSession(id: string): Promise<void>;
+  t: EnterpriseLabels; zh: boolean; close(): void;
+}) {
+  const record = useRecord<{ title: string; transcript: SharedMessage[] }>(path, call, revision);
+  const task = useTask(t);
+  return <Modal open title={record.data?.title ?? t.messagesTab} closeLabel={t.close} className={styles.enterpriseModal!} onClose={close}>
+    <Notice error={record.error} t={t} retry={record.reload}/>
+    {!record.data && !record.error && <ListSkeleton rows={2}/>}
+    {record.data && <>
+      <Transcript messages={record.data.transcript} t={t}/>
+      <FormError message={task.error}/>
+      <div className={styles.dialogFooter}>
+        <Button variant="primary" disabled={task.busy} onClick={() => void task.run(async () => {
+          const {sessionId} = await call<{sessionId:string}>(path + "/copy", {});
+          await openSession(sessionId);
+          close();
+        })}>{zh ? "复制并打开" : "Copy and open"}</Button>
+      </div>
+    </>}
+  </Modal>;
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button, Modal, Tooltip } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { MemberNotice, OrganizationActivity, OrganizationPublication, PublicationKind, PublicationVersion } from "../shared/enterprise.ts";
 import { AccessDialog, AudiencePill, type AssetProps } from "./enterprise-assets.tsx";
-import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, When, roleName, useRecord, useTask, type Call } from "./enterprise-ui.tsx";
+import { EmptyState, Field, FormError, ListSkeleton, Notice, PageButtons, Row, Section, When, roleName, useRecord, useTask, type Call } from "./enterprise-ui.tsx";
 import type { EnterpriseController, EnterpriseState } from "./enterprise-controller.ts";
 import { format, type EnterpriseLabels } from "./enterprise-locale.ts";
 import { BellGlyph } from "./glyphs.tsx";
@@ -12,7 +12,7 @@ import { enterpriseError } from "./enterprise-locale.ts";
 import { maxSkillFileBytes, parseSkillFile } from './skill-upload.ts';
 import { FilePicker } from './file-picker.tsx';
 
-type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void>; target?: string | undefined };
+type PublicationProps = AssetProps & { kind: PublicationKind; install(spec: string): Promise<void>; target?: string | undefined; designAvailable?: boolean };
 
 export function OrganizationPublications(props: PublicationProps) {
   const { enterpriseId, call, revision, language, t, kind } = props;
@@ -22,9 +22,13 @@ export function OrganizationPublications(props: PublicationProps) {
   useEffect(() => { if (props.target) setSelected(props.target); }, [props.target]);
   const [editing, setEditing] = useState<OrganizationPublication | "new">();
   const zh = language.startsWith("zh");
-  const current = list.data?.items.find(item => item.id === selected);
+  const fromList = list.data?.items.find(item => item.id === selected);
+  const target = useRecord<OrganizationPublication>(props.target && selected === props.target && !fromList
+    ? path + "/" + props.target : null, call, revision);
   if (!list.data) return list.error ? <Notice error={list.error} t={t} retry={list.reload}/> : <ListSkeleton/>;
-  const items = kind === "mcp" && !list.data.canManage ? list.data.items.filter(item => item.canSubmit) : list.data.items;
+  const available = target.data ? [target.data, ...list.data.items.filter(item => item.id !== target.data?.id)] : list.data.items;
+  const items = kind === "mcp" && !list.data.canManage
+    ? available.filter(item => item.canSubmit || item.id === props.target) : available;
   return <Section
     title={kind === "plugin" ? t.pluginsTab : kind === "skill" ? t.skillPublications :
       kind === "mcp" ? (list.data.canManage ? (zh ? "MCP 提交与审核" : "MCP review") :
@@ -34,13 +38,20 @@ export function OrganizationPublications(props: PublicationProps) {
     }</Button>}
   >
     <Notice error={list.error} t={t} retry={list.reload}/>
+    <Notice error={target.error} t={t} retry={target.reload}/>
+    {kind === "template" && props.designAvailable === false && <p className={css.muted}>
+      {zh ? "启用 Design 后，可以在 Design 中使用已下发的模板。" : "Enable Design to use published templates in Design."}
+    </p>}
     {items.length ? items.map(item => (
       <div key={item.id}>
         <Row title={item.title} meta={item.packageName
           ? [item.packageName, item.publishedVersion].filter(Boolean).join(" · ")
           : [item.description, item.publishedVersion].filter(Boolean).join(" · ")}
-          onOpen={() => setSelected(selected === item.id ? undefined : item.id)}/>
-        {current?.id === item.id && <PublicationDetails
+          onOpen={() => {
+            if (selected === item.id && props.target === item.id) props.controller.clearNoticeTarget();
+            setSelected(selected === item.id ? undefined : item.id);
+          }}/>
+        {selected === item.id && <PublicationDetails
           {...props} publication={item} path={path + "/" + item.id}
           edit={() => setEditing(item)} canManage={list.data!.canManage}
         />}
@@ -105,18 +116,18 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
           <input name="endpoint" type="url" maxLength={2048} required />
         </Field>
         : <FilePicker label={zh ? "HTML 模板" : "HTML template"} language={language}
-        hint={zh ? 'HTML 文件，最大 110 KB' : 'HTML file, up to 110 KB'} accept=".html,.htm,text/html" required disabled={task.busy} onSelect={(files, input) => {
+        hint={zh ? 'HTML 文件，最大 512 KB' : 'HTML file, up to 512 KB'} accept=".html,.htm,text/html" required disabled={task.busy} onSelect={(files, input) => {
           const file = files[0];
           setHtml("");
           setFileError("");
           if (!file) return;
-          if (file.size > 110 * 1024) {
-            setFileError(zh ? "HTML 文件不能超过 110 KB" : "Use an HTML file up to 110 KB");
+          if (file.size > 512 * 1024) {
+            setFileError(zh ? "HTML 文件不能超过 512 KB" : "Use an HTML file up to 512 KB");
             return;
           }
           void file.text().then(content => {
             if (input.files?.[0] !== file) return;
-            if (new TextEncoder().encode(JSON.stringify(content)).length > 235 * 1024)
+            if (new TextEncoder().encode(JSON.stringify(content)).length > 768 * 1024)
               setFileError(zh ? "模板内容过大" : "The template content is too large");
             else setHtml(content);
           }, () => {
@@ -186,7 +197,7 @@ function PublicationDetails(props: PublicationProps & {
         const status = published ? (zh ? "已发布" : "Published") : {
           pending: zh ? "待审核" : "Pending review", approved: zh ? "已通过" : "Approved", rejected: zh ? "已驳回" : "Rejected",
         }[row.status];
-        return <Row key={row.version} title={row.version} meta={[status,row.note].filter(Boolean).join(" · ")} actions={<>
+        return <Row key={row.version} title={row.version} meta={[status, row.title, row.description, row.note].filter(Boolean).join(" · ")} actions={<>
           {(published || kind !== "plugin") && <Button size="sm" variant="outline" disabled={task.busy} onClick={() => read(row.version)}>
             {kind === "plugin" ? (zh ? "用 DSH 安装" : "Install with DSH") : (zh ? "预览" : "Preview")}
           </Button>}
@@ -257,6 +268,20 @@ const activityNames: Record<string, [string, string]> = {
   "mcp.remove": ["移除 MCP", "Removed MCP"],
   "conversation.share": ["分享会话", "Shared conversation"],
   "conversation.revoke": ["撤回会话分享", "Withdrew shared conversation"],
+  "project.create": ["创建项目", "Created project"],
+  "project.update": ["更新项目归属", "Updated project ownership"],
+  "project.move-out": ["移出组织项目", "Moved project out"],
+  "project.access": ["更新项目权限", "Updated project access"],
+  "project.delete": ["移除项目", "Removed project"],
+  "project.publish": ["发布项目", "Published project"],
+  "project.archive": ["上传项目成果", "Archived project output"],
+  "project.archive-policy": ["更新项目上传设置", "Updated upload policy"],
+  "project.withdraw": ["撤回项目改动", "Withdrew project changes"],
+  "package.create": ["创建文件包", "Created file package"],
+  "package.update": ["更新文件包", "Updated file package"],
+  "package.remove": ["移除文件包", "Removed file package"],
+  "package.file.add": ["上传文件包文件", "Added package file"],
+  "package.file.remove": ["移除文件包文件", "Removed package file"],
   "project.submit": ["提交项目改动", "Submitted project changes"],
   "project.accept": ["接纳项目改动", "Accepted project changes"],
 };
@@ -264,13 +289,15 @@ const activityNames: Record<string, [string, string]> = {
 export function OrganizationActivityTab({ enterpriseId, call, revision, t, language }: AssetProps) {
   const zh = language.startsWith("zh");
   const [search, setSearch] = useState(""), [actor, setActor] = useState("");
-  const filtered = useMemo<Call>(() => path => actor ? call(path, {actor}, "POST") : call(path), [call, actor]);
-  const state = useRecord<{items:OrganizationActivity[]}>("/organizations/" + enterpriseId + "/activity", filtered, revision);
+  const [cursors, setCursors] = useState<string[]>([]);
+  const before = cursors.at(-1);
+  const filtered = useMemo<Call>(() => path => actor || before ? call(path, {actor,before}, "POST") : call(path), [call, actor, before]);
+  const state = useRecord<{items:OrganizationActivity[];next?:string | null}>("/organizations/" + enterpriseId + "/activity", filtered, revision);
   return <Section title={t.activityTab} actions={
-    <form className={css.activitySearch} onSubmit={event=>{event.preventDefault(); setActor(search.trim());}}>
+    <form className={css.activitySearch} onSubmit={event=>{event.preventDefault(); setActor(search.trim()); setCursors([]);}}>
       <input type="search" aria-label={zh ? "操作人" : "Operator"} maxLength={120} value={search}
         placeholder={zh ? "姓名或工号" : "Name or employee number"}
-        onChange={event=>{setSearch(event.currentTarget.value); if (!event.currentTarget.value) setActor("");}}/>
+        onChange={event=>{setSearch(event.currentTarget.value); if (!event.currentTarget.value) { setActor(""); setCursors([]); }}}/>
       <Button type="submit" size="sm" variant="outline">{zh ? "搜索" : "Search"}</Button>
     </form>
   }>
@@ -280,10 +307,12 @@ export function OrganizationActivityTab({ enterpriseId, call, revision, t, langu
         meta={row.actor} aside={<When at={row.createdAt} language={language}/>}/>
     )) : <EmptyState title={actor ? (zh ? "没有匹配该操作人的记录" : "No activity for this operator")
       : (zh ? "暂无操作记录" : "No organization activity yet")}/>}
+    <PageButtons t={t} previous={before ? () => setCursors(current => current.slice(0,-1)) : undefined}
+      next={state.data?.next ? () => setCursors(current => [...current, state.data!.next!]) : undefined}/>
   </Section>;
 }
 
-function noticeMessage(row: MemberNotice, t: EnterpriseLabels, zh: boolean): string {
+export function noticeMessage(row: MemberNotice, t: EnterpriseLabels, zh: boolean): string {
   const event = {
     "resource.approved": ["审核通过", "Approved"],
     "resource.rejected": ["审核未通过", "Rejected"],
@@ -316,38 +345,44 @@ export function MemberNoticeHistory({ controller, state, t, language }: {
         {count > 0 && <span aria-hidden="true" className={css.memberNoticeBadge}>{count > 99 ? "99+" : count}</span>}
       </Button>
     </Tooltip>
-    {open && <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => setOpen(false)}>
-      <MemberNoticeList controller={controller} state={state} t={t} language={language} close={() => setOpen(false)}/>
-    </Modal>}
+    {open && <MemberNoticeDialog controller={controller} state={state} t={t} language={language} close={() => setOpen(false)}/>}
   </>;
 }
 
-function MemberNoticeList({ controller, state, t, language, close }: {
+export function MemberNoticeDialog({ controller, state, t, language, close, noticeId }: {
   controller: EnterpriseController;
   state: Pick<EnterpriseState, "memberNotices" | "memberNoticeError">;
   t: EnterpriseLabels;
   language: string;
   close(): void;
+  noticeId?: string;
 }) {
   const task = useTask(t);
   const { memberNotices: feed, memberNoticeError: error } = state;
-  return <>
+  const zh = language.startsWith("zh");
+  const items = noticeId ? feed?.items.filter(row => row.id === noticeId) : feed?.items;
+  return <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!} onClose={close}>
     <Notice error={error} t={t} retry={() => void controller.openNotices()}/>
     <FormError message={task.error}/>
-    {!feed ? (!error && <ListSkeleton/>) : <>
-      {feed.items.length ? feed.items.map(row => {
-        const { enterpriseId, tab } = row;
-        const canOpen = enterpriseId && tab && controller.getSnapshot().catalog?.enterprises.some(item => item.id === enterpriseId);
-        return <Row key={row.id} title={row.name} meta={noticeMessage(row, t, language.startsWith("zh"))}
-          aside={<When at={row.createdAt} language={language}/>} actions={canOpen &&
-            <Button size="sm" variant="ghost" disabled={task.busy} onClick={() => void task.run(async () => {
-              if (row.readAt === null && !await controller.readNotices({ ids: [row.id] })) return;
-              controller.openNotice(enterpriseId, tab, row.targetId ?? undefined);
-              close();
-            })}>{t.open}</Button>}/>;
-      }) : <p>{t.noMemberNotices}</p>}
-    </>}
-  </>;
+    {!feed && !error && <ListSkeleton/>}
+    {items?.map(row => <Row key={row.id} title={row.name} meta={noticeMessage(row, t, zh)}
+      aside={<When at={row.createdAt} language={language}/>} actions={<>
+        {row.readAt === null && <Button size="sm" variant="ghost" disabled={task.busy}
+          onClick={() => void task.run(async () => { await controller.readNotices({ids:[row.id]}); })}>{t.markNoticeRead}</Button>}
+        {row.enterpriseId && row.tab && controller.getSnapshot().catalog?.enterprises.some(item => item.id === row.enterpriseId) &&
+          <Button size="sm" variant="outline" disabled={task.busy} onClick={() => void task.run(async () => {
+            await controller.openOrganizationNotice(row);
+            close();
+          })}>{t.openNotice}</Button>}
+      </>}/>)}
+    {items?.length === 0 && <p>{t.noMemberNotices}</p>}
+    {!noticeId && !!(feed?.unreadCount ?? items?.filter(row => row.readAt === null).length) &&
+      <div className={css.dialogFooter}><Button size="sm" variant="outline" disabled={task.busy}
+        onClick={() => void task.run(async () => {
+          await controller.readNotices(feed?.unreadCount === undefined
+            ? { ids: (items ?? []).filter(row => row.readAt === null).map(row => row.id) } : { all: true });
+        })}>{t.markAllNoticesRead}</Button></div>}
+  </Modal>;
 }
 
 export function OrganizationNotices({ controller, t, language }: {

@@ -118,6 +118,45 @@ test("organization assets enforce member and department grants, and project owne
     assert.equal((await http<{ enterprise: { name: string } }>(base, design.token)).data.enterprise.name, "Assets team");
     assert.equal((await service.store.all("SELECT target FROM audit WHERE action=? AND target=?", "enterprise.update", enterprise)).length, 1);
 
+    const secured = { title:"Selected project", enterpriseId:enterprise, nativeId:"selected-test",
+      access:{mode:"selected",grants:[{kind:"member",subjectId:design.id,role:"participate"}]} };
+    const securedProject = await http<{id:string}>("/api/v1/projects/with-access",owner.token,secured);
+    assert.equal(securedProject.status,201);
+    const securedPath = "/api/v1/projects/" + securedProject.data.id;
+    assert.equal((await http(securedPath + "/space", design.token)).status,200);
+    assert.equal((await http(securedPath + "/space", sales.token)).status,403);
+    assert.equal((await http("/api/v1/projects/with-access",owner.token,secured)).status,200);
+    assert.equal((await http("/api/v1/projects/with-access",owner.token,{...secured,access:{mode:"selected",grants:[]}})).status,409);
+    assert.equal((await http("/api/v1/projects/with-access",owner.token,{...secured,nativeId:"uncommitted",
+      access:{mode:"selected",grants:[{kind:"member",subjectId:randomUUID(),role:"view"}]}})).status,400);
+    assert.equal(await service.store.one("SELECT id FROM projects WHERE native_id='uncommitted'"), undefined);
+
+    await service.store.run(`WITH synthetic AS (
+      INSERT INTO "user"(id,name,email,"emailVerified")
+      SELECT 'asset-roster-'||i,'Roster '||i,'roster-'||i||'@assets.test',true FROM generate_series(1,501) i RETURNING id
+      ) INSERT INTO members(enterprise_id,user_id,role,created_at) SELECT ?,id,'member',? FROM synthetic`, enterprise, Date.now()+1000);
+    const directory = await http<{items:{user_id:string}[];more:boolean}>(base+"/members",owner.token);
+    assert.equal(directory.data.items.length,50);
+    assert.equal(directory.data.more,true);
+    const found = await http<{items:{user_id:string;project_role:string|null}[]}>(base+"/members?query=roster-501%40&projectId="+securedProject.data.id,owner.token);
+    assert.deepEqual(found.data.items.map(row=>[row.user_id,row.project_role]),[["asset-roster-501",null]]);
+    assert.equal((await http(securedPath+"/access",owner.token,{mode:"enterprise",grants:secured.access.grants},"PUT")).status,200);
+    assert.equal((await http(securedPath+"/access",owner.token,[{subjectId:sales.id,role:null}],"PATCH")).status,200);
+    assert.equal((await http(securedPath + "/space", sales.token)).status,403);
+    assert.equal((await http(securedPath + "/space", design.token)).status,200);
+    assert.equal((await http<{items:{user_id:string;project_role:string|null}[]}>(base+"/members?query=roster-501%40&projectId="+securedProject.data.id,owner.token))
+      .data.items[0]?.project_role,"view");
+    await service.store.run(`INSERT INTO audit(actor_id,action,target,created_at,enterprise_id)
+      SELECT ?,'project.update',?,?,? FROM generate_series(1,102)`,owner.id,securedProject.data.id,Date.now(),enterprise);
+    const auditPage = await http<{items:{id:string;action:string}[];next:string}>(base+"/activity",owner.token);
+    assert.equal(auditPage.data.items.length,100);
+    const older = await http<{items:{id:string;action:string}[]}>(base+"/activity?before="+auditPage.data.next,owner.token);
+    assert.ok(older.data.items.some(row=>row.action==="project.access"));
+    assert.ok(older.data.items.every(row=>!auditPage.data.items.some(newer=>newer.id===row.id)));
+
+    await service.store.run("DELETE FROM members WHERE enterprise_id=? AND user_id LIKE ?",enterprise,"asset-roster-%");
+    await service.store.run('DELETE FROM "user" WHERE id LIKE ?', "asset-roster-%");
+
     const pack = (
       await http<{ id: string }>(base + "/packages", owner.token, {
         title: "品牌素材",

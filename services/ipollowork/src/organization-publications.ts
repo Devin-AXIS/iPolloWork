@@ -41,7 +41,7 @@ const review = z.object({
 }).strict();
 type Publication = Row & { id: string; submitted_by: string; resource_key: string; published_version: string | null };
 const resourceTab = { template:"templates", plugin:"plugins", skill:"skills", mcp:"mcp" } as const;
-const versionFields = "version,status,note,created_at";
+const versionFields = "version,status,note,created_at,title,description";
 
 /** Organization publications use the existing membership and asset authorization. */
 export function mountOrganizationPublications(app: App, store: Store) {
@@ -87,6 +87,22 @@ export function mountOrganizationPublications(app: App, store: Store) {
     })));
     return c.json({ canManage, items });
   });
+  app.get(item, async c => {
+    const actor = c.get("actor"), id = c.req.param("id"), kind = kindSchema.parse(c.req.param("kind"));
+    await enterpriseAccess(store, actor, id);
+    const publication = await read(id, kind, c.req.param("publicationId"));
+    const canManage = await isEnterpriseManager(store, actor, id);
+    const canSubmit = canManage || publication.submitted_by === actor.id;
+    if (!canSubmit) {
+      await requireUse(store, actor, id, kind, publication.id);
+      if (!publication.published_version) throw new ServiceError("PUBLICATION_NOT_FOUND", 404);
+    }
+    return c.json({ id: publication.id, title: publication.title, description: publication.description,
+      ...(kind === "plugin" ? { packageName: publication.resource_key } : {}),
+      publishedVersion: publication.published_version, canSubmit,
+      ...(canManage ? { audience: await audienceOf(store, kind, publication.id) } : {}),
+    });
+  });
   app.post(list, async c => {
     const actor = c.get("actor"), id = c.req.param("id"), kind = kindSchema.parse(c.req.param("kind"));
     const raw: unknown = await c.req.json();
@@ -118,9 +134,9 @@ export function mountOrganizationPublications(app: App, store: Store) {
         await replaceAudience(store, id, kind, publicationId, { all: false, departments: [], members: [] });
       }
       const result = await store.run(
-        "INSERT INTO organization_publication_versions(publication_id,version,content,status,created_at) VALUES(?,?,?,'pending',?) ON CONFLICT DO NOTHING",
+        "INSERT INTO organization_publication_versions(publication_id,version,content,status,created_at,title,description) VALUES(?,?,?,'pending',?,?,?) ON CONFLICT DO NOTHING",
         publicationId, input.version, "html" in input ? input.html : "markdown" in input ? input.markdown :
-          "endpoint" in input ? new URL(input.endpoint).href : null, now(),
+          "endpoint" in input ? new URL(input.endpoint).href : null, now(), input.title, input.description,
       );
       if (!result.changes) throw new ServiceError("PUBLICATION_VERSION_EXISTS", 409, "该版本已存在");
       await audit(store, actor, "publication.submit", publicationId, id);
@@ -170,19 +186,22 @@ export function mountOrganizationPublications(app: App, store: Store) {
     await store.transaction(async () => {
       await enterpriseAccess(store, actor, id, true);
       const publication = await read(id, kind, c.req.param("publicationId"), true);
-      const previous = await store.one("SELECT status,content FROM organization_publication_versions WHERE publication_id=? AND version=?", publication.id, requested);
+      const previous = await store.one("SELECT status,content,title,description FROM organization_publication_versions WHERE publication_id=? AND version=?", publication.id, requested);
       if (!previous) throw new ServiceError("PUBLICATION_NOT_FOUND", 404);
       if (input.decision === "publish") {
         if (previous.status !== "approved") throw new ServiceError("PUBLICATION_REVIEW_REQUIRED", 409, "先审核通过该版本");
+        const releaseTitle = String(previous.title ?? publication.title);
+        const releaseDescription = String(previous.description ?? publication.description);
         if (kind === "mcp")
-          await publishEnterpriseMcp(store, publication.id, id, String(publication.title), String(publication.description), String(previous.content));
-        await store.run("UPDATE organization_publications SET published_version=? WHERE id=?", requested, publication.id);
+          await publishEnterpriseMcp(store, publication.id, id, releaseTitle, releaseDescription, String(previous.content));
+        await store.run("UPDATE organization_publications SET published_version=?,title=?,description=? WHERE id=?",
+          requested, releaseTitle, releaseDescription, publication.id);
         if (publication.published_version !== requested) {
           const recipients = await store.all<{user_id:string}>(
             `SELECT m.user_id FROM members m WHERE m.enterprise_id=? AND m.status='active' AND m.user_id<>? AND
              (m.role IN ('owner','admin') OR ${grantedTo("?")})`, id, actor.id, kind, publication.id,
           );
-          await organizationNotice(store, id, recipients.map(row => row.user_id), "resource.published", String(publication.title), resourceTab[kind], publication.id);
+          await organizationNotice(store, id, recipients.map(row => row.user_id), "resource.published", releaseTitle, resourceTab[kind], publication.id);
         }
       } else {
         if (publication.published_version === requested) throw new ServiceError("PUBLICATION_ALREADY_PUBLISHED", 409, "请先下架该版本");
@@ -190,7 +209,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
         await store.run("UPDATE organization_publication_versions SET status=?,note=? WHERE publication_id=? AND version=?", status, input.note, publication.id, requested);
         if (previous.status !== status && publication.submitted_by !== actor.id)
           await organizationNotice(store, id, [publication.submitted_by], status === "approved" ? "resource.approved" : "resource.rejected",
-            String(publication.title), resourceTab[kind], publication.id);
+            String(previous.title ?? publication.title), resourceTab[kind], publication.id);
       }
       await audit(store, actor, "publication." + input.decision, publication.id, id);
     });
