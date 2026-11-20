@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-suite",
-  "version": "0.1.40",
+  "version": "0.1.41",
   "description": "iPolloWork theme, curated plugin market, and account connection for DeepSeek Harness.",
   "icon": "./assets/mark.svg",
   "type": "module",
@@ -19,6 +19,7 @@
     ".": "./lib/host/index.js",
     "./client": "./lib/client.js",
     "./package.json": "./package.json",
+    "./deployment.json": "./deployment.json",
     "./locale/*.json": "./locale/*.json",
     "./agents": "./lib/host/agents.js",
     "./agent-runtime": "./lib/host/agent-runtime.js",
@@ -34,6 +35,7 @@
     "./cloud-bootstrap": "./lib/host/cloud/bootstrap.js"
   },
   "files": [
+    "deployment.json",
     "lib",
     "assets",
     "locale",

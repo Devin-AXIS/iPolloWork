@@ -15,6 +15,13 @@ const origin = z.url().refine(value => {
     (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)));
 });
 const policySchema = z.object({ enabled: z.enum(['true','false']).default('false'), gatewayOrigin: origin.optional(), gatewayKey: z.string().min(32).optional(), ttlSeconds: z.coerce.number().int().min(300).max(3600).default(1800), grantTtlSeconds:z.coerce.number().int().min(3600).max(604800).default(86400), leaseGraceSeconds:z.coerce.number().int().min(60).max(600).default(180) });
+/** Validate merged settings before committing them, retaining previously saved secrets on empty form fields. */
+export function validateCloudSettings(value: Record<string, string>): void {
+  const policy = policySchema.safeParse(Object.fromEntries(Object.entries(value).filter(([, item]) => item !== '')));
+  if (!policy.success) throw new ServiceError('INVALID_CLOUD_SETTINGS', 400, '云端网关地址、密钥或有效期配置不正确');
+  if (policy.data.enabled === 'true' && (!policy.data.gatewayOrigin || !policy.data.gatewayKey))
+    throw new ServiceError('CLOUD_NOT_CONFIGURED', 400, '启用云端执行前，请填写网关地址和至少 32 字符的密钥');
+}
 const grantSchema = z.object({ kind: z.enum(['launch','runtime','manager']), userId: z.string().min(1), projectId: z.string().uuid(), instanceId: z.string().uuid().optional(), ttlSeconds:z.number().int().min(300).max(3600), expiresAt: z.number().int(), nonce: z.string().uuid() }).strict();
 type Grant = z.infer<typeof grantSchema>;
 

@@ -1,9 +1,9 @@
-import { existsSync } from "node:fs";
+import { loadEnvironment } from './environment.js';
 import { createService } from "./app.js";
 import { loadConfig } from "./config.js";
 import { startHttpService } from './http-server.js';
 
-if (existsSync(".env")) process.loadEnvFile(".env");
+loadEnvironment();
 const config = loadConfig();
 const service = await createService(config);
 const http = startHttpService(config, service, () => console.log('iPolloWork services: ' + config.origin));

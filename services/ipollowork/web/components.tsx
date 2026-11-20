@@ -5,9 +5,10 @@ import { api, type Row } from "./api.js";
 export function useData<T>(path: string) {
   const [data, setData] = useState<T>(), [error, setError] = useState(""), [revision, update] = useState(0);
   useEffect(() => {
+    const controller = new AbortController();
     let active = true; setData(undefined); setError("");
-    api<T>(path).then(v => { if (active) setData(v); }).catch(e => { if (active) setError(e.message); });
-    return () => { active = false; };
+    api<T>(path, undefined, 'GET', controller.signal).then(v => { if (active) setData(v); }).catch(e => { if (active) setError(e.message); });
+    return () => { active = false; controller.abort(); };
   }, [path, revision]);
   return { data, error, reload: () => update(v => v + 1) };
 }

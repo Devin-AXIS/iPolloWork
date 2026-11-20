@@ -12,6 +12,37 @@ import { ExecutionService } from "../src/execution.js";
 import { ledgerEntry, wallet } from "../src/domain.js";
 import type { Actor } from "../src/auth.js";
 
+test("chat rate-limit recovery settles and replays one invocation without duplicate charges", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "ipw-chat-recovery-"));
+  const app = await createService(await loadConfig({DATA_DIR:dir,SERVICE_ORIGIN:"http://localhost:4785"}));
+  try {
+    const signup=await app.auth.api.signUpEmail({body:{email:"chat-recovery@example.test",name:"Recovery",password:"Valid-password-2026"}});
+    const actor: Actor={id:signup.user.id,email:signup.user.email,name:signup.user.name,role:"admin"};
+    await ledgerEntry(app.store,actor.id,20,"chat-recovery-fixture","Fixture credit");
+    let calls=0, unavailable=false, cancel:AbortController|undefined;
+    const executor=new ExecutionService(app.store,app.settings,async()=>{
+      calls++;
+      cancel?.abort();
+      return unavailable || calls<3 ? new Response("limited",{status:429,headers:{"retry-after":"0"}}) : Response.json({answer:"OK"});
+    });
+    await executor.save(actor,{id:"chat-recovery",title:"Chat",provider:"fixture",keyId:"fixture",key:"fixture-key",baseUrl:"https://provider.test/v1",capabilities:["chat"],routes:[{method:"POST",path:"/chat/completions",points:3}],enabled:true});
+    const input={requestId:randomUUID(),path:"/chat/completions",method:"POST",contentType:"application/json",body:Buffer.from('{"model":"fixture"}').toString("base64")};
+    assert.equal((await (await executor.invoke(actor,"chat-recovery",input)).json()).answer,"OK");
+    assert.equal((await (await executor.invoke(actor,"chat-recovery",input)).json()).answer,"OK");
+    assert.equal(calls,3);
+    assert.equal(Number((await wallet(app.store,actor.id)).balance),17);
+    assert.equal((await app.store.all("SELECT id FROM service_calls WHERE id=?",input.requestId)).length,1);
+    unavailable=true;
+    await assert.rejects(executor.invoke(actor,"chat-recovery",{...input,requestId:randomUUID()}),{code:"SERVICE_RATE_LIMITED",status:429});
+    assert.equal(calls,6);
+    assert.equal(Number((await wallet(app.store,actor.id)).balance),17);
+    cancel=new AbortController();
+    await assert.rejects(executor.invoke(actor,"chat-recovery",{...input,requestId:randomUUID()},undefined,cancel.signal),{code:"SERVICE_RATE_LIMITED"});
+    assert.equal(calls,7);
+    assert.equal(Number((await wallet(app.store,actor.id)).balance),17);
+  } finally {await app.close();await rm(dir,{recursive:true,force:true});}
+});
+
 test("the model gateway forwards large screenshot histories and rejects invalid Base64", async () => {
   const received: { path: string | undefined; hash: string }[] = [];
   const upstream = createServer(async (req, res) => {

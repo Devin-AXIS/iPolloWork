@@ -38,3 +38,7 @@ Design and Video are optional market installs. The suite carries their checked c
 On macOS, run `node integrations/desktop/run.mjs prepare-cua-helper.ts` before packaging. It builds both official Computer Use helper architectures outside the pinned source tree and signs/notarizes them. Packaging rejects missing helpers. At launch, the desktop reuses SHA-256-verified SenseVoice models from the shared `~/.dsh` cache when its isolated cache has no file; existing desktop models remain unchanged.
 
 Windows packaging requires .NET SDK 10 to compile the pinned Computer Use helper; its complete self-contained output is staged in the provider and unpacked beside the app. The release workflow installs the SDK.
+
+## Account service configuration
+
+Account defaults live in [Suite deployment.json](../../plugins/ipollowork-suite/deployment.json). Platform dotenv files and selected release presets accept `DSH_DESKTOP_ACCOUNT_ORIGIN`; `PACKAGE_ACCOUNT_ORIGIN` explicitly overrides it for a single build, including unsigned/Linux builds. The packaging subprocess embeds the selected origin into native application composition and Suite retains it at runtime. Account and updater configuration are independent. See the [configuration guide](../../docs/deployment-configuration.md) for precedence, server database files and the address inventory.

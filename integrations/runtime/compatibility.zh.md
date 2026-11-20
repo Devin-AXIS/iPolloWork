@@ -8,6 +8,8 @@ DSH 基准由[运行时固定记录](upstream.json)指定。本次盘点基于 `
 
 Desktop `1.0.10` 沿用 `initProfile`/`readProfileManifest` 和原生 `dsh.profile.bundles`，补齐已初始化配置缺失的私有 Host；备份原清单后移除重复的公开产品 Bundle 和产品直接依赖。`desktop-runtime.json.sharedPackages` 限定安装包拥有的 Suite/Stage/Host 副本，即使版本相同也恢复为安装包提供。最终原生 Include overlay 仅启用产品入口；Suite 根据 install-anchor 包身份固定该发行版的账号、主题及服务地址，保留其他插件配置和凭据。升级时复测旧 web-only profile、旧及相同版本 Suite、停用条目、已安装 Mac 的真实云端登录、错误密码分类和保持登录后再次进入。欢迎页进入工作区前核验 `/ipollowork-suite/info`，区分凭据错误、会话拒绝、服务异常、超时和限流。详见[升级诊断](../../docs/diagnostics/2026-11-20-mac-login-and-upgrade.md)。
 
+官方模型代理只在响应头返回前连接失败，或网关报告同一调用仍在执行时，复用原请求 ID 恢复连接。恢复有次数上限、支持取消并绑定账号代次；原生 pi-ai 自动重试仍关闭。已开始输出的流和上游结果不明的调用不重放。账号服务另行在同一计费调用内重试明确返回 HTTP 429 的聊天请求。下次升级 DSH 时复验原生流、预备调用、取消、切换账号及只结算一次。Design 编辑器在拖拽与缩放前将 CSS 单位解析为布局像素，按父容器缩放换算指针位移，并在实际移动后才启用吸附；复验 PPT 百分比、样式表定位、内容盒尺寸、右下角锚定和固定画布缩放。
+
 Desktop `1.0.9` 在官方 profile 启动前，使用现有锁和签名应用的 `desktop-runtime.json` 清单，将 profile 中版本不匹配的 DSH/Cordis 核心依赖备份到独立目录。DSH 原生解析保留 profile 优先级，插件停用后留下的旧依赖仍可能覆盖安装包。升级时复测旧 `dsh-llm`/`dsh-typert-protocol`、重复启动、数据保留、相同版本和外部链接；不修改解析器或 Agent。详见[诊断与验证](../../docs/desktop-startup-and-download-fix-2026-11-20.md)。
 
 Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register`、`ctx.tools.register`、必需的 `systemPrompt.context`、工作区归属和沙箱策略处理模板生成。随包的 `ipollowork-design` Skill 和带 revision 的 `design_edit_text` 只替换文字，保留其余 HTML。模板清单作为有界来源数据处理；文档切换与工具写入共用插件生命周期队列。原编辑器在像素属性控件展示前解析 CSS 单位和主题变量，浮动元素操作直接打开“元素”页。企业 VI 模板保留默认几何并接入主题变量，固定原生幻灯片隐藏无效的全局几何控件；PDF 后台导出有计时兜底。升级时复测 Skill 发现/加载、必需模型上下文、过期版本/只读/跨工作区拒绝、HTML 卡片与链接、本地媒体、元素属性、主题持久化、38 页可编辑 PPTX/PDF、明暗主题和 390px。详见[验收记录](../../docs/design-template-fidelity-2026-11-19.md)。Agent 和 DSH 源码保持不变。
@@ -97,3 +99,7 @@ Design beta.35 的 [CI](https://github.com/Devin-AXIS/deepseek-design/actions/ru
 2026-11-19，Suite `0.1.36` 通过 176 项测试（11 项可选跳过），账号服务通过 89 项，根目录工具通过 11 项测试及上游、文档检查。两个隔离 Windows 原生配置实际安装 Suite 与 Design beta.35 归档，使用合成管理员/成员账号，验证具体版本异常、名称/说明必填、模板授权过滤、Design 开关、新建 HTML 后手动编辑保存、MCP 设置状态及 Agent 的 `ping`/`pong` 调用。撤权后原生 MCP 工具被移除，模板读取和 MCP 重连均被拒绝。模型/工具弹窗在 390px、1280px 和原生明暗主题下，内容可滚动且底部按钮始终位于 600px 高的窗口内。MCP 测试仅替换合成服务的传输目的地，真实业务授权仍然执行。Windows 开发版沿用原配置重启，Design beta.35 通过原生管理器更新。根目录初始化拒绝覆盖已有的真实 `apps` 目录，该目录保持原样。
 
 2026-11-17，Windows Electron 开发版使用当前 pin 和已有登录会话，成功打开组织 MCP 列表及共享表单。迁移和授权回归使用隔离 PostgreSQL，覆盖从业务 schema `11` 升到 `13`、原组织与登录会话保留、管理员共享及撤销。桌面端共 19 项相关回归通过。真实第三方 MCP 的连接和调用需要配置服务后验证。
+
+## 2026-11-20：发行版账号配置
+
+Suite 0.1.41 和桌面组合保留部署选择的账号来源。应用所有权检查仍依据 `profileContext.installAnchor` 和 `@ipollo/desktop-runtime` 包身份，继续要求桌面必需界面，但不再覆盖 accountOrigin。`integrations/tooling/account-service.mjs`、`desktop-composition.mjs` 及平台/预设环境加载器把公开来源写入原生 application.yml，官方 Include 与 runProfile 分层保持生效。Suite 通过包导出读取发货的 deployment.json，包含嵌套打包入口。下次升级复验文件/预设/单次覆盖优先级、显式旧域名、HTTPS 拒绝、严格来源凭据隔离和真实归档安装。本次 83 项桌面配置/覆盖测试通过；Suite 205 项通过、11 项可选跳过；原生 0.2.2-rc.3 实际安装 0.1.41 归档，并通过自定义回环账号服务完成登录/退出。没有修改官方运行时或 Client slot 行为。

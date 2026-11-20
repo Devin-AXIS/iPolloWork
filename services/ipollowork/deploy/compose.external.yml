@@ -1,0 +1,31 @@
+# Standalone deployment against an existing PostgreSQL/RDS database; no local database dependency.
+# Run from the service root: docker compose --env-file .env -f deploy/compose.external.yml ...
+services:
+  work:
+    image: ${WORK_IMAGE:-ipollowork-services:handoff}
+    build:
+      context: ..
+      target: runtime
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:24.22.3-bookworm-slim}
+    env_file: ${IPOLLO_ENV_FILE:-../.env}
+    environment:
+      HOST: 0.0.0.0
+      PORT: 4785
+      DATA_DIR: /data
+    ports:
+      - "127.0.0.1:${SERVICE_PORT:-4785}:4785"
+    volumes:
+      - work-data:/data
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 40s
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+volumes:
+  work-data:

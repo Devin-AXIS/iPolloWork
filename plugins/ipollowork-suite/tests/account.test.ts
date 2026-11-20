@@ -18,7 +18,7 @@ const config = resolveConfig({ accountOrigin: 'https://account.example.com' })
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
 test('the default uses the production service and explicit deployments remain authoritative', () => {
   assert.equal(resolveConfig({}).accountOrigin, 'https://cloud.ipollo.net')
-  assert.equal(resolveConfig({ accountOrigin: 'https://work.ipollo.net/' }).accountOrigin, 'https://cloud.ipollo.net')
+  assert.equal(resolveConfig({ accountOrigin: 'https://work.ipollo.net/' }).accountOrigin, 'https://work.ipollo.net')
   assert.equal(resolveConfig({}).automaticOutputArchive, false)
   assert.equal(resolveConfig({ accountOrigin: 'https://accounts.example.com' }).accountOrigin, 'https://accounts.example.com')
 })
@@ -133,7 +133,7 @@ test('moving to the official cloud service does not send old-origin sign-in gran
   await fixture.store.modifyRecord('ipollowork-suite/account', async () => ({
     kind: 'grant', payload: { version: 1, origin: 'https://work.ipollo.net', token: 'old-origin-token' },
   }))
-  const account = new AccountService(fixture.store, resolveConfig({ accountOrigin: 'https://work.ipollo.net' }),
+  const account = new AccountService(fixture.store, resolveConfig({ accountOrigin: 'https://cloud.ipollo.net' }),
     new AbortController().signal, async () => { assert.fail('old-origin grant was sent') })
   assert.deepEqual(publicAccountState(await account.state()), { status: 'anonymous' })
 })

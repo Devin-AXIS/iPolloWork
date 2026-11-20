@@ -56,6 +56,8 @@ native/system/test/bin/
 
 # Downloaded official DSH source and generated resolution links.
 /.upstream/
+/.ipollowork-dev/configuration-review/
+/.ipollowork-dev/server-handoff/
 /apps
 /packages
 /vendor

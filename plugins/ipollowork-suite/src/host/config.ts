@@ -1,10 +1,13 @@
 /** Deployment-owned configuration. None of these values is writable through a model tool. */
 import { fileURLToPath } from "node:url";
+import { readFileSync } from 'node:fs';
 import z from "@deepseek-ai/schemastery";
 import { SuiteError } from "./errors.ts";
 
-const ACCOUNT_ORIGIN = "https://cloud.ipollo.net";
-const LEGACY_ACCOUNT_ORIGIN = "https://work.ipollo.net";
+const deployment: unknown = JSON.parse(readFileSync(new URL(import.meta.resolve('@ipollo/dsh-suite/deployment.json')), 'utf8'));
+if (!deployment || typeof deployment !== 'object' || !('accountOrigin' in deployment) || typeof deployment.accountOrigin !== 'string')
+  throw new Error('deployment.json requires an accountOrigin string');
+const ACCOUNT_ORIGIN = deployment.accountOrigin;
 
 export interface Config {
   accountOrigin?: string;
@@ -50,10 +53,12 @@ export type ResolvedConfig = Required<Config>;
 /** Resolve defaults and reject remote unencrypted login destinations before registering routes. */
 export function resolveConfig(input: Config, applicationOwned = false): ResolvedConfig {
   const result = Config(applicationOwned ? {
-    ...input, dedicatedDesktop: true, theme: true, account: true, accountOrigin: ACCOUNT_ORIGIN,
+    ...input, dedicatedDesktop: true, theme: true, account: true,
   } : input) as ResolvedConfig;
   if(result.cloudRuntimeTokenEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(result.cloudRuntimeTokenEnv))throw new SuiteError('IPW_INVALID_ACCOUNT_ORIGIN');
-  const url = new URL(result.accountOrigin);
+  let url: URL;
+  try { url = new URL(result.accountOrigin); }
+  catch { throw new SuiteError('IPW_INVALID_ACCOUNT_ORIGIN'); }
   if (
     url.username ||
     url.password ||
@@ -68,5 +73,5 @@ export function resolveConfig(input: Config, applicationOwned = false): Resolved
   ) {
     throw new SuiteError("IPW_INVALID_ACCOUNT_ORIGIN");
   }
-  return { ...result, accountOrigin: url.origin === LEGACY_ACCOUNT_ORIGIN ? ACCOUNT_ORIGIN : url.origin };
+  return { ...result, accountOrigin: url.origin };
 }

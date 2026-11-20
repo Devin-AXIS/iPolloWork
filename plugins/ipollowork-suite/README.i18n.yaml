@@ -3,17 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write plugins/ipollowork-suite/README.md
 /ipollowork-dsh-suite:
-  en: 013f116c9ea906b7
-  zh: 89c377c055fd4c0d
+  en: 55ce1fa977749764
+  zh: c9fd330eb71622f1
+/ipollowork-dsh-suite/mcp-connections:
+  en: 172e8cd26acc21ec
+  zh: 82ed4799035ab549
 /ipollowork-dsh-suite/develop:
-  en: 87125a19133f9636
-  zh: 6b0f0c4a00897cb9
+  en: 13c4236d537cbd27
+  zh: df31bdfc674e7252
 /ipollowork-dsh-suite/modules:
   en: 9c6ddef090a98da1
   zh: 5b2c8bf770a0f108
 /ipollowork-dsh-suite/configuration:
-  en: 6d282ff9ea9841c4
-  zh: 6cfc75d9c292e931
+  en: 1e856487fea780f4
+  zh: 47f7fd122c8f080e
 /ipollowork-dsh-suite/official-integration:
   en: 3f0a8c8eb69904be
   zh: 8096f716fb90cfda
@@ -27,20 +30,26 @@
   en: 6aa5da71ec439bab
   zh: a88a40a28447d851
 /ipollowork-dsh-suite/integrated-messaging:
-  en: 37ade804f410a78d
-  zh: 57a8d8be72d917dc
+  en: 7e6df02551547fda
+  zh: 9c73ca1748814b7e
 /ipollowork-dsh-suite/integrated-messaging/menus-after-connecting-a-bot:
   en: 8c716f907571d0fb
   zh: ce0b75cbe9452b1e
 /ipollowork-dsh-suite/enterprise-projects:
-  en: 63b276efb4125362
-  zh: 8f0fecfee07a27ed
+  en: e8e58ae8cffeb25c
+  zh: 9547750b2704d8df
 /ipollowork-dsh-suite/http-capabilities:
-  en: b409cab5363ad569
-  zh: 6f3831d59a23c682
+  en: 43281082c00a6fb2
+  zh: 7cc9138cfb9ff6b9
 /ipollowork-dsh-suite/app-data:
   en: 2d7b7141dc8bc868
   zh: 8e75b204903ce5a5
 /ipollowork-dsh-suite/sandbox-plugins:
-  en: e2022da53016aedb
-  zh: b5a2b9382f7c1697
+  en: a655fcfe0f4eca2a
+  zh: 636cc4cdc36146f0
+/ipollowork-dsh-suite/curated-market-administration:
+  en: 5f34b0d4f7beeabd
+  zh: 572ae392f1a55316
+/ipollowork-dsh-suite/distribution-account-origin:
+  en: 4d849f319f0ccc29
+  zh: e879d6559c033c26

@@ -5,3 +5,12 @@ out
 .git
 .env*
 !.env.example
+*.log
+*.pem
+*.key
+*.secret
+*.p12
+*.pfx
+*.dump
+*.sqlite*
+coverage

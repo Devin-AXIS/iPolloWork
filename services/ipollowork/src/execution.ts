@@ -17,6 +17,7 @@ import { projectAccess,
   wallet,
 } from "./domain.js";
 import { ServiceError } from "./errors.js";
+import { fetchChatWithRateLimitRecovery } from "./chat-rate-limit.js";
 import { tokenUsage } from "./enterprise-analytics.js";
 import { requireUsageBudget } from "./usage.js";
 import {
@@ -1234,7 +1235,7 @@ export class ExecutionService {
       const speech = s.billing?.protocol === "volcengine-speech" && input.method === "POST"
         ? speechRequest(upstreamBody, jobId ?? input.requestId, String(speechJob ? JSON.parse(String(speechJob.billing_snapshot)).model : JSON.parse(upstreamBody?.toString("utf8") ?? "{}").model), input.path)
         : undefined;
-      response = await this.fetcher((route.origin ? this.enterpriseUpstream(route.origin).replace(/\/$/, "") : route.base === "origin" ? new URL(s.baseUrl).origin : s.baseUrl.replace(/\/$/, "")) + input.path, {
+      response = await fetchChatWithRateLimitRecovery(this.fetcher, (route.origin ? this.enterpriseUpstream(route.origin).replace(/\/$/, "") : route.base === "origin" ? new URL(s.baseUrl).origin : s.baseUrl.replace(/\/$/, "")) + input.path, {
         method: input.method,
         headers: {
           [s.headerName]: s.headerPrefix + key,
@@ -1246,20 +1247,25 @@ export class ExecutionService {
         body: input.method === "POST" ? speech?.body ?? upstreamBody : undefined,
         redirect: "error",
         signal: AbortSignal.any([cancellation.signal, ...(signal ? [signal] : []), AbortSignal.timeout(s.timeoutMs)]),
-      });
+      }, input.method === "POST" && input.path === "/chat/completions" && s.capabilities.includes("chat") && !route.async && !route.jobResultField);
       if (s.billing?.protocol === "volcengine-speech") response = await speechResponse(response, input.path, input.requestId);
-    } catch {
+    } catch (error) {
+      if (error instanceof ServiceError && error.code === "SERVICE_RATE_LIMITED") {
+        await fail("failed");
+        throw error;
+      }
       await fail("unknown");
       throw new ServiceError("SERVICE_OUTCOME_UNKNOWN", 503);
     }
     if (!response.ok) {
+      console.warn("service_upstream_rejected", JSON.stringify({ requestId: input.requestId, status: response.status }));
       await response.body?.cancel();
       await fail(response.status < 500 ? "failed" : "unknown");
       throw new ServiceError(
-        response.status < 500
+        response.status === 429 ? "SERVICE_RATE_LIMITED" : response.status < 500
           ? "SERVICE_UPSTREAM_REJECTED"
           : "SERVICE_OUTCOME_UNKNOWN",
-        503,
+        response.status === 429 ? 429 : 503,
       );
     }
     const type =

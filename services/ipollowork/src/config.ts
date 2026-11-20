@@ -193,11 +193,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
     );
   mkdirSync(dataDir, { recursive: true, mode: 0o700 });
   const secretPath = resolve(dataDir, "auth.secret");
-  if (!value.AUTH_SECRET && !existsSync(secretPath))
-    writeFileSync(secretPath, randomBytes(48).toString("base64url"), {
-      mode: 0o600,
-      flag: "wx",
-    });
+  if (!value.AUTH_SECRET && !existsSync(secretPath)) {
+    try {
+      writeFileSync(secretPath, randomBytes(48).toString("base64url"), { mode: 0o600, flag: "wx" });
+    } catch (error) {
+      // A simultaneous first-start operator command may have created the same persistent key.
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'EEXIST') throw error;
+    }
+  }
   const secret = value.AUTH_SECRET ?? readFileSync(secretPath, "utf8").trim();
   if (secret.length < 32)
     throw new Error("AUTH_SECRET must have at least 32 characters");

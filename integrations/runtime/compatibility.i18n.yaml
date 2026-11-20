@@ -1,0 +1,19 @@
+# Bilingual-pair consistency record for compatibility.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write integrations/runtime/compatibility.md
+/dsh-compatibility-record:
+  en: 792550d77eb6b28c
+  zh: 5e09362b9918c48f
+/dsh-compatibility-record/features-to-verify-when-upgrading:
+  en: afdfb30b64221d1a
+  zh: f71f4421c9f96aeb
+/dsh-compatibility-record/updating-and-verifying:
+  en: 967e8d1a0fe9df57
+  zh: e3b3924894d8626e
+/dsh-compatibility-record/latest-verification:
+  en: 28fd30b6a3db96a6
+  zh: c71006a16fcb92bd
+/dsh-compatibility-record/2026-11-20-distribution-account-configuration:
+  en: 52067b79a84afc24
+  zh: 5e14817e1704b8b1

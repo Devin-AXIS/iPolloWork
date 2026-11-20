@@ -209,6 +209,33 @@ test("account model calls use their private token and report insufficient points
   } finally { await ctx.fiber.dispose(); }
 });
 
+test("the native model stream recovers a lost gateway response using one invocation id", async () => {
+  const {default:WebServer}=await import("@deepseek-ai/dsh-host-webserver");
+  const ctx=new Context();
+  await ctx.plugin(WebServer,{host:"127.0.0.1",port:0});
+  await ctx.plugin(LlmRuntime);
+  const ids:string[]=[];
+  const credentials:CredentialStore={readRecord:async key=>key==="ipollowork-suite/account"?{kind:"grant",payload:{version:1,origin:"https://accounts.test",token:"test-account"}}:undefined,modifyRecord:async()=>undefined,deleteRecord:async()=>{}};
+  const account=new AccountService(credentials,resolveConfig({accountOrigin:"https://accounts.test"}),new AbortController().signal,async(url,init)=>{
+    if(String(url).endsWith("/services"))return Response.json({items:[{id:"chat",title:"Chat",provider:"fixture",capabilities:["chat"],origin:"https://provider.test",basePath:"/v1",available:true,routes:[],models:[{id:"fixture",name:"Fixture",contextWindow:32768,maxTokens:2048}]}],points:10});
+    ids.push(JSON.parse(String(init?.body)).requestId);
+    if(ids.length===1)throw new TypeError("fetch failed");
+    if(ids.length===2)return Response.json({code:"SERVICE_CALL_RUNNING"},{status:409});
+    return new Response('data: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{role:"assistant",content:"Recovered"},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{},finish_reason:"stop"}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2}})+'\n\ndata: [DONE]\n\n',{headers:{"Content-Type":"text/event-stream"}});
+  });
+  let refresh=async()=>{};
+  await ctx.plugin({inject:["llm","webServer"],apply(scope:Context){refresh=mountServiceModels(scope,{getOrigin:()=>scope.webServer.getOrigin(),register:route=>scope.webServer.register(route)},new Services(account,credentials,new AbortController().signal),account);}});
+  try {
+    await refresh();
+    const chunks=[];
+    for await(const chunk of ctx.llm.stream({provider:"ipollo-chat",model:"fixture",messages:[]}))chunks.push(chunk);
+    const finish=chunks.find(chunk=>chunk.type==="finish");
+    assert.equal(finish?.reason.kind,"stop");
+    assert.equal(ids.length,3);
+    assert.equal(new Set(ids).size,1);
+  } finally {await ctx.fiber.dispose();}
+});
+
 for (const [provider, id] of [['deepseek', 'deepseek-v4-pro'], ['aliyun-bailian', 'deepseek-v4-pro'], ['aliyun-bailian', 'qwen3.7-plus']]) test(`${provider}/${id} retains its native reasoning levels and wire fields`, async () => {
   const { default: WebServer } = await import('@deepseek-ai/dsh-host-webserver');
   const ctx = new Context();

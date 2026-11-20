@@ -1,0 +1,16 @@
+# Bilingual-pair consistency record for deployment-configuration.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/deployment-configuration.md
+/distribution-and-service-address-configuration:
+  en: 2b7ccce13245eb0f
+  zh: 0c33337c7c479747
+/distribution-and-service-address-configuration/electron-account-service:
+  en: 8d04e1cb87157972
+  zh: f32fbcf213989d14
+/distribution-and-service-address-configuration/server-database-and-other-addresses:
+  en: fb09716148e232cc
+  zh: 6867b063fb0b8891
+/distribution-and-service-address-configuration/docker-boundaries:
+  en: 59bc3e8cfd409e06
+  zh: b1e9e1dff0bedf46

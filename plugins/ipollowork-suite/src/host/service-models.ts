@@ -5,6 +5,7 @@ import type {} from "@deepseek-ai/dsh-agent";
 import type {} from "@deepseek-ai/dsh-session";
 import type {} from "@deepseek-ai/dsh-workspace";
 import { SuiteError } from "./errors.ts";
+import { recoverModelRequest } from "./model-request-recovery.ts";
 import {
   createProvider,
   envApiKeyAuth,
@@ -140,18 +141,28 @@ export function mountServiceModels(
             projectId = workspace && data.items.find(item => item.native_id === workspace.id && item.enterprise_id === service.enterprise?.id)?.id;
             if (!projectId) throw new SuiteError("SERVICE_ORGANIZATION_CONTEXT_REQUIRED", 403);
           }
-          const response = await account.execute(
-            match[1]!,
-            {
-              requestId,
-              path: "/chat/completions",
-              method: "POST",
-              body: Buffer.concat(chunks).toString("base64"),
-              contentType: "application/json",
-            },
-            AbortSignal.any([controller.signal, lifetime.signal]),
-            projectId,
-          );
+          const generation = account.generation;
+          const signal = AbortSignal.any([controller.signal, lifetime.signal]);
+          const response = await recoverModelRequest(async () => {
+            if (generation !== account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+            const response = await account.execute(
+              match[1]!,
+              {
+                requestId,
+                path: "/chat/completions",
+                method: "POST",
+                body: Buffer.concat(chunks).toString("base64"),
+                contentType: "application/json",
+              },
+              signal,
+              projectId,
+            );
+            if (generation !== account.generation) {
+              await response.body?.cancel();
+              throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+            }
+            return response;
+          }, signal);
           phase = "response";
           res.writeHead(response.status, {
             "Content-Type":

@@ -38,3 +38,7 @@ Design 和 Video 由用户在插件市场按需安装。套件携带经过校验
 macOS 打包前执行 `node integrations/desktop/run.mjs prepare-cua-helper.ts`，在固定上游源码目录外编译两个架构的官方电脑操作辅助程序并签名、公证；缺失辅助程序时禁止打包。桌面启动时，仅当独立目录缺少模型文件，才从共享 `~/.dsh` 缓存复用 SHA-256 校验通过的 SenseVoice 模型；不会覆盖已有模型。
 
 Windows 打包需要 .NET SDK 10 编译固定版本的电脑操作辅助程序；完整独立运行输出随提供方打包，并放在应用归档外。发行工作流会安装该 SDK。
+
+## 账号服务配置
+
+默认账号地址位于 [Suite deployment.json](../../plugins/ipollowork-suite/deployment.json)。平台 dotenv 文件和选中的发行预设支持 `DSH_DESKTOP_ACCOUNT_ORIGIN`；单次构建可通过 `PACKAGE_ACCOUNT_ORIGIN` 显式覆盖，包含未签名和 Linux 构建。打包子进程将地址写入原生应用组合，Suite 运行时保留该值。账号地址与更新源分别配置。优先级、服务端数据库文件和地址清单见[配置说明](../../docs/deployment-configuration.zh.md)。

@@ -467,11 +467,12 @@ function ProviderConnection({ services, close, saved }: { services: Service[]; c
   const multipleOrigins = service.provider === "volcengine-video" || new Set(services.map(service=>new URL(service.baseUrl!).origin)).size > 1;
   const [key, setKey] = useState("");
   const [origin, setOrigin] = useState(new URL(service.baseUrl!).origin);
-  const [enabled, setEnabled] = useState(true);
+  const [enabled, setEnabled] = useState(services.some(item => item.enabled));
+  const [activationChanged, setActivationChanged] = useState(false);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const save = async () => {
     setBusy(true); setError("");
-    try { await api(`/api/v1/admin/service-connections/${service.keyId}`, { ...(key ? { key } : {}), ...(!multipleOrigins ? {origin} : {}), enabled }); saved(); }
+    try { await api(`/api/v1/admin/service-connections/${service.keyId}`, { ...(key ? { key } : {}), ...(!multipleOrigins ? {origin} : {}), ...(activationChanged ? { enabled } : {}) }); saved(); }
     catch (error) { setError(error instanceof Error ? error.message : "保存失败"); }
     finally { setBusy(false); }
   };
@@ -479,7 +480,8 @@ function ProviderConnection({ services, close, saved }: { services: Service[]; c
     <p>一个 Key 统一用于该服务商的语言、图像、视频和语音等能力</p>
     {multipleOrigins ? <p>使用已授权方舟和豆包语音的 IAM 通用 API Key；各能力保留自己的官方接口地址</p> : <label className="field"><span>{service.provider === "aliyun-bailian" ? "百炼业务空间地址" : "服务域名"}</span><input type="url" value={origin} onChange={e => setOrigin(e.target.value)} />{service.provider === "aliyun-bailian" && <small>新业务空间请填写控制台提供的域名，如 https://业务空间ID.cn-beijing.maas.aliyuncs.com；同一空间的各家模型共用一个 Key</small>}</label>}
     <label className="field"><span>API Key</span><input type="password" autoComplete="new-password" value={key} onChange={e => setKey(e.target.value)} placeholder={service.configured ? "已保存，留空保持不变" : "填写 API Key"} /></label>
-    <label><input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} /> 开放已定价的模型</label>
+    <label><input type="checkbox" checked={enabled} onChange={e => { setEnabled(e.target.checked); setActivationChanged(true); }} /> 开放已定价的模型</label>
+    {activationChanged && <p>保存后将统一调整此连接下已定价模型的启用状态。</p>}
     <Status error={error} /><div className="editor-foot"><span className="grow" /><button onClick={close}>取消</button><button className="primary" disabled={busy || (!key && !service.configured)} onClick={() => void save()}>{busy ? "保存中…" : "保存连接"}</button></div>
   </div></Modal>;
 }

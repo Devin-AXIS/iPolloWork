@@ -13,12 +13,13 @@ import { resolveMacOSPackageSettings } from './macos-package-settings.mjs'
 import { resolveWindowsSignatureCacheDirectory } from './windows-signature-cache-directory.mjs'
 import { resolveWindowsPackageSettings } from './windows-package-settings.mjs'
 import { resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
+import { resolveDesktopAccountOrigin } from '../../tooling/account-service.mjs'
 
 const APP_ROOT = fileURLToPath(new URL('..', import.meta.url))
-const SHARED_SETTING = /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|UPDATE_URL|UPDATE_CHANNEL|NPM_REGISTRY|MANDATORY_UPDATE_(?:CONFIG|(?:TEST|PROD)_ORIGIN))|DOWNLOAD_TEST_RELEASE_ID|DOWNLOAD_PROD_EO_ZONE_ID|DOWNLOAD_(?:TEST|PROD)_(?:ORIGIN|COS_BUCKET|COS_SECRET_ID|COS_SECRET_KEY))$/u
+const SHARED_SETTING = /^(?:DSH_DESKTOP_(?:ACCOUNT_ORIGIN|APP_ID|AUTO_UPDATE_ENV|UPDATE_URL|UPDATE_CHANNEL|NPM_REGISTRY|MANDATORY_UPDATE_(?:CONFIG|(?:TEST|PROD)_ORIGIN))|DOWNLOAD_TEST_RELEASE_ID|DOWNLOAD_PROD_EO_ZONE_ID|DOWNLOAD_(?:TEST|PROD)_(?:ORIGIN|COS_BUCKET|COS_SECRET_ID|COS_SECRET_KEY))$/u
 const WINDOWS_SETTING = /^DSH_DESKTOP_WINDOWS_(?:CER_FILE|SIGNTOOL|KEY_CONTAINER|TOKEN_PIN|SIGNATURE_CACHE_DIR|SIGNATURE_CACHE_CONCURRENCY|PACK_CONCURRENCY|COMPRESSION_LEVEL)$/u
 const MACOS_SETTING = /^(?:DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|SIGNATURE_CACHE_DIR|PACK_CONCURRENCY|ZIP_COMPRESSION_LEVEL|DOWNLOAD_PROXY|NOTARIZATION_PROXY)|APPLE_(?:API_KEY|API_KEY_ID|API_ISSUER|ID|APP_SPECIFIC_PASSWORD|TEAM_ID|KEYCHAIN|KEYCHAIN_PROFILE)|CSC_(?:LINK|KEY_PASSWORD))$/u
-const AMBIENT_RELEASE_SETTING = /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|UPDATE_URL|MANDATORY_UPDATE_.*|WINDOWS_.*|MACOS_.*)|APPLE_.*|(?:WIN_)?CSC_.*|DOWNLOAD_(?:TEST|PROD)_.*)$/iu
+const AMBIENT_RELEASE_SETTING = /^(?:DSH_DESKTOP_(?:ACCOUNT_ORIGIN|APP_ID|AUTO_UPDATE_ENV|UPDATE_URL|MANDATORY_UPDATE_.*|WINDOWS_.*|MACOS_.*)|APPLE_.*|(?:WIN_)?CSC_.*|DOWNLOAD_(?:TEST|PROD)_.*)$/iu
 
 /**
  * Select unsigned defaults without reading dotenv files or inheriting release settings.
@@ -30,6 +31,7 @@ export function localUnsignedPackageEnvironment(environment = process.env) {
     ...Object.fromEntries(Object.entries(environment).filter(([name]) => !AMBIENT_RELEASE_SETTING.test(name))),
     DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
     DSH_DESKTOP_UNSIGNED: '1',
+    ...(environment.PACKAGE_ACCOUNT_ORIGIN === undefined ? {} : { DSH_DESKTOP_ACCOUNT_ORIGIN: resolveDesktopAccountOrigin({ DSH_DESKTOP_ACCOUNT_ORIGIN: environment.PACKAGE_ACCOUNT_ORIGIN }) }),
     // pnpm's recursive pack retains the whole workspace; local verification uses the bounded serial path.
     DSH_DESKTOP_MACOS_PACK_CONCURRENCY: '1',
   }
@@ -73,7 +75,7 @@ export function loadDesktopPackageEnvironment(platform, environment = process.en
     : /^DSH_DESKTOP_MACOS_(?:SIGNATURE_CACHE_DIR|PACK_CONCURRENCY|ZIP_COMPRESSION_LEVEL|DOWNLOAD_PROXY|NOTARIZATION_PROXY)$/u
   const settings = readSettings(path, name => preset === undefined
     ? SHARED_SETTING.test(name) || platformSetting.test(name)
-    : /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|UPDATE_URL|UPDATE_CHANNEL|NPM_REGISTRY|MANDATORY_UPDATE_(?:CONFIG|(?:TEST|PROD)_ORIGIN))|DOWNLOAD_TEST_(?:ORIGIN|RELEASE_ID))$/u.test(name) || publicPlatformSetting.test(name))
+    : /^(?:DSH_DESKTOP_(?:ACCOUNT_ORIGIN|APP_ID|AUTO_UPDATE_ENV|UPDATE_URL|UPDATE_CHANNEL|NPM_REGISTRY|MANDATORY_UPDATE_(?:CONFIG|(?:TEST|PROD)_ORIGIN))|DOWNLOAD_TEST_(?:ORIGIN|RELEASE_ID))$/u.test(name) || publicPlatformSetting.test(name))
   if (preset !== undefined) {
     if (settings.DSH_DESKTOP_AUTO_UPDATE_ENV !== preset) throw new Error('desktop package: preset deployment must match its name')
     if (!options.unsigned && (platform === 'darwin' || !options.prepareOnly)) {
@@ -85,6 +87,10 @@ export function loadDesktopPackageEnvironment(platform, environment = process.en
     }
   }
   if (compression !== undefined && compression !== '') settings.DSH_DESKTOP_WINDOWS_COMPRESSION_LEVEL = compression
+  if (environment.PACKAGE_ACCOUNT_ORIGIN !== undefined || settings.DSH_DESKTOP_ACCOUNT_ORIGIN !== undefined)
+    settings.DSH_DESKTOP_ACCOUNT_ORIGIN = resolveDesktopAccountOrigin({
+      DSH_DESKTOP_ACCOUNT_ORIGIN: environment.PACKAGE_ACCOUNT_ORIGIN ?? settings.DSH_DESKTOP_ACCOUNT_ORIGIN,
+    })
   if (zipCompression !== undefined) {
     settings.DSH_DESKTOP_MACOS_ZIP_COMPRESSION_LEVEL = zipCompression
   }

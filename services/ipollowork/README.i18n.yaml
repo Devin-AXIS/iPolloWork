@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write services/ipollowork/README.md
 /ipollowork-services:
-  en: f066a7055ed4da85
-  zh: 69e0afc4ea836a5d
+  en: 4de192740daf32df
+  zh: 478b32bd59e373de
 /ipollowork-services/run:
   en: 2a349bc7d457463f
   zh: 08e040a1bfc92e13
@@ -21,11 +21,20 @@
   en: 10e3a5d168b41277
   zh: 44e2001bd3390b31
 /ipollowork-services/official-services-and-plans:
-  en: 321d26218c5d89ab
-  zh: fac2bebe4fe45014
+  en: ed0e35acf418c470
+  zh: 888ff76cfa601d50
 /ipollowork-services/verification:
-  en: 8510d946cb1cdbeb
-  zh: 5a19d7be712873ef
+  en: e234982d347b9184
+  zh: dc8c95dfea717591
 /ipollowork-services/http-capabilities:
-  en: 70f9704ce626415f
-  zh: 2d76b83fb0e350b5
+  en: 1487788d771fb056
+  zh: cbab99dffb92f6a1
+/ipollowork-services/http-capabilities/organization-member-administration:
+  en: 7e09471a05fa5132
+  zh: e91437c62838e606
+/ipollowork-services/curated-plugin-market:
+  en: 19087479547f91b7
+  zh: 5a32227113ca4232
+/ipollowork-services/configuration-files:
+  en: 15a720e6f23402e3
+  zh: bcb26c4692476bfb

@@ -487,7 +487,7 @@ export function Projects() {
             submit={async (f) => {
               await api("/api/v1/projects", {
                 title: value(f, "title"),
-                enterpriseId: filter || value(f, "enterprise"),
+                enterpriseId: filter || value(f, "enterprise") || null,
               });
               setCreate(false);
               result.reload();
@@ -497,8 +497,8 @@ export function Projects() {
               <input name="title" required />
             </Field>
             <Field label="所属组织">
-              {filter ? <strong>{text(enterprises.data?.items.find(item=>item.id===filter)?.name)}</strong> : <select name="enterprise" required defaultValue="">
-                <option value="" disabled>选择组织</option>
+              {filter ? <strong>{text(enterprises.data?.items.find(item=>item.id===filter)?.name)}</strong> : <select name="enterprise" defaultValue="">
+                <option value="">个人项目</option>
                 {enterprises.data?.items.map((r) => (
                   <option key={text(r.id)} value={text(r.id)}>
                     {text(r.name)}
@@ -971,6 +971,7 @@ export function UsersPage() {
   );
 }
 const settingsLabels: Record<string, Record<string, string>> = {
+  cloud: { enabled: '启用云端执行', gatewayOrigin: '云端网关地址（HTTPS 来源）', gatewayKey: '网关密钥（至少 32 字符，留空保留）', ttlSeconds: '执行租约秒数（300–3600）', grantTtlSeconds: '授权秒数（3600–604800）', leaseGraceSeconds: '租约宽限秒数（60–600）' },
   stage: { enabled: "启用（true / false）", origin: "Stage HTTPS 服务地址", rates: "每百万 Token 积分及成本（JSON）" },
   stripe: { secretKey: "Secret key", webhookSecret: "Webhook secret" },
   alipay: { appId: "应用 App ID", sellerId: "收款商户 PID", privateKey: "应用私钥 PEM", publicKey: "支付宝公钥 PEM", sandbox: "沙箱（1 开启，0 关闭）" },
@@ -1007,6 +1008,7 @@ export function SettingsPage() {
               <h2>
                 {
                   {
+                    cloud: '云端执行网关',
                     stage: "Stage 官方通道与计费",
                     stripe: "Stripe 支付",
                     alipay: "支付宝",
@@ -1029,7 +1031,9 @@ export function SettingsPage() {
               >
                 {Object.entries(fields).map(([field, label]) => (
                   <Field key={field} label={label}>
-                    {/privateKey|publicKey|^rates$/i.test(field) ? (
+                    {field === 'enabled' ? (
+                      <select name={field} defaultValue={result.data?.[group]?.[field] || 'false'}><option value="false">关闭</option><option value="true">启用</option></select>
+                    ) : /privateKey|publicKey|^rates$/i.test(field) ? (
                       <textarea
                         name={field}
                         rows={3}

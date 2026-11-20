@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write integrations/desktop-host/README.md
 /ipollowork-desktop-host:
-  en: feac2f8f824897b5
-  zh: 0276ef0bcba2f04b
+  en: 336d9c67325e38ec
+  zh: 1da911784bb4b905

@@ -1,14 +1,29 @@
 export interface User { id: string; name: string; email: string; role: string; emailVerified: boolean }
 export type Row = Record<string, string | number | boolean | null>;
-export async function api<T>(path: string, body?: unknown, method = body === undefined ? "GET" : "POST"): Promise<T> {
-  const response = await fetch(path, {
+export async function api<T>(path: string, body?: unknown, method = body === undefined ? "GET" : "POST", signal?: AbortSignal): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(path, {
     method, credentials: "same-origin",
     headers: body instanceof FormData ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error?.message ?? result.error ?? result.message ?? "请求失败");
-  return result;
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(120000)]) : AbortSignal.timeout(120000),
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new Error(error instanceof DOMException && error.name === 'TimeoutError' ? '请求超时，请刷新查询当前结果，避免重复提交' : '无法连接服务，请检查网络后重试');
+  }
+  if (response.status === 204) return undefined as T;
+  let result: unknown;
+  try { result = await response.json(); }
+  catch { throw new Error(response.ok ? '服务返回的数据格式异常，请刷新后重试' : `服务暂时不可用（HTTP ${response.status}），请稍后重试`); }
+  if (!response.ok) {
+    const record = result && typeof result === 'object' ? result : {};
+    const error = Reflect.get(record, 'error');
+    const message = typeof error === 'string' ? error : error && typeof error === 'object' ? Reflect.get(error, 'message') : Reflect.get(record, 'message');
+    throw new Error(typeof message === 'string' ? message : '请求失败，请稍后重试');
+  }
+  return result as T;
 }
 export const date = (v: unknown) => v ? new Date(Number(v)).toLocaleString("zh-CN", { hour12: false }) : "—";
 export const count = (v: unknown) => Number(v ?? 0).toLocaleString("zh-CN");
@@ -21,5 +36,5 @@ export const operation = (v: unknown) => ({
   "publication.publish": "发布资源", "publication.archive": "下架资源", "grant.update": "更新访问范围",
   "skill.create": "发布技能", "skill.remove": "移除技能", "mcp.create": "添加 MCP", "mcp.update": "更新 MCP", "mcp.remove": "移除 MCP",
   "organization.notification.configure": "更新成员变更通知",
-  "plan.create": "添加套餐", "plan.update": "更新套餐", "points.adjust": "调整积分", "user.update": "更新账号", "settings.update": "更新配置", "share.create": "分享会话",
+  "plan.create": "添加套餐", "plan.update": "更新套餐", "points.adjust": "调整积分", "user.update": "更新账号", "user.bootstrap-admin": "运维设置管理员", "settings.update": "更新配置", "share.create": "分享会话",
 } as Record<string, string>)[text(v)] ?? "更新记录";

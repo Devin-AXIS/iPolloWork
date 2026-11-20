@@ -5,11 +5,11 @@ import { StageService, validateStageSettings } from './stage.js';
 import { OrganizationMembers } from "./organization-members.js";
 import { InvitationRosterError } from "./organization-invitation-csv.js";
 import { AppDataFiles } from './app-data-files.js';
-import { CloudProjects, cloudGrantAllows, mountCloudProjects } from './cloud-projects.js';
+import { CloudProjects, cloudGrantAllows, mountCloudProjects, validateCloudSettings } from './cloud-projects.js';
 import { ExecutionService, mountExecution } from "./execution.js";
 import { Capabilities, mountCapabilities } from "./capabilities.js";
 import { authenticateCapabilityKey, mountAccessKeys } from "./access-keys.js";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { secureHeaders } from "hono/secure-headers";
@@ -92,6 +92,12 @@ export async function createService(config: Config) {
     const storage = new Storage(store, settings, config);
     const appFiles=appData?new AppDataFiles(store,appData,storage,config.storageCleanupIntervalMs):undefined;
     const app: App = new Hono();
+    app.use('*', async (c, next) => {
+      const requestId = randomUUID();
+      c.set('requestId', requestId);
+      c.header('X-Request-Id', requestId);
+      await next();
+    });
     const admission = new Admission(config.admission);
     const eventLoop = monitorEventLoopDelay({ resolution: 20 });
     const stage = new StageService(store, settings, config.origin);
@@ -169,9 +175,10 @@ export async function createService(config: Config) {
         c.header('Retry-After', '2');
         return c.json({ error: '数据库连接暂时不可用，请稍后重试', code: 'DATABASE_UNAVAILABLE' }, 503);
       }
-      console.error("request failed", error.name, error.message);
+      console.error(JSON.stringify({ event: 'request_failed', requestId: c.get('requestId'),
+        errorType: error.name, code: 'code' in error && /^[A-Z0-9_]{1,40}$/.test(String(error.code)) ? error.code : undefined }));
       return c.json(
-        { error: "服务暂时无法完成请求", code: "INTERNAL_ERROR" },
+        { error: "服务暂时无法完成请求", code: "INTERNAL_ERROR", requestId: c.get('requestId') },
         500,
       );
     });
@@ -184,7 +191,7 @@ export async function createService(config: Config) {
     );
     app.get('/api/ready', async c => {
       if (admission.isDraining) return c.json({ ok: false }, 503);
-      try { await store.one('SELECT 1 AS ready'); return c.json({ ok: true }); }
+      try { await Promise.all([store.one('SELECT 1 AS ready'), dataStore?.one('SELECT 1 AS ready')]); return c.json({ ok: true }); }
       catch { return c.json({ ok: false }, 503); }
     });
     stage.mountPublic(app);
@@ -430,10 +437,11 @@ export async function createService(config: Config) {
       if (Object.keys(input).some((key) => !fields.includes(key)))
         throw new ServiceError("UNKNOWN_SETTING_FIELD", 400);
       const values = Object.fromEntries(
-        Object.entries(input).filter(([, v]) => v !== "••••••••"),
+        Object.entries(input).filter(([, v]) => v !== "••••••••" && v !== ''),
       );
       await store.transaction(async () => {
         if(group==='stage')validateStageSettings({...await settings.get(group),...values});
+        if(group==='cloud')validateCloudSettings({...await settings.get(group),...values});
         await settings.set(group, values);
         await audit(store, actor, "settings.update", group);
       });

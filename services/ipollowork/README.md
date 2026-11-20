@@ -6,6 +6,8 @@ English | [中文](README.zh.md)
 
 Independent account, organization, project and billing service. Node serves the API and administration UI; PostgreSQL owns identities and transactional records, and private Alibaba OSS owns production files. The service does not import DSH or the old iPolloWork runtime.
 
+For development transfer, image builds, compiled operator commands, external RDS deployment, mail integration and backup/restore acceptance, start with the [handoff guide](HANDOFF.md). The service image includes the built administration pages; no desktop packaging is required.
+
 Enterprise administrators use `POST /api/v1/enterprises/:id/analytics` with `{days: 7|30|90, groupBy: "department"|"member"|"sku", page: 1}`. Results contain at most 25 groups. Schema eight adds immutable enterprise/department attribution, model IDs, polling classification and nullable provider token counts to service calls; historical unattributed calls stay excluded. Responses contain aggregates only, without prompts or response bodies. Skill/plugin inventory is separate from reported skill loads and tool calls in linked enterprise projects. The authenticated activity endpoint deduplicates by account, project, session and call. Metadata reporting is best-effort and excludes arguments and results; it is not an audit log or billing source.
 
 ## Run
@@ -55,7 +57,7 @@ The sandboxed viewer receives only a short-lived share capability and cannot rea
 
 [Official billing](docs/billing.md) defines model presets, price sources, credit conversion and activation requirements. Administrators manage keys centrally in Service center. Plugins can choose official services or their own native keys. Missing credentials never trigger a paid fallback.
 
-Each provider has one key configuration shared by its capabilities. Alibaba includes current Qwen and third-party chat presets; the editor starts with recommended versions and searches the complete saved directory. Regional discovery imports all authors with published prices where recognized, preserving operator prices and keeping newly discovered models disabled. The editor supports input/output token prices, cache prices, image counts, audio/video duration, character counts and pricing tiers. Unconfigured, disabled, unpriced and expired models stay out of the user catalog. See the [upgrade steps](../../docs/upgrade-guide/v0.2.2-rc.2/ipollowork-model-pricing/guide.md).
+Each provider has one key configuration shared by its capabilities. Alibaba includes current Qwen and third-party chat presets; the editor starts with recommended versions and searches the complete saved directory. Regional discovery imports all authors with published prices where recognized, preserving operator prices and keeping newly discovered models disabled. The editor supports input/output token prices, cache prices, image counts, audio/video duration, character counts and pricing tiers. Unconfigured, disabled, unpriced and expired models stay out of the user catalog. See the [upgrade steps](https://github.com/Devin-AXIS/iPolloWork/blob/818b201e54dd86cbbc9187f5c92b9097627f8412/docs/upgrade-guide/v0.2.2-rc.2/ipollowork-model-pricing/guide.md).
 
 The gateway authenticates each request, restricts paths and models, admits metered requests when the account has positive credits, and deducts actual provider usage on completion. A completed call may leave debt; another paid call requires a positive balance. Fixed-price routes keep their atomic upfront charge. Video polling verifies job ownership. Duplicate request IDs cannot charge twice. Unknown outcomes retain their billing record until an administrator checks the provider; they are never blindly resubmitted. Response replay is available for 24 hours. Independent gateway requests from the same account can run concurrently. Requests sharing an ID cannot execute or charge twice. Schema version 6 removes the previous per-account unique running-request index; no client update is required.
 
@@ -81,7 +83,7 @@ Schema 7 reconciles membership data and parallel execution from either schema-6 
 
 Published Design pages keep one public URL per owner, native workspace and entry path. Updates stage a complete file set privately, then switch the live revision atomically. An incomplete update leaves the previous page available. Schema 8 adds publication identity and revision links without new tables. A unique older publication is adopted on the first update; ambiguous older duplicates require selecting a publication before updating.
 
-Cloud/local project creation and the optional Alibaba execution server are described in [cloud projects](../../plugins/ipollowork-suite/docs/cloud-projects.md). Migration 10 adds project execution location and a single-writer lease; cloud execution is disabled until configured.
+Cloud/local project creation and the optional Alibaba execution server are described in [cloud projects](https://github.com/Devin-AXIS/iPolloWork/blob/818b201e54dd86cbbc9187f5c92b9097627f8412/plugins/ipollowork-suite/docs/cloud-projects.md). Migration 10 adds project execution location and a single-writer lease; cloud execution is disabled until configured.
 
 Daily and weekly credit caps are currently disabled by default (`USAGE_LIMITS_ENABLED=false`); balances, metering and usage history remain active. Set the flag to `true` to enforce stored membership allowances again.
 
@@ -98,3 +100,7 @@ Optional member-change notifications are configured on the same page and disable
 ## Curated plugin market
 
 `GET /api/market/catalog` publishes up to 200 curated native DSH references. Authenticated `GET /api/v1/market/manage` reports platform administration permission; `POST /api/v1/market/plugins` requires the platform `admin` role. Only HTTPS npm/Git sources and pinned SemVer releases are accepted, with full Git commit hashes for Git sources. References are stored in the existing `settings` table under `market.catalog`; PostgreSQL advisory transaction locks serialize additions, and the existing `audit` table records the actor. No third-party code is fetched or executed. Deploy alongside the updated suite to expose its administrator-only add form.
+
+## Configuration files
+
+The server and every production operator command share the dotenv selected by `IPOLLO_CONFIG_FILE` (default `.env`). Existing process variables win; a missing explicit file fails before database initialization. Both account and app-data database URLs/schemas are configurable. External RDS deployments use `deploy/compose.external.yml`; `IPOLLO_ENV_FILE` selects its host-side dotenv. See [configuration](docs/configuration.md). The administration page now includes validated cloud-gateway settings, and users without organizations can create personal projects. Editing provider credentials preserves the existing disabled/enabled selection instead of defaulting to enable.
