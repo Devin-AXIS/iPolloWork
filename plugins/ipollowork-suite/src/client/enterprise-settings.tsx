@@ -3,7 +3,7 @@ import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { EnterpriseDetail } from '../shared/enterprise.ts'
 import type { EnterpriseController } from './enterprise-controller.ts'
 import type { EnterpriseLabels } from './enterprise-locale.ts'
-import { CopyLink, Field, FormError, Row, Section, useTask, type Call } from './enterprise-ui.tsx'
+import { CopyLink, Field, FormError, ListSkeleton, Notice, Row, Section, useRecord, useTask, type Call } from './enterprise-ui.tsx'
 import css from './suite.module.css'
 import { FilePicker } from './file-picker.tsx'
 
@@ -79,5 +79,50 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
         <CopyLink url={serviceAddress} t={t} label={t.serviceAddress}/>
       </Section>
     </div>}
+    {canManage && <MembershipWebhook path={'/organizations/' + enterprise.id + '/notifications'} t={t} call={call} />}
   </div>
+}
+
+type WebhookSettings = { endpoint: string; enabled: boolean; configured: boolean };
+
+function MembershipWebhook({ path, t, call }: { path: string; t: EnterpriseLabels; call: Call }) {
+  const record = useRecord<WebhookSettings>(path, call, 0);
+  return <div className={css.organizationSettingsCard}>
+    <Section title={t.identityNotifications}>
+      <Notice error={record.error} t={t} retry={record.reload}/>
+      {record.data ? <WebhookForm path={path} t={t} call={call} initial={record.data}/> :
+        !record.error && <ListSkeleton rows={2}/>}
+    </Section>
+  </div>;
+}
+
+function WebhookForm({ path, t, call, initial }: { path: string; t: EnterpriseLabels; call: Call; initial: WebhookSettings }) {
+  const task = useTask(t);
+  const [endpoint, setEndpoint] = useState(initial.endpoint);
+  const [enabled, setEnabled] = useState(initial.enabled);
+  const [saved, setSaved] = useState(initial);
+  const [confirmed, setConfirmed] = useState(false);
+  const [secret, setSecret] = useState<string>();
+  const save = (rotate = false) => void task.run(async () => {
+    const response = await call<WebhookSettings & { secret?: string }>(path,
+      { endpoint: endpoint.trim(), enabled, ...(rotate ? { rotate } : {}) }, 'PUT');
+    const { secret: newSecret, ...settings } = response;
+    setSaved(settings);
+    setConfirmed(true);
+    setSecret(newSecret);
+  });
+  const changed = endpoint.trim() !== saved.endpoint || enabled !== saved.enabled;
+  return <form className={css.enterpriseForm} onSubmit={event => { event.preventDefault(); save(); }}>
+    <Field label={t.notificationEndpoint}><input type="url" maxLength={2048} required={enabled}
+      value={endpoint} disabled={task.busy} onChange={event => setEndpoint(event.target.value)}/></Field>
+    <label><input type="checkbox" checked={enabled} disabled={task.busy}
+      onChange={event => setEnabled(event.target.checked)}/> {t.notificationEnabled}</label>
+    <FormError message={task.error}/>
+    {confirmed && !changed && <p className={css.quietLine} role="status">{t.settingsSaved}</p>}
+    {secret && <CopyLink url={secret} t={t} label={t.notificationSecret}/>}
+    <div className={css.dialogFooter}>
+      {saved.configured && <Button type="button" variant="outline" disabled={task.busy || changed} onClick={() => save(true)}>{t.rotateSecret}</Button>}
+      <Button type="submit" variant="primary" disabled={task.busy || !changed || (enabled && !endpoint.trim())}>{t.save}</Button>
+    </div>
+  </form>;
 }

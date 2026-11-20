@@ -2,7 +2,7 @@
 
 English | [中文](HANDOFF.zh.md)
 
-This directory independently builds the account, organization, collaboration, model gateway and administration service. Package version is in `package.json`; current business schema is 19. Exported `VERSION.json` and `SHA256SUMS.txt` identify the actual source snapshot, including whether it contains working-tree changes. Do not mix this source with the older 2026-11-19 handoff.
+This directory independently builds the account, organization, collaboration, model gateway and administration service. Package version is in `package.json`; current business schema is 21. Exported `VERSION.json` and `SHA256SUMS.txt` identify the actual source snapshot, including whether it contains working-tree changes. Do not mix this source with the older 2026-11-19 handoff.
 
 ## Ownership
 

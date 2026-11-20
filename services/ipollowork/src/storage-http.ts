@@ -88,7 +88,7 @@ export function mountStorage(app: App, store: Store, storage: Storage): void {
         now(),
         project.id,
       );
-      await audit(store, actor, "project.publish", project.id);
+      await audit(store, actor, "project.publish", project.id, project.enterprise_id);
     });
     return c.json({ ok: true });
   });

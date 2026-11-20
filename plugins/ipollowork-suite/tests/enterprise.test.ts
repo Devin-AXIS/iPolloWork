@@ -3,20 +3,23 @@ import assert from 'node:assert/strict'
 import { AccountService } from '../src/host/account.ts'
 import { resolveConfig } from '../src/host/config.ts'
 import { EnterpriseService } from '../src/host/enterprise.ts'
+import { organizationTemplateSource } from '../src/client/organization-templates.ts'
 
-test('publication labels survive the Host bridge and URL encoding without loosening plugin versions', async () => {
+test('publication labels survive the Design source and Host bridge without loosening plugin versions', async t => {
   const origin = 'https://account.test', label = '2026-11 初版', paths: string[] = []
+  let published = label
+  let grant = true
   const account = new AccountService({
     readRecord: async () => ({ kind:'grant',payload:{version:1,origin,token:'test-session'} }),
     modifyRecord:async()=>undefined,deleteRecord:async()=>{},
   },resolveConfig({accountOrigin:origin}),new AbortController().signal,async (input, init)=>{
     const path = new URL(String(input)).pathname
     paths.push(path)
-    if (path.endsWith('/me/organization-templates')) return Response.json({items:[{id:'resource',enterpriseId:'team',title:'Template',description:'Team template',version:label,sourceName:'Team'}]})
+    if (path.endsWith('/me/organization-templates')) return Response.json({items:grant ? [{id:'resource',enterpriseId:'team',title:'Template',description:'Team template',version:published,sourceName:'Team'}] : []})
     if (init?.method === 'POST') return Response.json({id:'resource',version:JSON.parse(String(init.body)).version})
     if (init?.method === 'PUT') return Response.json({ok:true})
     if (path.endsWith('/versions')) return Response.json({items:[{version:label,status:'approved',note:'',created_at:1}]})
-    return Response.json({html:'<h1>Template</h1>'})
+    return grant ? Response.json({html:'<h1>Template</h1>'}) : Response.json({code:'RESOURCE_FORBIDDEN'}, {status:403})
   })
   const bridge = new EnterpriseService(account,{workspaceRegistry:{list:()=>[]},sessionQuery:{readSurface:async()=>({events:[]})}},origin)
   assert.equal((await bridge.request('GET','/design-templates') as {items:{version:string}[]}).items[0]?.version,label)
@@ -25,6 +28,30 @@ test('publication labels survive the Host bridge and URL encoding without loosen
   await bridge.request('PUT',release,{decision:'publish'})
   assert.deepEqual(await bridge.request('GET','/design-templates/team/resource/'+encodeURIComponent(label)),{html:'<h1>Template</h1>'})
   assert.equal(paths.at(-1),'/api/v1/enterprises/team/publications/template/resource/versions/'+encodeURIComponent(label))
+  t.mock.method(globalThis, 'fetch', async (path: string) => {
+    try { return Response.json(await bridge.request('GET', path.replace('/ipollowork-suite/enterprise', ''))) }
+    catch (error) {
+      const { code, status } = error as { code: string; status: number }
+      return Response.json({ error: code }, { status })
+    }
+  })
+  const lifetime = new AbortController()
+  const source = organizationTemplateSource(lifetime.signal, 'Organization')
+  const [entry] = await source.list()
+  assert.ok(entry)
+  assert.match(entry.version, /^0\.0\.0-org\.[a-f0-9]{48}$/)
+  assert.equal((await source.list())[0]?.version, entry.version)
+  assert.equal(await source.read(entry.id, entry.version), '<h1>Template</h1>')
+  assert.equal(paths.at(-1),'/api/v1/enterprises/team/publications/template/resource/versions/'+encodeURIComponent(label))
+  grant = false
+  await assert.rejects(source.read(entry.id, entry.version), {code:'RESOURCE_FORBIDDEN'})
+  grant = true
+  published = '1.2.3'
+  assert.equal((await source.list())[0]?.version, published)
+  await assert.rejects(source.read(entry.id, entry.version), {message:'IPW_INVALID_INPUT'})
+  assert.equal(await source.read(entry.id, published), '<h1>Template</h1>')
+  lifetime.abort()
+  await assert.rejects(source.read(entry.id, published), {name:'AbortError'})
   const before = paths.length
   await assert.rejects(bridge.request('POST','/organizations/team/publications/plugin',{title:'Plugin',description:'Team plugin',packageName:'@team/plugin',version:label}),{code:'PUBLICATION_VERSION_INVALID'})
   for (const value of ['x%252Fy','%ZZ','..'])
@@ -57,25 +84,30 @@ test('service address and code join the active organization service with the exi
   await assert.rejects(enterprise.request('GET','/os',undefined),{code:'IPW_NOT_FOUND'})
 })
 
-test('the organization Host drops legacy file-package records and no longer forwards legacy file routes', async () => {
+test('organization file packages retain the authorized account-service routes', async () => {
   const host = 'https://account.test'
-  let reads = 0
+  const calls: string[] = []
+  const asset = { id: 'old', title: 'Files', description: '', fileCount: 1, bytes: 10, updatedAt: 1,
+    audience: { all: false, members: [], departments: [] } }
   const account = new AccountService({
     readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: host, token: 'test-token' } }),
     modifyRecord: async () => undefined,
     deleteRecord: async () => {},
-  }, resolveConfig({ accountOrigin: host }), new AbortController().signal, async input => {
-    assert.equal(new URL(String(input)).pathname, '/api/v1/enterprises/team/assets')
-    reads++
-    return Response.json({ canManage: true, skills: [], packages: [{ id: 'legacy-file-package' }] })
+  }, resolveConfig({ accountOrigin: host }), new AbortController().signal, async (input, init) => {
+    const path = new URL(String(input)).pathname
+    calls.push((init?.method ?? 'GET') + ' ' + path)
+    if (path.endsWith('/assets')) return Response.json({ canManage: true, skills: [], packages: [asset] })
+    if (init?.method === 'DELETE') return Response.json({ ok: true })
+    return Response.json({ package: asset, files: [{ id: 'file', name: 'notes.txt' }] })
   })
   const enterprise = new EnterpriseService(account, {
     workspaceRegistry: { list: () => [] }, sessionQuery: { readSurface: async () => ({ events: [] }) },
   }, host)
-  assert.deepEqual(await enterprise.request('GET', '/organizations/team/assets'), { canManage: true, skills: [] })
-  await assert.rejects(enterprise.request('GET', '/organizations/team/packages/old'), { code: 'IPW_NOT_FOUND', status: 404 })
-  await assert.rejects(enterprise.request('DELETE', '/organizations/team/packages/old/files/file'), { code: 'IPW_NOT_FOUND', status: 404 })
-  assert.equal(reads, 1)
+  assert.deepEqual(await enterprise.request('GET', '/organizations/team/assets'), { canManage: true, skills: [], packages: [asset] })
+  assert.deepEqual(await enterprise.request('GET', '/organizations/team/packages/old'), { package: asset, files: [{ id: 'file', name: 'notes.txt' }] })
+  assert.deepEqual(await enterprise.request('DELETE', '/organizations/team/packages/old/files/file'), { ok: true })
+  assert.deepEqual(calls, ['GET /api/v1/enterprises/team/assets', 'GET /api/v1/enterprises/team/packages/old',
+    'DELETE /api/v1/enterprises/team/packages/old/files/file'])
 })
 
 test('the MCP list distinguishes an older service from empty, inaccessible, or missing organizations', async () => {

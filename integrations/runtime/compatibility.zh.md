@@ -41,7 +41,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 | [插件组合](../../plugins/ipollowork-suite/cordis.patch.yml)、[Studio 市场](../../plugins/ipollowork-suite/catalog/index.json)与[桌面资源打包](../desktop/scripts/prepare-dsh.ts) | Cordis 插入项和依赖、原生插件加载器、DSH ASAR 布局、Host/CLI 启动入口和电脑操作资源路径。官网安装包和 Office 回退在产品打包层。 | 用各平台打包客户端验证启动、市场按需安装、打开已有 Design/Video 项目、Office 打开和电脑操作辅助程序。 |
 | [Design 模板生成和结果打开](https://github.com/Devin-AXIS/deepseek-design) | 基于 `dsh-v0.2.2-rc.3`，Design 使用会话范围的 `resources.source`、右侧栏文件关联、`conversation.chat.turnTail`、原生 `present` 工具和交付卡片。`design-actions.tsx` 打开编辑器，`surface.tsx` 向输入框插入文件引用时保持编辑器打开。 | 套用模板并给出与示例主题明显不同的提示词。保存期间切换会话，再返回检查预览。关闭预览后，从对话结果打开最终 HTML。用原生幻灯片模板发出做 PPT 的请求，点击「在 Design 中编辑」修改一页，核对修改已保存到同一份 HTML 且页数一致。 |
 | [桌面更新频道](../desktop/src/update-channel.ts) | iPolloWork 正式发布源提供稳定版更新清单。桌面预加载对该来源省略可选的 `dshDesktop.updates.channels` 接口，DSH 通用设置不会显示开发版频道选项。 | 用保存过开发版偏好的设置启动正式安装包，确认它使用稳定版且仍可手动检查更新。换用其他更新源，确认频道选择仍可用。 |
-| [Stage 桌面插件](../../plugins/stage) | `main`、`sidebar.panellist`、`plugins.bundle.config`、Host 连接准入、`workspaceRegistry`、`tools` 和 `sandboxPolicy`。桌面组合包含 Stage Bundle。 | 验证手动打开、关联与解除关联、每个工作区授权及只读限制。换账号后重新授权工作区。 |
+| Stage 桌面插件（在 PR #582 中移除） | 曾使用 `main`、`sidebar.panellist`、`plugins.bundle.config`、Host 连接准入、`workspaceRegistry`、`tools` 和 `sandboxPolicy`。 | 检查产品组合是否已移除 Stage Bundle。 |
 | [项目看板](../../plugins/collaboration-board) | `plugins/collaboration-board/src/client.tsx` 使用 `conversation.view`、`main`、`sidebar.panellist`、工作区及会话快照、`uiWorkspace.openSession`、`sessions.using` 和原生会话 `prompt`、输入区标记 `data-conversation-scroll` 和 `data-conversation-region="composer"`。`src/host.ts` 使用所有者准入、兼容 v1 的 v2 存储域、`tools` 注册表及 `sandboxPolicy`。浏览器归档通过客户端加载器使用 `@deepseek-ai/dsh-client-ui-primitives` 的图标。套件 Host 提供按账号授权的看板桥接。「智能体」服务通过原生 Agent preset 解析候选，项目会话使用 `ipollo_delegate` 创建专员子会话。Host 使用 `subagents.rootOf` 将该子会话的只读查阅限制在原项目。 | 在临时配置中安装归档，从状态列新增任务，打开任务详情侧栏，使用可搜索的选择器，从卡片修改状态，切换项目并刷新，确认返回对话时保留草稿。使用第二个账号验证指派通知和前置任务解锁。验证 `ipollo_project_tasks` 只使用原生会话所属项目，拒绝跨项目访问及提前开始，并检查专员委派及回传、原生定时、两种主题和窄屏。 |
 | [项目看板的对话权限](../../plugins/ipollowork-suite/src/host/native-sharing.ts) | 可选的客户端桥接 `ipolloProjectConversationShare` 复用套件的 `remote.liveshareShares` 和 PKCE 连接流程。套件 Host 使用原生工作区注册表校验对话，再通过 `liveshareShares.create` 为指定账号创建只读且禁止分叉的分享。 | 确认选择成员本身不会创建分享，明确授权后用指定账号打开当前对话，并验证其他账号无法打开。检查名单标记、阻止只读接收人发送消息和分叉、撤销后的权限。 |
 
@@ -62,6 +62,8 @@ Design `1.0.0-beta.34` 将 HTML 交付约束应用于所有已激活的 Design �
 组织 MCP 代理保留上游 4xx 状态和 `mcp-method`、`mcp-name` 协议头。当前 pin 的 MCP SDK 会先发送 `server/discover`；2025 协议服务器拒绝探测时，客户端需要依据原始 4xx 回退到 `initialize`，不能将其改写成 503。认证失败、权限不足和限流使用脱敏的独立错误码，上游错误正文不外发。升级 pin 时验证原生协议探测、旧版握手、工具列表、会话失效，以及 401/403/429 和上游正文脱敏。
 
 Suite `0.1.36` 与 Design `1.0.0-beta.35` 通过可选客户端服务 `ipolloDesignTemplates` 注册组织模板来源。Cordis 注入与释放控制组织空间的模板页，账号凭证变化时清理旧账号来源。元数据来自已鉴权的账号目录；使用模板先重新校验指定版本的权限，再通过 `/document` 和带版本校验的 `/file` 创建新的 Design 文档。验证停用/启用 Design、不同授权的成员、撤权、切换账号，以及生成 HTML 后继续编辑。组织凭证不传递给 Design。
+
+Design `1.0.0-beta.38` 的 `ipolloDesignTemplates` 目录要求清单版本符合 SemVer 格式。Suite 的 `src/host/enterprise.ts` 为其他发布标签生成稳定别名，`src/client/organization-templates.ts` 在鉴权读取时查找对应的原始标签，切换账号时清除映射。升级时验证名为 `设计验收` 的版本与数字版本同时出现在 Design 原生模板库，并可应用到工作区。
 
 组织 MCP 使用原生公开的 `mcpManager.list`、`register`、`restart`。原生设置页只读取不含凭证的状态，重新连接前刷新授权。云运行凭证仅开放成员目录和连接传输所需方法，服务端仍逐次校验成员和资源权限。验证本地与云运行时的工具发现、原生 Agent 实际调用、撤权和退出登录。模型/工具弹窗通过原生 Modal 的 `contentClassName` 与 `footer` 保持接口路径可滚动、操作按钮可见；表单样式只匹配直接的原始输入框，保留添加插件的原生 Input 外层。以 390px 和两种主题检查，并验证提交资源能区分缺少元数据、非法版本和版本冲突。
 
@@ -143,3 +145,7 @@ iPolloWork 套件 0.1.36 在 `plugins/ipollowork-suite/cordis.patch.yml` 将项�
 iPolloWork 套件 0.1.41 保留两个原生子插件入口，并从看板打开组织现有的邀请码弹窗，默认选中参与权限。账号服务在数据库版本 20 运行看板迁移，保留本地看板预览版本 15 的任务及通知已读状态。在当前 DSH 固定版本中，隔离配置从套件 0.1.36 升级后保留了个人和组织任务、原生排期、账号及通知设置。实际构建的客户端验证了新增任务、组织邀请入口，以及两种主题下 390 px 宽度的四种看板视图。
 
 Suite 0.1.42 在安装包生成的 `@ipollo/desktop-runtime` 清单记录公开字段 `ipolloworkAccountOrigin`。私有 Suite 依据 install-anchor 的安装清单选择服务来源，旧版清单回退发货 deployment.json；profile 中残留的地址不能覆盖发行版设置。企业打包仍可显式选择 HTTPS/本机测试地址，普通 DSH 插件继续支持 profile 配置。升级验证覆盖旧 localhost 地址、企业自定义发行版、非法来源拒绝及已安装 Mac 的真实登录。此条替代上文 0.1.41 允许 profile 覆盖私有桌面地址的行为。
+
+### 组织空间工作流
+
+套件通过可选的 `ipolloNotificationCenter` 服务注册组织通知，并用既有 DSH `layout.selectPanel` 打开已授权的来源页面。组织页保留自身的通知入口。复验账号切换、单条已读、显式批量已读、资源或会话撤权以及定位到对应记录。模板管理可在未启用 Design 时使用，应用模板仍依赖既有 Design 集成。使用原生组织页复验分析、成员分页和文件包上传，并分别验证桌面端 `fileActions.save` 和 Web 下载。将桌面端与账号服务联测，并复验 PostgreSQL schema 21 迁移。

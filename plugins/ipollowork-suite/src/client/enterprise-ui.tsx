@@ -1,7 +1,7 @@
 /** Shared enterprise-page building blocks over native DSH primitives. */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button, IconRefreshOutlineRegular, MarkdownText, Modal, Toast, UserMessageBubble, useClipboardCopy, relativeTime, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { SharedMessage } from '../shared/enterprise.ts'
+import type { MemberPage, MemberQuery, SharedMessage } from '../shared/enterprise.ts'
 import type { EnterpriseState } from './enterprise-controller.ts'
 import { enterpriseError, format, type EnterpriseLabels } from './enterprise-locale.ts'
 import css from './suite.module.css'
@@ -10,15 +10,60 @@ export type Call = <T>(path: string, data?: unknown, method?: string) => Promise
 
 /** Read one record; reloads when the path or the controller's data revision changes. */
 export function useRecord<T>(path: string | null, call: Call, revision: number) {
-  const [data, setData] = useState<T | null>(null), [error, setError] = useState(''), [local, setLocal] = useState(0)
+  const [result, setResult] = useState<{ path: string; call: Call; data: T | null; error: string }>()
+  const [local, setLocal] = useState(0)
+  const same = result?.path === path && result?.call === call
   useEffect(() => {
     if (path === null) return
     let active = true
-    setError('')
-    call<T>(path).then(value => { if (active) setData(value) }, (e: unknown) => { if (active) setError(e instanceof Error ? e.message : '') })
+    call<T>(path).then(value => {
+      if (active) setResult({ path, call, data: value, error: '' })
+    }, (error: unknown) => {
+      if (active) setResult(previous => ({
+        path, call, data: previous?.path === path && previous.call === call ? previous.data : null,
+        error: error instanceof Error ? error.message : 'IPW_SERVICE_UNAVAILABLE',
+      }))
+    })
     return () => { active = false }
   }, [path, call, revision, local])
-  return { data, error, reload: useCallback(() => setLocal(v => v + 1), []) }
+  return { data: same ? result.data : null, error: same ? result.error : '', reload: useCallback(() => setLocal(v => v + 1), []) }
+}
+
+/** Page and search the authorized directory, retaining the current selection in its owning form. */
+export function useMemberDirectory(enterpriseId: string | null, call: Call, revision: number, filter: MemberQuery = {}) {
+  const { query = '', department, active, projectId, userId } = filter
+  const scope = JSON.stringify([enterpriseId, query, department, active, projectId, userId])
+  const [position, setPosition] = useState({ scope, page: 1 })
+  const page = position.scope === scope ? position.page : 1
+  const [stableQuery, setStableQuery] = useState(query)
+  useEffect(() => {
+    const timer = window.setTimeout(() => setStableQuery(query), 220)
+    return () => window.clearTimeout(timer)
+  }, [query])
+  const search = useCallback<Call>(path => call(path, { query: stableQuery.trim(), department, projectId, userId, active, page }), [
+    call, stableQuery, department, projectId, userId, active, page,
+  ])
+  const result = useRecord<MemberPage>(
+    enterpriseId && query === stableQuery ? '/organizations/' + enterpriseId + '/member-directory' : null, search, revision,
+  )
+  return { ...result, page, move: (page: number) => setPosition({ scope, page }) }
+}
+
+export function PageButtons({ previous, next, t }: { previous?: (() => void) | undefined; next?: (() => void) | undefined; t: EnterpriseLabels }) {
+  if (!previous && !next) return null
+  return <div className={css.enterpriseActions}>
+    <Button size="sm" variant="outline" disabled={!previous} onClick={previous}>{t.previousPage}</Button>
+    <Button size="sm" variant="outline" disabled={!next} onClick={next}>{t.nextPage}</Button>
+  </div>
+}
+
+export function DirectoryStatus({ directory, t }: { directory: ReturnType<typeof useMemberDirectory>; t: EnterpriseLabels }) {
+  return <>
+    <Notice error={directory.error} t={t} retry={directory.reload}/>
+    {!directory.data && !directory.error && <ListSkeleton rows={2}/>}
+    <PageButtons t={t} previous={directory.page > 1 ? () => directory.move(directory.page - 1) : undefined}
+      next={directory.data?.more ? () => directory.move(directory.page + 1) : undefined}/>
+  </>
 }
 
 /** Run one user action at a time and keep its failure visible beside the form. */

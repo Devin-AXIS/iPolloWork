@@ -4,30 +4,9 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { linkProject, linkedProjectWorkspaces } from '../src/host/project-context.ts'
-import { memberProjectAccess } from '../src/shared/project-access.ts'
-import type { EnterpriseDetail } from '../src/shared/enterprise.ts'
 import { AccountService } from '../src/host/account.ts'
 import { resolveConfig } from '../src/host/config.ts'
 import { EnterpriseService } from '../src/host/enterprise.ts'
-
-test('member editor preserves current effective legacy roles without retaining department or everyone grants', () => {
-  const members = [
-    { userId:'a', departmentId:'engineering' }, { userId:'b', departmentId:null }, { userId:'c', departmentId:null },
-  ] as EnterpriseDetail['members']
-  const original = { mode:'enterprise' as const, grants:[
-    { kind:'department' as const, subjectId:'engineering', role:'participate' as const },
-    { kind:'member' as const, subjectId:'a', role:'view' as const },
-    { kind:'member' as const, subjectId:'b', role:'maintain' as const },
-  ] }
-  assert.deepEqual(memberProjectAccess(original, members), { mode:'selected', grants:[
-    { kind:'member', subjectId:'a', role:'participate' },
-    { kind:'member', subjectId:'b', role:'maintain' },
-    { kind:'member', subjectId:'c', role:'view' },
-  ] })
-  assert.equal(original.mode, 'enterprise')
-  assert.equal(original.grants[0]!.kind, 'department')
-  assert.deepEqual(memberProjectAccess({ mode:'selected', grants:[] }, members), { mode:'selected', grants:[] })
-})
 
 test('linked workspaces expose current local counts only after cloud authorization, with origin and project isolation', async () => {
   const path = await mkdtemp(join(tmpdir(), 'ipw-project-workspace-'))

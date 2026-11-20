@@ -12,8 +12,6 @@ if (process.argv.includes('--build')) {
 if (process.argv.includes('--plugins')) {
   await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['ci', '--ignore-scripts', '--workspaces=false'], { cwd: join(root, 'plugins/ipollowork-suite') })
   await run(process.execPath, ['scripts/link-workspace.mjs', '--root', upstreamRoot], { cwd: join(root, 'plugins/ipollowork-suite') })
-  await run(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['ci', '--ignore-scripts'], { cwd: join(root, 'plugins/stage') })
-  await run(process.execPath, ['scripts/link-workspace.mjs', '--root', upstreamRoot], { cwd: join(root, 'plugins/stage') })
 }
 await verifySource()
 console.log('Official DSH dependency ready; source files remain outside Git')

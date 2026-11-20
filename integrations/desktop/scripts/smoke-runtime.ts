@@ -226,10 +226,6 @@ export function apply(ctx) {
       if (!account.ok || (await account.json() as { status?: string }).status !== 'anonymous') {
         throw new Error('desktop runtime: embedded account route did not start signed out')
       }
-      const stage=await fetch(new URL('/ipollo-stage/workspaces',ready.url),{headers:{cookie}})
-      if(!stage.ok||!Array.isArray((await stage.json() as {workspaces?:unknown}).workspaces)) {
-        throw new Error('desktop runtime: bundled Stage adapter did not mount with native owner authentication')
-      }
       const market = await fetch(new URL('/ipollowork-suite/catalog', ready.url), { headers: { cookie } })
       const catalog = await market.json() as {
         runtimeVersion?: string

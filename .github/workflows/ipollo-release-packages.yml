@@ -246,7 +246,7 @@ jobs:
           path: |
             ${{ runner.temp }}/ipollo-intel-pnpm-store
             ~/.npm/_cacache
-          key: ipollo-intel-deps-v1-node24.15.0-${{ hashFiles('integrations/runtime/upstream.json', 'integrations/publisher/package-lock.json', 'plugins/ipollowork-suite/package-lock.json', 'plugins/stage/package-lock.json') }}
+          key: ipollo-intel-deps-v1-node24.15.0-${{ hashFiles('integrations/runtime/upstream.json', 'integrations/publisher/package-lock.json', 'plugins/ipollowork-suite/package-lock.json') }}
       - name: Install pinned build dependencies
         run: node integrations/tooling/setup.mjs --plugins
       - name: Save Intel build dependencies

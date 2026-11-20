@@ -151,6 +151,7 @@ export class OrganizationMembers {
   let secret:string|undefined;
   await this.store.transaction(async()=>{
    await this.store.run('SELECT id FROM enterprises WHERE id=? FOR UPDATE',id);
+   await enterpriseAccess(this.store,actor,id,true);
    const previous=await this.store.one('SELECT endpoint FROM organization_notifications WHERE enterprise_id=?',id);
    const stored=await this.settings.get('organization-notification/'+id);
    if(!stored.secret||input.rotate||previous?.endpoint!==input.endpoint){secret=randomBytes(32).toString('base64url');await this.settings.set('organization-notification/'+id,{secret});}

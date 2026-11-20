@@ -34,7 +34,7 @@ interface Listing {
   policy: { outputs: boolean };
 }
 
-export function ProjectDownload({ href, name, view }: { href: string; name: string; view: ViewProps }) {
+export function ProjectDownload({ href, name, view }: { href: string; name: string; view: Pick<ViewProps, "t" | "language" | "controller"> }) {
   const c = projectCopy(view.language);
   const { dshDesktop } = window as Window & {
     dshDesktop?: { fileActions?: { save(request: { url: string; name: string; mode: "download" }): Promise<{ status: string }> } };

@@ -28,6 +28,7 @@ import type {
   Audience,
   EnterpriseAssets,
   EnterpriseDetail,
+  OrganizationPublication,
   EnterpriseModel,
   ModelProbe,
 } from "../shared/enterprise.ts";
@@ -38,13 +39,16 @@ import {
   type EnterpriseLabels,
 } from "./enterprise-locale.ts";
 import {
+  DirectoryStatus,
   EmptyState,
   FormError,
   Field,
   ListSkeleton,
   Notice,
   Section,
+  Row,
   When,
+  useMemberDirectory,
   useRecord,
   useTask,
   type Call,
@@ -52,7 +56,7 @@ import {
 import { KeyGlyph, Monogram } from "./glyphs.tsx";
 import css from "./suite.module.css";
 
-type Kind = "skill" | "service" | "mcp";
+type Kind = "skill" | "service" | "mcp" | "package";
 export interface AssetProps {
   enterpriseId: string;
   detail: EnterpriseDetail;
@@ -178,6 +182,7 @@ export function AccessDialog({
   t,
   enterpriseId,
   call,
+  revision,
   controller,
   close,
 }: AssetProps & {
@@ -205,21 +210,9 @@ export function AccessDialog({
   }
   const isCovered = (departmentId: string | null) =>
     departmentId !== null && coveredDepartments.has(departmentId);
-  const activeMembers = detail.members.filter((member) => member.status !== "suspended");
-  const recipientCount = activeMembers.filter((member) =>
-    all || member.role === "owner" || member.role === "admin" ||
-    members.has(member.userId) || isCovered(member.departmentId)
-  ).length;
   const [query, setQuery] = useState("");
-  const needle = query.trim().toLocaleLowerCase();
-  const people = activeMembers.filter(
-    (m) =>
-      m.role !== "owner" &&
-      m.role !== "admin" &&
-      (!needle ||
-        m.name.toLocaleLowerCase().includes(needle) ||
-        m.email.toLocaleLowerCase().includes(needle)),
-  );
+  const directory = useMemberDirectory(all ? null : enterpriseId, call, revision, { query, active: true });
+  const people = directory.data?.items.filter(member => member.role !== "owner" && member.role !== "admin") ?? [];
   const flip = <T,>(set: Set<T>, value: T) => {
     const next = new Set(set);
     if (next.has(value)) next.delete(value);
@@ -272,9 +265,6 @@ export function AccessDialog({
         <div className={css.accessAll}>
           <span>
             <strong>{all ? t.everyoneAccess : departments.size || members.size ? t.restrictedAccess : t.managersOnly}</strong>
-            <small>
-              {format(all ? t.memberCount : t.accessCount, { count: recipientCount })}
-            </small>
           </span>
           <Toggle checked={all} label={t.everyoneAccess} onChange={setAll} />
         </div>
@@ -298,12 +288,6 @@ export function AccessDialog({
                         <IconCheckOutlineRegular size={12} />
                       )}
                       {d.name}
-                      <small>
-                        {
-                          activeMembers.filter((m) => m.departmentId === d.id)
-                            .length
-                        }
-                      </small>
                     </button>
                   ))}
                 </div>
@@ -318,6 +302,7 @@ export function AccessDialog({
                 <input
                   placeholder={t.searchPeople}
                   aria-label={t.searchPeople}
+                  maxLength={120}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
@@ -359,6 +344,7 @@ export function AccessDialog({
                   );
                 })}
               </div>
+              <DirectoryStatus directory={directory} t={t}/>
             </section>
           </>
         )}
@@ -459,6 +445,10 @@ export function DepartmentsTab(props: AssetProps) {
   const task = useTask(t);
   const department =
     detail.departments.find((d) => d.id === selected) ?? detail.departments[0];
+  const directory = useMemberDirectory(department ? enterpriseId : null, call, revision, department ? { department: department.id } : {});
+  const reviewed = useRecord<{ items: OrganizationPublication[] }>(
+    "/organizations/" + enterpriseId + "/publications/skill", call, revision,
+  );
   const manage = detail.canManage;
   const create = async (name: string) => {
     let done = false;
@@ -490,13 +480,10 @@ export function DepartmentsTab(props: AssetProps) {
       </div>
     );
   if (!department) return null;
-  const people = detail.members.filter((m) => m.departmentId === department.id),
-    others = detail.members.filter(
-      (m) => m.departmentId !== department.id && m.role !== "owner",
-    );
-  const setDepartment = (userId: string, departmentId: string | null) =>
+  const people = directory.data?.items ?? [];
+  const setDepartment = (member: EnterpriseDetail["members"][number], departmentId: string | null) =>
     task.run(async () => {
-      const member = detail.members.find((m) => m.userId === userId)!;
+      const userId = member.userId;
       await call(
         "/organizations/" + enterpriseId + "/members/" + userId,
         { role: member.role === "admin" ? "admin" : "member", departmentId },
@@ -538,12 +525,11 @@ export function DepartmentsTab(props: AssetProps) {
       title: t.skillsTab,
       icon: <IconSkillOutlineRegular size={14} />,
       items:
-        assets.data?.skills.map((s) => ({
-          id: s.id,
-          title: s.title,
-          meta: s.name,
-          audience: s.audience,
-        })) ?? [],
+        [
+          ...(assets.data?.skills.map(s => ({ id: s.id, title: s.title, meta: s.name, audience: s.audience })) ?? []),
+          ...(reviewed.data?.items.flatMap(s => s.publishedVersion && s.audience
+            ? [{ id: s.id, title: s.title, meta: s.publishedVersion, audience: s.audience }] : []) ?? []),
+        ],
     },
     ...serviceCategories.map((category) => ({
       kind: "service" as const,
@@ -578,9 +564,7 @@ export function DepartmentsTab(props: AssetProps) {
             <span>{d.parentId
               ? [detail.departments.find(parent => parent.id === d.parentId)?.name, d.name].filter(Boolean).join(" / ")
               : d.name}</span>
-            <small>
-              {detail.members.filter((m) => m.departmentId === d.id).length}
-            </small>
+            {d.memberCount !== undefined && <small>{d.memberCount}</small>}
           </button>
         ))}
         {manage && (
@@ -652,7 +636,8 @@ export function DepartmentsTab(props: AssetProps) {
           ) : (
             <h2>
               {department.name}
-              <small>{format(t.memberCount, { count: people.length })}</small>
+              {department.memberCount !== undefined && <small>{format(t.memberCount, { count: department.memberCount })}</small>}
+
             </h2>
           )}
           {manage && !renaming && (
@@ -710,13 +695,8 @@ export function DepartmentsTab(props: AssetProps) {
         <section className={css.departmentSection}>
           <div className={css.sectionHead}>
             <h3>{t.departmentMembers}</h3>
-            {manage && others.length > 0 && (
-              <AddMember
-                t={t}
-                members={others}
-                onAdd={(userId) => void setDepartment(userId, department.id)}
-              />
-            )}
+            {manage && <AddMember key={department.id} {...props} departmentId={department.id}
+              onAdd={member => setDepartment(member, department.id)}/>}
           </div>
           {people.length ? (
             <div className={css.avatarList}>
@@ -734,7 +714,7 @@ export function DepartmentsTab(props: AssetProps) {
                       type="button"
                       aria-label={t.removeFromDepartment}
                       title={t.removeFromDepartment}
-                      onClick={() => void setDepartment(m.userId, null)}
+                      onClick={() => void setDepartment(m, null)}
                     >
                       ×
                     </button>
@@ -742,24 +722,24 @@ export function DepartmentsTab(props: AssetProps) {
                 </span>
               ))}
             </div>
-          ) : (
-            <p className={css.quietLine}>{t.noDepartmentMembers}</p>
-          )}
+          ) : directory.data && <p className={css.quietLine}>{t.noDepartmentMembers}</p>}
+          <DirectoryStatus directory={directory} t={t}/>
         </section>
         <section className={css.departmentSection}>
           <div className={css.sectionHead}>
             <h3>{t.departmentAccess}</h3>
           </div>
-          {assets.error || models.error ? (
+          {assets.error || models.error || reviewed.error ? (
             <Notice
-              error={assets.error || models.error}
+              error={assets.error || models.error || reviewed.error}
               t={t}
               retry={() => {
                 assets.reload();
                 models.reload();
+                reviewed.reload();
               }}
             />
-          ) : !assets.data || !models.data ? (
+          ) : !assets.data || !models.data || !reviewed.data ?  (
             <ListSkeleton rows={2} />
           ) : groups.every((g) => !g.items.length) ? (
             <p className={css.quietLine}>{t.noAssetsYet}</p>
@@ -804,46 +784,27 @@ export function DepartmentsTab(props: AssetProps) {
   );
 }
 
-function AddMember({
-  t,
-  members,
-  onAdd,
-}: {
-  t: EnterpriseLabels;
-  members: EnterpriseDetail["members"];
-  onAdd(userId: string): void;
+function AddMember({ t, enterpriseId, revision, call, departmentId, onAdd }: AssetProps & {
+  departmentId: string;
+  onAdd(member: EnterpriseDetail["members"][number]): Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  return (
-    <Menu
-      open={open}
-      portal
-      align="end"
-      dense
-      onClose={() => setOpen(false)}
-      items={members.map((m) => ({ id: m.userId, label: m.name || m.email }))}
-      onSelect={(id) => {
-        setOpen(false);
-        onAdd(id);
-      }}
-      anchor={
-        <button
-          type="button"
-          className={css.filterChip}
-          data-add=""
-          aria-haspopup="menu"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          <IconPlusOutlineRegular size={12} />
-          {t.addToDepartment}
-        </button>
-      }
-    />
-  );
+  const [query, setQuery] = useState("");
+  const directory = useMemberDirectory(open ? enterpriseId : null, call, revision, { query, active: true });
+  const people = directory.data?.items.filter(member => member.departmentId !== departmentId && member.role !== "owner");
+  return <>
+    <Button size="sm" variant="outline" onClick={() => { setQuery(""); setOpen(true); }}>{t.addToDepartment}</Button>
+    {open && <Modal open title={t.addToDepartment} closeLabel={t.close} onClose={() => setOpen(false)}>
+      <Field label={t.searchMembers}><input type="search" maxLength={120} value={query}
+        onChange={event => setQuery(event.target.value)}/></Field>
+      <div className={css.pickList}>{people?.map(member => <Row key={member.userId} title={member.name} meta={member.email}
+        actions={<Button size="sm" variant="outline" onClick={() => { setOpen(false); void onAdd(member); }}>{t.addToDepartment}</Button>}/>)}</div>
+      {people?.length === 0 && <p>{t.noMembersMatch}</p>}
+      <DirectoryStatus directory={directory} t={t}/>
+    </Modal>}
+  </>;
 }
 
-/** Enterprise skills; granted members receive them in their own DSH skill list. */
 export function SkillsTab(props: AssetProps) {
   const { enterpriseId, detail, t, call, controller, revision, language } =
     props;

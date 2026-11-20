@@ -35,6 +35,12 @@ export const operation = (v: unknown) => ({
   "publication.submit": "提交资源版本", "publication.approve": "通过审核", "publication.reject": "驳回审核",
   "publication.publish": "发布资源", "publication.archive": "下架资源", "grant.update": "更新访问范围",
   "skill.create": "发布技能", "skill.remove": "移除技能", "mcp.create": "添加 MCP", "mcp.update": "更新 MCP", "mcp.remove": "移除 MCP",
+  "project.create":"创建项目", "project.update":"调整项目归属", "project.move-out":"移出项目",
+  "project.access":"调整项目权限", "project.delete":"移除项目", "project.publish":"发布项目",
+  "project.submit":"提交项目改动", "project.accept":"接纳项目改动", "project.withdraw":"撤回项目改动",
+  "project.archive":"上传项目成果", "project.archive-policy":"更新项目上传设置",
+  "package.create":"创建文件包", "package.update":"编辑文件包", "package.remove":"移除文件包",
+  "package.file.add":"上传文件包文件", "package.file.remove":"移除文件包文件",
   "organization.notification.configure": "更新成员变更通知",
   "plan.create": "添加套餐", "plan.update": "更新套餐", "points.adjust": "调整积分", "user.update": "更新账号", "user.bootstrap-admin": "运维设置管理员", "settings.update": "更新配置", "share.create": "分享会话",
 } as Record<string, string>)[text(v)] ?? "更新记录";
