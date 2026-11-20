@@ -1,0 +1,164 @@
+name: Complete retained Mac installers
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        type: choice
+        options: [mac-x64, mac-arm64]
+        required: true
+      retained_run:
+        required: true
+      source_ref:
+        required: true
+      release_tag:
+        required: true
+permissions:
+  contents: write
+  actions: read
+jobs:
+  resume:
+    runs-on: ${{ inputs.target == 'mac-arm64' && 'macos-15' || 'macos-15-intel' }}
+    env:
+      PACKAGE_TARGET: ${{ inputs.target }}
+      RETAINED_RUN: ${{ inputs.retained_run }}
+      EXPECTED_COMMIT: ${{ inputs.source_ref }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          path: source
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Install the pinned packaging tools without rebuilding the application
+        run: node integrations/tooling/setup.mjs --plugins
+      - name: Download and verify the sealed application
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          directory="$RUNNER_TEMP/retained"
+          mkdir "$directory"
+          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$RETAINED_RUN --jq .head_sha)" = "$EXPECTED_COMMIT"
+          artifact="retained-$PACKAGE_TARGET-$RETAINED_RUN"
+          id="$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$RETAINED_RUN/artifacts --jq ".artifacts[] | select(.name == \"$artifact\") | .id")"
+          test -n "$id"
+          echo "RETAINED_ARTIFACT_ID=$id" >> "$GITHUB_ENV"
+          gh run download "$RETAINED_RUN" --repo "$GITHUB_REPOSITORY" --name "$artifact" --dir "$directory"
+          test "$(cat "$directory/source-commit.txt")" = "$EXPECTED_COMMIT"
+          digest="$(awk '{print $1}' "$directory/SHA256SUMS.txt")"
+          [[ "$digest" =~ ^[a-f0-9]{64}$ ]]
+          printf '%s  %s\n' "$digest" "$directory/application.zip" | shasum -a 256 -c -
+          ditto -x -k "$directory/application.zip" "$directory"
+          codesign --verify --deep --strict "$directory/iPollo.app"
+      - name: Prepare Apple signing configuration
+        env:
+          CERTIFICATE_P12: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CODESIGN_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.APPLE_NOTARY_API_KEY_P8_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_API_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          for required in CERTIFICATE_P12 NOTARY_KEY_P8 NOTARY_KEY_ID NOTARY_ISSUER; do
+            if [[ -z "${!required}" ]]; then
+              echo "Missing signing configuration $required" >&2
+              exit 1
+            fi
+          done
+          export MAC_CERT_FILE="$RUNNER_TEMP/ipollo-signing.p12"
+          export MAC_NOTARY_FILE="$RUNNER_TEMP/ipollo-notary.p8"
+          printf '%s' "$CERTIFICATE_P12" | base64 -D > "$MAC_CERT_FILE"
+          printf '%s' "$NOTARY_KEY_P8" | base64 -D > "$MAC_NOTARY_FILE"
+          inspect="$RUNNER_TEMP/ipollo-certificate-inspection.keychain-db"
+          trap 'security delete-keychain "$inspect" >/dev/null 2>&1 || true' EXIT
+          inspection_password="$(openssl rand -hex 32)"
+          security create-keychain -p "$inspection_password" "$inspect"
+          security unlock-keychain -p "$inspection_password" "$inspect"
+          security import "$MAC_CERT_FILE" -k "$inspect" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          export MAC_IDENTITY
+          MAC_IDENTITY="$(security find-identity -p codesigning "$inspect" | sed -nE 's/^[^"]*"(Developer ID Application: [^"]+)"[^"]*$/\1/p' | sort -u)"
+          export MAC_TEAM
+          MAC_TEAM="$(printf '%s\n' "$MAC_IDENTITY" | sed -nE 's/^Developer ID Application: .+ \(([A-Z0-9]{10})\)$/\1/p')"
+          if [[ ! "$MAC_TEAM" =~ ^[A-Z0-9]{10}$ ]]; then
+            echo 'Expected one Developer ID Application identity' >&2
+            exit 1
+          fi
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs'
+          import { parseEnv } from 'node:util'
+          const values = {
+            DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
+            DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',
+            DSH_DESKTOP_UPDATE_CHANNEL: 'stable',
+            DSH_DESKTOP_UPDATE_URL: 'https://github.com/' + process.env.GITHUB_REPOSITORY + '/releases/latest/download',
+            DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN: 'https://cloud.ipollo.net',
+            DSH_DESKTOP_MACOS_SIGNING_IDENTITY: process.env.MAC_IDENTITY.replace(/^Developer ID Application: /, ''),
+            DSH_DESKTOP_MACOS_TEAM_ID: process.env.MAC_TEAM,
+            DSH_DESKTOP_MACOS_PACK_CONCURRENCY: '1',
+            CSC_LINK: process.env.MAC_CERT_FILE,
+            CSC_KEY_PASSWORD: process.env.CERTIFICATE_PASSWORD ?? '',
+            APPLE_API_KEY: process.env.MAC_NOTARY_FILE,
+            APPLE_API_KEY_ID: process.env.NOTARY_KEY_ID,
+            APPLE_API_ISSUER: process.env.NOTARY_ISSUER,
+          }
+          const lines = Object.entries(values).map(([key, value]) => {
+            const quote = ["'", '"', String.fromCharCode(96)].find(character => !value.includes(character))
+            if (!quote || /[\r\n]/u.test(value)) throw new Error('Invalid signing setting ' + key)
+            const line = key + '=' + quote + value + quote
+            if (parseEnv(line)[key] !== value) throw new Error('Could not encode signing setting ' + key)
+            return line
+          })
+          writeFileSync('integrations/desktop/.env.macos', lines.join('\n') + '\n', { mode: 0o600 })
+          NODE
+      - name: Verify the exact runtime twice, then finish signed and notarized packages
+        run: |
+          set -euo pipefail
+          caffeinate -dimsu -t 2700 &
+          awake=$!
+          trap 'kill "$awake" 2>/dev/null || true' EXIT
+          node --import tsx/esm ../driver/integrations/desktop/scripts/resume-sealed-macos.mjs
+      - name: Open the DMG-installed application and verify legacy-profile repair
+        run: |
+          set -euo pipefail
+          artifacts=integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts
+          mount="$RUNNER_TEMP/installed-volume"
+          installed="$RUNNER_TEMP/Installed Applications/iPollo.app"
+          mkdir -p "$mount" "$(dirname "$installed")"
+          hdiutil attach "$artifacts/iPollo-${RELEASE_TAG#v}-$PACKAGE_TARGET.dmg" -readonly -nobrowse -mountpoint "$mount" -quiet
+          trap 'hdiutil detach "$mount" -quiet' EXIT
+          ditto "$mount/iPollo.app" "$installed"
+          node integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
+      - name: Attach verified Mac installers to the matching draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          test "$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)" = "$EXPECTED_COMMIT"
+          artifacts=integrations/desktop/.desktop-build/targets/${PACKAGE_TARGET}/artifacts
+          cp "$artifacts/iPollo-${RELEASE_TAG#v}-${PACKAGE_TARGET}.dmg" "$RUNNER_TEMP/ipollowork-${PACKAGE_TARGET}-${RELEASE_TAG#v}.dmg"
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            "$RUNNER_TEMP/ipollowork-${PACKAGE_TARGET}-${RELEASE_TAG#v}.dmg" \
+            "$artifacts/iPollo-${RELEASE_TAG#v}-${PACKAGE_TARGET}.zip" \
+            "$artifacts/iPollo-${RELEASE_TAG#v}-${PACKAGE_TARGET}.zip.blockmap" \
+            "$artifacts/${{ inputs.target }}-release.json" --clobber
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: retained-release-${{ inputs.target }}
+          path: |
+            source/installed-macos-evidence/
+            source/integrations/desktop/.desktop-build/targets/${{ inputs.target }}/artifacts/${{ inputs.target }}-release.json
+            source/integrations/desktop/.desktop-build/targets/${{ inputs.target }}/artifacts/resume-provenance.json
+          if-no-files-found: warn
+          retention-days: 7

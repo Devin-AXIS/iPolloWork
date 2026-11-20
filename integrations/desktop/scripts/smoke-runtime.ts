@@ -10,7 +10,8 @@ import { fileURLToPath } from 'node:url'
 import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
 import { load, dump } from 'js-yaml'
 import { DesktopHostProcess } from '../src/host-process.ts'
-import { createPluginProfile, DesktopProjectManager } from '../src/project-manager.ts'
+import { createPluginProfile } from '../src/project-manager.ts'
+import { repairProfileRuntime } from '../src/profile-runtime-repair.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
@@ -201,7 +202,9 @@ export function apply(ctx) {
       writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: entry.name, version: '0.2.0-rc.1', type: 'module', exports: './index.js' }))
       writeFileSync(join(directory, 'index.js'), 'throw new Error("obsolete profile core must never activate")\n')
     }
-    await new DesktopProjectManager({ profile, lock: join(profile, 'lock') }, { dsh: root }).applyRelease()
+    // The packaging supervisor runs in ordinary Node, outside Electron's ASAR filesystem.
+    // Use the already verified descriptor here; the installed-shell check exercises applyRelease.
+    repairProfileRuntime(profile, root, runtime)
     for (const entry of legacyCore) {
       if (existsSync(join(profile, 'node_modules', entry.name))) throw new Error('desktop runtime: old core still shadows the installed runtime')
     }

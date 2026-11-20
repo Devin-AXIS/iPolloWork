@@ -1,0 +1,89 @@
+name: Qualify Windows release with Electron ASAR access
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        required: true
+      release_tag:
+        required: true
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-2025
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: source
+    env:
+      EXPECTED_COMMIT: ${{ inputs.source_ref }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: driver
+      - uses: actions/checkout@v4
+        with:
+          path: source
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Check the selected immutable draft
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:EXPECTED_COMMIT -notmatch '^[a-f0-9]{40}$' -or $env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid release identity' }
+          $release = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft,targetCommitish | ConvertFrom-Json
+          if (-not $release.isDraft -or $release.targetCommitish -ne $env:EXPECTED_COMMIT) { throw 'Draft identity mismatch' }
+      - name: Prepare pinned packaging tools
+        run: node integrations/tooling/setup.mjs --plugins
+      - name: Configure the original unsigned production installer
+        shell: pwsh
+        run: |
+          @'
+          DSH_DESKTOP_APP_ID=com.deepseek.harness
+          DSH_DESKTOP_AUTO_UPDATE_ENV=production
+          DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download
+          DSH_DESKTOP_UPDATE_CHANNEL=stable
+          DSH_DESKTOP_WINDOWS_PACK_CONCURRENCY=1
+          DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://cloud.ipollo.net
+          '@ | Set-Content integrations/desktop/.env.windows
+      - name: Build original sources and qualify the final archive with Electron
+        shell: pwsh
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $log = Join-Path $env:RUNNER_TEMP 'ipollo-windows-packaging.log'
+          node integrations/desktop/run.mjs package-target.ts win-x64 --unsigned --build-version $version 2>&1 | Tee-Object -FilePath $log
+          if ($LASTEXITCODE -ne 0) {
+            $diagnostic = Get-Content -Raw $log
+            if ($diagnostic -notmatch 'ENOTDIR' -or $diagnostic -notmatch 'desktop-runtime.json') { throw 'Packaging failed for a reason other than the known Node ASAR harness boundary' }
+          }
+          node --import tsx/esm ../driver/integrations/desktop/scripts/verify-sealed-windows.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Sealed Windows runtime qualification failed' }
+      - name: Upload the qualified installer and update blockmap
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = $env:RELEASE_TAG.Substring(1)
+          $directory = 'integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts'
+          $website = Join-Path $directory "website-installers/ipollowork-win-x64-$version.exe"
+          $updater = Join-Path $directory "website-installers/ipollowork-win-x64-$version-unsigned.exe"
+          Copy-Item -LiteralPath $website -Destination $updater
+          Copy-Item -LiteralPath (Join-Path $directory "iPollo-$version-win-x64-unsigned.exe.blockmap") -Destination "$updater.blockmap"
+          gh release upload $env:RELEASE_TAG $website $updater "$updater.blockmap" --repo $env:GITHUB_REPOSITORY --clobber
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: windows-release-recovery-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/ipollo-windows-packaging.log
+            source/integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            source/integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.blockmap
+          retention-days: 7
+          compression-level: 0
