@@ -256,8 +256,8 @@ async function relayDownload(
 /** Mount the suite without changing DSH's model, session, or plugin-management implementation. */
 export function apply(ctx: HostContext, input: ConfigInput): void {
   const anchor = ctx.profileContext.installAnchor;
-  const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown };
-  const config = resolveConfig(input, installation.name === '@ipollo/desktop-runtime');
+  const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown; ipolloworkAccountOrigin?: unknown };
+  const config = resolveConfig(input, installation.name === '@ipollo/desktop-runtime', installation.ipolloworkAccountOrigin);
   ctx.on("tools/pre-execute", async (call, next) =>
     config.dedicatedDesktop && blocksSuiteManagement(call, ctx.fiber.entry?.id)
       ? MANAGEMENT_DENIAL

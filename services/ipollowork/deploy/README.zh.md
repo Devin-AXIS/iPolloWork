@@ -33,3 +33,5 @@ curl --fail http://127.0.0.1:4785/api/health
 替换容器前，备份 PostgreSQL、身份验证密钥和设置。重复部署时沿用同一 Compose 项目名及所有数据和证书卷。已有部署不得执行 `down -v`。只有兼容已安装数据库版本的应用代码才可回退。
 
 百人内测的配置与已验证边界见[容量说明](../docs/capacity.zh.md)。可选的 `-f deploy/compose.beta-2c4g.yml` 增加同机内存预算；应用到已有部署会重启 PostgreSQL，应在备份后安排维护窗口并先演练。`/api/health` 检查进程存活，`/api/ready` 检查数据库可用性。应用停机前会排空请求，Compose 留有 40 秒宽限期。仍需站外可用性监测和异机备份。
+
+`deploy/update-existing.sh` 为现有 Compose 安装暂存精确源码提交，切换前备份 PostgreSQL、认证密钥及配置，并升级至数据库版本 20。向前迁移后禁止自动回退不兼容的版本 19 代码。Docker Hub 不可达时，运维可通过 `ROLLOUT_NODE_IMAGE` 选用服务器上已信任且带有 Node 24.22.3 的现有服务镜像；构建和运行阶段仍重新安装本次锁定依赖并替换编译产物，不复用旧服务代码。

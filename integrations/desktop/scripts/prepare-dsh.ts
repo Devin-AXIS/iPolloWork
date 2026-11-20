@@ -8,6 +8,7 @@ import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from 'node:os'
 import { delimiter, join, relative, resolve } from 'node:path'
 import { desktopNodeEnvironment } from '../src/node-environment.ts'
+import { resolveDesktopAccountOrigin } from '../../tooling/account-service.mjs'
 import { createRuntimeProjectMetadata } from '../src/project-manager.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import { parseDesktopRelease, type DesktopRelease } from '../src/release.ts'
@@ -149,6 +150,7 @@ async function main(): Promise<void> {
     })
     writeFileSync(join(DSH_OUTPUT_ROOT, 'package.json'), `${JSON.stringify({
       name: '@ipollo/desktop-runtime', private: true, version: release.version, type: 'module',
+      ipolloworkAccountOrigin: resolveDesktopAccountOrigin(process.env),
       dependencies: Object.fromEntries(packageSet.packages.filter(entry => entry.name !== '@ipollo/dsh-suite')
         .map(entry => [entry.name, entry.version])),
     }, undefined, 2)}\n`)

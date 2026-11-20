@@ -1,6 +1,8 @@
 ARG NODE_IMAGE=node:24.22.3-bookworm-slim
 ARG POSTGRES_TOOLS_IMAGE=postgres:18-bookworm
 FROM ${NODE_IMAGE} AS build
+USER root
+ENV NODE_ENV=development
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -8,10 +10,11 @@ COPY . .
 RUN npm run build
 
 FROM ${NODE_IMAGE} AS runtime
+USER root
 WORKDIR /app
 ENV NODE_ENV=production HOST=0.0.0.0 PORT=4785 DATA_DIR=/data
 COPY package*.json ./
-RUN npm ci --omit=dev && npm cache clean --force && mkdir /data && chown node:node /data
+RUN npm ci --omit=dev && npm cache clean --force && rm -rf /app/dist && mkdir -p /data && chown node:node /data
 COPY --from=build /app/dist ./dist
 COPY LICENSE THIRD_PARTY_NOTICES.md ./
 USER node

@@ -7,7 +7,7 @@ test('the signed desktop retains the selected endpoint and required interface wi
     accountOrigin: 'http://localhost:3400', dedicatedDesktop: false, theme: false, account: false,
     market: false, requestTimeoutMs: 30000, automaticOutputArchive: true,
   }, true);
-  assert.equal(result.accountOrigin, 'http://localhost:3400');
+  assert.equal(result.accountOrigin, 'https://cloud.ipollo.net');
   assert.equal(result.dedicatedDesktop, true);
   assert.equal(result.theme, true);
   assert.equal(result.account, true);
@@ -18,8 +18,10 @@ test('the signed desktop retains the selected endpoint and required interface wi
 
 test('desktop distribution endpoints remain authoritative, including the legacy official hostname', () => {
   for (const accountOrigin of ['https://accounts.example.com', 'https://work.ipollo.net', 'https://cloud.ipollo.net'])
-    assert.equal(resolveConfig({ accountOrigin }, true).accountOrigin, accountOrigin);
-  assert.throws(() => resolveConfig({ accountOrigin: 'http://remote.example.com' }, true), { code: 'IPW_INVALID_ACCOUNT_ORIGIN' });
+    assert.equal(resolveConfig({ accountOrigin: 'http://localhost:3400' }, true, accountOrigin).accountOrigin, accountOrigin);
+  assert.equal(resolveConfig({}, true, 'http://localhost:4796').accountOrigin, 'http://localhost:4796');
+  for (const origin of ['http://remote.example.com', 'https://user:secret@example.com', 'https://example.com/?secret=x', 12])
+    assert.throws(() => resolveConfig({}, true, origin), { code: 'IPW_INVALID_ACCOUNT_ORIGIN' });
 });
 
 test('ordinary DSH installations retain their deployment-owned configuration', () => {
