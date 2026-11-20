@@ -14,6 +14,7 @@ import {
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import {
   DESKTOP_HOST_PACKAGE,
   desktopCorePackageOverrides,
@@ -22,7 +23,8 @@ import {
 import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
-import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
+import { repairProfileRuntime } from './profile-runtime-repair.ts'
+import { initProfile, readProfileManifest, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import semver from 'semver'
@@ -129,10 +131,11 @@ export class DesktopProjectManager {
   async applyRelease(): Promise<void> {
     await this.withLock(async () => {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
-      readDesktopRuntime(this.runtime.dsh)
+      const descriptor = readDesktopRuntime(this.runtime.dsh)
       const hasSuite = existsSync(join(this.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite', 'package.json'))
       await createPluginProfile(this.paths.profile, hasSuite ? [DESKTOP_HOST_PACKAGE] : [])
       removeLinkProjections(this.paths.profile)
+      repairProfileRuntime(this.paths.profile, this.runtime.dsh, descriptor)
     })
   }
 
@@ -222,5 +225,34 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
  */
 export async function createPluginProfile(projectDir: string, requiredBundles: readonly string[] = []): Promise<void> {
   initProfile(projectDir, [...WEB_PROFILE.bundles, ...requiredBundles])
+  if (requiredBundles.includes(DESKTOP_HOST_PACKAGE)) {
+    const manifestPath = join(projectDir, 'package.json')
+    const manifest = readProfileManifest('dsh', projectDir)
+    const current = manifest.dsh?.profile?.bundles ?? [...WEB_PROFILE.bundles]
+    if (!Array.isArray(current) || current.some(name => typeof name !== 'string')) {
+      throw new Error('desktop profile: invalid application bundle list')
+    }
+    // The private application already owns these entries. Retaining the old public bundle
+    // creates a competing instance and allows old profile code to replace the desktop UI.
+    const next = current.filter(name => name !== '@ipollo/dsh-suite' && name !== '@ipollo/dsh-stage')
+    const applicationPackages = new Set(['@ipollo/desktop-host', '@ipollo/dsh-suite', '@ipollo/dsh-stage'])
+    const dependencies: Record<string, Record<string, unknown>> = {}
+    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const) {
+      const values = (manifest as Record<string, unknown>)[section]
+      if (values === undefined) continue
+      if (values === null || typeof values !== 'object' || Array.isArray(values)) throw new Error('desktop profile: invalid dependency section')
+      const entries = Object.entries(values)
+      const kept = entries.filter(([name]) => !applicationPackages.has(name))
+      if (kept.length !== entries.length) dependencies[section] = Object.fromEntries(kept)
+    }
+    for (const name of [...WEB_PROFILE.bundles, ...requiredBundles]) if (!next.includes(name)) next.push(name)
+    if (Object.keys(dependencies).length || current.length !== next.length || current.some((name, index) => name !== next[index])) {
+      const backup = join(projectDir, `package.json.ipollo-backup-${randomUUID()}`)
+      writeFileSync(backup, readFileSync(manifestPath), { mode: 0o600, flag: 'wx' })
+      await writeFileAtomic(manifestPath, JSON.stringify({ ...manifest, ...dependencies, dsh: {
+        ...manifest.dsh, profile: { ...manifest.dsh?.profile, bundles: next },
+      } }, null, 2) + '\n', { mode: 0o600 })
+    }
+  }
   await configureStudioBuilds(projectDir)
 }

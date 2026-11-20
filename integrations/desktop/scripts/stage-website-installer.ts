@@ -12,11 +12,12 @@ export async function stageWebsiteInstaller(
 ): Promise<string> {
   const extension = target === 'win-x64' ? 'exe' : target === 'linux-x64' ? 'AppImage' : 'dmg'
   const originalSuffix = unsigned ? '-unsigned' : ''
-  const websiteSuffix = target === 'win-x64' ? originalSuffix : ''
   const websiteTarget = target === 'linux-x64' ? 'linux-x86_64' : target
   const source = join(artifacts, `iPollo-${version}-${target}${originalSuffix}.${extension}`)
   const output = join(artifacts, 'website-installers')
-  const destination = join(output, `ipollowork-${websiteTarget}-${version}${websiteSuffix}.${extension}`)
+  // Public website filenames follow one contract; signing qualification remains in the build record
+  // and in the separate unsigned updater artifact, not in this download alias.
+  const destination = join(output, `ipollowork-${websiteTarget}-${version}.${extension}`)
   const temporary = join(output, `.${randomUUID()}.tmp`)
   await mkdir(output, { recursive: true })
   try {

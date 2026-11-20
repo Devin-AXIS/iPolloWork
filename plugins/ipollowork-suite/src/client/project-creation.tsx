@@ -156,7 +156,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
       if(!cloudEnabled||!cloudName.trim()||!state.signedIn)return;
       setBusy(true);setError('');
       void request<{url:string}>('/cloud/projects',{method:'POST',body:JSON.stringify({title:cloudName.trim(),enterpriseId:targetOrganization||null,creationKey:creationKey.current,
-        ...(targetOrganization?{access:{mode:shareWith==='all'?'enterprise':'selected',grants:shareWith&&shareWith!=='all'?[{kind:shareWith.startsWith('d:')?'department':'member',subjectId:shareWith.slice(2),role:shareRole}]:[]}}:{})})}).then(result=>{
+        ...(targetOrganization?{access:{mode:'selected',grants:shareWith?[{kind:'member',subjectId:shareWith.slice(2),role:shareRole}]:[]}}:{})})}).then(result=>{
         if(!alive.current)return;
         const target=new URL(result.url);if(target.protocol!=='https:')throw new Error('IPW_INVALID_RESPONSE');
         window.location.assign(target.href);
@@ -172,14 +172,12 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
         targetOrganization || null,
         targetOrganization
           ? {
-              mode: shareWith === "all" ? "enterprise" : "selected",
+              mode: "selected",
               grants:
-                shareWith && shareWith !== "all"
+                shareWith
                   ? [
                       {
-                        kind: shareWith.startsWith("d:")
-                          ? "department"
-                          : "member",
+                        kind: "member",
                         subjectId: shareWith.slice(2),
                         role: shareRole,
                       },
@@ -403,12 +401,6 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                 onChange={(e) => setShareWith(e.target.value)}
               >
                 <option value="">{c.selected}</option>
-                <option value="all">{c.everyone}</option>
-                {directory.data?.departments.map((d) => (
-                  <option key={d.id} value={"d:" + d.id}>
-                    {d.name}
-                  </option>
-                ))}
                 {directory.data?.members.map((m) => (
                   <option key={m.userId} value={"m:" + m.userId}>
                     {m.name || m.email}
@@ -416,7 +408,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                 ))}
               </select>
             </label>
-            {shareWith && shareWith !== "all" && (
+            {shareWith && (
               <label className={css.enterpriseField}>
                 <span>{t.permission}</span>
                 <select

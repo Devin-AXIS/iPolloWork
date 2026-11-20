@@ -109,4 +109,6 @@ iPolloWork 自有代码使用原有的 [iPolloWork Source Available License](LIC
 
 ## 独立插件
 
+[插件开发规范](docs/plugin-development.zh.md) · [Word 版](docs/plugin-development.zh.docx) · [插件开发 Skill](.agents/skills/ipollowork-plugin-development/SKILL.md)
+
 [数据标注实训云](plugins/data-annotation/README.zh.md)和[操作录制](plugins/operation-recorder/README.zh.md)分别打包为可独立安装的 DSH 插件，使用官方认证、工作区和插件生命周期，不修改 DSH 运行时。操作录制生成的 Skill 也可作为 DSH 插件安装。独立插件通过插件市场单独分发，不捆绑进 iPolloWork 主程序安装包。

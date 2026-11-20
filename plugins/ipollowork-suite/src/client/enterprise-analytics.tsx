@@ -50,7 +50,7 @@ export function AnalyticsTab({ enterpriseId, canManage, call, revision, t, langu
       </select></label>
     </div>
     <p className={css.analyticsHint}>{t.analyticsHint} {t.analyticsInvocationHint}</p>
-    {current?.error ? <Notice error={current.error} t={t} retry={() => setRetry(value => value + 1)} /> : !data ? <ListSkeleton /> : <>
+    {current?.error ? <Notice error={current.error} t={t} fallback={t.analyticsLoadFailed} retry={() => setRetry(value => value + 1)} /> : !data ? <ListSkeleton /> : <>
       <dl className={css.analyticsMetrics}>{metrics.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
       <p className={css.analyticsHint}>{format(t.analyticsCoverage, { measured: number(data.totals.measured), tasks: number(data.totals.tasks) })}</p>
       {!data.rows.length ? <EmptyState title={t.analyticsEmpty} /> : <div className={css.analyticsTableScroll} tabIndex={0} role="region" aria-label={t.analyticsTab}>

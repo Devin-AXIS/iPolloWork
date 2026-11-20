@@ -4,24 +4,33 @@ import type { Store } from "./database.js";
 import type { Actor } from "./auth.js";
 import { ServiceError } from "./errors.js";
 
-export type AssetKind = "package" | "skill" | "service" | "mcp";
+export type AssetKind = "package" | "skill" | "service" | "mcp" | "plugin" | "template";
 /** `all` covers every member; otherwise the listed departments and members are allowed. */
 export interface Audience {
   all: boolean;
   departments: string[];
   members: string[];
+  includeSubdepartments?: boolean;
 }
 export const audienceSchema = z
   .object({
     all: z.boolean(),
     departments: z.array(z.string().min(1).max(100)).max(200).default([]),
     members: z.array(z.string().min(1).max(100)).max(500).default([]),
+    includeSubdepartments: z.boolean().optional(),
   })
   .strict();
 
 /** SQL predicate for "membership row `m` may use asset `kind`/`idColumn`"; takes one bound `kind` parameter. */
 export const grantedTo = (idColumn: string) =>
-  `EXISTS(SELECT 1 FROM enterprise_grants g WHERE g.asset_kind=? AND g.asset_id=${idColumn} AND (g.audience_kind='all' OR (g.audience_kind='department' AND g.audience_id=m.department_id) OR (g.audience_kind='member' AND g.audience_id=m.user_id)))`;
+  `EXISTS(SELECT 1 FROM enterprise_grants g WHERE g.asset_kind=? AND g.asset_id=${idColumn} AND (
+    g.audience_kind='all' OR (g.audience_kind='department' AND g.audience_id=m.department_id) OR
+    (g.audience_kind='member' AND g.audience_id=m.user_id) OR (g.audience_kind='department_tree' AND EXISTS(
+      WITH RECURSIVE branch(id,parent_id) AS (
+        SELECT id,parent_id FROM departments WHERE id=m.department_id AND enterprise_id=m.enterprise_id
+        UNION SELECT d.id,d.parent_id FROM departments d JOIN branch b ON d.id=b.parent_id WHERE d.enterprise_id=m.enterprise_id
+      ) SELECT 1 FROM branch WHERE id=g.audience_id
+    ))))`;
 
 export async function audienceOf(
   store: Store,
@@ -36,8 +45,9 @@ export async function audienceOf(
   return {
     all: rows.some((r) => r.audience_kind === "all"),
     departments: rows
-      .filter((r) => r.audience_kind === "department")
+      .filter((r) => r.audience_kind === "department" || r.audience_kind === "department_tree")
       .map((r) => r.audience_id),
+    ...(rows.some(row => row.audience_kind === "department_tree") ? { includeSubdepartments:true } : {}),
     members: rows
       .filter((r) => r.audience_kind === "member")
       .map((r) => r.audience_id),
@@ -86,7 +96,7 @@ export async function replaceAudience(
     );
   if (audience.all) await insert("all", "");
   for (const id of new Set(audience.departments))
-    await insert("department", id);
+    await insert(audience.includeSubdepartments ? "department_tree" : "department", id);
   for (const id of new Set(audience.members)) await insert("member", id);
 }
 
@@ -100,7 +110,7 @@ export async function canUse(
 ): Promise<boolean> {
   if (actor.role === "admin") return true;
   const member = await store.one<{ role: string }>(
-    "SELECT role FROM members WHERE enterprise_id=? AND user_id=?",
+    "SELECT role FROM members WHERE enterprise_id=? AND user_id=? AND status='active'",
     enterpriseId,
     actor.id,
   );
@@ -108,7 +118,7 @@ export async function canUse(
   if (member.role === "owner" || member.role === "admin") return true;
   return Boolean(
     await store.one(
-      `SELECT 1 FROM members m WHERE m.enterprise_id=? AND m.user_id=? AND ${grantedTo("?")}`,
+      `SELECT 1 FROM members m WHERE m.enterprise_id=? AND m.user_id=? AND m.status='active' AND ${grantedTo("?")}`,
       enterpriseId,
       actor.id,
       kind,
@@ -136,8 +146,9 @@ export async function dropAudience(
   audienceId: string,
 ) {
   await store.run(
-    "DELETE FROM enterprise_grants WHERE enterprise_id=? AND audience_kind=? AND audience_id=?",
+    "DELETE FROM enterprise_grants WHERE enterprise_id=? AND (audience_kind=? OR (?='department' AND audience_kind='department_tree')) AND audience_id=?",
     enterpriseId,
+    audienceKind,
     audienceKind,
     audienceId,
   );

@@ -45,21 +45,28 @@ export interface StoreOptions {
   databasePoolSize: number;
   databaseSchema: string;
   statementTimeoutMs?: number;
+  databaseStatementTimeoutMs?: number;
+  databaseConnectionTimeoutMs?: number;
+  databaseLockTimeoutMs?: number;
+  databaseQueueLimit?: number;
 }
 export class Store {
   readonly db: Pool;
   private readonly connection = new AsyncLocalStorage<PoolClient>();
+  private readonly queueLimit: number;
+  private closing?: Promise<void>;
   get inTransaction(): boolean {
     return this.connection.getStore() !== undefined;
   }
   constructor(options: StoreOptions) {
-    const timeout = options.statementTimeoutMs ?? 15000;
+    const timeout = options.statementTimeoutMs ?? options.databaseStatementTimeoutMs ?? 15000;
+    this.queueLimit = options.databaseQueueLimit ?? 128;
     this.db = new Pool({
       connectionString: options.databaseUrl,
       max: options.databasePoolSize,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: options.databaseConnectionTimeoutMs ?? 3000,
       idleTimeoutMillis: 30000,
-      options: `-c search_path=${options.databaseSchema} -c statement_timeout=${timeout} -c idle_in_transaction_session_timeout=${Math.max(timeout, 15000)}`,
+      options: `-c search_path=${options.databaseSchema} -c statement_timeout=${timeout} -c lock_timeout=${options.databaseLockTimeoutMs ?? 3000} -c idle_in_transaction_session_timeout=${Math.max(timeout, 15000)}`,
     });
     this.db.on("error", () => console.error("PostgreSQL idle connection lost"));
   }
@@ -67,6 +74,7 @@ export class Store {
     sql: string,
     ...values: Parameter[]
   ): Promise<T[]> {
+    this.checkQueue();
     const result = await (this.connection.getStore() ?? this.db).query(
       parameters(sql),
       values,
@@ -98,6 +106,7 @@ export class Store {
     return (await this.all<T>(sql, ...values))[0];
   }
   async run(sql: string, ...values: Parameter[]): Promise<{ changes: number }> {
+    this.checkQueue();
     const result = await (this.connection.getStore() ?? this.db).query(
       parameters(sql),
       values,
@@ -107,6 +116,7 @@ export class Store {
   /** Database-only callback. Business owners lock the wallet, order or project being changed before reading mutable state. */
   async transaction<T>(fn: () => Promise<T>): Promise<T> {
     if (this.connection.getStore()) return fn();
+    this.checkQueue();
     const client = await this.db.connect();
     let broken = false;
     let committing = false;
@@ -150,14 +160,18 @@ export class Store {
       client.release(broken);
     }
   }
-  async close(): Promise<void> {
-    await this.db.end();
+  close(): Promise<void> { return this.closing ??= this.db.end(); }
+  private checkQueue(): void {
+    if (!this.inTransaction && this.db.waitingCount >= this.queueLimit)
+      throw new ServiceError('DATABASE_BUSY', 503, '数据库请求较多，请稍后重试');
   }
 }
 
 /** Authentication tables already exist. Business versions are monotonically increasing and database-local. */
 export async function migrate(store: Store, config: Config): Promise<void> {
   await store.transaction(async () => {
+    // Startup migrations may wait for another instance; interactive lock limits apply after startup.
+    await store.run("SET LOCAL lock_timeout = '15s'");
     await store.run("SELECT pg_advisory_xact_lock(474317850)");
     await store.run(
       "CREATE TABLE IF NOT EXISTS service_schema(version BIGINT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())",
@@ -169,7 +183,7 @@ export async function migrate(store: Store, config: Config): Promise<void> {
         )
       )?.version,
     );
-    if (version > 15)
+    if (version > 20)
       throw new Error("This database requires a newer iPolloWork service");
     if (version < 1) {
       await store.run(
@@ -247,9 +261,33 @@ export async function migrate(store: Store, config: Config): Promise<void> {
       await store.run(await readFile(new URL("./migration-pg-014.sql", import.meta.url), "utf8"));
       await store.run("INSERT INTO service_schema(version) VALUES(14)");
     }
-    if (version < 15) {
+    // The local board preview used version 15 before that number shipped on main.
+    const boardPreview = version === 15 && (await store.one(
+      "SELECT to_regclass('project_board_tasks') IS NOT NULL AND to_regclass('organization_member_notices') IS NULL AS legacy",
+    ))?.legacy === true;
+    if (version < 15 || boardPreview) {
       await store.run(await readFile(new URL("./migration-pg-015.sql", import.meta.url), "utf8"));
-      await store.run("INSERT INTO service_schema(version) VALUES(15)");
+      if (version < 15) await store.run("INSERT INTO service_schema(version) VALUES(15)");
+    }
+    if (version < 16) {
+      await store.run(await readFile(new URL("./migration-pg-016.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(16)");
+    }
+    if (version < 17) {
+      await store.run(await readFile(new URL("./migration-pg-017.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(17)");
+    }
+    if (version < 18) {
+      await store.run(await readFile(new URL("./migration-pg-018.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(18)");
+    }
+    if (version < 19) {
+      await store.run(await readFile(new URL("./migration-pg-019.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(19)");
+    }
+    if (version < 20) {
+      await store.run(await readFile(new URL("./migration-pg-020.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(20)");
     }
     await adoptStoredResources(store, config);
   });

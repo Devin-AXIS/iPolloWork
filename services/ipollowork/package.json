@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/work-services",
-  "version": "0.1.12",
+  "version": "0.1.14",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -17,7 +17,8 @@
     "backup": "tsx scripts/backup.ts",
     "build:carrier": "node scripts/liveshare-carrier.mjs",
     "import:sqlite": "tsx scripts/import-sqlite.ts",
-    "bench:database": "tsx scripts/benchmark-database.ts"
+    "bench:database": "tsx scripts/benchmark-database.ts",
+    "bench:http": "tsx scripts/benchmark-http.ts"
   },
   "dependencies": {
     "@alicloud/credentials": "2.4.7",

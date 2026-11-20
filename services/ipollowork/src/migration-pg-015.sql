@@ -1,38 +1,62 @@
-CREATE TABLE project_board_tasks (
-  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  id TEXT NOT NULL,
-  revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
-  title TEXT NOT NULL CHECK(length(btrim(title)) BETWEEN 1 AND 160),
-  description TEXT NOT NULL CHECK(length(description) <= 8000),
-  status TEXT NOT NULL CHECK(status IN ('todo','doing','review','done')),
-  priority TEXT NOT NULL CHECK(priority IN ('normal','high','urgent')),
-  start_at BIGINT,
-  due_at BIGINT,
-  people_org_id TEXT REFERENCES enterprises(id) ON DELETE SET NULL,
-  assignee_id TEXT REFERENCES "user"(id) ON DELETE SET NULL,
-  assignee_agent JSONB CHECK(assignee_agent IS NULL OR jsonb_typeof(assignee_agent) = 'object'),
-  participant_agents JSONB NOT NULL DEFAULT '[]' CHECK(jsonb_typeof(participant_agents) = 'array' AND jsonb_array_length(participant_agents)<=20),
-  participants TEXT[] NOT NULL DEFAULT '{}',
-  predecessors TEXT[] NOT NULL DEFAULT '{}',
-  session_id TEXT,
-  PRIMARY KEY (project_id,id),
-  CHECK(assignee_id IS NULL OR assignee_agent IS NULL),
-  CHECK(start_at IS NULL OR due_at IS NULL OR start_at<=due_at),
-  CHECK(cardinality(participants)<=100 AND cardinality(predecessors)<=50),
-  CHECK(NOT id = ANY(predecessors))
+ALTER TABLE enterprises ADD COLUMN description TEXT NOT NULL DEFAULT '';
+ALTER TABLE enterprises ADD COLUMN logo TEXT;
+ALTER TABLE enterprises ADD COLUMN tab_order TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE members ADD COLUMN employee_number TEXT;
+ALTER TABLE members ADD COLUMN display_name TEXT;
+CREATE UNIQUE INDEX members_employee_number ON members (enterprise_id, lower(employee_number))
+  WHERE employee_number IS NOT NULL;
+ALTER TABLE invitations ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE invitations ADD COLUMN invitee_name TEXT;
+ALTER TABLE invitations ADD COLUMN employee_number TEXT;
+ALTER TABLE departments ADD COLUMN parent_id TEXT REFERENCES departments(id) ON DELETE SET NULL;
+ALTER TABLE enterprise_mcp ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE enterprise_mcp ADD COLUMN oauth_config TEXT;
+CREATE TABLE enterprise_mcp_oauth_pending (
+  mcp_id TEXT NOT NULL REFERENCES enterprise_mcp(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  state_hash TEXT NOT NULL UNIQUE,
+  verifier TEXT NOT NULL,
+  configuration TEXT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  PRIMARY KEY(mcp_id,user_id)
 );
-CREATE UNIQUE INDEX project_board_session ON project_board_tasks(project_id,session_id) WHERE session_id IS NOT NULL;
-CREATE INDEX project_board_predecessors ON project_board_tasks USING GIN(predecessors);
-
-CREATE TABLE project_board_notices (
+ALTER TABLE audit ADD COLUMN enterprise_id TEXT REFERENCES enterprises(id) ON DELETE CASCADE;
+CREATE INDEX audit_enterprise ON audit(enterprise_id, id DESC) WHERE enterprise_id IS NOT NULL;
+CREATE TABLE organization_member_notices (
   id TEXT PRIMARY KEY,
-  project_id TEXT NOT NULL,
-  task_id TEXT NOT NULL,
   enterprise_id TEXT NOT NULL REFERENCES enterprises(id) ON DELETE CASCADE,
-  recipient_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL CHECK(kind IN ('assigned','participating','ready')),
+  user_id TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK(kind IN ('role','department','removed')),
+  value TEXT,
   created_at BIGINT NOT NULL,
-  read_at BIGINT,
-  FOREIGN KEY(project_id,task_id) REFERENCES project_board_tasks(project_id,id) ON DELETE CASCADE
+  read_at BIGINT
 );
-CREATE INDEX project_board_inbox ON project_board_notices(recipient_id,created_at DESC,id DESC);
+CREATE INDEX organization_member_notices_user ON organization_member_notices(user_id, created_at DESC);
+
+CREATE TABLE organization_publications (
+  id TEXT PRIMARY KEY,
+  enterprise_id TEXT NOT NULL REFERENCES enterprises(id) ON DELETE CASCADE,
+  submitted_by TEXT NOT NULL REFERENCES "user"(id),
+  kind TEXT NOT NULL CHECK(kind IN ('plugin', 'template', 'skill')),
+  resource_key TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  published_version TEXT,
+  created_at BIGINT NOT NULL,
+  UNIQUE(enterprise_id, kind, resource_key)
+);
+CREATE TABLE organization_publication_versions (
+  publication_id TEXT NOT NULL REFERENCES organization_publications(id) ON DELETE CASCADE,
+  version TEXT NOT NULL,
+  content TEXT,
+  status TEXT NOT NULL CHECK(status IN ('pending', 'approved', 'rejected')),
+  note TEXT NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  PRIMARY KEY(publication_id, version)
+);
+ALTER TABLE enterprise_grants DROP CONSTRAINT enterprise_grants_asset_kind_check;
+ALTER TABLE enterprise_grants ADD CONSTRAINT enterprise_grants_asset_kind_check
+  CHECK(asset_kind IN ('package', 'skill', 'service', 'mcp', 'plugin', 'template'));
+ALTER TABLE enterprise_grants DROP CONSTRAINT enterprise_grants_audience_kind_check;
+ALTER TABLE enterprise_grants ADD CONSTRAINT enterprise_grants_audience_kind_check
+  CHECK(audience_kind IN ('all', 'department', 'department_tree', 'member'));

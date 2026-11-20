@@ -1,0 +1,30 @@
+# Optional single-host trial budget. Apply after compose.yml and compose.production.yml.
+# Rehearse on a staging host before changing an existing production installation.
+services:
+  work:
+    mem_limit: 1536m
+    pids_limit: 256
+    environment:
+      NODE_OPTIONS: --max-old-space-size=768
+      DATABASE_POOL_SIZE: "8"
+      DATABASE_QUEUE_LIMIT: "128"
+      APP_DATA_POOL_SIZE: "4"
+      EXECUTION_CONCURRENCY: "8"
+      TRANSFER_CONCURRENCY: "2"
+  postgres:
+    mem_limit: 768m
+    shm_size: 256m
+    command: [postgres, -c, max_connections=40, -c, shared_buffers=128MB, -c, work_mem=4MB, -c, maintenance_work_mem=64MB, -c, max_wal_size=1GB]
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+  edge:
+    mem_limit: 128m
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

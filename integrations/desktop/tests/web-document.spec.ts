@@ -85,6 +85,20 @@ it('refuses another page origin without forwarding its request', async () => {
   expect(fetch).not.toHaveBeenCalled()
 })
 
+it.each(['Start', 'Redeem'])('forwards a trusted local origin for LiveShare login %s', async (step) => {
+  const fetch = vi.fn().mockResolvedValue(new Response(null, { status: 200 }))
+  vi.stubGlobal('fetch', fetch)
+  const path = 'dsh-app://app/api/liveshare.ownerLogin' + step
+  const host = 'http://127.0.0.1:1234/'
+  const post = (headers: HeadersInit) => new Request(path, { method: 'POST', headers, body: '{}' })
+  expect((await forwardWebRequest(post({ 'content-type': 'application/json' }), host, 'session=owned')).status).toBe(200)
+  const [, init] = fetch.mock.calls[0] as [URL, RequestInit]
+  expect(new Headers(init.headers).get('origin')).toBe('http://127.0.0.1:1234')
+  expect((await forwardWebRequest(post({ origin: 'https://other.example', 'content-type': 'application/json' }), host, 'session=owned')).status).toBe(403)
+  expect((await forwardWebRequest(post({ 'content-type': 'text/plain' }), host, 'session=owned')).status).toBe(415)
+  expect(fetch).toHaveBeenCalledTimes(1)
+})
+
 it('removes only legacy Host authentication cookies for the Host hostname', async () => {
   const removed: [string, string][] = []
   const cookies = {

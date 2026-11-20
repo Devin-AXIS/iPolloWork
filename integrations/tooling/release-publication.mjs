@@ -4,12 +4,15 @@ import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createManifest } from './release-mirror.mjs'
-import { numericReleaseVersion, hashReleaseAsset, updateFeeds } from './release-update-feed.mjs'
+import { numericReleaseVersion, hashReleaseAsset, updateFeeds, windowsUpdateFilename } from './release-update-feed.mjs'
+import { stageWebsiteDownloads, websiteDownloadSources } from './release-website-downloads.mjs'
 
-export function checkRelease(release, previous) {
+export function checkRelease(release, previous, { promotePreview = false } = {}) {
   const version = numericReleaseVersion(release.tag_name)
-  assert.equal(release.draft, true, 'Publication must start from a draft')
-  assert.equal(release.prerelease, false, 'Formal releases cannot be prereleases')
+  const preview = promotePreview && release.draft === false && release.prerelease === true
+  assert.ok(release.draft === true || preview, 'Publication must start from a draft or explicitly selected preview')
+  assert.ok(release.prerelease === false || preview, 'Formal releases cannot start from draft prereleases')
+  assert.match(release.target_commitish ?? '', /^[a-f0-9]{40}$/, 'Draft must point at the packaged commit')
   const prior = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(previous.tag_name)
     ? numericReleaseVersion(previous.tag_name).split('.').map(Number) : null
   if (prior) {
@@ -18,24 +21,14 @@ export function checkRelease(release, previous) {
     assert.ok(index >= 0 && next[index] > prior[index], 'Release must be newer than Latest')
   }
   const byName = new Map(release.assets.map(asset => [asset.name, asset]))
+  const windows = windowsUpdateFilename(version)
   for (const name of [
-    ...['arm64', 'x64'].flatMap(arch => [`iPollo-${version}-mac-${arch}.dmg`, `iPollo-${version}-mac-${arch}.zip`, `iPollo-${version}-mac-${arch}.zip.blockmap`, `mac-${arch}-release.json`]),
-    `iPollo-${version}-win-x64-unsigned.exe`,
+    ...['arm64', 'x64'].flatMap(arch => [
+      `ipollowork-mac-${arch}-${version}.dmg`, `iPollo-${version}-mac-${arch}.zip`,
+      `iPollo-${version}-mac-${arch}.zip.blockmap`, `mac-${arch}-release.json`,
+    ]),
+    windows, `${windows}.blockmap`, `ipollowork-linux-x86_64-${version}.AppImage`,
   ]) assert.ok(byName.get(name)?.size > 0, `Missing release asset: ${name}`)
-  for (const [installer, filename] of [
-    [`iPollo-${version}-win-x64-unsigned.exe`, `ipollowork-win-x64-${version}-unsigned.exe`],
-    ...['arm64', 'x64'].map(arch => [`iPollo-${version}-mac-${arch}.dmg`, `ipollowork-mac-${arch}-${version}.dmg`]),
-  ]) {
-    const download = byName.get(filename)
-    const original = byName.get(installer)
-    assert.ok(download?.size > 0, `Missing website download: ${filename}`)
-    assert.equal(download.size, original.size, `Website download size mismatch: ${filename}`)
-    assert.match(download.digest ?? '', /^sha256:[a-f0-9]{64}$/, `Missing website download digest: ${filename}`)
-    assert.equal(download.digest, original.digest, `Website download digest mismatch: ${filename}`)
-  }
-  for (const prefix of ['deepseek-idesign-', 'ipollo-dsh-suite-']) {
-    assert.ok(release.assets.some(asset => asset.name.startsWith(prefix) && asset.name.endsWith('.tgz') && asset.size > 0), `Missing plugin package: ${prefix}`)
-  }
   return version
 }
 
@@ -44,6 +37,7 @@ export async function prepareRelease(release, directory) {
   const manifest = await createManifest(release, directory)
   for (const arch of ['arm64', 'x64']) {
     const record = JSON.parse(await readFile(join(directory, `mac-${arch}-release.json`), 'utf8'))
+    assert.equal(record.commit, release.target_commitish, 'Mac build commit mismatch')
     assert.equal(record.version, version, 'Mac build version mismatch')
     assert.equal(record.target, `mac-${arch}`)
     assert.equal(record.dirty, false, 'Mac build must come from a clean checkout')
@@ -57,12 +51,14 @@ export async function prepareRelease(release, directory) {
   }
   const feeds = updateFeeds(version, payloads)
   for (const [name, content] of Object.entries(feeds)) await writeFile(join(directory, name), content)
+  await stageWebsiteDownloads(version, directory)
   // Feed files are regenerated above, so their checksums must describe these final bytes.
   const sums = []
-  for (const asset of manifest.assets.filter(asset => !/^(stable(?:-mac)?\.yml|IPOLLO-SHA256SUMS\.txt)$/.test(asset.name))) {
+  const generated = new Set([...Object.keys(feeds), ...Object.keys(websiteDownloadSources(version)), 'IPOLLO-SHA256SUMS.txt'])
+  for (const asset of manifest.assets.filter(asset => !generated.has(asset.name))) {
     sums.push(`${asset.sha256}  ${asset.name}`)
   }
-  for (const name of Object.keys(feeds)) sums.push(`${(await hashReleaseAsset(join(directory, name))).sha256}  ${name}`)
+  for (const name of [...Object.keys(feeds), ...Object.keys(websiteDownloadSources(version))]) sums.push(`${(await hashReleaseAsset(join(directory, name))).sha256}  ${name}`)
   await writeFile(join(directory, 'IPOLLO-SHA256SUMS.txt'), sums.sort().join('\n') + '\n')
   return { version, assets: manifest.assets.length }
 }
@@ -79,7 +75,7 @@ export async function verifyPublishedRelease(release, origin, fetcher = fetch, e
     assert.equal(feed.version, version, `Stale update feed: ${name}`)
     const expected = name === 'stable-mac.yml'
       ? [`iPollo-${version}-mac-arm64.zip`, `iPollo-${version}-mac-x64.zip`]
-      : [`iPollo-${version}-win-x64-unsigned.exe`]
+      : [windowsUpdateFilename(version)]
     assert.deepEqual(feed.files.map(file => file.url).sort(), expected.sort())
     for (const file of feed.files) {
       assert.ok(/^[A-Za-z0-9+/]{86}==$/.test(file.sha512), 'Invalid update digest')
@@ -89,13 +85,18 @@ export async function verifyPublishedRelease(release, origin, fetcher = fetch, e
       assert.equal(Number(payload.headers.get('content-length')), file.size)
     }
   }
-  return { version, feeds: 2, payloads: 3 }
+  for (const [name, original] of Object.entries(websiteDownloadSources(version))) {
+    const response = await fetcher(new URL(name, origin), { method: 'HEAD', signal: AbortSignal.timeout(60000) })
+    assert.equal(response.status, 200, `Website installer unavailable: ${name}`)
+    assert.equal(Number(response.headers.get('content-length')), source.get(original)?.size, `Website installer size mismatch: ${name}`)
+  }
+  return { version, feeds: 2, payloads: 3, websiteDownloads: 5 }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [mode, file, location, directory] = process.argv.slice(2)
   const release = JSON.parse(await readFile(file, 'utf8'))
-  if (mode === 'check') console.log(checkRelease(release, JSON.parse(await readFile(location, 'utf8'))))
+  if (mode === 'check') console.log(checkRelease(release, JSON.parse(await readFile(location, 'utf8')), { promotePreview: directory === '--promote-preview' }))
   else if (mode === 'prepare') console.log(await prepareRelease(release, location))
   else if (mode === 'verify') {
     assert.ok(directory, 'Verification requires the directory containing the verified feeds')

@@ -36,7 +36,7 @@ async function task(store: Store, project: string, id: string) {
   const row = await store.one(select + " WHERE t.project_id=? AND t.id=?", project, id);
   return row && taskOf(row);
 }
-const eligible = `(p.access_mode='enterprise' OR p.owner_id=m.user_id OR m.role IN ('owner','admin') OR
+const eligible = `m.status='active' AND (p.access_mode='enterprise' OR p.owner_id=m.user_id OR m.role IN ('owner','admin') OR
  EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=p.id AND
  ((g.kind='member' AND g.subject_id=m.user_id) OR (g.kind='department' AND g.subject_id=m.department_id))))`;
 async function eligiblePeople(store: Store, project: string, people: Set<string>) {

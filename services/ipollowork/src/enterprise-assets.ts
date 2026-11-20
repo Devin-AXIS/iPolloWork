@@ -1,6 +1,7 @@
 /** Department management and the enterprise file packages and skills that departments and members are granted. */
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { checkDepartmentParent } from "./enterprise.js";
 import type { App } from "./http.js";
 import type { Store } from "./database.js";
 import type { Config } from "./config.js";
@@ -122,14 +123,18 @@ export function mountEnterpriseAssets(
     const id = c.req.param("id"),
       actor = c.get("actor");
     await requireEnterpriseManager(store, actor, id);
-    const input = z.object({ name: title }).parse(await c.req.json());
+    const input = z.object({ name: title, parentId: z.string().nullable().optional() }).parse(await c.req.json());
+    const departmentId = c.req.param("departmentId");
     await store.transaction(async () => {
+      await checkDepartmentParent(store, id, input.parentId, departmentId);
       if (
         !(
           await store.run(
-            "UPDATE departments SET name=? WHERE id=? AND enterprise_id=?",
+            "UPDATE departments SET name=?,parent_id=CASE WHEN ? THEN ? ELSE parent_id END WHERE id=? AND enterprise_id=?",
             input.name,
-            c.req.param("departmentId"),
+            input.parentId !== undefined,
+            input.parentId ?? null,
+            departmentId,
             id,
           )
         ).changes
@@ -139,7 +144,8 @@ export function mountEnterpriseAssets(
         store,
         actor,
         "department.update",
-        c.req.param("departmentId"),
+        departmentId,
+        id,
       );
     });
     return c.json({ ok: true });
@@ -150,6 +156,7 @@ export function mountEnterpriseAssets(
       departmentId = c.req.param("departmentId");
     await requireEnterpriseManager(store, actor, id);
     await store.transaction(async () => {
+      await checkDepartmentParent(store, id);
       if (
         !(await store.one(
           "SELECT id FROM departments WHERE id=? AND enterprise_id=?",
@@ -170,7 +177,7 @@ export function mountEnterpriseAssets(
       );
       await dropAudience(store, id, "department", departmentId);
       await store.run("DELETE FROM departments WHERE id=?", departmentId);
-      await audit(store, actor, "department.remove", departmentId);
+      await audit(store, actor, "department.remove", departmentId, id);
     });
     return c.json({ ok: true });
   });
@@ -232,7 +239,7 @@ export function mountEnterpriseAssets(
     await requireEnterpriseManager(store, actor, id);
     const input = z
       .object({
-        kind: z.enum(["package", "skill", "service", "mcp"]),
+        kind: z.enum(["package", "skill", "service", "mcp", "plugin", "template"]),
         assetId: z.string().min(1).max(100),
         audience: audienceSchema,
       })
@@ -240,11 +247,13 @@ export function mountEnterpriseAssets(
     await store.transaction(async () => {
       const select = {
         package: "SELECT 1 FROM file_packages WHERE id=? AND enterprise_id=?",
-        skill: "SELECT 1 FROM resources WHERE id=? AND enterprise_id=? AND kind='skill'",
-        mcp: "SELECT 1 FROM enterprise_mcp WHERE id=? AND enterprise_id=? FOR UPDATE",
+        skill: "SELECT 1 FROM resources WHERE id=? AND enterprise_id=? AND kind='skill' UNION ALL SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='skill'",
+        mcp: "SELECT 1 FROM enterprise_mcp WHERE id=? AND enterprise_id=? UNION ALL SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='mcp'",
         service: "SELECT 1 FROM enterprise_services WHERE service_id=? AND enterprise_id=?",
+        plugin: "SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='plugin' FOR UPDATE",
+        template: "SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='template' FOR UPDATE",
       }[input.kind];
-      if (!await store.one(select, input.assetId, id))
+      if (!await store.one(select, input.assetId, id, ...(input.kind === "skill" || input.kind === "mcp" ? [input.assetId,id] : [])))
         throw new ServiceError("ASSET_NOT_FOUND", 404, "资源不存在");
       await replaceAudience(
         store,
@@ -253,7 +262,7 @@ export function mountEnterpriseAssets(
         input.assetId,
         input.audience,
       );
-      await audit(store, actor, "grant.update", input.assetId);
+      await audit(store, actor, "grant.update", input.assetId, id);
     });
     return c.json({
       ok: true,
@@ -502,7 +511,7 @@ export function mountEnterpriseAssets(
         skillId,
         input.audience ?? everyone,
       );
-      await audit(store, actor, "skill.create", skillId);
+      await audit(store, actor, "skill.create", skillId, id);
     });
     return c.json({ id: skillId, name: skillName(input.title, skillId) }, 201);
   });
@@ -521,7 +530,7 @@ export function mountEnterpriseAssets(
         "UPDATE resources SET enterprise_id=NULL,visibility='private' WHERE id=?",
         row.id,
       );
-      await audit(store, actor, "skill.remove", row.id);
+      await audit(store, actor, "skill.remove", row.id, id);
     });
     return c.json({ ok: true });
   });
@@ -530,7 +539,7 @@ export function mountEnterpriseAssets(
   app.get("/api/v1/me/enterprise-skills", async (c) => {
     const actor = c.get("actor");
     const rows = await store.all<SkillRow & { enterprise_name: string }>(
-      `SELECT r.id,r.enterprise_id,r.title,r.description,r.storage_key,e.name AS enterprise_name FROM resources r JOIN enterprises e ON e.id=r.enterprise_id JOIN members m ON m.enterprise_id=r.enterprise_id AND m.user_id=?
+      `SELECT r.id,r.enterprise_id,r.title,r.description,r.storage_key,e.name AS enterprise_name FROM resources r JOIN enterprises e ON e.id=r.enterprise_id JOIN members m ON m.enterprise_id=r.enterprise_id AND m.user_id=? AND m.status='active'
        WHERE r.kind='skill' AND (m.role IN('owner','admin') OR ${grantedTo("r.id")}) ORDER BY r.created_at LIMIT 100`,
       actor.id,
       "skill",
@@ -546,6 +555,18 @@ export function mountEnterpriseAssets(
         description: row.description,
         content: (await storage.read(row.storage_key)).toString("utf8"),
       });
+    const published = await store.all<SkillRow & { enterprise_name:string; content:string }>(
+      `SELECT p.id,p.title,p.description,p.enterprise_id,e.name AS enterprise_name,v.content
+         FROM organization_publications p JOIN organization_publication_versions v ON v.publication_id=p.id AND v.version=p.published_version
+         JOIN enterprises e ON e.id=p.enterprise_id JOIN members m ON m.enterprise_id=p.enterprise_id AND m.user_id=? AND m.status='active'
+         WHERE p.kind='skill' AND v.status='approved' AND (m.role IN('owner','admin') OR ${grantedTo("p.id")})
+         ORDER BY p.created_at,p.id LIMIT ?`,
+      actor.id,"skill",100-items.length,
+    );
+    for (const row of published) {
+      items.push({ id:row.id, enterpriseId:row.enterprise_id, enterpriseName:row.enterprise_name,
+        name:skillName(row.title,row.id), title:row.title, description:row.description, content:row.content });
+    }
     return c.json({ items });
   });
 }

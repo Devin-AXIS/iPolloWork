@@ -193,6 +193,27 @@ const CSS = String.raw`
 .dim-panel .dim-credentialError, .dim-panel .dim-credentialActions { grid-column: 1 / -1; }
 .dim-panel .dim-credentialError { margin: 0; color: var(--dsw-alias-state-error-primary, #d54941); font-size: 12px; line-height: 1.5; }
 .dim-panel .dim-credentialActions { margin-top: 0; }
+
+/* The native Modal portals outside .dim-panel, including the custom Slack, Matrix and mail forms. */
+.dim-credentialModal { width: min(560px, 100%); max-height: 100%; }
+.dim-credentialContent { min-height: 0; }
+.dim-credentialContent > :has(> .dim-credentialBody) { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.dim-credentialBody { container-type: inline-size; min-width: 0; display: grid; gap: 14px; }
+.dim-credentialBody :is(.dim-credentialPanel, .dim-emailPanel) { min-width: 0; display: grid; gap: 14px; padding: 0; border: 0; background: none; box-shadow: none; }
+.dim-credentialBody .dim-credentialTitle { margin: 0; font-size: 14px; font-weight: 600; }
+.dim-credentialBody .dim-credentialForm { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.dim-credentialBody .dim-credentialFormSingle { grid-template-columns: minmax(0, 1fr); }
+.dim-credentialBody .dim-credentialField { min-width: 0; display: grid; align-content: start; gap: 6px; color: var(--dsw-alias-label-secondary); font-size: 13px; overflow-wrap: anywhere; }
+.dim-credentialBody :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding: 7px 10px; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-module-platform); border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; font: inherit; }
+.dim-credentialBody :is(input, select, textarea, a, button):focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #1677ff); outline-offset: 2px; }
+.dim-credentialBody :is(.dim-credentialActions, .dim-viewActions) { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin: 6px 0 0; }
+.dim-credentialBody :is(.dim-credentialError, .dim-formError, [role="alert"]) { grid-column: 1 / -1; color: var(--dsw-alias-state-error-primary); margin: 0; overflow-wrap: anywhere; }
+.dim-credentialBody .ddt-button { display: inline-flex; align-items: center; justify-content: center; min-height: 32px; padding: 5px 10px; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13px; text-decoration: none; cursor: pointer; }
+.dim-credentialBody .ddt-button[data-kind="primary"] { background: var(--dsw-alias-brand-primary, #1677ff); color: white; border-color: transparent; }
+.dim-credentialBody .ddt-button:disabled { opacity: .48; cursor: default; }
+@container (max-width: 420px) {
+  .dim-credentialBody .dim-credentialForm { grid-template-columns: minmax(0, 1fr); }
+}
 .dim-panel .dim-listSection { min-width: 0; width: 100%; max-width: 100%; display: flex; flex-direction: column; gap: 0; }
 .dim-panel .dim-listHeading { min-height: 0; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 6px; padding: 0; }
 .dim-panel .dim-listHeading h3 { margin: 0; color: var(--dsw-alias-label-primary, #1f2329); font-size: 14px; line-height: normal; font-weight: 650; }

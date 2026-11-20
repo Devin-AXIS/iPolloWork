@@ -1,10 +1,10 @@
 import type { FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/types'
 /** Origin-scoped boot, native directory selection, host paths of picked files, and update presentation with native confirmation actions. */
 
-import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
+import type { DesktopChannelBridge, DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-ai/dsh-client-ui-settings-general/types'
 import type { DesktopShortcutInput, ShortcutConfigSnapshot, ShortcutSaveResult } from '@deepseek-ai/dsh-client-shortcuts/protocol'
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { DESKTOP_IPC, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
+import { DESKTOP_FIXED_UPDATE_CHANNEL_ARGUMENT, DESKTOP_IPC, DESKTOP_VERSION_ARGUMENT, SCHEME, type DshDesktopProductApi, type DesktopUpdatePresentation } from './ipc.ts'
 import { PLATFORM_IPC } from './platform-ipc.ts'
 import { markDocumentPlatform, syncWindowFullscreen } from './preload-platform.ts'
 import { syncNativeTheme } from './preload-theme.ts'
@@ -14,8 +14,22 @@ import { createDesktopBrowserBridge } from './preload-browser.ts'
 import type { FileDragHandle } from '@deepseek-ai/dsh-util-file-drag'
 
 function createProductApi(): DshDesktopProductApi {
+  const version = process.argv.findLast(argument => argument.startsWith(DESKTOP_VERSION_ARGUMENT))
+    ?.slice(DESKTOP_VERSION_ARGUMENT.length)
+  const channels: DesktopChannelBridge | undefined = process.argv.includes(DESKTOP_FIXED_UPDATE_CHANNEL_ARGUMENT)
+    ? undefined
+    : {
+        get: () => ipcRenderer.invoke(DESKTOP_IPC.updatesChannelGet) as Promise<DesktopChannelState>,
+        set: channel => ipcRenderer.invoke(DESKTOP_IPC.updatesChannelSet, channel) as Promise<DesktopChannelChangeResult>,
+        subscribe(listener) {
+          const handle = (_event: Electron.IpcRendererEvent, state: DesktopChannelState): void => { listener(state) }
+          ipcRenderer.on(DESKTOP_IPC.updatesChannelChanged, handle)
+          return () => { ipcRenderer.off(DESKTOP_IPC.updatesChannelChanged, handle) }
+        },
+      }
   return {
     protocolVersion: 1,
+    ...(version ? { version } : {}),
     appVersion: () => ipcRenderer.invoke(DESKTOP_IPC.appVersion) as Promise<string>,
     fileActions: {
       save: request => ipcRenderer.invoke(DESKTOP_IPC.fileSave, request) as Promise<FileSaveResult>,
@@ -67,15 +81,7 @@ function createProductApi(): DshDesktopProductApi {
       },
     },
     updates: {
-      channels: {
-        get: () => ipcRenderer.invoke(DESKTOP_IPC.updatesChannelGet) as Promise<DesktopChannelState>,
-        set: channel => ipcRenderer.invoke(DESKTOP_IPC.updatesChannelSet, channel) as Promise<DesktopChannelChangeResult>,
-        subscribe(listener) {
-          const handle = (_event: Electron.IpcRendererEvent, state: DesktopChannelState): void => { listener(state) }
-          ipcRenderer.on(DESKTOP_IPC.updatesChannelChanged, handle)
-          return () => { ipcRenderer.off(DESKTOP_IPC.updatesChannelChanged, handle) }
-        },
-      },
+      ...(channels === undefined ? {} : { channels }),
       status: () => ipcRenderer.invoke(DESKTOP_IPC.updatesStatus) as Promise<DesktopUpdatePresentation>,
       open: () => ipcRenderer.invoke(DESKTOP_IPC.updatesOpen) as Promise<void>,
       subscribe(listener) {

@@ -84,7 +84,9 @@ export function mountEnterpriseAnalytics(app: App, store: Store): void {
         GROUP BY 1,2 ORDER BY tasks DESC,id LIMIT ? OFFSET ?`, enterpriseId, from, to, pageSize, (query.page - 1) * pageSize),
       store.one(`SELECT COUNT(DISTINCT ${key}) AS count ${base}`, enterpriseId, from, to),
       store.one("SELECT COUNT(*) AS count FROM projects WHERE enterprise_id=? AND created_at>=? AND created_at<?", enterpriseId, from, to),
-      store.one("SELECT COUNT(*) FILTER (WHERE kind='skill') AS skills, COUNT(*) FILTER (WHERE kind='plugin') AS plugins FROM resources WHERE enterprise_id=?", enterpriseId),
+      store.one(`SELECT COUNT(*) FILTER (WHERE kind='skill') AS skills, COUNT(*) FILTER (WHERE kind='plugin') AS plugins
+        FROM (SELECT kind FROM resources WHERE enterprise_id=? UNION ALL
+          SELECT kind FROM organization_publications WHERE enterprise_id=? AND published_version IS NOT NULL) assets`, enterpriseId, enterpriseId),
     ]);
     const metrics = (row: NonNullable<typeof total>) => ({
       tasks: Number(row.tasks), succeeded: Number(row.succeeded), failed: Number(row.failed),

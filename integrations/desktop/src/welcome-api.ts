@@ -22,6 +22,12 @@ export const WELCOME_IPC = {
 /** Credential writes return a safe outcome without exposing Host diagnostics. */
 export type WelcomeSaveResult = { readonly ok: true } | { readonly ok: false }
 
+/** Only recognized account rejections cross into the welcome renderer. */
+export type WelcomeAccountResult = { readonly ok: true } | {
+  readonly ok: false
+  readonly reason?: 'invalid-credentials' | 'email-in-use' | 'session-rejected' | 'service-unavailable' | 'timeout' | 'rate-limited'
+}
+
 /** One-time notification retained by the main process until Welcome receives it. */
 export type WelcomeNotice = 'session-expired'
 
@@ -32,16 +38,16 @@ export interface WelcomeOperations {
   /** Sign in without exposing the session grant.
    * @param email - Account email entered in the native window.
    * @param password - Password passed only to the owned account service.
-   * @returns Whether the account service accepted sign-in.
+   * @returns Whether the account service accepted sign-in or rejected the credentials.
    */
-  signInAccount?(email: string, password: string): Promise<WelcomeSaveResult>
+  signInAccount?(email: string, password: string): Promise<WelcomeAccountResult>
   /** Register an account and store its session only in the Host.
    * @param name - Account display name.
    * @param email - Account email.
    * @param password - Password sent to the account service.
    * @returns Whether registration completed and signed in.
    */
-  signUpAccount?(name: string, email: string, password: string): Promise<WelcomeSaveResult>
+  signUpAccount?(name: string, email: string, password: string): Promise<WelcomeAccountResult>
   /** @param eventName - allowed welcome event. @param attributes - approved fields without credentials. */
   analytics?<K extends WelcomeEventName>(eventName: K, attributes: ProductEventMap[K]): Promise<void>
   /** @returns the Host's current effective collection policy. */

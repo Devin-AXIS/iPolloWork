@@ -4,6 +4,80 @@ import { AccountService } from '../src/host/account.ts'
 import { resolveConfig } from '../src/host/config.ts'
 import { EnterpriseService } from '../src/host/enterprise.ts'
 
+test('publication labels survive the Host bridge and URL encoding without loosening plugin versions', async () => {
+  const origin = 'https://account.test', label = '2026-11 初版', paths: string[] = []
+  const account = new AccountService({
+    readRecord: async () => ({ kind:'grant',payload:{version:1,origin,token:'test-session'} }),
+    modifyRecord:async()=>undefined,deleteRecord:async()=>{},
+  },resolveConfig({accountOrigin:origin}),new AbortController().signal,async (input, init)=>{
+    const path = new URL(String(input)).pathname
+    paths.push(path)
+    if (path.endsWith('/me/organization-templates')) return Response.json({items:[{id:'resource',enterpriseId:'team',title:'Template',description:'Team template',version:label,sourceName:'Team'}]})
+    if (init?.method === 'POST') return Response.json({id:'resource',version:JSON.parse(String(init.body)).version})
+    if (init?.method === 'PUT') return Response.json({ok:true})
+    if (path.endsWith('/versions')) return Response.json({items:[{version:label,status:'approved',note:'',created_at:1}]})
+    return Response.json({html:'<h1>Template</h1>'})
+  })
+  const bridge = new EnterpriseService(account,{workspaceRegistry:{list:()=>[]},sessionQuery:{readSurface:async()=>({events:[]})}},origin)
+  assert.equal((await bridge.request('GET','/design-templates') as {items:{version:string}[]}).items[0]?.version,label)
+  const release = '/organizations/team/publications/template/resource/versions/' + encodeURIComponent(label)
+  await bridge.request('GET','/organizations/team/publications/template/resource/versions')
+  await bridge.request('PUT',release,{decision:'publish'})
+  assert.deepEqual(await bridge.request('GET','/design-templates/team/resource/'+encodeURIComponent(label)),{html:'<h1>Template</h1>'})
+  assert.equal(paths.at(-1),'/api/v1/enterprises/team/publications/template/resource/versions/'+encodeURIComponent(label))
+  const before = paths.length
+  await assert.rejects(bridge.request('POST','/organizations/team/publications/plugin',{title:'Plugin',description:'Team plugin',packageName:'@team/plugin',version:label}),{code:'PUBLICATION_VERSION_INVALID'})
+  for (const value of ['x%252Fy','%ZZ','..'])
+    await assert.rejects(bridge.request('GET','/design-templates/team/resource/'+value))
+  assert.equal(paths.length,before)
+})
+
+test('service address and code join the active organization service with the existing account grant', async () => {
+  const origin = 'https://account.test'
+  const paths: string[] = []
+  const token = 'q'.repeat(43)
+  const account = new AccountService({
+    readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin, token: 'test-session' } }),
+    modifyRecord: async () => undefined,
+    deleteRecord: async () => {},
+  }, resolveConfig({accountOrigin:origin}), new AbortController().signal, async (input, init) => {
+    assert.equal(new Headers(init?.headers).get('Authorization'),'Bearer test-session')
+    paths.push(String(input))
+    return Response.json({enterpriseId:'existing-organization'})
+  })
+  const enterprise = new EnterpriseService(account,{
+    workspaceRegistry:{list:()=>[]},sessionQuery:{readSurface:async()=>({events:[]})},
+  },origin)
+  await assert.rejects(enterprise.request('POST','/join',{
+    invitation:token,serviceAddress:'https://another.test',
+  }),{code:'IPW_INVITATION_SERVICE_MISMATCH'})
+  assert.deepEqual(paths,[])
+  assert.deepEqual(await enterprise.request('POST','/join',{invitation:token,serviceAddress:origin + '/'}),{enterpriseId:'existing-organization'})
+  assert.deepEqual(paths,[origin + '/api/v1/invitations/' + token + '/accept'])
+  await assert.rejects(enterprise.request('GET','/os',undefined),{code:'IPW_NOT_FOUND'})
+})
+
+test('the organization Host drops legacy file-package records and no longer forwards legacy file routes', async () => {
+  const host = 'https://account.test'
+  let reads = 0
+  const account = new AccountService({
+    readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: host, token: 'test-token' } }),
+    modifyRecord: async () => undefined,
+    deleteRecord: async () => {},
+  }, resolveConfig({ accountOrigin: host }), new AbortController().signal, async input => {
+    assert.equal(new URL(String(input)).pathname, '/api/v1/enterprises/team/assets')
+    reads++
+    return Response.json({ canManage: true, skills: [], packages: [{ id: 'legacy-file-package' }] })
+  })
+  const enterprise = new EnterpriseService(account, {
+    workspaceRegistry: { list: () => [] }, sessionQuery: { readSurface: async () => ({ events: [] }) },
+  }, host)
+  assert.deepEqual(await enterprise.request('GET', '/organizations/team/assets'), { canManage: true, skills: [] })
+  await assert.rejects(enterprise.request('GET', '/organizations/team/packages/old'), { code: 'IPW_NOT_FOUND', status: 404 })
+  await assert.rejects(enterprise.request('DELETE', '/organizations/team/packages/old/files/file'), { code: 'IPW_NOT_FOUND', status: 404 })
+  assert.equal(reads, 1)
+})
+
 test('the MCP list distinguishes an older service from empty, inaccessible, or missing organizations', async () => {
   const host = 'https://account.test'
   const organization = '00000000-0000-4000-8000-000000000001'
@@ -69,6 +143,9 @@ test('enterprise bridge uses native ids keep historical previews local and refus
     sessionQuery:{readSurface:async()=>{reads++;return{events}}},
   },'https://account.test')
   const catalog=await bridge.catalog()
+  assert.deepEqual(calls.map(call => call.path).sort(), [
+    '/api/auth/get-session', '/api/v1/enterprises', '/api/v1/projects',
+  ])
   assert.equal(catalog.projects[0]?.enterpriseName,'Team')
   assert.equal(catalog.projects[0]?.title,'Local project')
   const beforePreview=calls.length

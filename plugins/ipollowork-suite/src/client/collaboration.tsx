@@ -1,5 +1,6 @@
 /** Project files, accepted memory and contributions, with explicit view/participate/maintain access. */
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { FilePicker } from "./file-picker.tsx";
 import {
   Button,
   IconChevronLeftOutlineRegular,
@@ -34,7 +35,9 @@ import {
 } from "./enterprise-ui.tsx";
 import { request } from "./api.ts";
 import { projectCopy } from "./project-copy.ts";
+import { memberProjectAccess } from '../shared/project-access.ts';
 import {
+  ProjectDownload,
   ProjectFiles,
   ProjectOverview,
   MemoryVersions,
@@ -43,6 +46,7 @@ import css from "./suite.module.css";
 
 export interface CollaborationActions {
   openProject(workspaceId: string): void;
+  openSession(sessionId: string): Promise<void>;
 }
 export interface ViewProps {
   t: EnterpriseLabels;
@@ -119,7 +123,7 @@ export function ProjectsTab({
     </div>
   );
 }
-function Header({ title, view }: { title: string; view: ViewProps }) {
+function Header({ title, view, refresh }: { title: string; view: ViewProps; refresh?: () => void }) {
   return (
     <header className={css.viewHeader}>
       <Button
@@ -131,11 +135,15 @@ function Header({ title, view }: { title: string; view: ViewProps }) {
         {view.t.back}
       </Button>
       <h1>{title}</h1>
+      {refresh && <Button size="sm" variant="outline" onClick={refresh}>{view.t.refresh}</Button>}
     </header>
   );
 }
 
-export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
+export function ProjectView({ id, view: sourceView }: { id: string; view: ViewProps }) {
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const view = { ...sourceView, revision: sourceView.revision + refreshRevision };
+  const reload = useCallback(() => setRefreshRevision(value => value + 1), []);
   const { call, t, controller, catalog, language } = view,
     c = projectCopy(language),
     task = useTask(t);
@@ -152,6 +160,15 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
     [draft, setDraft] = useState(""),
     [base, setBase] = useState(0),
     [workspace, setWorkspace] = useState("");
+  useEffect(() => {
+    const refreshVisible = () => { if (!document.hidden) reload(); };
+    const timer = window.setInterval(refreshVisible, 12_000);
+    window.addEventListener("focus", refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshVisible);
+    };
+  }, [reload, id]);
   if (!record.data)
     return (
       <>
@@ -173,7 +190,7 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
     maintain = space.project.role === "maintain",
     participate = space.project.role !== "view";
   const refresh = async () => {
-    record.reload();
+    reload();
     await controller.load();
   };
   const accept = async (change: ProjectChange) => {
@@ -216,7 +233,8 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
   const selected = tabs.find((x) => x.value === tab)!;
   return (
     <>
-      <Header title={space.project.title} view={view} />
+      <Header title={space.project.title} view={view} refresh={reload} />
+      <Notice error={record.error} t={t} retry={record.reload} />
       <div className={css.projectToolbar}>
         <span className={css.muted}>{c[space.project.role]}</span>
         <span className={css.spacer} />
@@ -288,17 +306,7 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
                       key={file.path}
                       title={file.path}
                       actions={
-                        <a
-                          className={css.projectDownload}
-                          href={
-                            "/ipollowork-suite/enterprise/download/" +
-                            encodeURIComponent(file.resourceId)
-                          }
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {c.download}
-                        </a>
+                        <ProjectDownload href={"/ipollowork-suite/enterprise/download/" + encodeURIComponent(file.resourceId)} name={file.path} view={view} />
                       }
                     />
                   ))}
@@ -385,6 +393,7 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
                   workspaceId: workspace,
                 });
                 controller.notify(c.linked);
+                reload();
                 view.actions.openProject(workspace);
               })
             }
@@ -476,16 +485,7 @@ export function ProjectView({ id, view }: { id: string; view: ViewProps }) {
                   meta={f.resourceId ? "" : c.removed}
                   actions={
                     f.resourceId ? (
-                      <a
-                        href={
-                          "/ipollowork-suite/enterprise/download/" +
-                          encodeURIComponent(f.resourceId)
-                        }
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        {c.download}
-                      </a>
+                      <ProjectDownload href={"/ipollowork-suite/enterprise/download/" + encodeURIComponent(f.resourceId)} name={f.path} view={view} />
                     ) : undefined
                   }
                 />
@@ -693,18 +693,17 @@ function SubmitDialog({
             />
           </Field>
         ) : (
-          <Field label={c.chooseFiles} hint={c.fileHint}>
-            <input
-              type="file"
+            <FilePicker
+              label={c.chooseFiles} hint={c.fileHint} language={view.language}
               multiple
               required
               disabled={task.busy}
-              onChange={(e) => {
-                setFiles(Array.from(e.target.files ?? []));
+              files={files}
+              onSelect={(selected) => {
+                setFiles(selected);
                 change();
               }}
             />
-          </Field>
         )}
         <p className={css.muted}>{c.submitHint}</p>
         <FormError message={task.error} />
@@ -754,9 +753,8 @@ function AccessDialog({
     view.call,
     0,
   );
-  const value = draft ?? record.data;
+  const value = draft ?? (record.data && org.data ? memberProjectAccess(record.data, org.data.members) : undefined);
   const select = (
-    kind: "member" | "department",
     subjectId: string,
     role: ProjectRole | "none",
   ) => {
@@ -765,22 +763,22 @@ function AccessDialog({
         ...value,
         grants: [
           ...value.grants.filter(
-            (g) => g.kind !== kind || g.subjectId !== subjectId,
+            (g) => g.subjectId !== subjectId,
           ),
-          ...(role === "none" ? [] : [{ kind, subjectId, role }]),
+          ...(role === "none" ? [] : [{ kind: "member" as const, subjectId, role }]),
         ],
       });
   };
-  const picker = (kind: "member" | "department", subjectId: string) => (
+  const picker = (subjectId: string) => (
     <select
-      aria-label={c[kind]}
+      aria-label={c.member}
       disabled={task.busy}
       value={
-        value?.grants.find((g) => g.kind === kind && g.subjectId === subjectId)
+        value?.grants.find((g) => g.subjectId === subjectId)
           ?.role ?? "none"
       }
       onChange={(e) =>
-        select(kind, subjectId, e.target.value as ProjectRole | "none")
+        select(subjectId, e.target.value as ProjectRole | "none")
       }
     >
       <option value="none">{c.none}</option>
@@ -819,33 +817,7 @@ function AccessDialog({
         </>
       ) : (
         <div className={css.enterpriseForm}>
-          <select
-            aria-label={c.people}
-            value={value.mode}
-            disabled={task.busy}
-            onChange={(e) =>
-              setDraft({
-                ...value,
-                mode: e.target.value as "enterprise" | "selected",
-              })
-            }
-          >
-            <option value="selected">{c.selected}</option>
-            <option value="enterprise">{c.everyone}</option>
-          </select>
-          <p className={css.muted}>{c.accessHint}</p>
-          <Button variant="outline" type="button" disabled={task.busy || !org.data.canManage} onClick={() => {
-            close(); view.controller.open({ kind: "invite", enterpriseId: space.project.enterpriseId!, projectId: space.project.id });
-          }}>{view.t.inviteByEmail}</Button>
           <div className={css.enterpriseList}>
-            {org.data.departments.map((d) => (
-              <Row
-                key={d.id}
-                title={d.name}
-                meta={c.department}
-                actions={picker("department", d.id)}
-              />
-            ))}
             {org.data.members.map((m) => (
               <Row
                 key={m.userId}
@@ -855,7 +827,7 @@ function AccessDialog({
                   m.role === "owner" || m.role === "admin" ? (
                     <Tag tone="outline">{c.maintain}</Tag>
                   ) : (
-                    picker("member", m.userId)
+                    picker(m.userId)
                   )
                 }
               />

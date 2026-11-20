@@ -5,16 +5,18 @@ import css from './suite.module.css'
 
 export function mountCurrentVersion(ctx: ClientContext): void {
   const { dshDesktop } = window as Window & {
-    dshDesktop?: { protocolVersion: number; appVersion?: () => Promise<string> }
+    dshDesktop?: { protocolVersion: number; version?: string; appVersion?: () => Promise<string> }
   }
-  const getVersion = dshDesktop?.protocolVersion === 1 ? dshDesktop.appVersion : undefined
-  if (getVersion === undefined) return
+  if (dshDesktop?.protocolVersion !== 1) return
+  const { version: installedVersion, appVersion } = dshDesktop
+  if (!installedVersion && appVersion === undefined) return
 
   const DesktopVersionRow = ({ t }: { t: (key: 'general.currentVersion', data: { version: string }) => string }) => {
-    const [version, setVersion] = useState<string>()
+    const [version, setVersion] = useState(installedVersion)
     useEffect(() => {
+      if (installedVersion || appVersion === undefined) return
       let mounted = true
-      void getVersion().then(value => { if (mounted) setVersion(value) }, () => {})
+      void appVersion().then(value => { if (mounted) setVersion(value) }, () => {})
       return () => { mounted = false }
     }, [])
     return version === undefined ? null : <div className={css.currentVersion}>{t('general.currentVersion', { version })}</div>

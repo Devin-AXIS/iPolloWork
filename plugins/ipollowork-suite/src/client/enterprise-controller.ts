@@ -1,19 +1,16 @@
-import type { EnterpriseCatalog } from "../shared/enterprise.ts";
+import type { EnterpriseCatalog, EnterpriseTab, MemberNoticeFeed } from "../shared/enterprise.ts";
+export type { EnterpriseTab } from "../shared/enterprise.ts";
 import { request } from "./api.ts";
 
 /** Short forms and native-entry actions; detail records open as page views instead. */
 export type EnterpriseDialog =
-  | { kind: "create" | "join" }
+  | { kind: "create" | "joinService" }
   | { kind: "createProject"; enterpriseId: string }
   | { kind: "assign"; projectId: string }
   | { kind: "continue"; shareId?: string; workId?: string }
   | {
-      kind: "invite";
+      kind: "joinCode";
       enterpriseId: string;
-      email?: string;
-      role?: string;
-      departmentId?: string | null;
-      replaces?: string;
       projectId?: string;
       projectRole?: "view" | "participate" | "maintain";
     }
@@ -30,15 +27,6 @@ export type EnterpriseView =
   | { kind: "project"; id: string }
   | { kind: "work"; id: string }
   | { kind: "share"; id: string };
-export type EnterpriseTab =
-  | "analytics"
-  | "projects"
-  | "members"
-  | "departments"
-  | "files"
-  | "skills"
-  | "mcp"
-  | "models";
 export interface EnterpriseToast {
   id: number;
   text: string;
@@ -54,8 +42,11 @@ export interface EnterpriseState {
   tab: EnterpriseTab;
   views: readonly EnterpriseView[];
   toast: EnterpriseToast | null;
+  memberNotices: MemberNoticeFeed | null;
+  memberNoticeError: string;
   /** Increments after every mutation so open detail views reload their records. */
   revision: number;
+  publicationTarget?: string | undefined;
 }
 const SELECTED_KEY = "ipollowork.enterprise.selected";
 const FOCUS_REFRESH_MS = 30_000;
@@ -84,9 +75,11 @@ export class EnterpriseController {
     dialog: null,
     signedIn: false,
     enterpriseId: remembered(),
-    tab: "analytics",
+    tab: "projects",
     views: [],
     toast: null,
+    memberNotices: null,
+    memberNoticeError: "",
     revision: 0,
   };
   private listeners = new Set<() => void>();
@@ -94,6 +87,8 @@ export class EnterpriseController {
   private generation = 0;
   private loadedAt = 0;
   private toastId = 0;
+  private noticeAccount = 0;
+  private noticeRequest = 0;
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -114,6 +109,8 @@ export class EnterpriseController {
     });
   accountChanged(signedIn: boolean) {
     this.generation++;
+    this.noticeAccount++;
+    this.noticeRequest++;
     this.publish({
       catalog: null,
       loading: false,
@@ -121,9 +118,48 @@ export class EnterpriseController {
       dialog: null,
       signedIn,
       views: [],
+      toast: null,
+      memberNotices: null,
+      memberNoticeError: "",
+      publicationTarget: undefined,
     });
     if (signedIn) void this.load();
   }
+  loadNotices = async (): Promise<MemberNoticeFeed | undefined> => {
+    if (!this.state.signedIn) return;
+    const requestId = ++this.noticeRequest;
+    try {
+      const feed = await this.call<MemberNoticeFeed>("/notices");
+      if (requestId !== this.noticeRequest) return;
+      this.publish({ memberNotices: feed, memberNoticeError: "" });
+      return feed;
+    } catch (error) {
+      if (requestId === this.noticeRequest) this.publish({
+        memberNoticeError: error instanceof Error ? error.message : "IPW_ACCOUNT_UNAVAILABLE",
+      });
+    }
+  };
+  readNotices = async (input: { ids: string[] } | { all: true }) => {
+    const account = this.noticeAccount;
+    await this.call("/notices", input, "PUT");
+    if (account === this.noticeAccount) await this.loadNotices();
+    return account === this.noticeAccount;
+  };
+  /** Opening the bell acknowledges the current account's notifications, including older pages. */
+  openNotices = async () => {
+    const account = this.noticeAccount;
+    const feed = await this.loadNotices();
+    if (!feed || account !== this.noticeAccount) return;
+    const ids = feed.items.filter(row => row.readAt === null).map(row => row.id);
+    if (!(feed.unreadCount ?? ids.length)) return;
+    try {
+      await this.readNotices(feed.unreadCount === undefined ? { ids } : { all: true });
+    } catch (error) {
+      if (account === this.noticeAccount) this.publish({
+        memberNoticeError: error instanceof Error ? error.message : 'IPW_SERVICE_UNAVAILABLE',
+      });
+    }
+  };
   load = async () => {
     if (!this.state.signedIn) return;
     const generation = ++this.generation;
@@ -150,6 +186,7 @@ export class EnterpriseController {
           loading: false,
           error:
             error instanceof Error ? error.message : "IPW_ACCOUNT_UNAVAILABLE",
+          revision: this.state.catalog ? this.state.revision + 1 : this.state.revision,
         });
     }
   };
@@ -161,9 +198,17 @@ export class EnterpriseController {
   open = (dialog: EnterpriseDialog | null) => this.publish({ dialog });
   selectEnterprise = (enterpriseId: string | null) => {
     remember(enterpriseId);
-    this.publish({ enterpriseId, views: [] });
+    this.publish({ enterpriseId, views: [], publicationTarget: undefined });
   };
-  selectTab = (tab: EnterpriseTab) => this.publish({ tab, views: [] });
+  selectTab = (tab: EnterpriseTab) => this.publish({ tab, views: [], publicationTarget: undefined });
+  openNotice = (enterpriseId: string, tab: EnterpriseTab, target?: string) => {
+    remember(enterpriseId);
+    this.publish({
+      enterpriseId, tab, publicationTarget: tab === "projects" ? undefined : target,
+      views: tab === "projects" && target ? [{ kind:"project", id:target }] : [],
+      revision: this.state.revision + 1,
+    });
+  };
   push = (view: EnterpriseView) =>
     this.publish({ views: [...this.state.views, view], dialog: null });
   /** Replace the stack with one view, used when another surface opens a record directly. */

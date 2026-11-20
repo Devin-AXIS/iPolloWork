@@ -6,6 +6,14 @@ on:
       release_tag:
         description: Complete numeric draft release, for example v1.0.3
         required: true
+      mirror:
+        description: Also dispatch synchronization to configured mainland storage
+        type: boolean
+        default: false
+      promote_preview:
+        description: Promote an existing public preview after every platform has qualified
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -28,19 +36,25 @@ jobs:
         with:
           node-version: '24.15.0'
       - name: Require a numeric draft and a version newer than Latest
+        env:
+          PROMOTE_PREVIEW: ${{ inputs.promote_preview }}
         run: |
           release_api=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json apiUrl --jq .apiUrl)
           gh api "$release_api" > release.json
           gh api "repos/$GITHUB_REPOSITORY/releases/latest" > previous-release.json
-          node integrations/tooling/release-publication.mjs check release.json previous-release.json
+          extra=()
+          if [[ "$PROMOTE_PREVIEW" == true ]]; then extra+=(--promote-preview); fi
+          node integrations/tooling/release-publication.mjs check release.json previous-release.json "${extra[@]}"
       - name: Download and verify every release asset
         run: |
           mkdir release-assets
           gh release download "$RELEASE_TAG" --dir release-assets
-          node integrations/tooling/release-mirror.mjs manifest release.json release-assets
           node integrations/tooling/release-publication.mjs prepare release.json release-assets
       - name: Attach verified update feeds and checksums
-        run: gh release upload "$RELEASE_TAG" release-assets/stable-mac.yml release-assets/stable.yml release-assets/IPOLLO-SHA256SUMS.txt --clobber
+        run: |
+          version="${RELEASE_TAG#v}"
+          gh release upload "$RELEASE_TAG" release-assets/stable-mac.yml release-assets/stable.yml release-assets/IPOLLO-SHA256SUMS.txt \
+            "release-assets/ipollowork-win-x64-$version.exe" release-assets/ipollowork-*-latest.* --clobber
       - name: Publish Latest
         run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
       - name: Verify public update feeds and every referenced download
@@ -53,4 +67,5 @@ jobs:
             gh release edit "$previous" --latest
           fi
       - name: Synchronize exact release bytes to the mainland mirror
+        if: inputs.mirror
         run: gh workflow run release-mirror.yml --ref main -f "release_tag=$RELEASE_TAG" -f publish_draft=false

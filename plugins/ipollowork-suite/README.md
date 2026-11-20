@@ -6,7 +6,13 @@ One installable DSH Bundle supplies the iPolloWork skin, a curated native-plugin
 
 Enterprise spaces opens with manager-only analytics grouped by department, member or service/model (SKU), over 7, 30 or 90 days. Calls are enterprise-owned service requests, excluding polling and personal services; departments are captured at dispatch. Token coverage is explicit. Project creation and current skill/plugin inventory counts are separate; skill loads and tool calls are reported for linked enterprise projects. `enterpriseUsageReporting` (default true) controls metadata reporting; `enterpriseUsageQueueLimit` (default 200) bounds pending reports. Failed or overflowed reports are not retried and never delay tools, so counts may be incomplete. Arguments, results and credentials are excluded.
 
+## MCP connections
+
+Settings → MCP lists native configured and plugin-registered connections alongside organization grants. Each row's menu offers the actions its source allows. Disconnect keeps configuration and persists across restarts; reconnect reuses DSH's manager. Only user-added configuration entries may be deleted, after confirmation; inherited and plugin-owned entries retain their original ownership. Edit opens DSH's native configuration document. Organization disconnect choices affect this device and account only, retaining the organization's grant. Organization administrators still manage sharing, distribution and revocation in the organization space. MCP credentials stay in the native credential provider.
+
 ## Develop
+
+Organization templates and Skills accept custom version labels up to 64 characters. MCP publications label this as the shared configuration version, separate from protocol/server versions. Labels exclude control characters and `/ \\ ? # %`; duplicate versions are rejected. Plugins require the exact published package version. Skill sharing uploads a UTF-8 `.md`/`.markdown` file up to 32 KB through the existing review and grant flow. Update both Suite and the account service before using custom labels.
 
 Node 24.15 or newer is required. In this repository, run `npm run setup:build` from the product root first, then run `npm ci --ignore-scripts --workspaces=false`, `npm run link:workspace`, `npm run check`, and `npm pack` from this directory. The linking command selects matching DSH packages from the ignored official dependency cache; the registry release with the same version may not include this checkout’s native extensions. The package contains its compiled Host and Client entries, styles, brand asset, and the curated catalog. No build script runs during installation.
 

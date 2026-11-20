@@ -1,5 +1,7 @@
 # iPolloWork Services
 
+Organization template, Skill and MCP configuration publications accept custom version labels up to 64 characters, excluding control characters and `/ \\ ? # %`. Plugins still require canonical exact SemVer package versions. Review, duplicate-version and member-grant rules remain in force. Suite 0.1.38 or later reads and URL-encodes these labels; older clients need updating before consuming custom labels. No database migration is required.
+
 English | [中文](README.zh.md)
 
 Independent account, organization, project and billing service. Node serves the API and administration UI; PostgreSQL owns identities and transactional records, and private Alibaba OSS owns production files. The service does not import DSH or the old iPolloWork runtime.

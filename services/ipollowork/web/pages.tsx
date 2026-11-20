@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Plus, ArrowLeft, Copy, Download, Search } from "lucide-react";
 import { StorageQuota } from "./storage.js";
+import { OrganizationActivity, OrganizationDepartments, OrganizationMcp, OrganizationPublications, OrganizationSettings } from "./organization-admin.js";
 import { planBudget } from "../src/pricing.js";
 import { api, count, date, text, type Row, type User } from "./api.js";
 import {
@@ -28,14 +29,14 @@ function Message({ content }: { content: string }) {
     </div>
   ) : null;
 }
-function CopyLink({ url }: { url: string }) {
+function CopyValue({ value, label }: { value: string; label: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="copy-link">
-      <input aria-label="分享链接" readOnly value={url} />
+      <input aria-label={label} readOnly value={value} />
       <button
         onClick={async () => {
-          await navigator.clipboard.writeText(url);
+          await navigator.clipboard.writeText(value);
           setCopied(true);
         }}
       >
@@ -45,9 +46,48 @@ function CopyLink({ url }: { url: string }) {
     </div>
   );
 }
+function downloadCsv(filename: string, csv: string) {
+  const url = URL.createObjectURL(new Blob(["\uFEFF",csv],{type:"text/csv"}));
+  const download = document.createElement("a");
+  download.href = url;
+  download.download = filename;
+  download.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function CodeDays({ initial }: { initial?: number }) {
+  return <Field label="有效天数"><input type="number" name="days" min={1} max={30} defaultValue={initial} placeholder="永久有效"/></Field>;
+}
+function codeDays(form: FormData) {
+  const days = value(form, "days");
+  return days === "" ? null : Number(days);
+}
+function MembershipNotices() {
+  const [open, setOpen] = useState(false);
+  return <>
+    <button type="button" onClick={() => setOpen(true)}>成员通知</button>
+    {open && <Modal title="成员通知" close={() => setOpen(false)}><MembershipNoticeList/></Modal>}
+  </>;
+}
+function MembershipNoticeList() {
+  const notices = useData<{items:Row[]}>("/api/v1/me/organization-notices?include=status");
+  return <>
+    <Status error={notices.error} loading={!notices.data}/>
+    {notices.data && <Table rows={notices.data.items} columns={[
+      {label:"组织",cell:row=>text(row.name)},
+      {label:"变更",cell:row=>{
+        if (row.kind === "status") return "成员状态已变更为 " + (row.value === "suspended" ? "已停用" : "正常");
+        if (row.kind === "role") return "身份已变更为 " + (row.value === "member" ? "普通成员" : "管理员");
+        if (row.kind === "department") return "部门已变更为 " + (text(row.value) || "未分配");
+        return "你已被移出此组织";
+      }},
+      {label:"时间",cell:row=>date(row.created_at)},
+    ]}/>}
+  </>;
+}
 export function Enterprises({ user }: { user: User }) {
   const list = useData<{ items: Row[] }>("/api/v1/enterprises"),
     [create, setCreate] = useState(false),
+    [join, setJoin] = useState(false),
     [selected, select] = useState("");
   if (selected)
     return (
@@ -64,7 +104,11 @@ export function Enterprises({ user }: { user: User }) {
     <>
       <div className="toolbar">
         <span>组织成员共同使用项目与资源</span>
-        <Add onClick={() => setCreate(true)}>创建组织</Add>
+        <div className="actions">
+          <MembershipNotices/>
+          <button onClick={() => setJoin(true)}>通过邀请码加入</button>
+          <Add onClick={() => setCreate(true)}>创建组织</Add>
+        </div>
       </div>
       <section className="panel">
         <Status error={list.error} loading={!list.data} />
@@ -76,6 +120,7 @@ export function Enterprises({ user }: { user: User }) {
                 label: "组织",
                 cell: (r) => (
                   <button className="link" onClick={() => select(text(r.id))}>
+                    {r.logo && <img className="organization-avatar" src={text(r.logo)} alt=""/>}
                     {text(r.name)}
                   </button>
                 ),
@@ -92,6 +137,21 @@ export function Enterprises({ user }: { user: User }) {
           />
         )}
       </section>
+      {join && <Modal title="通过邀请码加入" close={() => setJoin(false)}>
+        <ActionForm label="加入组织" submit={async form => {
+          const service = new URL(value(form,"service"));
+          if (service.origin !== location.origin || service.pathname !== "/" || service.username || service.password || service.search || service.hash)
+            throw new Error("请输入当前 iPolloWork 账号所属的组织服务地址");
+          const code = value(form,"code").trim();
+          if (!/^[A-Za-z0-9_-]{40,100}$/.test(code)) throw new Error("邀请码无效");
+          const joined = await api<{enterpriseId:string}>("/api/v1/invitations/" + code + "/accept", {});
+          setJoin(false);
+          select(joined.enterpriseId);
+        }}>
+          <Field label="组织服务地址"><input type="url" name="service" required defaultValue={location.origin}/></Field>
+          <Field label="邀请码"><input name="code" required maxLength={100}/></Field>
+        </ActionForm>
+      </Modal>}
       {create && (
         <Modal title="创建组织" close={() => setCreate(false)}>
           <ActionForm
@@ -122,21 +182,31 @@ function Enterprise({
   back: () => void;
   user: User;
 }) {
+  const path = "/api/v1/enterprises/" + id;
   const result = useData<{
     enterprise: Row;
+    canManage: boolean;
     members: Row[];
     departments: Row[];
     invitations: Row[];
-  }>("/api/v1/enterprises/" + id);
+  }>(path);
   const [modal, setModal] = useState(""),
-    [link, setLink] = useState(""),
+    [issued, setIssued] = useState<{code:string;serviceAddress:string;expiresAt:number|null}>(),
+    [expiry, setExpiry] = useState<Row>(),
+    [tab, setTab] = useState("members"),
     [edit, setEdit] = useState<Row>(),
     [message, setMessage] = useState("");
   const refresh = () => {
     setModal("");
+    setIssued(undefined);
+    setExpiry(undefined);
     setEdit(undefined);
     result.reload();
   };
+  const tabs = [
+    ["members","成员"], ["departments","部门"], ["templates","模板"], ["plugins","插件"], ["skills","Skill"], ["mcp","MCP"],
+    ...(result.data?.canManage ? [["activity","操作记录"]] : []), ["settings","设置"],
+  ] as const;
   async function remove(userId: string) {
     try {
       await api(
@@ -156,22 +226,39 @@ function Enterprise({
           <ArrowLeft size={14} />
           全部组织
         </button>
-        <div className="actions">
-          <button onClick={() => setModal("department")}>添加部门</button>
-          <Add onClick={() => setModal("invite")}>邀请成员</Add>
-        </div>
+        <MembershipNotices/>
       </div>
       <Status error={result.error} loading={!result.data} />
       <Message content={message} />
-      {link && <CopyLink url={link} />}
-      {result.data && (
+      {result.data && <section className="panel">
+        <div className="panel-heading"><h2>{text(result.data.enterprise.name)}</h2></div>
+        <nav className="actions" aria-label="组织管理">
+          {tabs.map(([key,label]) => <button key={key} type="button" aria-pressed={tab === key}
+            className={tab === key ? "primary" : undefined} onClick={() => setTab(key!)}>{label}</button>)}
+        </nav>
+      </section>}
+      {result.data && tab === "departments" && <OrganizationDepartments path={path} departments={result.data.departments}
+        canManage={result.data.canManage} reload={result.reload}/>}
+      {result.data && (tab === "templates" || tab === "plugins" || tab === "skills") && <OrganizationPublications key={tab} path={path}
+        kind={tab === "templates" ? "template" : tab === "skills" ? "skill" : "plugin"}
+        members={result.data.members} departments={result.data.departments}/>}
+      {result.data && tab === "mcp" && <OrganizationMcp path={path} members={result.data.members} departments={result.data.departments}/>}
+      {result.data?.canManage && tab === "activity" && <OrganizationActivity path={path}/>}
+      {result.data && tab === "settings" && <OrganizationSettings path={path} enterprise={result.data.enterprise} canManage={result.data.canManage} reload={result.reload}/>}
+      {result.data?.canManage && tab === "settings" && <section className="panel organization-settings">
+        <div className="panel-heading">
+          <h2>组织服务地址</h2>
+        </div>
+        <CopyValue value={location.origin} label="组织服务地址"/>
+      </section>}
+      {result.data && tab === "members" && (
         <section className="panel">
-          <div className="panel-heading">
-            <h2>{text(result.data.enterprise.name)}</h2>
-            <p>
-              {result.data.departments.map((d) => text(d.name)).join(" · ") ||
-                "尚未添加部门"}
-            </p>
+          <div className="panel-heading organization-member-heading">
+            <h2>成员</h2>
+            {result.data.canManage && <div className="actions">
+              <button onClick={() => setModal("batch")}>从 CSV 批量生成</button>
+              <Add onClick={() => setModal("code")}>添加员工</Add>
+            </div>}
           </div>
           <Table
             rows={result.data.members}
@@ -185,10 +272,11 @@ function Enterprise({
                   </span>
                 ),
               },
+              { label: "工号", cell: (r) => text(r.employee_number) || "—" },
               {
                 label: "身份",
                 cell: (r) =>
-                  ({ owner: "所有者", admin: "管理员", member: "成员" })[
+                  ({ owner: "管理员", admin: "管理员", member: "普通成员" })[
                     text(r.role)
                   ],
               },
@@ -202,81 +290,132 @@ function Enterprise({
                   ) || "—",
               },
               {
+                label: "成员状态",
+                cell: r => r.status === "suspended" ? "已停用" : "正常",
+              },
+              ...(result.data.canManage ? [{
                 label: "操作",
-                cell: (r) =>
+                cell: (r: Row) =>
                   r.role === "owner" ? (
                     "—"
                   ) : (
                     <div className="actions">
-                      <button onClick={() => setEdit(r)}>调整</button>
+                      <button onClick={() => setEdit(r)}>编辑</button>
                       <button onClick={() => remove(text(r.user_id))}>
                         移除
                       </button>
                     </div>
                   ),
-              },
+              }] : []),
             ]}
           />
+          {result.data.canManage && result.data.invitations.length > 0 && <>
+            <div className="panel-heading"><h2>待使用的邀请码</h2></div>
+            <Table rows={result.data.invitations} columns={[
+              {label:"员工",cell:r=>[r.invitee_name,r.email].filter(Boolean).join(" · ") || "邀请码"},
+              {label:"工号",cell:r=>text(r.employee_number) || "—"},
+              {label:"有效期",cell:r=>r.expires_at === null ? "永久有效" : date(r.expires_at)},
+              {label:"状态",cell:r=>r.expires_at !== null && Number(r.expires_at) <= Date.now() ? "已过期" : "待使用"},
+              {label:"操作",cell:r=>!r.email && !r.project_id && <button onClick={()=>setExpiry(r)}>修改有效期</button>},
+            ]}/>
+          </>}
         </section>
       )}
-      <StorageQuota
+      {tab === "settings" && <StorageQuota
         scope="organization"
         ownerId={id}
         editable={user.role === "admin"}
-      />
-      {modal === "department" && (
-        <Modal title="添加部门" close={() => setModal("")}>
-          <ActionForm
-            submit={async (f) => {
-              await api("/api/v1/enterprises/" + id + "/departments", {
-                name: value(f, "name"),
-              });
-              refresh();
-            }}
-          >
-            <Field label="部门名称">
-              <input name="name" required />
-            </Field>
-          </ActionForm>
-        </Modal>
-      )}
-      {(modal === "invite" || edit) && (
-        <Modal title={edit ? "调整成员" : "邀请成员"} close={refresh}>
+      />}
+      {modal === "code" && <Modal title="添加员工" close={refresh}>
+        {issued ? <>
+          <Field label="组织服务地址"><CopyValue value={issued.serviceAddress} label="组织服务地址"/></Field>
+          <Field label="邀请码"><CopyValue value={issued.code} label="邀请码"/></Field>
+          <p>{issued.expiresAt === null ? "永久有效" : "有效期至 " + date(issued.expiresAt)}</p>
+        </> : <ActionForm label="生成邀请码" submit={async form => {
+          setIssued(await api(path + "/join-codes", {
+            days: codeDays(form),
+            displayName: value(form, "displayName").trim() || undefined,
+            departmentId: value(form, "department") || undefined,
+          }));
+        }}>
+          <Field label="员工姓名"><input name="displayName" maxLength={120}/></Field>
+          <CodeDays/>
+          <p>留空则永久有效。邀请码仅可使用一次。</p>
+          <Field label="部门"><select name="department">
+            <option value="">未分配</option>
+            {result.data?.departments.map(d => <option key={text(d.id)} value={text(d.id)}>{text(d.name)}</option>)}
+          </select></Field>
+        </ActionForm>}
+      </Modal>}
+      {expiry && <Modal title="修改邀请码有效期" close={refresh}>
+        <ActionForm submit={async form => {
+          await api(path + "/join-codes/" + expiry.id, {days:codeDays(form)}, "PATCH");
+          refresh();
+        }}>
+          <CodeDays initial={expiry.expires_at === null ? undefined : Math.max(1, Math.min(30, Math.ceil((Number(expiry.expires_at) - Date.now()) / 86_400_000)))}/>
+          <p>留空则永久有效。</p>
+        </ActionForm>
+      </Modal>}
+      {modal === "batch" && <Modal title="从 CSV 批量生成" close={refresh}>
+        <ActionForm label="导出邀请码" submit={async form => {
+          const roster = form.get("roster");
+          if (!(roster instanceof File) || !roster.size) throw new Error("请选择包含成员记录的 CSV 文件");
+          if (roster.size > 256 * 1024) throw new Error("请将 CSV 拆分为不超过 256 KB 的文件");
+          let rosterText: string;
+          try {
+            rosterText = new TextDecoder("utf-8", { fatal: true }).decode(await roster.arrayBuffer());
+          } catch {
+            throw new Error("无法以 UTF-8 读取文件，请另存为 CSV UTF-8 后重试");
+          }
+          const response = await api<{items:{name?:string;employeeNumber?:string;code:string;serviceAddress:string}[]}>(path + "/join-codes/batch",
+            {
+              csv: rosterText, days: codeDays(form),
+              ...(form.has("createMissingDepartments") ? { createMissingDepartments: true } : {}),
+            },
+          );
+          const csv = ["名称,工号,服务地址,邀请码",...response.items.map(item=>[item.name,item.employeeNumber,item.serviceAddress,item.code]
+            .map(field=>'"' + (/^[=+\-@\t\r]/.test(field ?? "") ? "'" : "") + (field ?? "").replaceAll('"','""') + '"').join(","))].join("\r\n");
+          downloadCsv("organization-join-codes.csv", csv);
+          setMessage(`已生成并导出 ${response.items.length} 个邀请码`);
+          refresh();
+        }}>
+          <button type="button" onClick={()=>downloadCsv("employee-roster-template.csv","名称,工号,部门名称\r\n")}>下载 CSV 模板</button>
+          <Field label="成员名单 CSV"><input type="file" name="roster" accept=".csv,text/csv" required/></Field>
+          <p>请使用 UTF-8 CSV。名称和工号必填，部门名称可选。</p>
+          <label className="check"><input name="createMissingDepartments" type="checkbox"/>自动创建缺少的部门</label>
+          <CodeDays/>
+        </ActionForm>
+      </Modal>}
+      {edit && (
+        <Modal title="编辑成员" close={refresh}>
           <ActionForm
             submit={async (f) => {
               const body = {
-                email: value(f, "email"),
                 role: value(f, "role"),
+                ...(value(f,"status") && value(f,"status") !== (edit.status ?? "active") ? {status:value(f,"status")} : {}),
                 departmentId: value(f, "department") || null,
+                employeeNumber:value(f,"employeeNumber").trim() || null,
+                displayName:value(f,"displayName").trim() || null,
               };
-              if (edit)
-                await api(
-                  "/api/v1/enterprises/" + id + "/members/" + edit.user_id,
-                  body,
-                  "PATCH",
-                );
-              else {
-                const response = await api<{ url: string; delivery: string }>(
-                  "/api/v1/enterprises/" + id + "/invitations",
-                  body,
-                );
-                setLink(response.url);
-                setMessage("邀请链接已生成，请复制给对方。对方使用受邀邮箱登录或注册后即可加入。");
-              }
+              await api(path + "/members/" + edit.user_id, body, "PATCH");
               refresh();
             }}
           >
-            {!edit && (
-              <Field label="对方邮箱">
-                <input type="email" name="email" required />
-              </Field>
-            )}
+            <Field label="工号"><input name="employeeNumber" maxLength={64} defaultValue={text(edit.employee_number)}/></Field>
+            <Field label="名称"><input name="displayName" maxLength={120} defaultValue={text(edit.name)}/></Field>
             <Field label="身份">
               <select name="role" defaultValue={text(edit?.role) || "member"}>
-                <option value="member">成员</option>
+                <option value="member">普通成员</option>
                 <option value="admin">管理员</option>
               </select>
             </Field>
+            <Field label="成员状态">
+              <select name="status" defaultValue={text(edit.status) || "active"} disabled={edit.user_id === user.id}>
+                <option value="active">正常</option>
+                <option value="suspended">已停用</option>
+              </select>
+            </Field>
+            <p>停用后，该成员将失去此组织的访问权限，恢复正常后可重新访问。</p>
             <Field label="部门">
               <select
                 name="department"

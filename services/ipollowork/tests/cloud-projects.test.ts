@@ -45,6 +45,11 @@ test('cloud creation is idempotent; grants isolate projects, expire, and allow o
   const runtime=await cloud.authenticate(claim.runtimeToken);
   assert.equal(cloudGrantAllows(runtime.grant,`/api/v1/projects/${projectId}/runtime`,'GET'),true);
   assert.equal(cloudGrantAllows(runtime.grant,'/api/v1/admin/settings','POST'),false);
+  assert.equal(cloudGrantAllows(runtime.grant,'/api/v1/me/enterprise-mcp','GET'),true);
+  for (const method of ['GET','POST','DELETE'])
+    assert.equal(cloudGrantAllows(runtime.grant,`/api/v1/me/enterprise-mcp/${randomUUID()}/connect`,method),true);
+  assert.equal(cloudGrantAllows(runtime.grant,'/api/v1/me/enterprise-mcp','POST'),false);
+  assert.equal(cloudGrantAllows(runtime.grant,`/api/v1/enterprises/${randomUUID()}/mcp`,'POST'),false);
   assert.equal(cloudGrantAllows(runtime.grant,`/api/v1/projects/${randomUUID()}/runtime`,'GET'),false);
   const mount=await request(`/api/v1/projects/${projectId}/runtime`,claim.runtimeToken);
   assert.equal(mount.status,200);

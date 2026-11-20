@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Modal } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
 import { channelName, h, localizeTemplate } from './i18n.js';
 
 function ActionIcon({ children }) {
@@ -44,8 +44,9 @@ export function CredentialModal({ channel, busy, onCancel, children }) {
     title: localizeTemplate('手动接入{channel}机器人', { channel: channelName(channel) }),
     closeLabel: localizeTemplate('关闭'),
     className: 'dim-credentialModal',
+    contentClassName: 'dim-credentialContent',
     onClose: () => { if (!busy) onCancel?.(); },
-  }, children);
+  }, h('div', { className: 'dim-credentialBody', 'aria-busy': busy }, children));
 }
 
 export function CredentialBindingPanel({
@@ -108,17 +109,16 @@ export function CredentialBindingPanel({
         required: true,
       })),
     error ? h('p', { className: 'dim-credentialError', role: 'alert' }, error.message ?? String(error)) : null,
-    h('div', { className: 'ddt-actions dim-viewActions dim-credentialActions' },
-      h('button', {
-        type: 'submit',
-        className: 'ddt-button',
-        'data-kind': 'primary',
-        disabled: busy || (hasIdentity && !identity.trim()) || !secret.trim(),
-      }, busy ? '正在绑定…' : '绑定并连接'),
-      h('button', {
+    h('div', { className: 'dim-credentialActions' },
+      h(Button, {
         type: 'button',
-        className: 'ddt-button',
+        variant: 'outline',
         onClick: onCancel,
         disabled: busy,
-      }, '取消'))));
+      }, localizeTemplate('取消')),
+      h(Button, {
+        type: 'submit',
+        variant: 'primary',
+        disabled: busy || (hasIdentity && !identity.trim()) || !secret.trim(),
+      }, localizeTemplate(busy ? '正在绑定…' : '绑定并连接')))));
 }

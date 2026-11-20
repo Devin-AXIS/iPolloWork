@@ -142,13 +142,24 @@ it.each(['en', 'zh-CN'])('bounds long diagnostics and recovery-operation errors 
   await recovery.report(new Error('😀'.repeat(32768) + '\nfinal backend failure'), 'main')
   for (const [options] of operations.show.mock.calls) {
     expect(options.detail!.length).toBeLessThanOrEqual(1200)
-    expect(options.detail!.split('\n').length).toBeLessThanOrEqual(12)
+    expect(options.detail!.split('\n').length).toBeLessThanOrEqual(16)
     expect(options.detail).toContain(operations.messages().diagnosticTruncated)
     expect(options.detail).toContain(operations.messages().startupReinstallAdvice)
     expect(options.detail!.isWellFormed()).toBe(true)
   }
   expect(operations.show.mock.calls[0]![0].detail).toContain('final backend failure')
   expect(operations.show.mock.calls[1]![0].detail).toContain('final write failure')
+})
+
+it('keeps the failed plugin and root cause visible alongside blocked consumers', async () => {
+  const { operations, stopped, recovery } = fixture('zh-CN')
+  operations.show.mockResolvedValueOnce({ response: 0, checkboxChecked: false })
+  stopped.resolve(undefined)
+  await recovery.report(new Error('Startup failed\nFailed plugins (1):\n  llm\n    Error: cannot get property "root" without inject\n' + 'stack trace\n'.repeat(200) + 'agent-loop requires llm'), 'host')
+  const detail = operations.show.mock.calls[0]![0].detail!
+  expect(detail).toContain('cannot get property "root" without inject')
+  expect(detail).toContain('agent-loop requires llm')
+  expect(detail.length).toBeLessThanOrEqual(1200)
 })
 
 it.each(['en', 'zh-CN'])('names the report file even when the error is short enough to show whole, in %s', async (locale) => {
@@ -174,7 +185,7 @@ it('keeps the report line inside the detail budget when the error is long', asyn
   await vi.waitFor(() => { expect(operations.show).toHaveBeenCalledOnce() })
   const detail = operations.show.mock.calls[0]![0].detail!
   expect(detail.length).toBeLessThanOrEqual(1200)
-  expect(detail.split('\n').length).toBeLessThanOrEqual(12)
+  expect(detail.split('\n').length).toBeLessThanOrEqual(16)
   expect(detail.isWellFormed()).toBe(true)
   expect(detail).toContain(operations.messages().diagnosticTruncated)
   expect(detail).toContain('final backend failure')

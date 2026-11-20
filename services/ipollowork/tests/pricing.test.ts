@@ -285,6 +285,29 @@ test("video submission defers billing and polling settles the owned job once", a
   }
 });
 
+test("chat billing admits byte-heavy histories and settles their actual token usage", () => {
+  const history = {
+    model: "fixture",
+    max_tokens: 10,
+    messages: [{ role: "user", content: "const value = 123;\n".repeat(1000) }],
+  };
+  const cases = [
+    history,
+    { ...history, messages: [{ role: "user", content: "继续开发医生工作台".repeat(500) }] },
+    {
+      ...history,
+      messages: [{ role: "user", content: "Continue." }],
+      tools: [{ type: "function", function: { name: "fixture", description: "Tool documentation. ".repeat(1000) } }],
+    },
+  ];
+  for (const body of cases) {
+    assert(Buffer.byteLength(JSON.stringify(body)) > rate.maxInputTokens);
+    const reserved = reserveUsage(spec("chat"), body);
+    assert.equal(reserved.micros, 10010000);
+    assert.equal(usageCost(reserved, { usage: { prompt_tokens: 3000, completion_tokens: 4 } }), 3004000);
+  }
+});
+
 test("pricing rejects stale cards and below-cost plans, and separates image token prices", () => {
   assert.throws(
     () =>

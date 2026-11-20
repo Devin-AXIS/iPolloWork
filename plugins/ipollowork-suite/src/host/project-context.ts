@@ -64,6 +64,23 @@ export async function readProjectLink(path: string, signal: AbortSignal) {
     throw error;
   }
 }
+
+/** Local metadata only: workspace paths and conversation contents stay in the Host. */
+export async function linkedProjectWorkspaces(
+  workspaces: readonly { id: string; title: string; path: string; sessionIds: readonly string[] }[],
+  origin: string,
+  projectId: string,
+): Promise<{ id: string; title: string; sessionCount: number }[]> {
+  const items = await Promise.all(workspaces.map(async workspace => {
+    try {
+      const data = binding.parse(JSON.parse(await readFile(join(workspace.path, '.ipollo', 'project.json'), 'utf8')));
+      if (data.projectId === projectId && matchesProjectAccount(data.origin, origin))
+        return { id: workspace.id, title: workspace.title, sessionCount: workspace.sessionIds.length };
+    } catch { /* Missing or malformed local links are ignored. */ }
+    return undefined;
+  }));
+  return items.filter((item): item is NonNullable<typeof item> => item !== undefined);
+}
 export function mountProjectContext(
   ctx: MemoryContext,
   account: AccountService,

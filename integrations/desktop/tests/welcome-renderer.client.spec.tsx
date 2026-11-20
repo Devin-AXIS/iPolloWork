@@ -6,7 +6,7 @@ import { Welcome } from '../src/client/WelcomePage.tsx'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { resolveDesktopLocale } from '../src/locale.ts'
 import type { AccountView } from '@deepseek-ai/dsh-deepseek-account/types'
-import type { WelcomeSaveResult, WelcomeNotice } from '../src/welcome-api.ts'
+import type { WelcomeSaveResult, WelcomeNotice, WelcomeAccountResult } from '../src/welcome-api.ts'
 
 const html = readFileSync(join(import.meta.dirname, '../renderer/welcome.html'), 'utf8')
 afterEach(cleanup)
@@ -343,10 +343,17 @@ it('reports each return to the welcome entry once, including account cancellatio
 })
 
 
-it('keeps the welcome page and signs in inside the iPolloWork window', async () => {
+it.each([
+  [{ ok: false, reason: 'invalid-credentials' }, '邮箱或密码不正确，请重试。'],
+  [{ ok: false, reason: 'session-rejected' }, '登录会话验证失败，请重试'],
+  [{ ok: false, reason: 'service-unavailable' }, '无法连接登录服务，请检查网络后重试'],
+  [{ ok: false, reason: 'timeout' }, '登录服务响应超时，请重试'],
+  [{ ok: false, reason: 'rate-limited' }, '登录尝试次数过多，请稍后重试'],
+  [{ ok: false }, '登录未完成，请重试。'],
+] as const)('shows the sign-in outcome %j inside the iPolloWork window', async (result, message) => {
   const original = mount('zh-CN')
   original.unmount()
-  const signInAccount = vi.fn(async () => ({ ok: false }))
+  const signInAccount = vi.fn<() => Promise<WelcomeAccountResult>>().mockResolvedValue(result)
   render(<Welcome api={{ ...original.api, signInAccount }} />)
   expect(document.getElementById('welcome-heading')?.textContent).toContain('iPolloWork')
   fireEvent.click(document.getElementById('sign-in')!)
@@ -355,14 +362,15 @@ it('keeps the welcome page and signs in inside the iPolloWork window', async () 
   fireEvent.submit(document.getElementById('login-form')!)
   await vi.waitFor(() => { expect(signInAccount).toHaveBeenCalledExactlyOnceWith('member@example.test', 'example-secret') })
   await vi.waitFor(() => { expect((document.getElementById('login-password') as HTMLInputElement).value).toBe('') })
+  expect(document.querySelector('#login-form [role="alert"]')?.textContent).toBe(message)
   expect(original.api.startSignIn).not.toHaveBeenCalled()
   expect(document.getElementById('login-form')?.textContent).not.toContain('example-secret')
 })
 
-it('registers an iPolloWork account and clears the password before retry', async () => {
+it('shows an occupied email and clears the registration password before retry', async () => {
   const original = mount('zh-CN')
   original.unmount()
-  const signUpAccount = vi.fn(async () => ({ ok: false }))
+  const signUpAccount = vi.fn(async (): Promise<WelcomeAccountResult> => ({ ok: false, reason: 'email-in-use' }))
   render(<Welcome api={{ ...original.api, signInAccount: async () => ({ ok: false }), signUpAccount }} />)
   fireEvent.click(document.getElementById('sign-in')!)
   fireEvent.click(document.getElementById('switch-account-mode')!)
@@ -373,7 +381,16 @@ it('registers an iPolloWork account and clears the password before retry', async
   fireEvent.submit(document.getElementById('login-form')!)
   await vi.waitFor(() => { expect(signUpAccount).toHaveBeenCalledExactlyOnceWith('Member', 'member@example.test', 'example-secret') })
   await vi.waitFor(() => { expect((document.getElementById('login-password') as HTMLInputElement).value).toBe('') })
-  expect(document.querySelector('#login-form [role="alert"]')?.textContent).toContain('注册失败')
+  expect(document.querySelector('#login-form [role="alert"]')?.textContent).toContain('该邮箱已注册')
   fireEvent.click(document.getElementById('switch-account-mode')!)
   expect(document.getElementById('login-name')).toBeNull()
+})
+
+it('keeps password recovery out of the login form', () => {
+  const original = mount('zh-CN')
+  original.unmount()
+  render(<Welcome api={{ ...original.api, signInAccount: async () => ({ ok: false }) }} />)
+  fireEvent.click(document.getElementById('sign-in')!)
+  expect(document.getElementById('login-password')).not.toBeNull()
+  expect(document.getElementById('login-form')?.textContent).not.toContain('忘记密码')
 })

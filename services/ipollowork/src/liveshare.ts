@@ -78,7 +78,7 @@ export class LiveshareRelay {
       void this.refresh().catch(() =>
         console.error("Share access refresh failed"),
       );
-    }, 1000);
+    }, config.relayRefreshIntervalMs);
     this.timer.unref();
   }
   /** Sign a scoped capability; account tokens never cross the relay wire. */
@@ -201,12 +201,12 @@ export class LiveshareRelay {
         ? []
         : audience.kind !== "project"
           ? await this.store.all(
-              'SELECT u.id,u.name,u.email,u.role FROM "user" u JOIN members m ON m.user_id=u.id WHERE m.enterprise_id=? AND COALESCE(u.banned,false)=false UNION SELECT id,name,email,role FROM \"user\" WHERE id=? AND COALESCE(banned,false)=false',
+              'SELECT u.id,u.name,u.email,u.role FROM "user" u JOIN members m ON m.user_id=u.id WHERE m.enterprise_id=? AND m.status=\'active\' AND COALESCE(u.banned,false)=false UNION SELECT id,name,email,role FROM \"user\" WHERE id=? AND COALESCE(banned,false)=false',
               audience.enterpriseId,
               share.owner_id,
             )
           : await this.store.all(
-              "SELECT u.id,u.name,u.email,u.role FROM \"user\" u WHERE COALESCE(u.banned,false)=false AND (u.id=? OR u.role='admin' OR EXISTS(SELECT 1 FROM members m JOIN projects p ON p.enterprise_id=m.enterprise_id WHERE p.id=? AND m.user_id=u.id))",
+              "SELECT u.id,u.name,u.email,u.role FROM \"user\" u WHERE COALESCE(u.banned,false)=false AND (u.id=? OR u.role='admin' OR EXISTS(SELECT 1 FROM members m JOIN projects p ON p.enterprise_id=m.enterprise_id WHERE p.id=? AND m.user_id=u.id AND m.status='active'))",
               share.owner_id,
               share.project_id,
             );
@@ -294,7 +294,7 @@ export class LiveshareRelay {
         "分享方当前离线，请稍后重试",
       );
     await this.actor(tunnel.owner);
-    if (tunnel.pending.size >= 256)
+    if (tunnel.pending.size >= this.config.relayMaxPending || tunnel.socket.bufferedAmount > 8 * 1024 * 1024)
       throw new ServiceError("LIVESHARE_BUSY", 429);
     await this.push(share, tunnel);
     const id = ++tunnel.nextId;
@@ -333,6 +333,10 @@ export class LiveshareRelay {
     });
   }
   private async push(share: LiveShare, tunnel: Tunnel): Promise<void> {
+    if (tunnel.socket.bufferedAmount > 8 * 1024 * 1024) {
+      tunnel.socket.terminate();
+      throw new ServiceError('LIVESHARE_BUSY', 429);
+    }
     tunnel.socket.send(JSON.stringify(await this.snapshot(share)));
   }
   /** Apply membership changes to open streams and queued native execution. */
@@ -397,6 +401,10 @@ export class LiveshareRelay {
         );
         if (token.length < 20 || !owner.instanceKey)
           throw new ServiceError("LIVESHARE_UNAUTHORIZED", 401);
+        const mode = z.enum(["view", "write"]).parse(url.searchParams.get("sessionMode") ?? "view");
+        const allowsFork = url.searchParams.get("allowsFork") === "1" ? 1 : 0;
+        const gatewayHash = hash(token);
+        const ownerActor = await this.actor(owner);
         let share = await this.store.one<LiveShare>(
           "SELECT * FROM live_shares WHERE native_id=?",
           id,
@@ -422,9 +430,6 @@ export class LiveshareRelay {
               .min(1)
               .max(200)
               .parse(url.searchParams.get("sessionId"));
-            const mode = z
-              .enum(["view", "write"])
-              .parse(url.searchParams.get("sessionMode") ?? "view");
             const title = z
               .string()
               .min(1)
@@ -439,7 +444,7 @@ export class LiveshareRelay {
               mode,
               title,
               Date.now(),
-              url.searchParams.get("allowsFork") === "1" ? 1 : 0,
+              allowsFork,
               JSON.stringify({ kind: "link" }),
             );
             share = await this.store.one<LiveShare>(
@@ -451,46 +456,46 @@ export class LiveshareRelay {
             !share ||
             share.owner_id !== owner.subjectId ||
             share.source_session !== url.searchParams.get("sessionId") ||
-            share.mode !== url.searchParams.get("sessionMode")
+            share.mode !== mode
           )
             throw new ServiceError("LIVESHARE_INTENT_REQUIRED", 403);
-          await this.admit(share, await this.actor(owner));
-          await this.store.run(
-            "UPDATE live_shares SET native_id=?,gateway_hash=?,instance_key=? WHERE id=?",
+          await this.admit(share, ownerActor);
+          share = await this.store.one<LiveShare>(
+            "UPDATE live_shares SET native_id=?,gateway_hash=?,instance_key=? WHERE id=? AND native_id IS NULL AND revoked_at IS NULL RETURNING *",
             id,
-            hash(token),
+            gatewayHash,
             owner.instanceKey,
             share.id,
           );
-          share.native_id = id;
-          share.gateway_hash = hash(token);
-          share.instance_key = owner.instanceKey;
         }
         if (
+          !share ||
           share.revoked_at ||
           share.owner_id !== owner.subjectId ||
           share.instance_key !== owner.instanceKey ||
-          share.gateway_hash !== hash(token) ||
-          share.source_session !== url.searchParams.get("sessionId") ||
-          share.mode !== url.searchParams.get("sessionMode")
+          share.gateway_hash !== gatewayHash ||
+          share.source_session !== url.searchParams.get("sessionId")
         )
           throw new ServiceError("LIVESHARE_FORBIDDEN", 403);
-        if (share.expires_at && share.expires_at <= Date.now())
+        const now = Date.now();
+        if (share.expires_at !== null && share.expires_at <= now)
           throw new ServiceError("LIVESHARE_EXPIRED", 401);
         const expiry = url.searchParams.get("expiresAt");
-        if (expiry) {
-          const timestamp = Date.parse(expiry);
-          if (!Number.isFinite(timestamp) || timestamp <= Date.now())
-            throw new ServiceError("LIVESHARE_EXPIRED", 401);
-          await this.store.run(
-            "UPDATE live_shares SET expires_at=? WHERE id=?",
-            timestamp,
-            share.id,
-          );
-          share.expires_at = timestamp;
-        }
-        await this.admit(share, await this.actor(owner));
-        const bound = share;
+        const expiresAt = expiry === null ? null : Date.parse(expiry);
+        if (expiresAt !== null && (!Number.isFinite(expiresAt) || expiresAt <= now))
+          throw new ServiceError("LIVESHARE_EXPIRED", 401);
+        await this.admit(share, ownerActor);
+        // Protocol v1 re-registers the same share to change its mode, fork switch, or deadline.
+        // The bound owner, instance, token and source session must all match before accepting it.
+        const bound = await this.store.one<LiveShare>(
+          `UPDATE live_shares SET mode=?,allows_fork=?,expires_at=?
+           WHERE id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?) RETURNING *`,
+          mode, allowsFork, expiresAt, share.id, now,
+        );
+        if (!bound) throw new ServiceError("LIVESHARE_FORBIDDEN", 403);
+        await this.admit(bound, ownerActor);
+        if (!this.sockets.has(id) && this.sockets.size >= this.config.relayMaxConnections)
+          throw new ServiceError('LIVESHARE_BUSY', 503);
         this.ws.handleUpgrade(request, socket, head, async (ws) => {
           this.sockets.get(id)?.socket.close(1000, "reconnected");
           const tunnel: Tunnel = {

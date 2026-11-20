@@ -15,7 +15,10 @@ export interface InstalledBundle {
   availability?: 'installation' | 'profile' | 'missing';
   rows: readonly { moduleName: string }[];
 }
-export interface NativePluginManager { listBundles(): Promise<InstalledBundle[]> }
+export interface NativePluginManager {
+  listBundles(): Promise<InstalledBundle[]>;
+  inspect?: import('@deepseek-ai/dsh-plugin-manager').PluginManager['inspect'];
+}
 type Text = string | { readonly en: string; readonly [key: string]: string }
 function localized(value: Text | undefined, language: string, fallback = ''): string {
   return typeof value === 'string' ? value : value?.[language] ?? value?.en ?? fallback

@@ -5,7 +5,7 @@ import type {
   CredentialStore,
 } from "../shared/types.ts";
 import type { ResolvedConfig } from "./config.ts";
-import { AppDataRejection, StageRejection, SuiteError } from "./errors.ts";
+import { AppDataRejection, InvitationRosterRejection, StageRejection, SuiteError } from "./errors.ts";
 
 const KEY = "ipollowork-suite/account";
 type Grant = { version: 1; origin: string; token: string };
@@ -82,6 +82,9 @@ export class AccountService {
     maximum=this.config.maxResponseBytes,
   ): Promise<unknown> {
     let response: Response;
+    const requestSignal = AbortSignal.any([
+      this.signal, ...(signal ? [signal] : []), AbortSignal.timeout(timeoutMs),
+    ]);
     try {
       response = await this.fetcher(this.config.accountOrigin + path, {
         method: method ?? (body === undefined ? "GET" : "POST"),
@@ -91,15 +94,13 @@ export class AccountService {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
           ...(body === undefined ? {} : { "Content-Type": "application/json" }),
         },
-        signal: AbortSignal.any([
-          this.signal,
-          ...(signal ? [signal] : []),
-          AbortSignal.timeout(timeoutMs),
-        ]),
+        signal: requestSignal,
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch (cause) {
       if (signal?.aborted) throw signal.reason;
+      if (requestSignal.aborted && requestSignal.reason instanceof Error && requestSignal.reason.name === 'TimeoutError')
+        throw new SuiteError('IPW_ACCOUNT_TIMEOUT', 504, { cause });
       throw new SuiteError("IPW_ACCOUNT_UNAVAILABLE", 502, { cause });
     }
     if (!response.ok) {
@@ -116,22 +117,33 @@ export class AccountService {
         throw new AppDataRejection(code, response.status, reason);
       }
       if (path.startsWith("/api/v1/")) {
-        const data = await readJson(response, maximum);
+        const data = await readJson(response, maximum).catch(() => undefined);
         const code =
           object(data) &&
           typeof data.code === "string" &&
-          /^[A-Z_]+$/.test(data.code)
+          /^[A-Z][A-Z0-9_]{0,79}$/.test(data.code)
             ? data.code
-            : "IPW_ACCOUNT_UNAVAILABLE";
+            : response.status === 401 ? 'IPW_SIGN_IN_REQUIRED'
+              : response.status === 403 ? 'RESOURCE_FORBIDDEN'
+                : response.status === 429 ? 'RATE_LIMITED' : 'IPW_ACCOUNT_UNAVAILABLE';
         if(path.startsWith('/api/v1/stage/')&&object(data)&&typeof data.error==='string')throw new StageRejection(code,response.status,data.error.slice(0,500));
+        if (path.endsWith("/join-codes/batch") && object(data) && typeof data.row === "number" && Number.isSafeInteger(data.row) && data.row > 0)
+          throw new InvitationRosterRejection(code, response.status, data.row);
         throw new SuiteError(code, response.status);
       }
-      await response.body?.cancel();
-      if (
-        path === "/api/auth/sign-up/email" &&
-        [400, 409, 422].includes(response.status)
-      )
+      if (path === "/api/auth/sign-up/email" && [400, 409, 422].includes(response.status)) {
+        const failure = await readJson(response, maximum).catch(() => undefined);
+        if (object(failure) && failure.code === "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL")
+          throw new SuiteError("IPW_EMAIL_IN_USE", 409);
         throw new SuiteError("IPW_REGISTRATION_REJECTED", 400);
+      }
+      if (path === "/api/auth/sign-in/email" && [400, 401].includes(response.status)) {
+        const failure = await readJson(response, maximum).catch(() => undefined);
+        if (object(failure) && ["INVALID_EMAIL_OR_PASSWORD", "INVALID_EMAIL"].some(code => failure.code === code))
+          throw new SuiteError("IPW_INVALID_LOGIN", 401);
+        throw new SuiteError("IPW_SIGN_IN_REQUIRED", response.status);
+      }
+      await response.body?.cancel();
       throw new SuiteError(
         response.status === 401 || response.status === 403
           ? "IPW_SIGN_IN_REQUIRED"
@@ -374,23 +386,35 @@ export class AccountService {
     if (value.origin !== this.config.accountOrigin) return undefined;
     return { version: 1, origin: value.origin, token: value.token };
   }
-  /** Return only account identity and points; never the token or upstream session. */
-  async state(): Promise<HostAccountState> {
-    const grant = await this.grant();
-    if (!grant)
-      return { status: "anonymous", origin: this.config.accountOrigin };
+  private async sessionUser(grant: Grant): Promise<AccountUser | null> {
     let session: unknown;
     try {
       session = await this.send("/api/auth/get-session", grant.token);
     } catch (error) {
       if (error instanceof SuiteError && error.status === 401)
-        return { status: "anonymous", origin: this.config.accountOrigin };
+        return null;
       throw error;
     }
-    if (session === null)
-      return { status: "anonymous", origin: this.config.accountOrigin };
+    if (session === null) return null;
     if (!object(session)) throw new SuiteError("IPW_INVALID_RESPONSE", 502);
-    const user = userOf(session.user);
+    return userOf(session.user);
+  }
+
+  /** Read the account identity without requesting its points balance. */
+  async user(): Promise<AccountUser | null> {
+    const revision = this.revision;
+    const grant = await this.grant();
+    const user = grant ? await this.sessionUser(grant) : null;
+    if (revision !== this.revision) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    return user;
+  }
+
+  /** Return only account identity and points; never the token or upstream session. */
+  async state(): Promise<HostAccountState> {
+    const grant = await this.grant();
+    const user = grant ? await this.sessionUser(grant) : null;
+    if (!grant || !user)
+      return { status: "anonymous", origin: this.config.accountOrigin };
     let points: number | null = null;
     try {
       const summary = await this.send("/api/v1/me/summary", grant.token);
@@ -476,17 +500,6 @@ export class AccountService {
     });
     return this.state();
   }
-  /** Ask the configured account service to send a reset email. */
-  async requestPasswordReset(input: unknown): Promise<void> {
-    const email = object(input) && typeof input.email === "string" ? input.email.trim() : "";
-    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
-      throw new SuiteError("IPW_INVALID_LOGIN");
-    await this.send("/api/auth/request-password-reset", undefined, {
-      email,
-      redirectTo: new URL("/reset-password", this.config.accountOrigin).href,
-    });
-  }
-
   /** Disconnect only this suite's local account. DSH provider credentials are untouched. */
   async signOut(): Promise<HostAccountState> {
     ++this.revision;

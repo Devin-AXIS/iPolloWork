@@ -36,13 +36,15 @@ export async function audit(
   actor: Actor,
   action: string,
   target: string,
+  enterpriseId: string | null = null,
 ) {
   await store.run(
-    "INSERT INTO audit(actor_id,action,target,created_at) VALUES(?,?,?,?)",
+    "INSERT INTO audit(actor_id,action,target,created_at,enterprise_id) VALUES(?,?,?,?,?)",
     actor.id,
     action,
     target,
     now(),
+    enterpriseId,
   );
 }
 export async function enterpriseAccess(
@@ -58,7 +60,7 @@ export async function enterpriseAccess(
   if (!enterprise)
     throw new ServiceError("ENTERPRISE_NOT_FOUND", 404, "组织不存在");
   const membership = await store.one(
-    "SELECT role FROM members WHERE enterprise_id=? AND user_id=?",
+    "SELECT role FROM members WHERE enterprise_id=? AND user_id=? AND status='active'",
     id,
     actor.id,
   );
@@ -80,7 +82,7 @@ export async function isEnterpriseManager(
   if (actor.role === "admin") return true;
   const role = (
     await store.one<{ role: string }>(
-      "SELECT role FROM members WHERE enterprise_id=? AND user_id=?",
+      "SELECT role FROM members WHERE enterprise_id=? AND user_id=? AND status='active'",
       enterpriseId,
       actor.id,
     )
@@ -121,7 +123,7 @@ export async function projectRole(
   if (actor.role === "admin") return "maintain";
   if (project.enterprise_id) {
     const member = await store.one(
-      "SELECT role,department_id FROM members WHERE enterprise_id=? AND user_id=?",
+      "SELECT role,department_id FROM members WHERE enterprise_id=? AND user_id=? AND status='active'",
       project.enterprise_id,
       actor.id,
     );

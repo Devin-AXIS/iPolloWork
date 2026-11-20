@@ -31,3 +31,5 @@ curl --fail http://127.0.0.1:4785/api/health
 修改客户端 `accountOrigin` 前，验证 HTTPS 健康检查、原有账号登录、组织访问和授权 OSS 上传下载。保留旧 DNS 值以便回退。迁移和备份参见[存储](../docs/storage.md)。数据库备份使用独立目的地；发布 Bucket 只保存明确发布的内容。
 
 替换容器前，备份 PostgreSQL、身份验证密钥和设置。重复部署时沿用同一 Compose 项目名及所有数据和证书卷。已有部署不得执行 `down -v`。只有兼容已安装数据库版本的应用代码才可回退。
+
+百人内测的配置与已验证边界见[容量说明](../docs/capacity.zh.md)。可选的 `-f deploy/compose.beta-2c4g.yml` 增加同机内存预算；应用到已有部署会重启 PostgreSQL，应在备份后安排维护窗口并先演练。`/api/health` 检查进程存活，`/api/ready` 检查数据库可用性。应用停机前会排空请求，Compose 留有 40 秒宽限期。仍需站外可用性监测和异机备份。

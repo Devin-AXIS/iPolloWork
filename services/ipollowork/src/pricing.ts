@@ -315,9 +315,9 @@ export function reserveUsage(
   const messages = spec.kind === "embedding" || (spec.kind === "speech" && inputBody.text !== undefined) ? [object.parse({ content: body.input })] : z.array(object).min(1).parse(body.messages ?? inputBody.messages);
   const inputJSON = JSON.stringify(messages);
   const multimodal = /"(?:image_url|input_image|image|input_audio|audio_url|video_url|input_video|file|file_id)"/.test(inputJSON);
-  if (!multimodal && bytes + 2048 > rate.maxInputTokens)
-    throw new ServiceError("SERVICE_INPUT_LIMIT", 400);
-  const input = multimodal ? rate.maxInputTokens : bytes + 2048;
+  // Bytes bound the billing estimate, not the provider's tokenized context.
+  // The provider validates the context and its reported usage settles the cost.
+  const input = multimodal ? rate.maxInputTokens : Math.min(bytes + 2048, rate.maxInputTokens);
   const selected = selectRate(rate, body, input);
   return {
     spec,

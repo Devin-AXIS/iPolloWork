@@ -29,7 +29,7 @@ export function Modal({ title, close, children }: { title: string; close: () => 
     <div className="modal-head"><h2>{title}</h2><button type="button" className="icon" aria-label="关闭" onClick={close}><X size={18}/></button></div>{children}
   </dialog>;
 }
-export function ActionForm({ submit, children, label = "保存" }: { submit: (data: FormData) => Promise<unknown>; children: ReactNode; label?: string }) {
+export function ActionForm({ submit, children, label = "保存" }: { submit: (data: FormData) => Promise<unknown>; children?: ReactNode; label?: string }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   return <form onSubmit={async e => {
     e.preventDefault(); const form = new FormData(e.currentTarget); setBusy(true); setError("");

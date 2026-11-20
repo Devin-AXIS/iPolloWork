@@ -12,21 +12,21 @@ import { mountAddPlugin } from './add-plugin.ts'
 import { AccountPanel, AccountLauncher } from './account.tsx'
 import { AccountController } from './account-controller.ts'
 import { mountAgents } from './agents.tsx'
-import { mountCoordinator } from './coordinator.tsx'
 import { mountEnterprise } from './enterprise.tsx'
 import { mountData } from './data.tsx'
 import { createBrowserAppData } from './data-service.ts'
 import { mountConnections } from './connections.tsx'
+import { mountMcpConnections } from './mcp-connections.tsx'
 import { mountOutputContinuationPresentation } from './output-continuation.tsx'
 import { mountChatErrors } from './chat-errors.tsx'
-import { mountSessionDelete } from './session-delete.tsx'
+import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
 import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
 import { shareAudienceCopy } from './share-audience-copy.ts'
-import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
 export const inject = ['slots', 'theme', 'locale', 'remote', 'layout', 'uiWorkspace', 'connection', 'sessions', 'workspaces', 'contextMenus', 'conversation', 'configForms']
 export async function apply(ctx: ClientContext): Promise<void> {
   // Shared pages use their scoped native services; the owner's account UI must not be mounted there.
   if ('__DSH_LIVESHARE_VIEWER__' in globalThis) return
+  mountCurrentVersion(ctx)
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort(), 'ipollowork-suite: client requests')
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/ipollowork-suite/assets/client.css'
@@ -36,18 +36,18 @@ export async function apply(ctx: ClientContext): Promise<void> {
   const labels = labelSource(ctx)
   mountOutputContinuationPresentation(ctx)
   mountChatErrors(ctx)
-  mountSessionDelete(ctx)
   mountConnections(ctx)
   mountAgents(ctx)
-  mountCoordinator(ctx)
   mountIm(ctx)
   if (info.theme) mountTheme(ctx)
-  mountCurrentVersion(ctx)
+  let enterpriseInstaller: MarketInstallation | undefined
   ctx.inject(['remote.pluginManager'], scope => {
     const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
     const marketLifetime = new AbortController()
     scope.effect(() => () => marketLifetime.abort(), 'ipollowork-market: client requests')
     const installation = new MarketInstallation(scope.remote.pluginManager, marketLifetime.signal)
+    enterpriseInstaller = installation
+    scope.effect(() => () => { if (enterpriseInstaller === installation) enterpriseInstaller = undefined }, 'ipollowork: enterprise plugin installer')
     mountAddPlugin(scope, installation.openManual)
     scope.effect(() => scope.remote.$on('plugin-manager/changed', installation.invalidate), 'ipollowork-market: bundle changes')
     scope.effect(() => scope.remote.$on('plugin-manager/install-state', installation.progress), 'ipollowork-market: install progress')
@@ -64,6 +64,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
       }),
     }, MarketPanel))
   })
+  mountMcpConnections(ctx)
   if (info.account) {
     const account = new AccountController()
     ctx.effect(() => {
@@ -103,9 +104,10 @@ export async function apply(ctx: ClientContext): Promise<void> {
         method: 'POST', body: JSON.stringify(input), signal: AbortSignal.any([signal, lifetime.signal]),
       })
     })
-    const { mountSharing } = await import('./sharing/mount.ts')
-    mountSharing(ctx, prepareShare)
-    mountEnterprise(ctx, account)
+    mountEnterprise(ctx, account, async spec => {
+      if (!enterpriseInstaller) throw new Error('IPW_DSH_PLUGIN_UNAVAILABLE')
+      await enterpriseInstaller.startManual(spec, '', spec)
+    })
     // App data follows its own entry of the bundle; a change takes effect when the page reloads.
     if (info.appData) {
       mountData(ctx, account)

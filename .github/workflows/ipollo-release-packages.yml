@@ -3,9 +3,8 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing GitHub release receiving the verified installers
+        description: Existing numeric draft release receiving the verified installers
         required: true
-        default: v1.0.3
       signed_macos:
         description: Build Developer ID signed and notarized Mac installers and update ZIPs
         type: boolean
@@ -22,35 +21,73 @@ on:
       linux:
         description: Build the standalone Linux x64 AppImage for the website
         type: boolean
-        default: false
+        default: true
       source_ref:
         description: Optional immutable commit for rebuilding an existing draft
         type: string
 permissions:
   contents: write
-  actions: write
+concurrency:
+  group: ipollo-release-packages-${{ inputs.release_tag }}
+  cancel-in-progress: false
 jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      source: ${{ steps.release.outputs.source }}
+      version: ${{ steps.release.outputs.version }}
+    steps:
+      - name: Resolve the draft and its source commit
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_REF: ${{ inputs.source_ref || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo 'Use a numeric tag such as v1.0.5.' >&2
+            exit 1
+          fi
+          draft=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,targetCommitish)
+          if ! jq -e '.isDraft and (.isPrerelease | not)' <<< "$draft" >/dev/null; then
+            echo "$RELEASE_TAG must be a stable draft." >&2
+            exit 1
+          fi
+          resolve_commit() {
+            local ref
+            ref=$(jq -rn --arg ref "$1" '$ref | @uri')
+            gh api "repos/$GITHUB_REPOSITORY/commits/$ref" --jq .sha
+          }
+          source=$(resolve_commit "$SOURCE_REF")
+          target=$(jq -r .targetCommitish <<< "$draft")
+          if [[ "$target" != "$source" ]]; then
+            if [[ "$(resolve_commit "$target")" != "$source" ]]; then
+              echo "Draft $RELEASE_TAG targets $target. Select that commit as source_ref." >&2
+              exit 1
+            fi
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --target "$source"
+          fi
+          printf 'source=%s\nversion=%s\n' "$source" "${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
   windows:
     if: inputs.windows
+    needs: release
     runs-on: windows-2025
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.sha }}
+          ref: ${{ needs.release.outputs.source }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Prepare pinned runtime and product
+      - name: Install pinned build dependencies
         shell: pwsh
-        run: |
-          npm run setup:build
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          npm run build
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+        run: node integrations/tooling/setup.mjs --plugins
       - name: Configure unsigned installer
         shell: pwsh
         run: |
@@ -62,95 +99,77 @@ jobs:
           DSH_DESKTOP_WINDOWS_PACK_CONCURRENCY=1
           DSH_DESKTOP_MANDATORY_UPDATE_PROD_ORIGIN=https://cloud.ipollo.net
           '@ | Set-Content integrations/desktop/.env.windows
-      - name: Validate numeric release version
-        shell: pwsh
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          if ($env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Use a numeric release such as v1.0.3' }
       - name: Build and verify Windows x64
         shell: pwsh
         env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
         run: |
-          $version = $env:RELEASE_TAG -replace '^v', ''
-          node integrations/desktop/run.mjs package-target.ts win-x64 --unsigned --build-version $version
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          node integrations/desktop/run.mjs package-target.ts win-x64 --unsigned --build-version $env:RELEASE_VERSION
+      - name: Attach verified Windows installer and blockmap
+        id: upload
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          $directory = 'integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts'
+          $base = "ipollowork-win-x64-$env:RELEASE_VERSION-unsigned.exe"
+          $website = Join-Path $directory "website-installers/ipollowork-win-x64-$env:RELEASE_VERSION.exe"
+          $installer = Join-Path $directory "website-installers/$base"
+          $blockmap = Join-Path $directory "website-installers/$base.blockmap"
+          Copy-Item -LiteralPath $website -Destination $installer
+          Copy-Item -LiteralPath (Join-Path $directory "iPollo-$env:RELEASE_VERSION-win-x64-unsigned.exe.blockmap") -Destination $blockmap
+          gh release upload $env:RELEASE_TAG $website $installer $blockmap --repo $env:GITHUB_REPOSITORY --clobber
       - uses: actions/upload-artifact@v4
+        if: failure()
         with:
           name: iPollo-windows-x64
           path: |
-            integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
+            integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/website-installers/*.exe
             integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.blockmap
-            integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/stable.yml
           if-no-files-found: error
-      - name: Publish verified installer
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          $files = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/*.exe
-          if ($files.Count -ne 1) { throw 'Expected exactly one verified installer' }
-          $version = $env:RELEASE_TAG -replace '^v', ''
-          $asset = Join-Path $env:RUNNER_TEMP "ipollowork-win-x64-$version-unsigned.exe"
-          Copy-Item -LiteralPath $files.FullName -Destination $asset
-          $uploadFiles = Get-ChildItem integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/* -Include *.exe,*.blockmap,stable.yml
-          $paths = @($uploadFiles.FullName) + $asset
-          gh release upload $env:RELEASE_TAG @paths --repo $env:GITHUB_REPOSITORY --clobber
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-      - name: Synchronize uploaded installer to mainland mirror
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          $draft = gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --json isDraft --jq .isDraft
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          if ($draft -eq 'true') { exit 0 }
-          gh workflow run release-mirror.yml --repo $env:GITHUB_REPOSITORY --ref main -f "release_tag=$env:RELEASE_TAG" -f publish_draft=false
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          include-hidden-files: true
+          compression-level: 0
 
   linux:
     if: inputs.linux
+    needs: release
     runs-on: ubuntu-22.04
     timeout-minutes: 120
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.release.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.sha }}
+          ref: ${{ needs.release.outputs.source }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
-      - name: Prepare pinned runtime and product
-        run: |
-          npm run setup:build
-          npm run build
+      - name: Install pinned build dependencies
+        run: node integrations/tooling/setup.mjs --plugins
       - name: Build and verify Linux x64 AppImage
+        run: npm run package:desktop:linux:x64 -- --build-version "$RELEASE_VERSION"
+      - name: Attach verified Linux installer
+        id: upload
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          npm run package:desktop:linux:x64 -- --build-version "${RELEASE_TAG#v}"
+          directory=integrations/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/website-installers
+          gh release upload "$RELEASE_TAG" "$directory/ipollowork-linux-x86_64-$RELEASE_VERSION.AppImage" --repo "$GITHUB_REPOSITORY" --clobber
       - uses: actions/upload-artifact@v4
+        if: failure() && steps.upload.outcome == 'failure'
         with:
           name: website-linux-x64
           path: integrations/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/website-installers/*.AppImage
           if-no-files-found: error
           include-hidden-files: true
-      - name: Upload verified Linux installer
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          directory=integrations/desktop/.desktop-build/targets/linux-x64/unsigned-artifacts/website-installers
-          asset="$directory/ipollowork-linux-x86_64-${RELEASE_TAG#v}.AppImage"
-          test -f "$asset"
-          gh release upload "$RELEASE_TAG" "$asset" --repo "$GITHUB_REPOSITORY" --clobber
+          compression-level: 0
 
   macos:
     if: inputs.signed_macos
+    needs: release
     strategy:
       fail-fast: false
       matrix:
@@ -159,12 +178,13 @@ jobs:
     timeout-minutes: 120
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
+      RELEASE_VERSION: ${{ needs.release.outputs.version }}
       PACKAGE_TARGET: ${{ matrix.target }}
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref || github.sha }}
+          ref: ${{ needs.release.outputs.source }}
       - uses: actions/setup-node@v4
         with:
           node-version: '24.15.0'
@@ -214,10 +234,30 @@ jobs:
             done
           done
           printf 'reused=true\n' >> "$GITHUB_OUTPUT"
-      - name: Prepare pinned runtime and product
-        run: |
-          npm run setup:build
-          npm run build
+      - name: Set Intel pnpm store path
+        if: matrix.target == 'mac-x64'
+        run: echo "PNPM_CONFIG_STORE_DIR=$RUNNER_TEMP/ipollo-intel-pnpm-store" >> "$GITHUB_ENV"
+      - name: Restore Intel build dependencies
+        if: matrix.target == 'mac-x64'
+        id: intel_deps
+        uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: |
+            ${{ runner.temp }}/ipollo-intel-pnpm-store
+            ~/.npm/_cacache
+          key: ipollo-intel-deps-v1-node24.15.0-${{ hashFiles('integrations/runtime/upstream.json', 'integrations/publisher/package-lock.json', 'plugins/ipollowork-suite/package-lock.json', 'plugins/stage/package-lock.json') }}
+      - name: Install pinned build dependencies
+        run: node integrations/tooling/setup.mjs --plugins
+      - name: Save Intel build dependencies
+        if: matrix.target == 'mac-x64' && steps.intel_deps.outputs.cache-primary-key != '' && steps.intel_deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        continue-on-error: true
+        with:
+          path: |
+            ${{ runner.temp }}/ipollo-intel-pnpm-store
+            ~/.npm/_cacache
+          key: ${{ steps.intel_deps.outputs.cache-primary-key }}
       - name: Prepare Apple signing configuration
         env:
           CERTIFICATE_P12: ${{ secrets.APPLE_CODESIGN_CERT_P12_BASE64 }}
@@ -294,58 +334,68 @@ jobs:
           })
           NODE
       - name: Build and verify macOS DMG
+        run: node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
+      - name: Install the DMG and open the real application with an old plugin dependency
         run: |
           set -euo pipefail
-          version="${RELEASE_TAG#v}"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-          node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$version"
+          dmg="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts/website-installers/ipollowork-$PACKAGE_TARGET-$RELEASE_VERSION.dmg"
+          mount="$RUNNER_TEMP/ipollo-installed-volume"
+          installed="$RUNNER_TEMP/Installed Applications/iPollo.app"
+          mkdir -p "$mount" "$(dirname "$installed")"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount" -quiet
+          trap 'hdiutil detach "$mount" -quiet' EXIT
+          ditto "$mount/iPollo.app" "$installed"
+          node integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installed-${{ matrix.target }}-${{ github.run_id }}
+          path: installed-macos-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Attach verified macOS installer and update files
+        id: upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts"
+          base="iPollo-$RELEASE_VERSION-$PACKAGE_TARGET"
+          gh release upload "$RELEASE_TAG" \
+            "$directory/website-installers/ipollowork-$PACKAGE_TARGET-$RELEASE_VERSION.dmg" \
+            "$directory/$base.zip" "$directory/$base.zip.blockmap" "$directory/$PACKAGE_TARGET-release.json" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.upload.outcome == 'failure'
         with:
           name: iPollo-${{ matrix.target }}
           path: |
-            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*.dmg
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/website-installers/*.dmg
             integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*.zip
             integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*.zip.blockmap
+            integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*-release.json
           if-no-files-found: error
-      - name: Publish verified DMG
-        env:
-          GH_TOKEN: ${{ github.token }}
+          include-hidden-files: true
+          compression-level: 0
+      - name: Preserve the signed application when any macOS packaging check fails
+        if: failure()
         run: |
-          shopt -s nullglob
+          set -euo pipefail
           directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts"
-          zip=("$directory"/*.zip)
-          if (( ${#zip[@]} != 1 )); then
-            echo 'Expected exactly one notarized update ZIP' >&2
-            exit 1
+          subdirectory=mac
+          if [[ "$PACKAGE_TARGET" == mac-arm64 ]]; then subdirectory=mac-arm64; fi
+          app="$directory/$subdirectory/iPollo.app"
+          if [[ -d "$app" ]]; then
+            mkdir -p retained-application
+            ditto -c -k --sequesterRsrc --keepParent "$app" retained-application/application.zip
+            git rev-parse HEAD > retained-application/source-commit.txt
+            shasum -a 256 retained-application/application.zip > retained-application/SHA256SUMS.txt
           fi
-          files=("$directory"/*.dmg)
-          if (( ${#files[@]} != 1 )); then
-            echo 'Expected exactly one verified DMG' >&2
-            exit 1
-          fi
-          asset="$RUNNER_TEMP/ipollowork-$PACKAGE_TARGET-${RELEASE_TAG#v}.dmg"
-          cp "${files[0]}" "$asset"
-          gh release upload "$RELEASE_TAG" "$asset" "$directory"/*.dmg "$directory"/*.zip "$directory"/*.zip.blockmap "$directory"/*-release.json --repo "$GITHUB_REPOSITORY" --clobber
-      - name: Attach checked plugin downloads
-        if: matrix.target == 'mac-arm64'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync } from 'node:fs'
-          import { join } from 'node:path'
-          import { createHash } from 'node:crypto'
-          import { execFileSync } from 'node:child_process'
-          const files=[]
-          for(const directory of ['ipollowork-suite','stage']) {
-            const manifest=JSON.parse(readFileSync(`plugins/${directory}/package.json`,'utf8'))
-            files.push(join('integrations/desktop/.desktop-build/targets/mac-arm64/packed/dsh',manifest.name.replace('@','').replace('/','-')+'-'+manifest.version+'.tgz'))
-          }
-          const catalog=JSON.parse(readFileSync('plugins/ipollowork-suite/catalog/bundled-releases.json','utf8'))
-          for(const plugin of catalog.plugins) {
-            const file=join('plugins/ipollowork-suite/catalog/packages',plugin.file)
-            if(createHash('sha256').update(readFileSync(file)).digest('hex')!==plugin.sha256)throw new Error('Plugin archive differs from the checked catalog')
-            files.push(file)
-          }
-          for(const file of files)execFileSync('gh',['release','upload',process.env.RELEASE_TAG,file,'--repo',process.env.GITHUB_REPOSITORY,'--clobber'],{stdio:'inherit'})
-          NODE
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: retained-${{ matrix.target }}-${{ github.run_id }}
+          path: retained-application/
+          if-no-files-found: ignore
+          retention-days: 7
+          compression-level: 0

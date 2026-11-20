@@ -4,15 +4,41 @@ import { stageWindowsCuaHelper } from './stage-windows-cua-helper.ts'
 
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { x, c } from 'tar'
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { parseArgs } from 'node:util'
 import {
   readClientBuildRecord,
 } from '../../../scripts/client-build-environment.ts'
-import { releaseFamily } from '../../../scripts/release/families.ts'
+import { releaseFamily, tarballName, type ReleaseFamily } from '../../../scripts/release/families.ts'
 import { packFamilyMembers, parsePackConcurrency } from '../../../scripts/release/pack.ts'
+import { pnpmInvocation } from '../../../scripts/pnpm-invocation.ts'
+import { isEntry, runConcurrent } from '../../../scripts/release/process.ts'
+import { packedManifest, tarballFiles } from '../../../scripts/release/tarball.ts'
+
+/** Pack the desktop inputs with one worker and one pnpm process. */
+export async function packDesktopFamilyInOneProcess(root: string, family: ReleaseFamily, destination: string): Promise<string[]> {
+  const { order: members } = family.publishOrder(family.members(root))
+  family.verifyVersions(members)
+  rmSync(destination, { recursive: true, force: true })
+  mkdirSync(destination, { recursive: true })
+  if (members.length === 0) return []
+  const { command, args } = pnpmInvocation([
+    'pack', '--recursive', '--workspace-concurrency=1',
+    ...members.map(member => `--filter=${member.name}`),
+    '--pack-destination', destination,
+  ])
+  await runConcurrent(command, args, { cwd: root })
+  return members.map(member => {
+    const filename = tarballName(member)
+    const archive = join(destination, filename)
+    family.validatePayload(member, tarballFiles(archive))
+    family.validatePackedManifest(member, packedManifest(archive))
+    return filename
+  })
+}
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
@@ -25,7 +51,10 @@ async function main(): Promise<void> {
   const upstream = resolve(root, '.upstream/dsh')
   readClientBuildRecord(upstream)
   const destination = resolve(root, values.out)
-  const packed = await packFamilyMembers(upstream, releaseFamily('dsh'), destination, concurrency)
+  const family = releaseFamily('dsh')
+  const packed = process.platform === 'darwin' && process.arch === 'x64' && concurrency === 1
+    ? await packDesktopFamilyInOneProcess(upstream, family, destination)
+    : await packFamilyMembers(upstream, family, destination, concurrency)
   if (process.platform === 'darwin') {
     const version = JSON.parse(readFileSync(resolve(upstream, 'packages/experimental/cua-macos/package.json'), 'utf8')).version
     await stageCuaHelper(resolve(destination, `deepseek-ai-dsh-cua-macos-${version}.tgz`), resolve(root, 'integrations/desktop/.desktop-build/cua-helper'))
@@ -45,6 +74,14 @@ async function main(): Promise<void> {
   const staging = mkdtempSync(join(tmpdir(), 'ipollo-desktop-suite-'))
   try {
     await x({ file: suiteArchive, cwd: staging })
+    const catalog = join(staging, 'package/catalog')
+    const releases = JSON.parse(readFileSync(join(catalog, 'bundled-releases.json'), 'utf8')) as {
+      plugins: { file: string; sha256: string }[]
+    }
+    for (const { file, sha256 } of releases.plugins) {
+      const actual = createHash('sha256').update(readFileSync(join(catalog, 'packages', file))).digest('hex')
+      if (actual !== sha256) throw new Error(`desktop local pack: catalog archive checksum mismatch: ${file}`)
+    }
     const manifestPath = join(staging, 'package/package.json')
     const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
     for (const name of ['@ipollo/dsh-design-resources', '@ipollo/dsh-video-resources', 'deepseek-idesign', 'deepseek-ivideo']) {
@@ -57,4 +94,4 @@ async function main(): Promise<void> {
   console.log(`desktop local pack: ${String(packed.length)} tarball(s) in ${destination}`)
 }
 
-await main()
+if (isEntry(import.meta.url)) await main()

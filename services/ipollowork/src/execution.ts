@@ -194,6 +194,15 @@ type CallRow = Row & {
   response_type: string | null;
   response_body: string | null;
 };
+
+function isBase64Body(value: string): boolean {
+  if (value.length % 4 !== 0) return false;
+  const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
+  // Scan the alphabet once. A repeated four-character group can exhaust the
+  // regex stack well below the request limit when chat history includes images.
+  return !/[^A-Za-z0-9+/]/.test(value.slice(0, value.length - padding));
+}
+
 const requestSchema = z
   .object({
     requestId: z.uuid(),
@@ -201,8 +210,8 @@ const requestSchema = z
     method: z.enum(["GET", "POST"]),
     body: z
       .string()
-      .max(24 * 1024 * 1024)
-      .regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/)
+      .max(24 * 1024 * 1024, { abort: true })
+      .refine(isBase64Body, "Expected standard Base64")
       .optional(),
     destination: z.url().optional(),
     headers: z.record(z.enum(["accept", "mcp-session-id", "mcp-protocol-version", "last-event-id"]), z.string().max(2048).refine(v => !/[\r\n]/.test(v))).optional(),
@@ -348,7 +357,7 @@ export class ExecutionService {
       ServiceRow & { enterprise_id: string; enterprise_name: string }
     >(
       `SELECT s.*,es.enterprise_id,e.name AS enterprise_name FROM execution_services s JOIN enterprise_services es ON es.service_id=s.id JOIN enterprises e ON e.id=es.enterprise_id
-       JOIN members m ON m.enterprise_id=es.enterprise_id AND m.user_id=? WHERE s.enabled=1 AND (m.role IN('owner','admin') OR ${grantedTo("s.id")}) ORDER BY s.created_at,s.id LIMIT 200`,
+       JOIN members m ON m.enterprise_id=es.enterprise_id AND m.user_id=? AND m.status='active' WHERE s.enabled=1 AND (m.role IN('owner','admin') OR ${grantedTo("s.id")}) ORDER BY s.created_at,s.id LIMIT 200`,
       actor.id,
       "service",
     );
@@ -369,7 +378,7 @@ export class ExecutionService {
       const current = await this.store.one<ServiceRow>("SELECT * FROM execution_services WHERE id=? FOR UPDATE", serviceId);
       if (!current || definition(current).credentialMode !== "member") throw new ServiceError("SERVICE_CREDENTIAL_MODE", 409);
       // Serialize with member removal; never leave a new credential after departure.
-      const member = await this.store.one("SELECT user_id FROM members WHERE enterprise_id=? AND user_id=? FOR UPDATE", enterpriseId, actor.id);
+      const member = await this.store.one("SELECT user_id FROM members WHERE enterprise_id=? AND user_id=? AND status='active' FOR UPDATE", enterpriseId, actor.id);
       if (!member) throw new ServiceError("ENTERPRISE_FORBIDDEN", 403);
       await requireUse(this.store, actor, enterpriseId, "service", serviceId);
       if (key) await this.settings.set(name, { key });
@@ -1023,7 +1032,8 @@ export class ExecutionService {
       );
     });
   }
-  async invoke(actor: Actor, id: string, raw: unknown, projectId?:string): Promise<Response> {
+  async invoke(actor: Actor, id: string, raw: unknown, projectId?:string, signal?: AbortSignal): Promise<Response> {
+    signal?.throwIfAborted();
     const input = requestSchema.parse(raw),
       row = await this.store.one<ServiceRow>(
         "SELECT * FROM execution_services WHERE id=? AND enabled=1",
@@ -1113,7 +1123,7 @@ export class ExecutionService {
       ))
     ) {
       const parent = await this.store.one<{ service_id: string }>("SELECT c.service_id FROM service_calls c JOIN execution_services s ON s.id=c.service_id WHERE c.user_id=? AND c.job_id=? AND s.provider=? AND s.key_id=? LIMIT 1", actor.id, jobId, s.provider, s.keyId);
-      if (parent && parent.service_id !== s.id) return this.invoke(actor, parent.service_id, raw);
+      if (parent && parent.service_id !== s.id) return this.invoke(actor, parent.service_id, raw, projectId, signal);
       throw new ServiceError("SERVICE_JOB_FORBIDDEN", 403);
     }
     if (!owner && s.billing && input.method === "POST" && !jobId) {
@@ -1215,6 +1225,7 @@ export class ExecutionService {
           input.requestId,
         );
       });
+    const cancellation = new AbortController();
     let response: Response;
     try {
       const speechJob = s.billing?.protocol === "volcengine-speech" && jobId
@@ -1234,7 +1245,7 @@ export class ExecutionService {
         },
         body: input.method === "POST" ? speech?.body ?? upstreamBody : undefined,
         redirect: "error",
-        signal: AbortSignal.timeout(s.timeoutMs),
+        signal: AbortSignal.any([cancellation.signal, ...(signal ? [signal] : []), AbortSignal.timeout(s.timeoutMs)]),
       });
       if (s.billing?.protocol === "volcengine-speech") response = await speechResponse(response, input.path, input.requestId);
     } catch {
@@ -1335,6 +1346,7 @@ export class ExecutionService {
         }
       },
       async cancel() {
+        cancellation.abort();
         await fail("unknown");
         await reader?.cancel();
       },
@@ -1425,6 +1437,7 @@ export function mountExecution(app: App, service: ExecutionService) {
         c.req.param("id"),
         await c.req.json(),
         c.get('cloudGrant')?.projectId ?? c.req.header('X-iPollo-Project'),
+        c.req.raw.signal,
       ),
   );
 }

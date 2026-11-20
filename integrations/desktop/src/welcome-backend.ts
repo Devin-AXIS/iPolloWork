@@ -3,6 +3,7 @@ import type { ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/typ
 
 import { randomUUID } from 'node:crypto'
 import { desktopAccountBackend, type DesktopAccountBackend } from './account-backend.ts'
+import type { WelcomeAccountResult } from './welcome-api.ts'
 
 /** Metadata needed before the native entry or workspace becomes visible. */
 export interface WelcomeState {
@@ -20,9 +21,9 @@ export interface DesktopWelcomeBackend {
   analyticsEnabled(): Promise<boolean>
   readonly account: DesktopAccountBackend
   /** Submit credentials to the owned iPolloWork Host and return no credential material. */
-  signInAccount?(email: string, password: string): Promise<{ ok: boolean }>
+  signInAccount?(email: string, password: string): Promise<WelcomeAccountResult>
   /** Register through the owned iPolloWork service without returning its session grant. */
-  signUpAccount?(name: string, email: string, password: string): Promise<{ ok: boolean }>
+  signUpAccount?(name: string, email: string, password: string): Promise<WelcomeAccountResult>
   /** @param event - desktop-owned fields. @returns after local Host intake. */
   report(event: ProductEvent): Promise<void>
   /** @returns Configured-key presence and the shared language and theme preferences, without credential values. */
@@ -75,15 +76,33 @@ export function connectDesktopWelcome(
     return envelope.result.value
   }
   const account = desktopAccountBackend(origin, invoke, cookie)
-  const suiteAccount = async (body?: { email: string; password: string; name?: string }): Promise<boolean> => {
-    const response = await send(new URL(body === undefined ? '/ipollowork-suite/account' : body.name === undefined ? '/ipollowork-suite/account/sign-in' : '/ipollowork-suite/account/sign-up', origin).href, {
+  const suiteAccount = async (body?: { email: string; password: string; name?: string }): Promise<WelcomeAccountResult> => {
+    const action = body === undefined ? '' : body.name === undefined ? '/sign-in' : '/sign-up'
+    const response = await send(new URL('/ipollowork-suite/account' + action, origin).href, {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error',
       headers: { cookie, 'content-type': 'application/json' },
+      signal: AbortSignal.timeout(90_000),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    if (!response.ok) return false
+    if (!response.ok) {
+      const failure: unknown = await response.json().catch(() => undefined)
+      const code = record(failure) && typeof failure.error === 'string' ? failure.error : undefined
+      if (action === '/sign-in' && (response.status === 401 || response.status === 400)) {
+        if (code === 'IPW_INVALID_LOGIN') {
+          return { ok: false, reason: 'invalid-credentials' }
+        }
+        if (code === 'IPW_SIGN_IN_REQUIRED') return { ok: false, reason: 'session-rejected' }
+      }
+      if (action === '/sign-up' && response.status === 409) {
+        if (code === 'IPW_EMAIL_IN_USE') return { ok: false, reason: 'email-in-use' }
+      }
+      if (response.status === 429) return { ok: false, reason: 'rate-limited' }
+      if (response.status === 504 || code === 'IPW_ACCOUNT_TIMEOUT') return { ok: false, reason: 'timeout' }
+      if (response.status >= 500) return { ok: false, reason: 'service-unavailable' }
+      return { ok: false }
+    }
     const value: unknown = await response.json()
-    return record(value) && value.status === 'signed-in'
+    return record(value) && value.status === 'signed-in' ? { ok: true } : { ok: false }
   }
   const settingsAndReference = async () => {
     const settings = await invoke({ namespace: 'settings', method: 'describe', args: {} })
@@ -112,6 +131,15 @@ export function connectDesktopWelcome(
     return 'system'
   }
   const read = async (): Promise<WelcomeState> => {
+    if (accountMode === 'ipollo') {
+      const response = await send(new URL('/ipollowork-suite/info', origin).href, {
+        headers: { cookie }, redirect: 'error', signal: AbortSignal.timeout(10_000),
+      })
+      const info: unknown = response.ok ? await response.json() : undefined
+      if (!record(info) || info.dedicatedDesktop !== true || info.theme !== true || info.account !== true) {
+        throw new Error('iPolloWork application components are unavailable (IPW_DESKTOP_COMPOSITION_MISMATCH)')
+      }
+    }
     const { settings, ref } = await settingsAndReference()
     const providers = await invoke({ namespace: 'llm', method: 'listConfigurableProviders', args: {} })
     if (!Array.isArray(providers)) throw new Error('desktop welcome: invalid provider directory')
@@ -138,7 +166,7 @@ export function connectDesktopWelcome(
     }
     if (ref !== undefined && !record(states[ref])) throw new Error('desktop welcome: missing credential metadata')
     return {
-      loggedIn: accountMode === 'ipollo' ? await suiteAccount() : (await account.state()).status === 'credential-stored',
+      loggedIn: accountMode === 'ipollo' ? (await suiteAccount()).ok : (await account.state()).status === 'credential-stored',
       hasApiKey: Object.values(states).some(value => record(value) && value.configured === true),
       writable: ref !== undefined && record(states[ref]) && states[ref].writable === true,
       localePreference: localePreference(namespaces),
@@ -150,12 +178,12 @@ export function connectDesktopWelcome(
     read,
     ...(accountMode === 'ipollo' ? {
       async signUpAccount(name: string, email: string, password: string) {
-        try { return { ok: await suiteAccount({ name, email, password }) } }
-        catch (_error) { return { ok: false } }
+        try { return await suiteAccount({ name, email, password }) }
+        catch (error) { return { ok: false, reason: error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'service-unavailable' } }
       },
       async signInAccount(email: string, password: string) {
-        try { return { ok: await suiteAccount({ email, password }) } }
-        catch (_error) { return { ok: false } }
+        try { return await suiteAccount({ email, password }) }
+        catch (error) { return { ok: false, reason: error instanceof Error && error.name === 'TimeoutError' ? 'timeout' : 'service-unavailable' } }
       },
     } : {}),
     async analyticsEnabled() {

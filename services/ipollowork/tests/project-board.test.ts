@@ -140,6 +140,12 @@ test("project tasks notify current recipients and serialize dependency transitio
     assert.equal((await send(receipt + "?action=status", assignee.token, { revision: 1, status: "doing" })).status, 200);
     assert.equal((await getResult(await send(board + "?task=" + dependent))).status, "doing");
     assert.equal((await send(board, owner.token, { id: first, revision: 2, status: "todo" })).status, 409);
+    await service.store.run("UPDATE members SET status='suspended' WHERE enterprise_id=? AND user_id=?", enterprise, assignee.id);
+    assert.deepEqual(await notices(assignee.token), []);
+    assert.equal((await send(receipt, assignee.token)).status, 404);
+    assert.equal((await write(randomUUID(), { ...plan, predecessorIds: [] })).status, 403);
+    const activeRoster = await (await send(board + "?members=1")).json() as typeof directory;
+    assert(!activeRoster.members.some(member => member.user_id === assignee.id));
     await service.store.run("DELETE FROM members WHERE enterprise_id=? AND user_id=?", enterprise, assignee.id);
     assert.deepEqual(await notices(assignee.token), []);
   } finally {

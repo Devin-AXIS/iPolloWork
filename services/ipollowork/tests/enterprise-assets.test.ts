@@ -111,6 +111,12 @@ test("organization assets enforce member and department grants, and project owne
       );
     }
     const base = `/api/v1/enterprises/${enterprise}`;
+    assert.equal((await http(base, design.token, { name: "Unauthorized rename" }, "PATCH")).status, 403);
+    assert.equal((await http(base, owner.token, { name: "   " }, "PATCH")).status, 400);
+    assert.deepEqual((await http(base, owner.token, { name: "  Assets team  " }, "PATCH")).data,
+      { id: enterprise, name: "Assets team" });
+    assert.equal((await http<{ enterprise: { name: string } }>(base, design.token)).data.enterprise.name, "Assets team");
+    assert.equal((await service.store.all("SELECT target FROM audit WHERE action=? AND target=?", "enterprise.update", enterprise)).length, 1);
 
     const pack = (
       await http<{ id: string }>(base + "/packages", owner.token, {
@@ -235,7 +241,7 @@ test("organization assets enforce member and department grants, and project owne
       ).data.items;
     assert.deepEqual(
       (await mine(sales.token)).map((s) => [s.name, s.enterpriseName]),
-      [["brand-voice", "Assets"]],
+      [["brand-voice", "Assets team"]],
     );
     assert.match((await mine(sales.token))[0]!.content, /short sentences/);
     assert.deepEqual(await mine(design.token), []);
@@ -268,23 +274,26 @@ test("organization assets enforce member and department grants, and project owne
     relay.onError((error, c) => error instanceof ServiceError
       ? c.json({ code: error.code }, error.status) : c.json({ code: "UNEXPECTED" }, 500));
     let forwarded = 0;
+    let upstreamStatus = 200;
     mountEnterpriseMcp(relay, service.store, service.settings, config.secret, async (url, method, headers) => {
       assert.equal(url.href, mcpInput.endpoint);
       assert.equal(method, "POST");
       assert.equal(headers.authorization, "Bearer test-bearer-credential");
       assert.equal(headers.cookie, undefined);
-      if (forwarded > 0) assert.equal(headers["mcp-session-id"], "upstream-session");
+      assert.equal(headers["mcp-method"], "tools/list");
+      assert.equal(headers["mcp-name"], "fixture-mcp");
+      if (headers["mcp-session-id"]) assert.equal(headers["mcp-session-id"], "upstream-session");
       forwarded++;
       const response = new IncomingMessage(new Socket());
-      response.statusCode = 200;
+      response.statusCode = upstreamStatus;
       response.headers = { "content-type": "application/json", "mcp-session-id": "upstream-session" };
-      response.push('{"jsonrpc":"2.0","id":1,"result":{}}');
+      response.push(upstreamStatus === 200 ? '{"jsonrpc":"2.0","id":1,"result":{}}' : '{"error":"upstream-private-details-test-bearer-credential"}');
       response.push(null);
       return response;
     });
     const connect = (user: string, session?: string) => relay.request(mcpCatalog + "/" + mcp.data.id + "/connect", {
       method: "POST", body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list" }),
-      headers: { "x-test-user": user, Cookie: "ignored", ...(session ? { "mcp-session-id": session } : {}) },
+      headers: { "x-test-user": user, Cookie: "ignored", "mcp-method": "tools/list", "mcp-name": "fixture-mcp", ...(session ? { "mcp-session-id": session } : {}) },
     });
     const authorized = await connect("sales");
     const mcpSession = authorized.headers.get("mcp-session-id");
@@ -298,9 +307,20 @@ test("organization assets enforce member and department grants, and project owne
     assert.equal((await connect("design", mcpSession)).status, 400);
     assert.equal(await (await connect("sales", mcpSession)).text(), '{"jsonrpc":"2.0","id":1,"result":{}}');
     assert.equal(forwarded, 2);
+    for (const status of [400, 401, 403, 404, 405, 406, 409, 415, 422, 429, 500]) {
+      upstreamStatus = status;
+      const rejected = await connect("sales");
+      assert.equal(rejected.status, status === 500 ? 503 : status);
+      const text = await rejected.text();
+      assert.doesNotMatch(text, /upstream-private-details|test-bearer-credential/);
+      if (status === 401) assert.match(text, /MCP_UPSTREAM_UNAUTHORIZED/);
+      if (status === 403) assert.match(text, /MCP_UPSTREAM_FORBIDDEN/);
+      if (status === 429) assert.match(text, /MCP_UPSTREAM_RATE_LIMITED/);
+    }
+    const beforeRemoval = forwarded;
     assert.equal((await http(base + "/mcp/" + mcp.data.id, owner.token, undefined, "DELETE")).status, 200);
     assert.equal((await connect("sales", mcpSession)).status, 404);
-    assert.equal(forwarded, 2);
+    assert.equal(forwarded, beforeRemoval);
 
     const project = await http<{ id: string }>("/api/v1/projects", owner.token, {
       title: "Delete fixture project", enterpriseId: enterprise, nativeId: "fixture-workspace",

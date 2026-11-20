@@ -1,6 +1,6 @@
 /** Bot library: create once, then open a project conversation directly. */
 import { useEffect, useState } from 'react'
-import { IconUsersOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconUsersOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { AgentCatalog, AgentItem, AgentMemory, AgentModelCatalog, AgentModelOption } from '../shared/agents.ts'
 import type { ClientContext } from './native.ts'
 import { request } from './api.ts'
@@ -37,6 +37,16 @@ export class AgentsController {
       if (revision === this.revision) this.publish({ ...this.snapshot, loading: false, error: error instanceof Error ? error.message : 'IPOLLO_OPERATION_FAILED' })
     }
   }
+  remove = async ({ id, revision }: Pick<AgentItem, 'id' | 'revision'>): Promise<void> => {
+    try {
+      await this.request('/delete', { id, revision })
+    } catch (error) {
+      if (error instanceof Error && error.message === 'IPOLLO_STALE_REVISION') await this.load()
+      throw error
+    }
+    this.publish({ ...this.snapshot, agents: this.snapshot.agents.filter(item => item.id !== id) })
+    await this.load()
+  }
   dispose(): void { this.lifetime.abort(); this.listeners.clear() }
 }
 
@@ -45,16 +55,18 @@ interface Props {
   useAgentState<T>(selector: (state: AgentState) => T): T;
   load(): Promise<void>;
   call<T>(path: string, input?: unknown): Promise<T>;
+  removeAgent(item: AgentItem): Promise<void>;
   openSession(id: string): void;
 }
 
 /** Keep configuration out of the everyday start-chat path. */
-export function AgentsPanel({ useAgentLabels, useAgentState, load, call, openSession }: Props) {
+export function AgentsPanel({ useAgentLabels, useAgentState, load, call, removeAgent, openSession }: Props) {
   const t = useAgentLabels(value => value)
   const state = useAgentState(value => value)
   const [query, setQuery] = useState('')
   const [draft, setDraft] = useState<AgentDraft>(newDraft)
   const [editing, setEditing] = useState(false)
+  const [deleting, setDeleting] = useState<AgentItem | null>(null)
   const [target, setTarget] = useState<{ kind: 'start' | 'memory'; agent: AgentItem } | null>(null)
   const [projectId, setProjectId] = useState('')
   const [skills, setSkills] = useState<{ name: string; description: string }[]>([])
@@ -114,7 +126,9 @@ export function AgentsPanel({ useAgentLabels, useAgentState, load, call, openSes
         <div className={css.botActions}><button onClick={() => edit(item)}>{t.edit}</button><button onClick={() => open('memory', item)}>{t.memory}</button><button onClick={() => {
           const { id, revision, ...copy } = draftFrom(item, state.services)
           setDraft({ ...copy, name: `${item.name} 2` }); setEditing(true); setError('')
-        }}>{t.copy}</button></div>
+        }}>{t.copy}</button><button className={css.botDelete} disabled={busy} onClick={() => {
+          setError(''); setNotice(''); setDeleting(item)
+        }}>{t.remove}</button></div>
       </article>)}</div> : <div className={css.botEmpty}><span className={css.botAvatar} aria-hidden="true"><IconUsersOutlineRegular size={24} /></span><h2>{state.agents.length ? t.noResults : t.empty}</h2>{!state.agents.length && <><p>{t.emptyHint}</p><button className={css.primary} onClick={() => { setDraft(newDraft()); setEditing(true) }}>{t.create}</button></>}</div>}
     {editing && <AgentEditor t={t} draft={draft} onChange={setDraft} services={state.services} skills={skillOptions} models={models} modelsUnavailable={modelsUnavailable} busy={busy} error={errorText} onClose={() => setEditing(false)} onRefresh={() => void load()} onSave={() => void run(async () => {
       const saved = await call<{ broken?: string }>('/agents', draft)
@@ -122,6 +136,19 @@ export function AgentsPanel({ useAgentLabels, useAgentState, load, call, openSes
       if (saved.broken) setError('IPOLLO_OPERATION_FAILED')
       else { setEditing(false); setNotice(t.saved) }
     })} />}
+    {deleting && <Modal open tone="warning" title={t.removeTitle} closeLabel={t.close}
+      description={t.removeHint} className={css.enterpriseModal!} onClose={() => { if (!busy) setDeleting(null) }}
+      footer={<div className={css.dialogFooter}>
+        <Button variant="outline" disabled={busy} onClick={() => setDeleting(null)}>{t.cancel}</Button>
+        <Button variant="primary" disabled={busy || error === 'IPOLLO_STALE_REVISION'} onClick={() => void run(async () => {
+          await removeAgent(deleting)
+          setDeleting(null)
+          setNotice(t.removed)
+        })}>{busy ? t.removing : t.remove}</Button>
+      </div>}>
+      <div className={css.botIdentity}><BotAvatar name={deleting.name} avatar={deleting.avatar} /><h2>{deleting.name}</h2></div>
+      {errorText && <p className={css.error} role="alert">{error === 'IPOLLO_STALE_REVISION' ? t.removeStale : errorText}</p>}
+    </Modal>}
     {target && <Modal open title={target.kind === 'start' ? t.startTitle : t.memory} closeLabel={t.close} description={target.kind === 'start' ? t.startHint : t.memoryHint} className={`${css.page} ${css.agentDialog}`} contentClassName={css.agentDialogContent!} onClose={() => { if (!busy) setTarget(null) }} footer={<>
       <button className={css.secondary} disabled={busy} onClick={() => setTarget(null)}>{t.cancel}</button>
       <button className={css.primary} disabled={busy || !projectId || (target.kind === 'memory' && (!memory || memoryLoading))} onClick={() => void run(async () => {
@@ -143,7 +170,7 @@ export function mountAgents(ctx: ClientContext): void {
   ctx.effect(() => () => controller.dispose(), 'ipollowork-suite: agent library')
   const labels = agentLabelSource(ctx)
   ctx.slots.inject('main', () => ctx.slots.register<Props>({ name: 'main', key: 'ipollowork-agents', inject: () => ({
-    hooks: { agentLabels: labels, agentState: controller }, load: controller.load, call: controller.request,
+    hooks: { agentLabels: labels, agentState: controller }, load: controller.load, call: controller.request, removeAgent: controller.remove,
     openSession: (id: string) => ctx.uiWorkspace.openSession(id),
   }) }, AgentsPanel))
   ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: 'ipollowork-agents', order: 8, label: () => agentCopy(ctx).title }, IconUsersOutlineRegular))

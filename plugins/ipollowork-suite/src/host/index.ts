@@ -17,7 +17,10 @@ import type { MarketEntry, CredentialStore } from "../shared/types.ts";
 import { membershipSchema, membershipOrderSchema, membershipCheckoutSchema } from "../shared/membership.ts";
 import { initializeAccountModel } from "./default-model.ts";
 import { mountServiceModels } from "./service-models.ts";
-import { mountEnterpriseMcp, type EnterpriseMcpScope } from "./enterprise-mcp.ts";
+import { mountEnterpriseMcp, type EnterpriseMcpScope, type EnterpriseMcpRefresh } from "./enterprise-mcp.ts";
+import { McpPreferences } from './mcp-preferences.ts';
+import { createMcpConnections } from './mcp-connections.ts';
+import type { McpManagementScope } from './mcp-connections.ts';
 import { mountOutputContinuation } from "./output-continuation.ts";
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-agent-default-model";
@@ -54,7 +57,7 @@ import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from "./app
 import type { IpolloData } from "../shared/app-data.ts";
 import { readMarket, type NativePluginManager } from "./market.ts";
 import { BRAND_PATH, brandIndex, serveBrand } from "./brand.ts";
-import { AppDataRejection, SuiteError } from "./errors.ts";
+import { AppDataRejection, InvitationRosterRejection, SuiteError } from "./errors.ts";
 import {
   blocksSuiteManagement,
   MANAGEMENT_DENIAL,
@@ -73,6 +76,7 @@ export const inject = [
   "profileContext",
   "workspaceRegistry",
   "sessionQuery",
+  "sessionPersistence",
   "systemPrompt",
   "tools",
   "fs",
@@ -86,6 +90,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
     callback: (scope: EnterpriseSkillScope) => void,
   ): unknown;
   inject?(names: ["mcpManager"], callback: (scope: EnterpriseMcpScope) => void): unknown;
+  inject?(names: ["mcpManager", "settings"], callback: (scope: McpManagementScope & Pick<Context, 'effect'>) => void): unknown;
   inject?(names: string[], callback: (scope: Context) => void): unknown;
   provide?(name: "ipolloServices", value: ServiceCenter): void;
   provide?(name: "ipolloData", value: IpolloData): void;
@@ -250,7 +255,9 @@ async function relayDownload(
 }
 /** Mount the suite without changing DSH's model, session, or plugin-management implementation. */
 export function apply(ctx: HostContext, input: ConfigInput): void {
-  const config = resolveConfig(input);
+  const anchor = ctx.profileContext.installAnchor;
+  const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown };
+  const config = resolveConfig(input, installation.name === '@ipollo/desktop-runtime');
   ctx.on("tools/pre-execute", async (call, next) =>
     config.dedicatedDesktop && blocksSuiteManagement(call, ctx.fiber.entry?.id)
       ? MANAGEMENT_DENIAL
@@ -274,6 +281,8 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   let refreshModels = async () => {};
   let refreshSkills = async () => {};
   let refreshMcp = async () => {};
+  let enterpriseMcp: EnterpriseMcpRefresh | undefined;
+  let mcpConnections: ReturnType<typeof createMcpConnections> | undefined;
   // Account changes and enterprise grant edits change both the official model list and the granted enterprise skills.
   const refreshAccount = async () => {
     await Promise.all([refreshModels(), refreshSkills(), refreshMcp()]);
@@ -339,15 +348,21 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
     refreshSkills = mountEnterpriseSkills(scope, account);
     void refreshSkills().catch(() => {});
   });
-  if (config.account && !account.cloudOnly) ctx.inject?.(["mcpManager"], (scope) => {
+  if (config.account) ctx.inject?.(["mcpManager"], (scope) => {
     const web = ctx.webServer;
     if (!web.getOrigin) return;
-    refreshMcp = mountEnterpriseMcp(scope, {
+    const bridge = mountEnterpriseMcp(scope, {
       register: route => web.register(route),
       getOrigin: () => web.getOrigin!(),
-    }, account);
-    scope.effect(() => () => { refreshMcp = async () => {}; });
+    }, account, new McpPreferences(ctx.credentials, account, config.accountOrigin));
+    refreshMcp = bridge;
+    enterpriseMcp = bridge;
+    scope.effect(() => () => { refreshMcp = async () => {}; enterpriseMcp = undefined; });
     void refreshMcp().catch(() => {});
+  });
+  ctx.inject?.(['mcpManager', 'settings'], scope => {
+    mcpConnections = createMcpConnections(scope, () => enterpriseMcp);
+    scope.effect(() => () => { mcpConnections = undefined; });
   });
   if (config.account)
     ctx.inject?.(["skills", "ipolloAppDataFeature"], (scope) =>
@@ -370,8 +385,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
       )
     : undefined;
   if (config.account) mountProjectContext(ctx, account, config.accountOrigin);
-  const anchor = ctx.profileContext.installAnchor;
-  const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown };
   // The desktop anchor is a private package-manager project, whose version is always 0.0.0.
   const runtime = installation.name === "@ipollo/desktop-runtime"
     ? JSON.parse(readFileSync(createRequire(anchor).resolve("@deepseek-ai/dsh/package.json"), "utf8")) as { version?: unknown }
@@ -400,6 +413,22 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             }
             const url = new URL(request.url ?? "/", "http://localhost");
             const path = url.pathname.slice(API.length);
+            if (path === '/mcp-connections' || path.startsWith('/mcp-connections/')) {
+              const peer = admission.peer;
+              if (!('principal' in peer) || !peer.principal || typeof peer.principal !== 'object'
+                || !('kind' in peer.principal) || peer.principal.kind !== 'owner') throw new SuiteError('IPW_MCP_FORBIDDEN', 403);
+              if (!mcpConnections) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+              if (path === '/mcp-connections' && request.method === 'GET') {
+                json(response, 200, await mcpConnections.list()); return;
+              }
+              const action = /^\/mcp-connections\/([A-Za-z0-9_-]{1,100})\/(disconnect|restart|delete)$/.exec(path);
+              if (action && request.method === 'POST') {
+                const input = cloudSchema.object({ revision: cloudSchema.number().int().nonnegative().optional() }).strict().parse(await body(request, 1024));
+                await mcpConnections.action(action[1]!, action[2] as 'disconnect' | 'restart' | 'delete', input.revision);
+                json(response, 200, { ok: true }); return;
+              }
+              throw new SuiteError('IPW_NOT_FOUND', 404);
+            }
             if(path==='/cloud/availability' && request.method==='GET') {
               const active=Boolean(ctx.get?.('ipolloCloud'));
               json(response,200,active?await account.request('/api/v1/cloud-projects/availability'):{enabled:false});return;
@@ -551,11 +580,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               const state = await account.signOut();
               await refreshAccount().catch(() => {});
               json(response, 200, publicAccountState(state));
-              return;
-            }
-            if (request.method === "POST" && path === "/account/request-password-reset" && config.account) {
-              await account.requestPasswordReset(await body(request));
-              json(response, 200, { ok: true });
               return;
             }
             if (request.method === "GET" && path === "/membership" && config.account) {
@@ -742,33 +766,6 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               );
               return;
             }
-            const packageFile =
-              /^\/enterprise\/organizations\/([A-Za-z0-9_-]{1,100})\/packages\/([A-Za-z0-9_-]{1,100})\/(upload|files\/([A-Za-z0-9_-]{1,100})\/download)$/.exec(
-                path,
-              );
-            if (
-              packageFile &&
-              packageFile[3] === "upload" &&
-              request.method === "POST"
-            ) {
-              const form = await readForm(request);
-              const result = await account.transfer(
-                `/api/v1/enterprises/${packageFile[1]}/packages/${packageFile[2]}/files`,
-                form,
-              );
-              json(response, 200, await result.json());
-              return;
-            }
-            if (packageFile && packageFile[4] && request.method === "GET") {
-              await relayDownload(
-                await account.transfer(
-                  `/api/v1/enterprises/${packageFile[1]}/packages/${packageFile[2]}/files/${packageFile[4]}/download`,
-                ),
-                response,
-                config.maxArtifactBytes,
-              );
-              return;
-            }
             const dataFile=/^\/data\/apps\/([0-9a-f-]{36})\/files(?:\/([0-9a-f-]{36}))?$/.exec(path);
             if(dataFile) {
               if(!config.account||!appDataEnabled)throw new SuiteError('IPW_APP_DATA_DISABLED',404);
@@ -799,6 +796,21 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
             }
             if (path === "/enterprise" || path.startsWith("/enterprise/")) {
               if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);
+              if (path === '/enterprise/mcp-connections' && request.method === 'GET') {
+                const bridge = enterpriseMcp;
+                if (!bridge) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+                await bridge();
+                json(response, 200, { items: bridge.connections() });
+                return;
+              }
+              const reconnect = /^\/enterprise\/mcp-connections\/([A-Za-z0-9_-]+)\/restart$/.exec(path);
+              if (reconnect && request.method === 'POST') {
+                const bridge = enterpriseMcp;
+                if (!bridge) throw new SuiteError('IPW_MCP_MANAGER_UNAVAILABLE', 503);
+                await bridge.restart(reconnect[1]!);
+                json(response, 200, { ok: true });
+                return;
+              }
               const value = await enterprise.request(
                 request.method ?? "GET",
                 path.slice("/enterprise".length),
@@ -806,9 +818,12 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                   ? await body(request, config.maxRequestBytes)
                   : undefined,
               );
+              if (request.method === "GET" && (path === "/enterprise" ||
+                /^\/enterprise\/organizations\/[^/]+\/(?:skills|mcp|publications\/(?:skill|mcp))$/.test(path)))
+                await Promise.allSettled([refreshSkills(), refreshMcp()]);
               if (
                 request.method !== "GET" &&
-                /^\/enterprise\/organizations\/[^/]+\/(skills|mcp|grants|services|members|departments)/.test(
+                /^\/enterprise\/organizations\/[^/]+\/(?:skills|mcp|grants|services|members|departments|publications\/(?:skill|mcp))(?:\/|$)/.test(
                   path,
                 )
               )
@@ -841,6 +856,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                       ? "IPW_INVALID_INPUT"
                       : "IPW_SERVICE_UNAVAILABLE",
                 ...(error instanceof AppDataRejection ? { message: error.reason } : {}),
+                ...(error instanceof InvitationRosterRejection ? { row: error.row } : {}),
               },
             );
           }

@@ -2,9 +2,9 @@ name: iPolloWork integrations
 on:
   push:
     branches: [main]
-    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'plugins/collaboration-board/**', 'plugins/notification-center/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
   pull_request:
-    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
+    paths: ['plugins/ipollo-enterprise/**', 'plugins/ipollowork-suite/**', 'plugins/collaboration-board/**', 'plugins/notification-center/**', 'services/ipollowork/**', 'integrations/**', '.github/workflows/ipollowork-integrations.yml', 'package.json', 'AGENTS.md', 'LICENSE', 'LICENSES/**', 'README*']
   workflow_dispatch:
 permissions:
   contents: read
@@ -34,6 +34,8 @@ jobs:
           npm run check:upstream
           npm run check:docs
           npm run audit:dependencies
+      - name: Check desktop profile upgrades and recovery diagnostics
+        run: node node_modules/vitest/vitest.mjs run --config integrations/desktop/vitest.config.ts --maxWorkers=2
       - name: Check enterprise connector
         run: npm run check --prefix plugins/ipollo-enterprise
       - name: Install account service dependencies

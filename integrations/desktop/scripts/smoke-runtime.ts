@@ -11,6 +11,7 @@ import { readPrimaryRuntime, workspaceDependencyPaths } from '../../../packages/
 import { load, dump } from 'js-yaml'
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
+import { repairProfileRuntime } from '../src/profile-runtime-repair.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 
 const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
@@ -39,8 +40,8 @@ export function assertOfficeSkillsLoadable(results: ReadonlyArray<{ readonly nam
 export async function smokeDesktopRuntime(
   root: string, node: string, runtime: DesktopRuntimeDescriptor, environment: NodeJS.ProcessEnv, resourcesRuntime: string,
 ): Promise<void> {
-  // Intel macOS runners can take longer on the Office conversion fixtures.
-  const officeTimeoutMs = runtime.platform === 'darwin' && runtime.arch === 'x64' ? 180_000 : 60_000
+  // LibreOffice conversion fixtures can take longer on hosted macOS runners.
+  const officeTimeoutMs = runtime.platform === 'darwin' ? 180_000 : 60_000
   const home = mkdtempSync(join(tmpdir(), 'dsh-desktop-smoke-'))
   const profile = join(home, 'profiles', 'desktop')
   const hostEnvironment = {
@@ -191,6 +192,22 @@ export function apply(ctx) {
       { id: 'webserver', config: { host: '127.0.0.1', port: 0 } },
       { id: 'office-kit', config: { timeoutMs: officeTimeoutMs } },
     ]))
+    // Upgrade regression: an old plugin can hoist a pre-pin model implementation into the
+    // profile even while disabled. A real Host must boot using its shipped core after repair.
+    const legacyCore = runtime.sharedPackages.filter(entry =>
+      ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-typert-protocol'].includes(entry.name))
+    for (const entry of legacyCore) {
+      const directory = join(profile, 'node_modules', entry.name)
+      mkdirSync(directory, { recursive: true })
+      writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: entry.name, version: '0.2.0-rc.1', type: 'module', exports: './index.js' }))
+      writeFileSync(join(directory, 'index.js'), 'throw new Error("obsolete profile core must never activate")\n')
+    }
+    // The packaging supervisor runs in ordinary Node, outside Electron's ASAR filesystem.
+    // Use the already verified descriptor here; the installed-shell check exercises applyRelease.
+    repairProfileRuntime(profile, root, runtime)
+    for (const entry of legacyCore) {
+      if (existsSync(join(profile, 'node_modules', entry.name))) throw new Error('desktop runtime: old core still shadows the installed runtime')
+    }
     const ready = await Promise.race([host.start(), new Promise<never>((_, reject) => {
       timer = setTimeout(() => { reject(new Error('desktop runtime: Host readiness exceeded 120 seconds')) }, 120_000)
     })])

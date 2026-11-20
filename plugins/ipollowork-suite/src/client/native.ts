@@ -2,6 +2,7 @@
 import type { ComponentType } from 'react'
 import type { ClientRemote, PluginInstallProgress } from '@deepseek-ai/dsh-api-remotes/client'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
+import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 export interface NativeSessionBinding { readonly sessionId:string; readonly ctx:object }
 /** Credential-free result supplied to the optional native sharing hook. */
 interface SharingPreparation { readonly connected?:boolean; readonly error?:string }
@@ -11,6 +12,7 @@ export interface SlotOptions<P> {
   children?: Record<string, { kind: 'single'; scope: 'session' }>;
 }
 export interface ClientContext {
+  inject(dependencies: readonly ['ipolloDesignTemplates'], callback: (scope: ClientContext & { ipolloDesignTemplates: import('../shared/design-templates.ts').DesignTemplateSources }) => void): unknown;
   inject(dependencies: readonly ['remote.pluginManager'], callback: (scope: ClientContext) => void): unknown;
   inject(dependencies: readonly ['remoteAccess'], callback: (scope: ClientContext) => void): unknown;
   inject(dependencies: readonly ['remote.liveshareShares'], callback: (scope: {
@@ -29,6 +31,8 @@ export interface ClientContext {
   locale: { bind(namespace: string): (key: string) => string; getSnapshot(): { active?: string; locale?: string; language?: string } | string; subscribe(listener: () => void): () => void };
   remote: {
     pluginManager: ClientRemote['pluginManager'];
+    settings: ClientRemote['settings'];
+    $on(event: 'credentials/record-updated', listener: (key: string) => void): () => void;
     $on(event: 'plugin-manager/install-state', listener: (progress: PluginInstallProgress) => void): () => void;
     $on(event: string, listener: () => void): () => void;
   };
@@ -57,12 +61,11 @@ export interface ClientContext {
   }):()=>void };
   conversation: { input: { for(ctx:object):{insertQuote(text:string,summary:{label:string;title:string;body:string}):boolean}; requestDraftInitialization(binding:NativeSessionBinding,options:{prompt:string;whenDraftExists:'keep'}):'applied'|'preserved'|'blocked' } };
   sessions: {
+    refresh: ISessions['refresh'];
     create(options:{workspaceId:string;sessionId:string}):Promise<string>;
     using<T>(id:string,options:{source:string},operation:(ref:{binding:NativeSessionBinding})=>Promise<T>):Promise<T>;
-    list: {
-    getSnapshot(): { byId: Record<string, { retainedBy: { mainView?: number }; projectionValues: { agentPreset?: string | null } }> };
-    subscribe(listener: () => void): () => void;
-  } };
+    list: ISessions['list'];
+  };
 }
 type ContextMenuTarget = { workspaceId?: string; sessionId?: Parameters<IWorkspaces['archiveSession']>[0]; displayTitle?: string };
 export interface MarketProps {

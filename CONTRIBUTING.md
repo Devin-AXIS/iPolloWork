@@ -5,6 +5,8 @@ iPolloWork version, DSH version, operating system, reproduction steps and a reda
 
 Run `npm run setup:build` to prepare the pinned official DSH dependency. Keep changes in `plugins/`, `services/` or the product-owned `integrations/` directories. Do not modify `.upstream/dsh`: new capabilities use official extension points or independent services. Propose missing upstream capabilities separately.
 
+Before developing or reviewing a plugin, follow the [plugin development standard](docs/plugin-development.zh.md), including its DSH architecture and UI requirements. The [repository skill](.agents/skills/ipollowork-plugin-development/SKILL.md) applies the same standard to agent-assisted work and is required by [AGENTS.md](AGENTS.md).
+
 For a change, run the owning package's checks plus `npm test`, `npm run check:upstream` and `npm run check:docs`. Runtime changes also need a real profile test. Test the public plugin in the official client and the branded client with their respective activation policies. State exactly what was tested and which platforms remain unverified.
 
 Keep original author and license notices. Normal commits and file moves preserve history; do not rewrite shared history to change contributor attribution. Pull requests should explain the user-visible problem, the resulting behavior and verification.

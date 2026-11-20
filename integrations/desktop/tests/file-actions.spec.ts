@@ -21,14 +21,14 @@ afterEach(async () => {
 })
 async function directory() { const path = await mkdtemp(join(tmpdir(), 'dsh-file-actions-')); roots.push(path); return path }
 
-function harness(root: string) {
+function harness(root: string, projectRequest?: (request: Request) => Promise<Response>) {
   const owner = Object.assign(new EventEmitter(), {
     webContents: Object.assign(new EventEmitter(), { downloadURL: vi.fn<(url: string) => void>() }), isDestroyed: () => false,
   })
   owners.push(owner)
   const assertOwner = vi.fn(() => owner as never)
   electron.app.getPath.mockReturnValue(root)
-  installFileActions(assertOwner)
+  installFileActions(assertOwner, undefined, projectRequest)
   const event = {} as IpcMainInvokeEvent
   const invoke = async (channel: string, value: unknown): Promise<unknown> => {
     const handler = electron.ipcMain.handle.mock.calls.find(([name]) => name === channel)?.[1] as
@@ -68,6 +68,43 @@ it('returns the completed destination and releases download listeners', async ()
 it.each(['file:///private/data', 'dsh-app://app/api/private', 'javascript:alert(1)'])('rejects unsupported URL %s', async (url) => {
   const root = await directory(), f = harness(root)
   await expect(f.invoke(DESKTOP_IPC.fileSave, { url, mode: 'download' })).rejects.toThrow('Unsupported')
+  expect(await readdir(root)).toEqual([])
+})
+
+it('streams original bytes from only allowlisted application routes and preserves the extension', async () => {
+  const bytes = new Uint8Array([0, 128, 255])
+  const projectRequest = vi.fn(async (_request: Request) => new Response(bytes, { headers: { 'Content-Type': 'application/octet-stream' } }))
+  const root = await directory(), f = harness(root, projectRequest)
+  const url = 'dsh-app://app/ipollowork-suite/enterprise/download/resource-id'
+  const request = { name: '项目交付.txt', mode: 'download' }
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { ...request, url: url + '?redirect=evil' })).rejects.toThrow('Unsupported')
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { ...request, url })).resolves.toEqual({ status: 'saved', path: join(root, request.name) })
+  expect(projectRequest).toHaveBeenCalledOnce()
+  expect(projectRequest.mock.calls[0]![0].url).toBe(url)
+  expect(f.owner.webContents.downloadURL).not.toHaveBeenCalled()
+  expect(await readFile(join(root, request.name))).toEqual(Buffer.from(bytes))
+})
+
+it('retrieves a signed project attachment without forwarding the Host credentials', async () => {
+  const target = 'https://objects.example/project?signature=test'
+  const bytes = new Uint8Array([0, 6, 255])
+  const fetchObject = vi.fn(async (_url: URL, _init: RequestInit) => new Response(bytes))
+  vi.stubGlobal('fetch', fetchObject)
+  const root = await directory(), f = harness(root, async () => new Response(null, { status: 303, headers: { Location: target } }))
+  const name = 'project-memory-1.md'
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url: 'dsh-app://app/ipollowork-suite/enterprise/projects/project-id/memory-versions/1', name, mode: 'download' })).resolves.toMatchObject({ status: 'saved' })
+  expect(fetchObject).toHaveBeenCalledWith(new URL(target), expect.objectContaining({ credentials: 'omit', redirect: 'error' }))
+  expect(fetchObject.mock.calls[0]![1].headers).toBeUndefined()
+  expect(await readFile(join(root, name))).toEqual(Buffer.from(bytes))
+})
+
+it('discards partial project downloads after a stream failure', async () => {
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new Uint8Array([1])) },
+    pull(controller) { controller.error(new Error('Attachment stream failed')) },
+  })
+  const root = await directory(), f = harness(root, async () => new Response(stream))
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url: 'dsh-app://app/ipollowork-suite/enterprise/download/resource-id', name: 'partial.txt', mode: 'download' })).rejects.toThrow('Attachment stream failed')
   expect(await readdir(root)).toEqual([])
 })
 

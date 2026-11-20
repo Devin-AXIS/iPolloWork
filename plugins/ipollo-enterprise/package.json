@@ -12,6 +12,7 @@
   "files": [
     "index.js",
     "enterprise.js",
+    "enterprise.d.ts",
     "client.js",
     "cordis.patch.yml",
     "locale/*.json",

@@ -82,6 +82,10 @@ const WITHHELD_RESPONSE_HEADERS = [
 
 /** Host routes whose responses carry immutable cache headers keyed by a per-process revision. */
 const PLUGIN_BUNDLE_PATH = /^\/plugins\//u
+const SHARE_AUTHORIZATION_PATHS = new Set([
+  '/api/liveshare.ownerLoginStart',
+  '/api/liveshare.ownerLoginRedeem',
+])
 
 /**
  * Forward local application requests to its authenticated Host, preserving streaming and cancellation.
@@ -97,11 +101,18 @@ export async function forwardWebRequest(request: Request, host: string, cookie: 
   const source = new URL(request.url)
   const origin = request.headers.get('origin')
   if (origin !== null && origin !== 'dsh-app://app') return new Response(null, { status: 403 })
+  const shareAuthorization = request.method === 'POST' && SHARE_AUTHORIZATION_PATHS.has(source.pathname)
+  // Chromium may omit Origin on the application scheme. Require JSON so a cross-origin form cannot start or redeem authorization.
+  if (shareAuthorization && request.headers.get('content-type')?.split(';')[0]?.trim().toLowerCase() !== 'application/json') {
+    return new Response(null, { status: 415 })
+  }
   const target = new URL(host)
   target.pathname = source.pathname
   target.search = source.search
   const headers = new Headers(request.headers)
   for (const name of ['host', 'origin', 'cookie', 'sec-fetch-site']) headers.delete(name)
+  // LiveShare binds both steps to the same web origin. The Host accepts its own origin on the authenticated local connection.
+  if (shareAuthorization) headers.set('origin', target.origin)
   headers.set('cookie', cookie)
   const init = { method: request.method, headers, body: request.body, signal: request.signal, duplex: 'half', redirect: 'manual' as const }
   const response = await fetch(target, init)
