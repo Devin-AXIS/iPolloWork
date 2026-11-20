@@ -15,7 +15,7 @@ test('distribution account origins use the deployment file and preserve explicit
 
 test('desktop composition embeds the selected service without mutating unrelated plugin preferences', () => {
   const patches = [{ insert: [{ id: 'ipollowork-suite', config: { accountOrigin: 'https://old.example.com', market: false } }, { id: 'other', config: { custom: true } }] }]
-  const entries = desktopApplicationEntries(patches, [], 'https://accounts.example.com')
+  const entries = desktopApplicationEntries(patches, 'https://accounts.example.com')
   assert.deepEqual(entries[0].config, { accountOrigin: 'https://accounts.example.com', market: false, dedicatedDesktop: true })
   assert.deepEqual(entries[1], patches[0].insert[1])
   assert.equal(patches[0].insert[0].config.accountOrigin, 'https://old.example.com')

@@ -67,7 +67,6 @@ async function main(): Promise<void> {
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'integrations/desktop-host'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
-  for(const command of [['run','build'],['pack','--pack-destination',destination]])execFileSync(process.platform==='win32'?'npm.cmd':'npm',command,{cwd:resolve(root,'plugins/stage'),stdio:'inherit',shell:process.platform==='win32'});
   // Keep checked Studio archives available to the market without installing either plugin by default.
   const suiteName = JSON.parse(readFileSync(resolve(root, 'plugins/ipollowork-suite/package.json'), 'utf8'))
   const suiteArchive = resolve(destination, `ipollo-dsh-suite-${suiteName.version}.tgz`)
