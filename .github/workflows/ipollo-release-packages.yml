@@ -334,7 +334,8 @@ jobs:
           })
           NODE
       - name: Build and verify macOS DMG
-        run: node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
+        # Keep the GUI session awake for native Office rendering and signing.
+        run: caffeinate -dimsu node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
       - name: Install the DMG and open the real application with an old plugin dependency
         run: |
           set -euo pipefail
@@ -345,7 +346,7 @@ jobs:
           hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount" -quiet
           trap 'hdiutil detach "$mount" -quiet' EXIT
           ditto "$mount/iPollo.app" "$installed"
-          node integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
+          caffeinate -dimsu node integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
