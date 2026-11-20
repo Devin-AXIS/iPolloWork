@@ -137,7 +137,7 @@ jobs:
           hdiutil attach "$artifacts/iPollo-${RELEASE_TAG#v}-$PACKAGE_TARGET.dmg" -readonly -nobrowse -mountpoint "$mount" -quiet
           trap 'hdiutil detach "$mount" -quiet' EXIT
           ditto "$mount/iPollo.app" "$installed"
-          node integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
+          node ../driver/integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
       - name: Attach verified Mac installers to the matching draft
         env:
           GH_TOKEN: ${{ github.token }}

@@ -1,15 +1,18 @@
 /** Real signed-app sign-in and returning-profile acceptance, using dedicated synthetic QA accounts. */
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
-import { spawn } from 'node:child_process'
+import { spawn, execFileSync } from 'node:child_process'
 import { createServer } from 'node:net'
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { createRequire } from 'node:module'
 
 export async function verifyInstalledMacSessions(application, output, home) {
   assert.equal(process.platform, 'darwin')
   assert.equal(process.env.GITHUB_ACTIONS, 'true', 'Live account acceptance is restricted to the release CI')
+  // Recovery executes this driver beside the immutable source checkout and its installed dependencies.
+  const { parse } = createRequire(join(process.cwd(), 'integrations/desktop/package.json'))('yaml')
   const profile = join(home, 'profiles', 'desktop')
   const manifestPath = join(profile, 'package.json')
   const suite = join(profile, 'node_modules', '@ipollo', 'dsh-suite')
@@ -122,6 +125,8 @@ export async function verifyInstalledMacSessions(application, output, home) {
     await connect(target)
     await waitFor(() => evaluate('document.body.hasAttribute("data-ipw-suite") && document.body.innerText.includes("iPolloWork")'),
       'The desktop entered the base DSH page without the iPolloWork interface')
+    await waitFor(() => evaluate('document.body.innerText.includes("Mac Installer QA")'),
+      'The persisted cloud account did not appear in the iPolloWork workspace')
   }
   try {
     await start()
@@ -137,8 +142,10 @@ export async function verifyInstalledMacSessions(application, output, home) {
     await waitFor(() => evaluate('/Incorrect email or password|邮箱或密码不正确/.test(document.querySelector("#login-form [role=alert]")?.textContent || "")'),
       'Incorrect credentials did not produce the expected account rejection')
     for (const theme of ['light', 'dark']) {
-      await command('Emulation.setDeviceMetricsOverride', { width: 390, height: 720, deviceScaleFactor: 1, mobile: false })
+      // Constrain below the fixed 600px welcome window to the desktop's 520px minimum width.
+      await command('Emulation.setDeviceMetricsOverride', { width: 520, height: 720, deviceScaleFactor: 1, mobile: false })
       await command('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: theme }] })
+      assert.ok(await evaluate('Array.from(document.querySelectorAll("button,input")).filter(node => node.offsetParent !== null).every(node => { const r=node.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth + 1 })'), 'The native minimum-width sign-in controls overflowed')
       await capture(`installed-login-error-${theme}-narrow.png`)
     }
     await command('Emulation.clearDeviceMetricsOverride')
@@ -158,9 +165,17 @@ export async function verifyInstalledMacSessions(application, output, home) {
     await start()
     await workspace()
     await capture('installed-returning-workspace.png')
-    assert.equal(await readFile(join(profile, 'cordis.patch.yml'), 'utf8'), legacyPatch)
+    const retainedPatch = await readFile(join(profile, 'cordis.patch.yml'), 'utf8')
+    assert.ok(retainedPatch.startsWith(legacyPatch), 'Existing user settings or comments were rewritten')
+    const entries = parse(retainedPatch)
+    assert.deepEqual(entries.slice(0, 2), parse(legacyPatch))
+    // Native automatic model selection legitimately appends its own configuration after sign-in.
+    assert.ok(entries.length <= 3 && entries.slice(2).every(entry => entry.id === 'agent-default-model'
+      && entry.name === '@deepseek-ai/dsh-agent-default-model'
+      && typeof entry.config?.provider === 'string' && typeof entry.config?.model === 'string'), 'Unexpected changes to profile settings')
     const backups = await readdir(join(profile, 'runtime-dependency-backups'))
     assert.ok(backups.length >= 3)
+    execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', application], { stdio: 'inherit' })
     await writeFile(join(output, 'result.json'), JSON.stringify({ platform: process.platform, arch: process.arch,
       installedApplication: application, windowReady: true, coreRepair: 'complete', signature: 'verified', gatekeeper: 'accepted',
       incorrectPassword: 'classified', accountSignIn: 'verified', legacyProfileMigration: 'verified',
@@ -168,6 +183,7 @@ export async function verifyInstalledMacSessions(application, output, home) {
     }, null, 2) + '\n')
     console.log('Installed Mac sign-in, old-profile migration, and returning iPolloWork workspace verified')
   } catch (error) {
+    if (socket?.readyState === WebSocket.OPEN) await capture('installed-account-failure.png').catch(() => undefined)
     await writeFile(join(output, 'account-failure.json'), JSON.stringify({ stage, message: error instanceof Error ? error.message : 'Account acceptance failed' }, null, 2) + '\n')
     throw error
   } finally {
