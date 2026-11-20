@@ -31,7 +31,7 @@
 
 Mac ARM 修复包还通过了两轮完整 Host/Office 检查、签名、公证和 Gatekeeper 校验；从完成的 DMG 复制应用后，实际欢迎窗口能够打开，旧核心备份记录为 `complete`。这属于测试 Mac 上的安装验证，并非已经操作了报告来源的那台 Mac。
 
-Intel CI 另有 LibreOffice 的 XLSX 操作超时，具体机制尚未确定。它与本次 LLM 核心混用的启动故障分别记录，不能将 ARM 验证结果视为 Intel 已通过。
+Intel 首次 CI 恢复发生 LibreOffice 的 XLSX 操作超时，具体机制尚未确定。同一份签名应用在新宿主连续两轮通过完整 Host/Office 检查，随后通过公证、Gatekeeper 和 DMG 安装后实际窗口及旧核心修复验证。未修改应用、扩大签名权限、放宽超时或跳过检查；这一对照也不能视为已经确定了先前超时的原因。
 
 ## 官网下载问题
 
