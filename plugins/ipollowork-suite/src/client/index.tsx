@@ -77,7 +77,6 @@ export async function apply(ctx: ClientContext): Promise<void> {
       }
     }, 'ipollowork-suite: refresh account on return')
     const prepareShare = async (signal: AbortSignal) => {
-      const previous = {};
       const t = shareAudienceCopy(language(ctx))
       await account.refresh()
       signal.throwIfAborted()
@@ -92,11 +91,18 @@ export async function apply(ctx: ClientContext): Promise<void> {
           suite: (path, body, signal) => request(path, { method: 'POST', body: JSON.stringify(body), signal }),
           native: callNativeSharing,
         }, AbortSignal.any([signal, lifetime.signal]))
-        return { ...previous, connected: true }
+        return { connected: true }
       } catch (_error) {
         return { error: t.connectionFailed }
       }
     }
+    ctx.provide('ipolloProjectConversationShare', async (input, signal) => {
+      const connected = await prepareShare(signal)
+      if (!connected.connected) throw new Error('BOARD_SHARE_UNAVAILABLE')
+      return request('/enterprise/native-sharing/project-board', {
+        method: 'POST', body: JSON.stringify(input), signal: AbortSignal.any([signal, lifetime.signal]),
+      })
+    })
     const { mountSharing } = await import('./sharing/mount.ts')
     mountSharing(ctx, prepareShare)
     mountEnterprise(ctx, account)

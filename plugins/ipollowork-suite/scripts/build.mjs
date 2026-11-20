@@ -8,6 +8,7 @@ await writeFile('lib/stage.d.ts', await readFile('src/shared/stage.ts', 'utf8'))
 await rm('lib/host/sandbox', { recursive: true, force: true })
 await writeFile('lib/services.d.ts', await readFile('src/shared/services.ts', 'utf8'))
 await writeFile('lib/connections.d.ts', await readFile('src/shared/connections.ts', 'utf8'))
+await writeFile('lib/notification-center.d.ts', await readFile('../notification-center/src/contract.ts', 'utf8'))
 // Only declared runtime packages stay external. DSH maps every package name in a bundle's dependency closure to one
 // directory per process, so third-party libraries are bundled: a name shared with another bundle would otherwise move
 // directories when this suite is disabled and force a restart.
@@ -33,4 +34,5 @@ const css = browser.outputFiles.find(file => file.path.endsWith('.css'))
 if (!js || !css) throw new Error('The client build must produce JavaScript and CSS')
 await writeFile('lib/client.js', `window.__ModuleLoader__.load({id:'@ipollo/dsh-suite',factory(require){const module={exports:{}};const exports=module.exports;\n${js.text}\nreturn module.exports;}});\n`)
 await writeFile('lib/client.css', css.contents)
+await import('./bundle-subplugins.mjs')
 JSON.parse(await readFile('catalog/index.json', 'utf8'))

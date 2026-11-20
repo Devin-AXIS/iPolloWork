@@ -2,6 +2,7 @@
 import { z } from 'zod'
 import { SuiteError } from './errors.ts'
 import type { AccountService } from './account.ts'
+import type { ProjectRoster } from '../shared/enterprise.ts'
 const audienceSchema=z.discriminatedUnion('kind',[z.object({kind:z.literal('link')}),z.object({kind:z.literal('team'),enterpriseId:z.string()}),z.object({kind:z.literal('departments'),enterpriseId:z.string(),departmentIds:z.array(z.string()).min(1).max(500)}),z.object({kind:z.literal('members'),enterpriseId:z.string(),userIds:z.array(z.string()).min(1).max(500)})])
 export interface NativeSharing {
   identity(request: Record<string,never>):Promise<{state:string;relay:string;subjectId?:string}>
@@ -66,6 +67,29 @@ export async function prepareNativeShare(service:NativeSharing|undefined,input:u
     projectId:data.projectId,audience:data.audience,sessionId:data.request.sessionId,title:data.request.sessionTitle||data.request.sessionId,role:data.request.sessionMode==='write'?'participate':'view',allowsFork:data.request.allowsFork??false,
   }))
   return {...data.request,accessMode:'selected' as const,allowedSubjectIds:[intent]}
+}
+
+/** Create one view-only native share for people explicitly selected on the board. */
+export async function shareBoardConversation(service: NativeSharing | undefined, account: AccountService,
+  sessionId: string, sessionTitle: string, userIds: readonly string[], roster: ProjectRoster | null) {
+  if (!service) throw new SuiteError('NATIVE_SHARING_DISABLED', 409)
+  const eligible = new Set(roster?.members.map(member => member.userId))
+  if (!roster?.canAssign || userIds.some(id => !eligible.has(id) || id === roster.viewerId))
+    throw new SuiteError('LIVESHARE_FORBIDDEN', 403)
+  const generation = account.generation
+  const owner = await account.state()
+  if (owner.status !== 'signed-in' || owner.user.id !== roster.viewerId)
+    throw new SuiteError('IPW_ACCOUNT_CHANGED', 409)
+  const request = { sessionId, sessionTitle, sessionMode: 'view' as const, allowsFork: false }
+  const prepared = await prepareNativeShare(service, {
+    request, projectId: roster.projectId,
+    audience: { kind: 'members', enterpriseId: roster.enterpriseId, userIds },
+  }, account)
+  if (generation !== account.generation) throw new SuiteError('IPW_ACCOUNT_CHANGED', 409)
+  if (prepared.accessMode !== 'selected' || !prepared.allowedSubjectIds?.length)
+    throw new SuiteError('LIVESHARE_FORBIDDEN', 403)
+  const created = await service.create({ ...request, accessMode: prepared.accessMode, allowedSubjectIds: prepared.allowedSubjectIds })
+  return { link: owner.origin + '/s/' + encodeURIComponent(created.shareId) }
 }
 
 /** Read or update the connected owner's audience without replacing native permissions. */

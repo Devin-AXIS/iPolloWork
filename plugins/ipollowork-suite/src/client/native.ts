@@ -19,6 +19,7 @@ export interface ClientContext {
   configForms: import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForms;
   provide(name: 'ipolloConnections', value: import('../shared/connections.ts').ConnectionManager): void;
   provide(name: 'ipolloData', value: import('../shared/app-data.ts').IpolloData): void;
+  provide(name: 'ipolloProjectConversationShare', value: import('../shared/enterprise.ts').ProjectConversationShare): void;
   effect(effect: () => void | (() => void), label?: string): unknown;
   slots: {
     inject(name: string, install: () => void | (() => void) | Iterable<() => void>): unknown;

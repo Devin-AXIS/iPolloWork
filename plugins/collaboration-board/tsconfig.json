@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": [
+      "node",
+      "react"
+    ],
+    "paths": {
+      "@deepseek-ai/dsh-tools": [
+        "../../.upstream/dsh/packages/core/tools/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-schedule": [
+        "../../.upstream/dsh/packages/schedule/schedule/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-primitives": [
+        "../../.upstream/dsh/packages/client/ui-primitives/lib/types/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "tests"
+  ]
+}

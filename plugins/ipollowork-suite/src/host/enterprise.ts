@@ -3,7 +3,8 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import type { AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
-import { linkProject } from "./project-context.ts";
+import { linkProject, readProjectLink } from "./project-context.ts";
+import { matchesProjectAccount, ProjectAccountMismatch } from "./project-account.ts";
 import type {
   EnterpriseAssets,
   PackageDetail,
@@ -15,6 +16,8 @@ import type {
   EnterpriseCatalog,
   EnterpriseDetail,
   EnterpriseProject,
+  ProjectRoster,
+  ProjectBoardCall,
   SharePreview,
   SharedConversationDetail,
   ProjectWork,
@@ -195,6 +198,7 @@ function projectUpdate(r: Record<string, unknown>): ProjectUpdate {
 }
 export interface EnterpriseNative {
   workspaceRegistry: {
+    readonly archivedSessionIds?: readonly string[];
     list(): {
       id: string;
       title: string;
@@ -283,6 +287,85 @@ export class EnterpriseService {
         ownerId: string(r.owner_id),
         createdAt: number(r.created_at),
       })),
+    };
+  }
+  private async boardProject(workspaceId: string, signal: AbortSignal) {
+    const workspace = this.native.workspaceRegistry.list().find(item => item.id === workspaceId);
+    if (!workspace || this.account.cloudOnly) return null;
+    const generation = this.account.generation;
+    const link = await readProjectLink(workspace.path, signal);
+    if (link && !matchesProjectAccount(link.origin, this.origin)) throw new ProjectAccountMismatch();
+    let projectId = link ? id.parse(link.projectId) : undefined;
+    if (!projectId) {
+      // Older owned workspaces may have a server record before a local link was written.
+      const records = await this.account.request("/api/v1/projects", undefined, "GET", signal).catch(error => {
+        if (error instanceof SuiteError && error.status === 401) return { items: [] };
+        throw error;
+      });
+      const record = list.parse(records).items.find(item => item.native_id === workspace.id && item.enterprise_id);
+      if (!record) return null;
+      projectId = id.parse(record.id);
+    }
+    const { project } = z.object({ project: z.object({
+      enterpriseId: id.nullable(), role: z.enum(["view", "participate", "maintain"]),
+    }) }).parse(await this.account.request("/api/v1/projects/" + projectId + "/space", undefined, "GET", signal));
+    if (!project.enterpriseId) return null;
+    if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    return { projectId, enterpriseId: project.enterpriseId, canAssign: project.role !== "view" };
+  }
+  async projectBoard(call: ProjectBoardCall, signal: AbortSignal): Promise<unknown> {
+    const generation = this.account.generation;
+    const request = async (path: string, payload?: unknown, method: "GET" | "PATCH" = "GET") => {
+      if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+      const result = await this.account.request(path, payload, method, signal, { maximum: 8 * 1024 * 1024 });
+      if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+      return result;
+    };
+    if (call.operation === "inbox") return request("/api/v1/project-board/notices");
+    if ("noticeId" in call) {
+      const path = "/api/v1/project-board/notices/" + id.parse(call.noticeId);
+      if (call.operation === "notice-status") return request(path + "?action=status", call.payload, "PATCH");
+      return call.operation === "read" ? request(path, {}, "PATCH") : request(path);
+    }
+    if (this.account.cloudOnly) throw new SuiteError("BOARD_SERVICE_UNAVAILABLE", 503);
+    const project = await this.boardProject(call.workspaceId, signal);
+    if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    if (!project) return null;
+    const path = "/api/v1/projects/" + project.projectId + "/board";
+    if (call.operation === "write") return request(path, call.payload, "PATCH");
+    const query = call.operation === "get" ? "?task=" + id.parse(call.taskId) : call.after ? "?after=" + id.parse(call.after) : "";
+    return request(path + query);
+  }
+  /** Read the roster only after resolving the project and checking current access. */
+  async projectRoster(workspaceId: string, signal: AbortSignal, sessionId?: string): Promise<ProjectRoster | null> {
+    const generation = this.account.generation;
+    if (sessionId && (!this.native.workspaceRegistry.list().some(item => item.id === workspaceId && item.sessionIds.includes(sessionId)) ||
+        this.native.workspaceRegistry.archivedSessionIds?.includes(sessionId))) {
+      throw new SuiteError("BOARD_SESSION_NOT_FOUND", 404);
+    }
+    const project = await this.boardProject(workspaceId, signal);
+    if (!project) return null;
+    const query = new URLSearchParams({ members: "1", ...(sessionId ? { sessionId } : {}) });
+    const result = z.object({ members: z.array(z.object({
+      user_id: id, name: z.string().max(200), email: z.string().max(320).optional(),
+      avatar: z.string().max(1024).nullable().optional(), canViewConversation: z.boolean().optional(),
+    })).max(500), viewerId: id, organizationName: z.string().min(1).max(200), canInvite: z.boolean() }).parse(await this.account.request("/api/v1/projects/" + project.projectId + "/board?" + query, undefined, "GET", signal));
+    if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+    return {
+      scope: createHash("sha256").update(JSON.stringify([this.origin, project.projectId, project.enterpriseId])).digest("hex"),
+      canAssign: project.canAssign,
+      viewerId: result.viewerId,
+      projectId: project.projectId,
+      enterpriseId: project.enterpriseId,
+      organizationName: result.organizationName,
+      canInvite: result.canInvite,
+      members: result.members.map(({ user_id, name, email, avatar, canViewConversation }) => {
+        const url = avatar ? URL.parse(avatar) : null;
+        const safeAvatar = avatar && ((url?.protocol === "https:" && !url.username && !url.password) ||
+          /^data:image\/(?:png|jpeg|webp|gif);base64,[\w+/]+={0,2}$/.test(avatar));
+        return { userId: user_id, name, ...(email ? { email } : {}), ...(safeAvatar ? { avatar } : {}),
+          ...(canViewConversation ? { canViewConversation } : {}) };
+      }),
     };
   }
   async detail(enterpriseId: string): Promise<EnterpriseDetail> {

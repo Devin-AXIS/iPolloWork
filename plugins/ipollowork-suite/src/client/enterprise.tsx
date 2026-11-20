@@ -16,7 +16,9 @@ import type {
   EnterpriseDetail,
   ProjectWork,
   ProjectGrant,
+  ProjectSpace,
 } from "../shared/enterprise.ts";
+import { projectBoardOwnershipEvent, projectBoardPeopleEvent, type ProjectBoardPeopleAction } from "../shared/enterprise.ts";
 import type { ClientContext } from "./native.ts";
 import type { AccountController } from "./account-controller.ts";
 import {
@@ -533,6 +535,7 @@ function AssignDialog({
             });
             controller.notify(t.ownershipSaved);
             controller.open(null);
+            window.dispatchEvent(new Event(projectBoardOwnershipEvent));
             await controller.load();
           });
         }}
@@ -877,6 +880,30 @@ export function mountEnterprise(
     ),
   );
   let userId: string | undefined;
+  ctx.effect(() => {
+    const openBoardPeople = (event: Event) => {
+      const action = (event as CustomEvent<ProjectBoardPeopleAction>).detail;
+      if (!action || (action.kind !== "ownership" && action.kind !== "invite")) return;
+      if (!controller.getSnapshot().signedIn) { account.openAccountSettings(); return; }
+      const accountId = userId;
+      void (async () => {
+        if (action.kind === "ownership") {
+          await controller.load();
+          if (accountId === userId && controller.getSnapshot().catalog?.projects.some(project => project.id === action.workspaceId))
+            controller.open({ kind: "assign", projectId: action.workspaceId });
+          return;
+        }
+        const [detail, space] = await Promise.all([
+          controller.call<EnterpriseDetail>("/organizations/" + encodeURIComponent(action.enterpriseId)),
+          controller.call<ProjectSpace>("/projects/" + encodeURIComponent(action.projectId) + "/space"),
+        ]);
+        if (accountId !== userId || !detail.canManage || space.project.enterpriseId !== action.enterpriseId) return;
+        controller.open({ kind: "invite", enterpriseId: action.enterpriseId, projectId: action.projectId, projectRole: "participate" });
+      })().catch(() => controller.notify(enterpriseCopy(ctx).operationFailed));
+    };
+    window.addEventListener(projectBoardPeopleEvent, openBoardPeople);
+    return () => window.removeEventListener(projectBoardPeopleEvent, openBoardPeople);
+  }, "ipollowork-suite: project board people");
   const syncAccount = () => {
     const current = account.getSnapshot().account;
     const next = current?.status === "signed-in" ? current.user.id : undefined;

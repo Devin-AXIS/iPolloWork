@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-notification-center
+      name: '@ipollo/dsh-notification-center'

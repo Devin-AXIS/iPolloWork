@@ -110,7 +110,20 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
     tail = operation.catch(error => { /* The request reports the failure; the queue admits independent requests. */ })
     return operation
   }
-  const service = { store, coordinatorPreset: COORDINATOR_PRESET, projectFor: (agent: AgentRef | undefined) => projectForAgent(ctx, agent) }
+  const service = {
+    store, coordinatorPreset: COORDINATOR_PRESET,
+    projectFor: (agent: AgentRef | undefined) => projectForAgent(ctx, agent),
+    boardAgents: async () => {
+      const agents = store.snapshot().agents.filter(agent => agent.enabled);
+      const choices = await Promise.all(agents.map(async ({ id, name, avatar }) => {
+        const preset = presetId(id);
+        return (await ctx.agentPresets.resolve(preset)).broken ? null : {
+          id, name, preset, ...(avatar ? { avatar: API+'/avatar?id='+encodeURIComponent(id) } : {}),
+        };
+      }));
+      return choices.filter(choice => choice !== null);
+    },
+  }
   const baseDocument = await ctx.agentPresets.readDocument('standard')
   const base = valueSchema.array(valueSchema.object({ name: valueSchema.string(), id: valueSchema.string().optional() }).catchall(valueSchema.unknown())).parse(yaml.load(baseDocument.content, {
     schema: yaml.JSON_SCHEMA.extend(new yaml.Type('tag:yaml.org,2002:js', {
@@ -241,7 +254,17 @@ export async function apply(ctx: AgentContext, config: Partial<{ maxAgents: numb
         const path = url.pathname.slice(API.length)
         if (!url.pathname.startsWith(`${API}/`)) { reply(response, 404, { error: 'IPOLLO_NOT_FOUND' }); return }
         if (request.method === 'GET') {
-          if (path === '/catalog') reply(response, 200, await catalog())
+          if (path === '/avatar') {
+            if (admission.peer.principal?.kind !== 'owner' || ['same-site', 'cross-site'].includes(request.headers['sec-fetch-site'] ?? '')) {
+              reply(response, 403, { error: 'IPOLLO_UNAUTHORIZED' })
+              return
+            }
+            const agent = store.snapshot().agents.find(item => item.id === url.searchParams.get('id') && item.enabled)
+            const image = /^data:image\/(png|jpeg|webp);base64,(.+)$/.exec(agent?.avatar ?? '')
+            if (!image?.[2]) { reply(response, 404, { error: 'IPOLLO_NOT_FOUND' }); return }
+            response.writeHead(200, { 'Content-Type': 'image/'+image[1], 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' })
+            response.end(Buffer.from(image[2], 'base64'))
+          } else if (path === '/catalog') reply(response, 200, await catalog())
           else if (path === '/models') reply(response, 200, await modelCatalog())
           else if (path === '/skills') reply(response, 200, { skills: await availableSkills(url.searchParams.get('projectId') ?? '') })
           else if (path === '/memory') {

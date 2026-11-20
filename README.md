@@ -43,6 +43,8 @@ The video above is the original iPolloWork demo. The current `main` branch uses 
 - **Plugins and Skills** — use the native plugin lifecycle and curated market, with integrated messaging and project-specific agent instructions.
 - **Editable creative work** — use Design and Video views for presentations, websites and visual production, then keep editing the result.
 - **Shared services and app data** — discover account-authorized AI capabilities over HTTP and give small apps a record store without their own database.
+- **[Project Board](plugins/collaboration-board/README.md)** — A suite component with a conversation tab for project tasks, scheduling, dependencies, organization assignments and notifications.
+- **[Notification Center](plugins/notification-center/README.md)** — A suite component with one inbox beside the account avatar for conversation and plugin notifications.
 
 <a id="run"></a>
 
