@@ -55,7 +55,7 @@ export function resolveConfig(input: Config, applicationOwned = false, installat
   if (applicationOwned && installationOrigin !== undefined && typeof installationOrigin !== 'string')
     throw new SuiteError('IPW_INVALID_ACCOUNT_ORIGIN');
   const result = Config(applicationOwned ? {
-    ...input, accountOrigin: installationOrigin ?? ACCOUNT_ORIGIN,
+    ...input, accountOrigin: typeof installationOrigin === 'string' ? installationOrigin : ACCOUNT_ORIGIN,
     dedicatedDesktop: true, theme: true, account: true,
   } : input) as ResolvedConfig;
   if(result.cloudRuntimeTokenEnv && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(result.cloudRuntimeTokenEnv))throw new SuiteError('IPW_INVALID_ACCOUNT_ORIGIN');
