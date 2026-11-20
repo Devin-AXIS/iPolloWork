@@ -115,12 +115,14 @@ jobs:
         run: |
           $directory = 'integrations/desktop/.desktop-build/targets/win-x64/unsigned-artifacts'
           $base = "ipollowork-win-x64-$env:RELEASE_VERSION-unsigned.exe"
+          $website = Join-Path $directory "website-installers/ipollowork-win-x64-$env:RELEASE_VERSION.exe"
           $installer = Join-Path $directory "website-installers/$base"
           $blockmap = Join-Path $directory "website-installers/$base.blockmap"
+          Copy-Item -LiteralPath $website -Destination $installer
           Copy-Item -LiteralPath (Join-Path $directory "iPollo-$env:RELEASE_VERSION-win-x64-unsigned.exe.blockmap") -Destination $blockmap
-          gh release upload $env:RELEASE_TAG $installer $blockmap --repo $env:GITHUB_REPOSITORY --clobber
+          gh release upload $env:RELEASE_TAG $website $installer $blockmap --repo $env:GITHUB_REPOSITORY --clobber
       - uses: actions/upload-artifact@v4
-        if: failure() && steps.upload.outcome == 'failure'
+        if: failure()
         with:
           name: iPollo-windows-x64
           path: |
@@ -333,6 +335,24 @@ jobs:
           NODE
       - name: Build and verify macOS DMG
         run: node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
+      - name: Install the DMG and open the real application with an old plugin dependency
+        run: |
+          set -euo pipefail
+          dmg="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts/website-installers/ipollowork-$PACKAGE_TARGET-$RELEASE_VERSION.dmg"
+          mount="$RUNNER_TEMP/ipollo-installed-volume"
+          installed="$RUNNER_TEMP/Installed Applications/iPollo.app"
+          mkdir -p "$mount" "$(dirname "$installed")"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$mount" -quiet
+          trap 'hdiutil detach "$mount" -quiet' EXIT
+          ditto "$mount/iPollo.app" "$installed"
+          node integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: installed-${{ matrix.target }}-${{ github.run_id }}
+          path: installed-macos-evidence/
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Attach verified macOS installer and update files
         id: upload
         env:
@@ -356,4 +376,26 @@ jobs:
             integrations/desktop/.desktop-build/targets/${{ matrix.target }}/artifacts/*-release.json
           if-no-files-found: error
           include-hidden-files: true
+          compression-level: 0
+      - name: Preserve the signed application when any macOS packaging check fails
+        if: failure()
+        run: |
+          set -euo pipefail
+          directory="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts"
+          subdirectory=mac
+          if [[ "$PACKAGE_TARGET" == mac-arm64 ]]; then subdirectory=mac-arm64; fi
+          app="$directory/$subdirectory/iPollo.app"
+          if [[ -d "$app" ]]; then
+            mkdir -p retained-application
+            ditto -c -k --sequesterRsrc --keepParent "$app" retained-application/application.zip
+            git rev-parse HEAD > retained-application/source-commit.txt
+            shasum -a 256 retained-application/application.zip > retained-application/SHA256SUMS.txt
+          fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: retained-${{ matrix.target }}-${{ github.run_id }}
+          path: retained-application/
+          if-no-files-found: ignore
+          retention-days: 7
           compression-level: 0

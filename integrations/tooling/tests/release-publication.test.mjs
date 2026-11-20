@@ -27,7 +27,7 @@ test('public verification rejects stale, altered or unavailable update payloads'
     const name = new URL(url).pathname.split('/').at(-1)
     return feeds[name] ? new Response(feeds[name]) : new Response(null, { headers: { 'content-length': '123' } })
   }
-  assert.deepEqual(await verifyPublishedRelease(release, 'https://example.com/', respond, feeds), { version, feeds: 2, payloads: 3 })
+  assert.deepEqual(await verifyPublishedRelease(release, 'https://example.com/', respond, feeds), { version, feeds: 2, payloads: 3, websiteDownloads: 5 })
   await assert.rejects(verifyPublishedRelease(release, 'https://example.com/', async () => new Response('{}'), feeds), /differs/)
   await assert.rejects(verifyPublishedRelease(release, 'https://example.com/', async url => String(url).endsWith('.zip') ? new Response(null, { status: 404 }) : respond(url), feeds), /unavailable/)
 })

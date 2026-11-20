@@ -22,6 +22,7 @@ import {
 import type { DesktopPaths } from './paths.ts'
 import type { DesktopRelease } from './release.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
+import { repairProfileRuntime } from './profile-runtime-repair.ts'
 import { initProfile, removeLinkProjections, sanitizeProfile } from '@deepseek-ai/dsh-app-boot'
 import { PROFILE_TEMPLATES, type ProfileTemplate } from '@deepseek-ai/dsh-official-bundles'
 import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
@@ -129,10 +130,11 @@ export class DesktopProjectManager {
   async applyRelease(): Promise<void> {
     await this.withLock(async () => {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
-      readDesktopRuntime(this.runtime.dsh)
+      const descriptor = readDesktopRuntime(this.runtime.dsh)
       const hasSuite = existsSync(join(this.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite', 'package.json'))
       await createPluginProfile(this.paths.profile, hasSuite ? [DESKTOP_HOST_PACKAGE] : [])
       removeLinkProjections(this.paths.profile)
+      repairProfileRuntime(this.paths.profile, this.runtime.dsh, descriptor)
     })
   }
 

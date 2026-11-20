@@ -43,7 +43,10 @@ jobs:
           gh release download "$RELEASE_TAG" --dir release-assets
           node integrations/tooling/release-publication.mjs prepare release.json release-assets
       - name: Attach verified update feeds and checksums
-        run: gh release upload "$RELEASE_TAG" release-assets/stable-mac.yml release-assets/stable.yml release-assets/IPOLLO-SHA256SUMS.txt --clobber
+        run: |
+          version="${RELEASE_TAG#v}"
+          gh release upload "$RELEASE_TAG" release-assets/stable-mac.yml release-assets/stable.yml release-assets/IPOLLO-SHA256SUMS.txt \
+            "release-assets/ipollowork-win-x64-$version.exe" release-assets/ipollowork-*-latest.* --clobber
       - name: Publish Latest
         run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
       - name: Verify public update feeds and every referenced download

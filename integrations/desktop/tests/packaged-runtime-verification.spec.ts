@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { createElectronBuilderConfig } from '../scripts/electron-builder-config.mjs'
 
 const { verifyDesktopRuntime } = vi.hoisted(() => ({
   verifyDesktopRuntime: vi.fn<(root: string, expected: string) => Promise<void>>(async () => undefined),
@@ -29,7 +30,6 @@ const CONTEXT = { appOutDir: 'out', packager: { getResourcesDir: () => 'out/reso
  */
 async function requiredRuntimeVersion(preparedRuntime?: string, preparedRuntimeVersion?: string): Promise<unknown> {
   verifyDesktopRuntime.mockClear()
-  const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
   const config = createElectronBuilderConfig(ENVIRONMENT, 'win32', 'x64', preparedRuntime, preparedRuntimeVersion)
   await config.afterPack(CONTEXT as never)
   return verifyDesktopRuntime.mock.calls[0]?.[1]
@@ -52,7 +52,6 @@ describe('packaged runtime verification', () => {
     const runtimeVersion = (JSON.parse(
       await import('node:fs/promises').then(async fs => fs.readFile(new URL('../../runtime/upstream.json', import.meta.url), 'utf8')),
     ) as { npmVersion: string }).npmVersion
-    const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
     verifyDesktopRuntime.mockClear()
     const fs = await import('node:fs/promises')
     const product = JSON.parse(await fs.readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string }

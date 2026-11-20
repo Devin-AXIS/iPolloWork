@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createManifest } from './release-mirror.mjs'
 import { numericReleaseVersion, hashReleaseAsset, updateFeeds, windowsUpdateFilename } from './release-update-feed.mjs'
+import { stageWebsiteDownloads, websiteDownloadSources } from './release-website-downloads.mjs'
 
 export function checkRelease(release, previous) {
   const version = numericReleaseVersion(release.tag_name)
@@ -49,12 +50,14 @@ export async function prepareRelease(release, directory) {
   }
   const feeds = updateFeeds(version, payloads)
   for (const [name, content] of Object.entries(feeds)) await writeFile(join(directory, name), content)
+  await stageWebsiteDownloads(version, directory)
   // Feed files are regenerated above, so their checksums must describe these final bytes.
   const sums = []
-  for (const asset of manifest.assets.filter(asset => !/^(stable(?:-mac)?\.yml|IPOLLO-SHA256SUMS\.txt)$/.test(asset.name))) {
+  const generated = new Set([...Object.keys(feeds), ...Object.keys(websiteDownloadSources(version)), 'IPOLLO-SHA256SUMS.txt'])
+  for (const asset of manifest.assets.filter(asset => !generated.has(asset.name))) {
     sums.push(`${asset.sha256}  ${asset.name}`)
   }
-  for (const name of Object.keys(feeds)) sums.push(`${(await hashReleaseAsset(join(directory, name))).sha256}  ${name}`)
+  for (const name of [...Object.keys(feeds), ...Object.keys(websiteDownloadSources(version))]) sums.push(`${(await hashReleaseAsset(join(directory, name))).sha256}  ${name}`)
   await writeFile(join(directory, 'IPOLLO-SHA256SUMS.txt'), sums.sort().join('\n') + '\n')
   return { version, assets: manifest.assets.length }
 }
@@ -81,7 +84,12 @@ export async function verifyPublishedRelease(release, origin, fetcher = fetch, e
       assert.equal(Number(payload.headers.get('content-length')), file.size)
     }
   }
-  return { version, feeds: 2, payloads: 3 }
+  for (const [name, original] of Object.entries(websiteDownloadSources(version))) {
+    const response = await fetcher(new URL(name, origin), { method: 'HEAD', signal: AbortSignal.timeout(60000) })
+    assert.equal(response.status, 200, `Website installer unavailable: ${name}`)
+    assert.equal(Number(response.headers.get('content-length')), source.get(original)?.size, `Website installer size mismatch: ${name}`)
+  }
+  return { version, feeds: 2, payloads: 3, websiteDownloads: 5 }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

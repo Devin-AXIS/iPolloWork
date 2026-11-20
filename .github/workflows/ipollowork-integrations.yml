@@ -34,6 +34,8 @@ jobs:
           npm run check:upstream
           npm run check:docs
           npm run audit:dependencies
+      - name: Check desktop profile upgrades and recovery diagnostics
+        run: node node_modules/vitest/vitest.mjs run --config integrations/desktop/vitest.config.ts --maxWorkers=2
       - name: Check enterprise connector
         run: npm run check --prefix plugins/ipollo-enterprise
       - name: Install account service dependencies

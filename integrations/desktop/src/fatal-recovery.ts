@@ -35,9 +35,14 @@ const DETAIL_TAIL_LINES = 8
 function dialogDetail(error: string, messages: DesktopMessages, reportState: ReportState): string {
   const advice = `\n\n${messages.startupReinstallAdvice}`
   const report = reportLine(messages, reportState)
-  const tail = error.split(/\r\n|[\n\r\u2028\u2029]/u).slice(-DETAIL_TAIL_LINES).join('\n')
   const budget = DETAIL_BUDGET - advice.length - report.length - messages.diagnosticTruncated.length - 1
-  const shortened = tail.slice(-budget).replace(/^[\uDC00-\uDFFF]/u, '')
+  // The head names the failed plugin and its cause; the tail alone only lists its blocked consumers.
+  const lines = error.split(/\r\n|[\n\r\u2028\u2029]/u)
+  const headBudget = Math.floor(budget * 0.75)
+  const tailBudget = budget - headBudget - 3
+  const head = lines.slice(0, DETAIL_TAIL_LINES).join('\n').slice(0, headBudget).toWellFormed()
+  const tail = lines.slice(-2).join('\n').slice(-tailBudget).toWellFormed()
+  const shortened = error.length <= budget ? error : `${head}\n…\n${tail}`
   return `${shortened === error ? error : `${messages.diagnosticTruncated}\n${shortened}`}${report}${advice}`
 }
 

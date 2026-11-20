@@ -1,0 +1,38 @@
+name: Repair website download aliases for the current release
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing Latest release whose verified payloads need website aliases
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: ipollo-publish
+  cancel-in-progress: false
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Verify the current public release and original payloads
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/releases/latest" > release.json
+          node --input-type=module -e 'import fs from "node:fs"; import assert from "node:assert/strict"; const r=JSON.parse(fs.readFileSync("release.json")); assert.equal(r.tag_name,process.env.RELEASE_TAG); assert.equal(r.draft,false); assert.equal(r.prerelease,false)'
+          mkdir release-assets
+          gh release download "$RELEASE_TAG" --dir release-assets
+          node integrations/tooling/release-publication.mjs prepare release.json release-assets
+      - name: Publish aliases without replacing original installers or changing Latest
+        run: |
+          version="${RELEASE_TAG#v}"
+          gh release upload "$RELEASE_TAG" "release-assets/ipollowork-win-x64-$version.exe" release-assets/ipollowork-*-latest.* release-assets/IPOLLO-SHA256SUMS.txt --clobber
+      - name: Verify the actual public download URLs
+        run: node integrations/tooling/release-publication.mjs verify release.json "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/" release-assets

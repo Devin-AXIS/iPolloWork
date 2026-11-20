@@ -49,6 +49,8 @@ On November 19, 2026, the same beta.34 archive (`a17735f6e7f7e86680e0bacdecc6113
 
 ## Updating and verifying
 
+Desktop `1.0.9` backs up mismatched, profile-local copies of the shipped DSH/Cordis core before official profile boot, using the existing application-owned profile lock and the signed `desktop-runtime.json` package inventory. DSH's loader preserves native profile priority, so a hoisted old core can shadow the installation even after its originating plugin is disabled. Verify an old `dsh-llm`/`dsh-typert-protocol` profile, restart/idempotence, data preservation, matching versions and external links on pin upgrades. No resolver or Agent implementation is patched. See [diagnosis and checks](../../docs/desktop-startup-and-download-fix-2026-11-20.md).
+
 Organization MCP synchronization calls the authenticated grant catalog directly, without extra session or balance requests. Safe account-service error codes distinguish timeouts, expired sign-ins and catalog failures. Verify catalog-only requests while signed in, no network request after sign-out, and connection withdrawal when catalog synchronization fails.
 
 The organization MCP relay preserves upstream 4xx statuses and the `mcp-method` and `mcp-name` protocol headers. The current pin's MCP SDK sends `server/discover` first; when a 2025-era server rejects the probe, the client needs the original 4xx to fall back to `initialize`, rather than a rewritten 503. Authentication, access and rate-limit failures have distinct sanitized codes; upstream error bodies are withheld. On pin upgrades, verify native discovery, legacy initialization, tool listing, expired sessions, 401/403/429 responses and upstream-body redaction.
