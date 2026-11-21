@@ -118,6 +118,36 @@ test("organization assets enforce member and department grants, and project owne
     assert.equal((await http<{ enterprise: { name: string } }>(base, design.token)).data.enterprise.name, "Assets team");
     assert.equal((await service.store.all("SELECT target FROM audit WHERE action=? AND target=?", "enterprise.update", enterprise)).length, 1);
 
+    const activeSessionExpiresAt = new Date(Date.now() + 27 * 86_400_000);
+    await service.store.run('UPDATE "session" SET "expiresAt"=? WHERE "userId"=?', activeSessionExpiresAt, design.id);
+    assert.equal((await http(base, design.token)).status, 200);
+    assert.ok(await service.store.one('SELECT id FROM "session" WHERE "userId"=? AND "expiresAt">?', design.id, activeSessionExpiresAt));
+    const websites = base + "/websites";
+    const portal = { id: randomUUID(), label: "Design portal", url: "https://portal.example.test", departmentId: designDep, role: "member" };
+    const target = websites + "/" + portal.id;
+    assert.equal((await http(websites + "/manage", design.token)).status, 403);
+    assert.equal((await http(websites + "/manage", sales.token, { revision: 0, items: [portal] }, "PUT")).status, 403);
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 0, items: [{ ...portal, url: "javascript:alert(1)" }] }, "PUT")).status, 400);
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 0, items: [{ ...portal, departmentId: randomUUID() }] }, "PUT")).status, 400);
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 0, items: [portal] }, "PUT")).status, 200);
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 0, items: [] }, "PUT")).status, 409);
+    assert.deepEqual((await http(websites, design.token)).data, { items: [{ id: portal.id, label: portal.label }] });
+    assert.deepEqual((await http(target, design.token)).data, { url: portal.url + "/" });
+    assert.deepEqual((await http(websites, sales.token)).data, { items: [] });
+    assert.equal((await http(target, sales.token)).status, 404);
+    await service.store.run("UPDATE members SET role='admin' WHERE enterprise_id=? AND user_id=?", enterprise, design.id);
+    assert.equal((await http(target, design.token)).status, 404);
+    await service.store.run("UPDATE members SET role='member' WHERE enterprise_id=? AND user_id=?", enterprise, design.id);
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 1, items: [] }, "PUT")).status, 200);
+    assert.equal((await http(target, design.token)).status, 404);
+
+    const retiredDepartment = await dep("临时部门");
+    const retiredPortal = { ...portal, id: randomUUID(), departmentId: retiredDepartment };
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 2, items: [retiredPortal] }, "PUT")).status, 200);
+    assert.equal((await http(base + "/departments/" + retiredDepartment, owner.token, undefined, "DELETE")).status, 200);
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 3, items: [retiredPortal, portal] }, "PUT")).status, 200);
+    assert.deepEqual((await http(websites, design.token)).data, { items: [{ id: portal.id, label: portal.label }] });
+
     const secured = { title:"Selected project", enterpriseId:enterprise, nativeId:"selected-test",
       access:{mode:"selected",grants:[{kind:"member",subjectId:design.id,role:"participate"}]} };
     const securedProject = await http<{id:string}>("/api/v1/projects/with-access",owner.token,secured);

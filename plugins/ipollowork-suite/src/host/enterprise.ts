@@ -839,6 +839,17 @@ export class EnterpriseService {
           throw error;
         }
       }
+      if (parts[2] === "websites" && (parts.length === 3 || parts.length === 4)) {
+        const tail = parts.length === 3 ? "" : "/" + (parts[3] === "manage" ? "manage" : z.uuid().parse(parts[3]));
+        if (method === "GET") return this.cloud(base + "/websites" + tail);
+        if (method === "PUT" && tail === "/manage") {
+          const data = z.object({ revision: z.number().int().nonnegative(), items: z.array(z.object({
+            id: z.uuid(), label: z.string().trim().min(1).max(80), url: z.string().max(2048),
+            departmentId: id.nullable(), role: z.enum(["owner", "admin", "member"]).nullable(),
+          }).strict()).max(50) }).strict().parse(input);
+          return this.cloud(base + "/websites/manage", data, "PUT");
+        }
+      }
       if (parts[2] === "notifications" && parts.length === 3) {
         if (method === "GET") return this.cloud(base + "/notifications");
         if (method === "PUT") return this.cloud(base + "/notifications", z.object({endpoint:z.string().max(2048),enabled:z.boolean(),rotate:z.boolean().optional()}).strict().parse(input), "PUT");

@@ -24,6 +24,8 @@ The member directory and recipient pickers use server-side search and paging. Cr
 
 Organization activity is searchable by operator and paginated. New project ownership, permission, deletion and file changes write organization-scoped entries. Organization notifications also appear in the sidebar Notification Center. Opening the feed preserves unread state. Opening a record rechecks access and navigates to the resource, project or shared conversation before acknowledging that item.
 
+In Organization Space → Settings → Websites, organization managers can save browser links. A link can be available to all active members or restricted by department and role. When both criteria are set, members must match both. Work checks access again when someone opens the link. The destination website continues to handle its own sign-in and access.
+
 ## Skills
 
 Managers write a skill's name, a one-sentence routing description and its Markdown instructions, or import a Markdown file whose front matter supplies the name and description. The account service returns the skills each member may use from `GET /api/v1/me/enterprise-skills`. The suite Host registers them as runtime skills in the native skill registry after sign-in, sign-out and any skill, grant, member or department change. A skill's DSH name is its kebab-case title, or `team-skill-` plus an id prefix for titles without ASCII letters; same-name skills from different enterprises receive numeric suffixes.

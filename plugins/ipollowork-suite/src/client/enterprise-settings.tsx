@@ -6,6 +6,7 @@ import type { EnterpriseLabels } from './enterprise-locale.ts'
 import { CopyLink, Field, FormError, ListSkeleton, Notice, Row, Section, useRecord, useTask, type Call } from './enterprise-ui.tsx'
 import css from './suite.module.css'
 import { FilePicker } from './file-picker.tsx'
+import { OrganizationWebsites } from './organization-websites.tsx'
 
 export function EnterpriseSettings({ detail, t, call, controller, serviceAddress, language = 'zh' }: {
   detail: EnterpriseDetail; t: EnterpriseLabels; call: Call; controller: EnterpriseController; serviceAddress: string; language?: string;
@@ -79,6 +80,7 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
         <CopyLink url={serviceAddress} t={t} label={t.serviceAddress}/>
       </Section>
     </div>}
+    <OrganizationWebsites detail={detail} t={t} call={call}/>
     {canManage && <MembershipWebhook path={'/organizations/' + enterprise.id + '/notifications'} t={t} call={call} />}
   </div>
 }

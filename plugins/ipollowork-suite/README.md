@@ -6,6 +6,8 @@ One installable DSH Bundle supplies the iPolloWork skin, a curated native-plugin
 
 Organization Space includes a manager-only analytics tab grouped by department, member or service/model (SKU), over 7, 30 or 90 days. Calls are enterprise-owned service requests, excluding polling and personal services; departments are captured at dispatch. Token coverage is explicit. Project creation and current skill/plugin inventory counts are separate; skill loads and tool calls are reported for linked enterprise projects. `enterpriseUsageReporting` (default true) controls metadata reporting; `enterpriseUsageQueueLimit` (default 200) bounds pending reports. Failed or overflowed reports are not retried and never delay tools, so counts may be incomplete. Arguments, results and credentials are excluded.
 
+In Organization Space → Settings → Websites, managers can add links for all active members or limit them by department and role. The account service rechecks permission when a member opens a link in their browser.
+
 ## MCP connections
 
 Settings → MCP lists native configured and plugin-registered connections alongside organization grants. Each row's menu offers the actions its source allows. Disconnect keeps configuration and persists across restarts; reconnect reuses DSH's manager. Only user-added configuration entries may be deleted, after confirmation; inherited and plugin-owned entries retain their original ownership. Edit opens DSH's native configuration document. Organization disconnect choices affect this device and account only, retaining the organization's grant. Organization administrators still manage sharing, distribution and revocation in the organization space. MCP credentials stay in the native credential provider.
