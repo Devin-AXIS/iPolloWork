@@ -22,7 +22,7 @@ Install a built local checkout using `dsh plugin --profile <profile> add link:/a
 
 ## Included project tools
 
-The Project Board and Notification Center are native parts of this suite. Install the suite to get both. Its **Plugins** details list the parts by their native entry IDs, `ipollo-collaboration-board` and `ipollo-notification-center`. The Board remains in the project conversation tabs. The notification bell and **Settings → Notifications** use the same notification feeds and preferences.
+Project Files, Project Board and Notification Center are native parts of this suite. Project Files appears in the right sidebar with inputs, outputs and actual workspace folders. Its **Plugins** details list the parts by their native entry IDs `ipollo-project-files`, `ipollo-collaboration-board` and `ipollo-notification-center`. The Board remains in the project conversation tabs. The notification bell and **Settings → Notifications** use the same notification feeds and preferences.
 
 To move an earlier development profile from the standalone bundles, remove `@ipollo/dsh-collaboration-board` and `@ipollo/dsh-notification-center` through the native plugin manager before updating the suite. Keep the existing profile. If its `cordis.patch.yml` has a `name` assertion matching one of these old packages on the corresponding entry ID, remove just that assertion and retain the ID and other fields, including the notification preferences. The same entry IDs and storage domains load the existing boards, schedules, and settings.
 

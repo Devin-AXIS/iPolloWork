@@ -6,7 +6,7 @@ const root = resolve('../..')
 const nodePaths = [resolve('node_modules')]
 const sharedClient = ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives']
 
-for (const feature of ['notification-center', 'collaboration-board']) {
+for (const feature of ['notification-center', 'collaboration-board', 'project-files']) {
   const source = resolve(root, 'plugins', feature)
   const destination = resolve('lib', 'subplugins', feature)
   const { name, version, license, engines, dsh } = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf8'))
@@ -18,7 +18,9 @@ for (const feature of ['notification-center', 'collaboration-board']) {
   const browser = await build({
     entryPoints: [resolve(source, 'src/client.tsx')], outfile: resolve(destination, 'client.js'),
     nodePaths, bundle: true, platform: 'browser', format: 'cjs', target: 'es2022',
-    external: sharedClient, loader: { '.css': 'text' }, write: false,
+    external: sharedClient,
+    alias: { '@deepseek-ai/dsh-util-workspace-path': resolve(root, '.upstream/dsh/packages/util/workspace-path/src/index.ts') },
+    loader: { '.css': 'text' }, write: false,
   })
   await writeFile(resolve(destination, 'client.js'), `window.__ModuleLoader__.load({id:${JSON.stringify(name)},factory(require){
 const module={exports:{}};const exports=module.exports;
