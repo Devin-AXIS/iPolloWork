@@ -1,3 +1,4 @@
+import { FormButton, SettingSwitch, TextInput } from "../../../_shared/ui/controls.tsx";
 import { useState, type FormEvent } from "react";
 import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
 import type { EnterpriseMcp } from "../shared/enterprise.ts";
@@ -80,31 +81,31 @@ function McpDialog({ path, t, call, controller, close, item, language }: AssetPr
   return <Modal open title={zh ? "编辑 MCP" : "Edit MCP"} description={t.mcpEndpointHint} closeLabel={t.close}
     className={css.enterpriseModal!} contentClassName={css.enterpriseModalContent!} onClose={() => { if (!task.busy) close(); }}>
     <form onSubmit={submit} className={css.enterpriseForm}>
-      <Field label={t.name}><input required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} /></Field>
-      <Field label={t.skillDescription}><input maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} /></Field>
+      <Field label={t.name}><TextInput required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} /></Field>
+      <Field label={t.skillDescription}><TextInput maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} /></Field>
       <Field label={t.mcpEndpoint} {...(item.reviewed ? {hint:t.mcpReviewRequired} : {})}>
-        <input type="url" required readOnly={item.reviewed} maxLength={2048} value={endpoint} onChange={event => setEndpoint(event.target.value)} />
+        <TextInput type="url" required readOnly={item.reviewed} maxLength={2048} value={endpoint} onChange={event => setEndpoint(event.target.value)} />
       </Field>
-      <label><input type="checkbox" checked={OAuth} onChange={event=>setOAuth(event.target.checked)}/> {zh ? "成员使用 OAuth 授权" : "Require member OAuth"}</label>
+      <SettingSwitch checked={OAuth} onChange={setOAuth} label={zh ? "成员使用 OAuth 授权" : "Require member OAuth"}/>
       {OAuth ? <>
-        <Field label={zh ? "授权地址" : "Authorization URL"}><input type="url" required value={oauth.authorizationUrl}
+        <Field label={zh ? "授权地址" : "Authorization URL"}><TextInput type="url" required value={oauth.authorizationUrl}
           onChange={event=>setOauth({...oauth,authorizationUrl:event.target.value})}/></Field>
-        <Field label={zh ? "令牌地址" : "Token URL"}><input type="url" required value={oauth.tokenUrl}
+        <Field label={zh ? "令牌地址" : "Token URL"}><TextInput type="url" required value={oauth.tokenUrl}
           onChange={event=>setOauth({...oauth,tokenUrl:event.target.value})}/></Field>
-        <Field label="OAuth Client ID"><input required value={oauth.clientId} maxLength={256}
+        <Field label="OAuth Client ID"><TextInput required value={oauth.clientId} maxLength={256}
           onChange={event=>setOauth({...oauth,clientId:event.target.value})}/></Field>
         <Field label="OAuth Scope"><input value={oauth.scope} maxLength={512}
           onChange={event=>setOauth({...oauth,scope:event.target.value})}/></Field>
         <p>{zh ? "在授权服务中登记组织服务地址 + /api/integrations/organization-mcp/callback 作为回调地址。" :
           "Register your organization service address plus /api/integrations/organization-mcp/callback as the callback URL."}</p>
-      </> : <Field label={t.mcpKey}><input type="password" autoComplete="new-password" maxLength={8192} value={key}
+      </> : <Field label={t.mcpKey}><TextInput type="password" autoComplete="new-password" maxLength={8192} value={key}
         onChange={event => setKey(event.target.value)} /></Field>}
-      <label><input type="checkbox" checked={enabled} onChange={event=>setEnabled(event.target.checked)}/> {zh ? "启用此 MCP" : "Enable this MCP"}</label>
+      <SettingSwitch checked={enabled} onChange={setEnabled} label={zh ? "启用此 MCP" : "Enable this MCP"}/>
       {!OAuth && <label><input type="checkbox" checked={clearKey} disabled={!!key} onChange={event=>setClearKey(event.target.checked)}/> {zh ? "清除已保存的密钥" : "Clear saved key"}</label>}
       <FormError message={task.error} />
       <div className={css.dialogFooter}>
-        <Button type="button" variant="outline" disabled={task.busy} onClick={close}>{t.cancel}</Button>
-        <Button type="submit" variant="primary" disabled={task.busy || !title.trim() || !endpoint.trim()}>{t.save}</Button>
+        <FormButton type="button" variant="outline" disabled={task.busy} onClick={close}>{t.cancel}</FormButton>
+        <FormButton type="submit" variant="primary" disabled={task.busy || !title.trim() || !endpoint.trim()}>{t.save}</FormButton>
       </div>
     </form>
   </Modal>;

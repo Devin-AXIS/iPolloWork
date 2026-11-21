@@ -12,6 +12,9 @@
     "skipLibCheck": true,
     "types": ["node", "react"],
     "paths": {
+      "lucide-react": ["./node_modules/lucide-react/dist/lucide-react.d.ts"],
+      "react": ["./node_modules/@types/react/index.js"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.js"],
       "@deepseek-ai/cordis": [
         "../../.upstream/dsh/vendor/cordis/lib/types/index.d.ts"
       ],

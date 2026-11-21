@@ -7,6 +7,7 @@ await build({
   platform: 'node', format: 'esm', target: 'node24', external: ['@deepseek-ai/*'],
 });
 const browser = await build({
+  nodePaths: ['node_modules'],
   entryPoints: ['src/client.tsx'], outfile: 'lib/client.js', bundle: true,
   platform: 'browser', format: 'cjs', target: 'es2022',
   external: ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives'],

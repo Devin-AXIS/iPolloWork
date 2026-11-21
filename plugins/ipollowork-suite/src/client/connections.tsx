@@ -1,3 +1,4 @@
+import { FormButton, TextInput } from '../../../_shared/ui/controls.tsx'
 /** One suite-owned editor for every registered plugin's connection fields and its billing source. */
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { IconChevronLeftOutlineRegular, IconLinkOutlineRegular, IconSparkleRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -35,14 +36,13 @@ function KeyForm({ provider, status, locale, t, saved }: { provider: ConnectionP
   }
   const single = provider.fields.length === 1
   return <form className={css.keyForm} data-single={single || undefined} onSubmit={event => void submit(event)}>
-    {provider.fields.map(field => <label key={field.id} className={css.fieldPill}>
-      {field.secret ? <KeyGlyph size={15}/> : <IconLinkOutlineRegular size={15}/>}<span className={css.srOnly}>{text(field.label, locale)}</span>
-      <input type={field.secret ? 'password' : 'text'} autoComplete="off" spellCheck={false} maxLength={8192} autoFocus={field === provider.fields[0]}
+    {provider.fields.map(field => <TextInput key={field.id} aria-label={text(field.label, locale)}
+      icon={field.secret ? <KeyGlyph size={15}/> : <IconLinkOutlineRegular size={15}/>}
+      type={field.secret ? 'password' : 'text'} autoComplete="off" spellCheck={false} maxLength={8192} autoFocus={field === provider.fields[0]}
         value={values[field.id] ?? ''} disabled={busy || !status.writable}
         placeholder={status.fields?.[field.id] ? `${text(field.label, locale)} · ${t.saved}` : text(field.label, locale)}
-        onChange={event => setValues(current => ({ ...current, [field.id]: event.target.value }))}/>
-    </label>)}
-    <button type="submit" className={css.keySave} disabled={busy || !status.writable || !Object.values(values).some(value => value.trim())}>{busy ? t.saving : t.save}</button>
+        onChange={event => setValues(current => ({ ...current, [field.id]: event.target.value }))}/>)}
+    <FormButton variant="primary" type="submit" disabled={busy || !status.writable || !Object.values(values).some(value => value.trim())}>{busy ? t.saving : t.save}</FormButton>
     {error && <p role="alert" className={css.rowError}>{error}</p>}
   </form>
 }

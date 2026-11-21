@@ -1,3 +1,4 @@
+import { Button, Input } from './native-form-primitives.mjs';
 /** Contextual project creation preserves the organization's ownership. */
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -12,6 +13,7 @@ test("organization creation has no personal ownership option; the global dialog 
   const bundle = await build({
     entryPoints: ["src/client/project-creation.tsx"],
     bundle: true,
+    nodePaths: ["node_modules"],
     platform: "node",
     format: "cjs",
     write: false,
@@ -31,6 +33,7 @@ test("organization creation has no personal ownership option; the global dialog 
     require: (name) =>
       name === "@deepseek-ai/dsh-client-ui-primitives"
         ? {
+            Button, Input,
             Modal: ({ children }) =>
               React.createElement("div", { role: "dialog" }, children),
           }

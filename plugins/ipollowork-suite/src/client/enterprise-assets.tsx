@@ -1,3 +1,4 @@
+import { FormButton, TextInput } from "../../../_shared/ui/controls.tsx";
 import {
   serviceCategories,
   categoryLabel,
@@ -411,24 +412,18 @@ function InlineCreate({
         });
       }}
     >
-      <label className={css.fieldPill}>
-        <IconPlusOutlineRegular size={14} />
-        <input
+      <TextInput
+          icon={<IconPlusOutlineRegular size={14} />}
           placeholder={placeholder}
           aria-label={placeholder}
           maxLength={120}
           value={value}
           disabled={busy}
           onChange={(e) => setValue(e.target.value)}
-        />
-      </label>
-      <button
-        type="submit"
-        className={css.keySave}
-        disabled={busy || !value.trim()}
-      >
+      />
+      <FormButton type="submit" variant="primary" disabled={busy || !value.trim()}>
         {label}
-      </button>
+      </FormButton>
     </form>
   );
 }

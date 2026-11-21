@@ -116,7 +116,7 @@ function DataPanel(props: Props) {
   else
     body = (
       <>
-        <div className={css.lineTabs} role="tablist" aria-label={t.owners}>
+        <div className={css.panelTabStrip + " ipw-tab-strip"} role="tablist" aria-label={t.owners}>
           {tabs.map(tab => (
             <button key={tab.id} type="button" role="tab" aria-selected={tab.id === owner} onClick={() => setOwner(tab.id)}>
               {tab.name}
@@ -235,7 +235,7 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
         <EmptyState title={t.noCollections} hint={t.noCollectionsHint} />
       ) : (
         <>
-          <div className={css.lineTabs + ' ' + css.dataTabs} role="tablist" aria-label={t.tablesLabel}>
+          <div className={'ipw-tab-strip ' + css.panelTabStrip + ' ' + css.dataTabs} role="tablist" aria-label={t.tablesLabel}>
             {app.collectionList.map(c => (
               <button key={c.name} type="button" role="tab" aria-selected={c.name === collection} onClick={() => setCollection(c.name)}>
                 {c.name}

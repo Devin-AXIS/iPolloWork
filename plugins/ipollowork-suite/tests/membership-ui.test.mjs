@@ -1,3 +1,4 @@
+import { Button, Input } from './native-form-primitives.mjs';
 /** Membership actions use the account service and never treat a browser return as payment. */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -24,7 +25,7 @@ test('account shows a non-interactive service label and starts one recoverable c
     channels: [{ id: 'stripe', name: 'Stripe', configured: true }, { id: 'alipay', name: 'Alipay', configured: false }],
     checkoutAvailable: true, pendingOrder: null,
   };
-  const bundle = await build({ entryPoints: ['src/client/account.tsx'], bundle: true, platform: 'node', format: 'cjs', write: false,
+  const bundle = await build({ nodePaths: ['node_modules'], entryPoints: ['src/client/account.tsx'], bundle: true, platform: 'node', format: 'cjs', write: false,
     loader: { '.css': 'empty', '.module.css': 'text' }, external: ['react', 'react-dom', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives'] });
   const module = { exports: {} };
   let pay;
@@ -37,7 +38,7 @@ test('account shows a non-interactive service label and starts one recoverable c
       return Response.json(fixture);
     },
     require: name => name === '@deepseek-ai/dsh-client-ui-primitives'
-      ? { Modal: ({ children, title }) => React.createElement('section', { role: 'dialog', 'aria-label': title }, children), IconEyeOutlineRegular: () => null } : require(name),
+      ? { Button, Input, IconEyeOffOutlineRegular: () => null, Modal: ({ children, title }) => React.createElement('section', { role: 'dialog', 'aria-label': title }, children), IconEyeOutlineRegular: () => null } : require(name),
   });
   const labels = new Proxy({ locale: 'en-US', service: 'iPolloWork Cloud Service' }, { get: (target, key) => target[key] ?? key });
   let refreshed = 0;

@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { IconCheckOutlineRegular, IconCloseOutlineRegular, Switch } from '@deepseek-ai/dsh-client-ui-primitives';
 import type { ConfigForm, ConfigForms } from '@deepseek-ai/dsh-client-ui-settings/client';
-import { Bell } from 'lucide-react';
+import { Bell, Check, lineStroke, X } from '../../_shared/ui/icons.ts';
 import type { NoticeItem, NotificationCenter } from './contract.ts';
 import { feedLimit, notificationCenter, type FeedRow, type NotificationPreferences } from './model.ts';
 import stylesheet from './style.css';
+import { Button, SegmentedControl, Switch } from '../../_shared/ui/controls.tsx';
+import controlsStyles from '../../_shared/ui/controls.css';
 
 interface Snapshot<T> {
   getSnapshot(): T;
@@ -135,25 +136,25 @@ function Launcher({ center, locale, wide }: {
     }
   }
   return <>
-    <button className="inc-trigger" ref={trigger} type="button" data-wide={wide}
+    <Button size="sm" className="inc-trigger" ref={trigger} type="button" data-wide={wide}
       title={t.title} aria-label={count ? t.title + ' · ' + t.unread + ' ' + count : t.title}
       aria-controls={id} aria-expanded={open} aria-haspopup="dialog" popoverTarget={id}
       onClick={position}>
-      <Bell size={19} strokeWidth={1.65} aria-hidden="true" />
+      <Bell size={19} strokeWidth={lineStroke} aria-hidden="true" />
       {count > 0 && <span className="inc-dot" aria-hidden="true" />}
-    </button>
-    <div id={id} ref={panel} className="inc-panel" popover="auto" role="dialog" aria-labelledby={id + '-title'}
+    </Button>
+    <div id={id} ref={panel} className="inc-panel ipw-frosted" popover="auto" role="dialog" aria-labelledby={id + '-title'}
       onToggle={event => { setOpen(event.newState === 'open'); setFailed(false); }}>
       <header className="inc-header">
         <h2 id={id + '-title'}>{t.title}</h2>
-        <button type="button" className="inc-icon" aria-label={t.close}
-          onClick={() => { panel.current?.hidePopover(); trigger.current?.focus(); }}><IconCloseOutlineRegular size={17} aria-hidden="true" /></button>
+        <Button size="sm" type="button" className="inc-icon" aria-label={t.close}
+          onClick={() => { panel.current?.hidePopover(); trigger.current?.focus(); }}><X strokeWidth={lineStroke} size={17} aria-hidden="true" /></Button>
       </header>
-      <div className="inc-filters">
-        <button type="button" aria-pressed={!unreadOnly} onClick={() => setUnreadOnly(false)}>{t.all}</button>
-        <button type="button" aria-pressed={unreadOnly} onClick={() => setUnreadOnly(true)}>
-          {t.unread}{count > 0 && <span>{count}</span>}</button>
-      </div>
+      <SegmentedControl label={t.title} value={unreadOnly ? 'unread' : 'all'} change={value => setUnreadOnly(value === 'unread')}
+        className="inc-filters" options={[
+          { id: 'all', label: t.all },
+          { id: 'unread', label: t.unread, ...(count > 0 ? { count } : {}) },
+        ]} />
       {failed && <p className="inc-action-error" role="alert">{t.error}</p>}
       <div className="inc-scroll">
         {visible.length === 0 ? <div className="inc-empty">
@@ -170,12 +171,12 @@ function Launcher({ center, locale, wide }: {
           </>;
           return <li className="inc-row" key={row.key} data-unread={!row.read} data-tone={row.tone ?? 'info'}>
             <span className="inc-state" aria-hidden="true" />
-            {row.canOpen ? <button className="inc-content" type="button" disabled={busy !== undefined}
-              onClick={() => void act(row, 'open')}>{description}</button> : <div className="inc-content">{description}</div>}
-            {!row.read && <button type="button" className="inc-icon inc-mark" disabled={busy !== undefined}
+            {row.canOpen ? <Button size="sm" className="inc-content" type="button" disabled={busy !== undefined}
+              onClick={() => void act(row, 'open')}>{description}</Button> : <div className="inc-content">{description}</div>}
+            {!row.read && <Button size="sm" type="button" className="inc-icon inc-mark" disabled={busy !== undefined}
               aria-label={t.read + ' · ' + row.title} title={t.read} onClick={() => void act(row, 'markRead')}>
-              <IconCheckOutlineRegular size={15} aria-hidden="true" />
-            </button>}
+              <Check strokeWidth={lineStroke} size={15} aria-hidden="true" />
+            </Button>}
           </li>;
         })}</ul>}
       </div>
@@ -190,7 +191,7 @@ export function apply(ctx: Client): void {
   ctx.provide('ipolloNotificationCenter', center.service);
   ctx.effect(() => {
     const style = document.createElement('style');
-    style.textContent = stylesheet;
+    style.textContent = stylesheet + '\n' + controlsStyles;
     document.head.append(style);
     return () => style.remove();
   });
@@ -215,7 +216,7 @@ export function apply(ctx: Client): void {
     }, () => <NotificationSettings center={center} locale={ctx.locale} form={form} />));
     scope.slots.inject('settings.section.icon', () => scope.slots.register({
       name: 'settings.section.icon', id: pluginId,
-    }, ({ size }) => <Bell size={size} strokeWidth={1.65} aria-hidden="true" />));
+    }, ({ size }) => <Bell size={size} strokeWidth={lineStroke} aria-hidden="true" />));
   });
 
   ctx.inject(['uiSession', 'uiSession.sessionStatus', 'sessions', 'workspaces', 'uiWorkspace'], scope => scope.effect(() => {

@@ -1,3 +1,4 @@
+import { FormButton, FormSelect, TextInput } from "../../../_shared/ui/controls.tsx";
 import { OrganizationFilePackages } from "./organization-file-packages.tsx";
 import { AnalyticsTab } from "./enterprise-analytics.tsx";
 import { MemberNoticeDialog, MemberNoticeHistory, noticeMessage, OrganizationActivityTab, OrganizationNotices, OrganizationPublications } from "./organization-publications.tsx";
@@ -378,7 +379,7 @@ function EnterpriseBody({
         fallback={detailError ? t.organizationDetailsLoadFailed : t.organizationListLoadFailed}
         retry={catalogError ? controller.load : detail.reload}
       />
-      <nav className={css.lineTabs} role="tablist" aria-label={t.title}>
+      <nav className={css.panelTabStrip + " ipw-tab-strip"} role="tablist" aria-label={t.title}>
         {tabs.map((item) => (
           <button
             key={item.value}
@@ -493,14 +494,14 @@ function SimpleDialog({
       title={kind === "create" ? t.create : t.joinByService}
       {...(kind === "create" ? {description:t.emptyHint} : {})}
       closeLabel={t.close}
-      className={css.enterpriseModal!}
+      className={css.enterpriseModal + " ipw-frosted"}
       onClose={close}
     >
       <form className={css.enterpriseForm} onSubmit={submit}>
-        {kind === "joinService" && <Field label={t.serviceAddress}><input type="url" required maxLength={2048}
+        {kind === "joinService" && <Field label={t.serviceAddress}><TextInput type="url" required maxLength={2048}
           value={serviceAddress} onChange={event => setServiceAddress(event.target.value)} disabled={task.busy} /></Field>}
         <Field label={kind === "create" ? t.name : t.invitationCode}>
-          <input
+          <TextInput
             autoFocus
             required
             maxLength={kind === "create" ? 120 : 2048}
@@ -511,21 +512,21 @@ function SimpleDialog({
         </Field>
         <FormError message={task.error} />
         <div className={css.dialogFooter}>
-          <Button
+          <FormButton
             variant="outline"
             type="button"
             disabled={task.busy}
             onClick={close}
           >
             {t.cancel}
-          </Button>
-          <Button
+          </FormButton>
+          <FormButton
             variant="primary"
             type="submit"
             disabled={task.busy || !input.trim()}
           >
             {kind === "create" ? t.create : t.joinAction}
-          </Button>
+          </FormButton>
         </div>
       </form>
     </Modal>
@@ -556,7 +557,7 @@ function AssignDialog({
       title={t.ownership}
       description={project.path}
       closeLabel={t.close}
-      className={css.enterpriseModal!}
+      className={css.enterpriseModal + " ipw-frosted"}
       onClose={close}
     >
       <form
@@ -576,7 +577,7 @@ function AssignDialog({
         }}
       >
         <Field label={t.choose} hint={t.ownershipHint}>
-          <select
+          <FormSelect
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
             disabled={task.busy}
@@ -587,25 +588,25 @@ function AssignDialog({
                 {e.name}
               </option>
             ))}
-          </select>
+          </FormSelect>
         </Field>
         <FormError message={task.error} />
         <div className={css.dialogFooter}>
-          <Button
+          <FormButton
             variant="outline"
             type="button"
             disabled={task.busy}
             onClick={close}
           >
             {t.cancel}
-          </Button>
-          <Button
+          </FormButton>
+          <FormButton
             variant="primary"
             type="submit"
             disabled={task.busy || selected === (project.enterpriseId ?? "")}
           >
             {t.save}
-          </Button>
+          </FormButton>
         </div>
       </form>
     </Modal>
@@ -635,7 +636,7 @@ function WithDetail({
       open
       title={t.manage}
       closeLabel={t.close}
-      className={css.enterpriseModal!}
+      className={css.enterpriseModal + " ipw-frosted"}
       onClose={() => controller.open(null)}
     >
       <Notice error={detail.error} t={t} retry={detail.reload} />

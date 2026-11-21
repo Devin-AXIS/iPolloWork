@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-collaboration-board",
-  "version": "0.4.9",
+  "version": "0.4.10",
   "description": "A standalone DSH project board with tasks, dependencies, and organization notifications.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -48,6 +48,7 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.0",
     "esbuild": "^0.25.0",
+    "lucide-react": "0.454.0",
     "pinyin-pro": "3.29.5",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"

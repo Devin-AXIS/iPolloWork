@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { FormButton, FormSelect, TextInput } from "../../../_shared/ui/controls.tsx";
 import { Modal } from "@deepseek-ai/dsh-client-ui-primitives";
 import {
   isAbsoluteProjectPath,
@@ -208,24 +209,25 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
       title={t.createProject}
       closeLabel={t.close}
       className={
-        css.page + " " + css.enterpriseModal + " " + css.enterpriseWide
+        css.page + " " + css.enterpriseModal + " " + css.enterpriseWide + " ipw-frosted"
       }
       contentClassName={css.enterpriseModalContent!}
       onClose={() => {
         if (!disabled) props.onCancel();
       }}
     >
-      <form className={css.enterpriseForm} onSubmit={submit}>
-        {cloudEnabled && <label className={css.enterpriseField}><span>{c.location}</span><select value={mode} disabled={disabled} onChange={event=>setMode(event.target.value==='cloud'?'cloud':'local')}><option value="local">{c.localMode}</option><option value="cloud">{c.cloud}</option></select></label>}
-        {mode==='cloud' ? <label className={css.enterpriseField}><span>{c.name}</span><input required value={cloudName} maxLength={120} disabled={disabled} onChange={event=>setCloudName(event.target.value)}/></label> : <>
+      <form className={css.projectCreationForm} onSubmit={submit}>
+        {cloudEnabled && <label className={css.enterpriseField}><span>{c.location}</span><FormSelect value={mode} disabled={disabled} onChange={event=>setMode(event.target.value==='cloud'?'cloud':'local')}><option value="local">{c.localMode}</option><option value="cloud">{c.cloud}</option></FormSelect></label>}
+        {mode==='cloud' ? <label className={css.enterpriseField}><span>{c.name}</span><TextInput required value={cloudName} maxLength={120} disabled={disabled} onChange={event=>setCloudName(event.target.value)}/></label> : <>
 
         <label className={css.enterpriseField}>
           <span>{t.projectDirectory}</span>
           <div className={css.enterprisePath}>
-            <input
+            <TextInput
               autoFocus
               required
               value={path}
+              aria-label={t.projectDirectory}
               aria-invalid={invalidPath}
               aria-describedby={pathHelpId}
               placeholder={t.directoryPlaceholder}
@@ -235,14 +237,14 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                 setError("");
               }}
             />
-            <button
+            <FormButton
               type="button"
-              className={css.secondary}
+              variant="outline"
               disabled={disabled}
               onClick={() => void choose()}
             >
               {t.chooseFolder}
-            </button>
+            </FormButton>
           </div>
         </label>
         <p id={pathHelpId} className={invalidPath ? css.error : css.muted}>
@@ -254,7 +256,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
             aria-label={t.chooseFolder}
           >
             <div className={css.enterprisePath}>
-              <input
+              <TextInput
                 aria-label={t.directoryPath}
                 value={draft}
                 disabled={disabled}
@@ -266,32 +268,32 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                   }
                 }}
               />
-              <button
+              <FormButton
                 type="button"
-                className={css.secondary}
+                variant="outline"
                 disabled={disabled}
                 onClick={() => void browse(draft)}
               >
                 {t.go}
-              </button>
+              </FormButton>
             </div>
             <div className={css.enterpriseActions}>
-              <button
+              <FormButton
                 type="button"
-                className={css.secondary}
+                variant="outline"
                 disabled={disabled || !level}
                 onClick={() => void browse(level?.home)}
               >
                 {t.home}
-              </button>
-              <button
+              </FormButton>
+              <FormButton
                 type="button"
-                className={css.secondary}
+                variant="outline"
                 disabled={disabled || !level || level.crumbs.length < 2}
                 onClick={() => void browse(level?.crumbs.at(-2)?.path)}
               >
                 {t.parentFolder}
-              </button>
+              </FormButton>
               <label className={css.enterpriseHidden}>
                 <input
                   type="checkbox"
@@ -319,16 +321,16 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
               <p className={css.muted}>{t.directoryTruncated}</p>
             )}
             <div className={css.enterprisePath}>
-              <input
+              <TextInput
                 aria-label={t.newFolder}
                 placeholder={t.newFolder}
                 value={folder}
                 disabled={disabled}
                 onChange={(e) => setFolder(e.target.value)}
               />
-              <button
+              <FormButton
                 type="button"
-                className={css.secondary}
+                variant="outline"
                 disabled={disabled || !folder.trim() || !level}
                 onClick={async () => {
                   if (!level) return;
@@ -348,11 +350,11 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                 }}
               >
                 {t.newFolder}
-              </button>
+              </FormButton>
             </div>
-            <button
+            <FormButton
               type="button"
-              className={css.secondary}
+              variant="outline"
               disabled={disabled || !level}
               onClick={() => {
                 if (level) {
@@ -362,7 +364,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
               }}
             >
               {t.useFolder}
-            </button>
+            </FormButton>
           </section>
         )}
         </>}
@@ -377,7 +379,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
               }
             </strong>
           ) : (
-            <select
+            <FormSelect
               value={enterpriseId}
               disabled={disabled || !state.signedIn || state.loading}
               onChange={(e) => {
@@ -391,16 +393,16 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                   {enterprise.name}
                 </option>
               ))}
-            </select>
+            </FormSelect>
           )}
         </label>
         {enterpriseId && (
           <div className={css.enterpriseColumns}>
             <label className={css.enterpriseField}>
               <span>{t.visibility}</span>
-              <input type="search" maxLength={120} value={memberQuery} placeholder={t.searchMembers} aria-label={t.searchMembers}
+              <TextInput type="search" maxLength={120} value={memberQuery} placeholder={t.searchMembers} aria-label={t.searchMembers}
                 onChange={event => setMemberQuery(event.target.value)}/>
-              <select aria-label={t.visibility}
+              <FormSelect aria-label={t.visibility}
                 value={shareWith}
                 disabled={disabled || (!directory.data && !shareWith)}
                 onChange={(e) => { setShareWith(e.target.value); setShareName(e.currentTarget.selectedOptions[0]?.text ?? ""); }}
@@ -413,13 +415,13 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                     {m.name || m.email}
                   </option>
                 ))}
-              </select>
+              </FormSelect>
             </label>
             <DirectoryStatus directory={directory} t={t}/>
             {shareWith && (
               <label className={css.enterpriseField}>
                 <span>{t.permission}</span>
-                <select
+                <FormSelect
                   value={shareRole}
                   onChange={(e) =>
                     setShareRole(e.target.value as "view" | "participate")
@@ -427,7 +429,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                 >
                   <option value="view">{c.view}</option>
                   <option value="participate">{c.participate}</option>
-                </select>
+                </FormSelect>
               </label>
             )}
           </div>
@@ -442,14 +444,14 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
             <p className={css.error} role="alert">
               {enterpriseError(state.error, t)}
             </p>
-            <button
+            <FormButton
               type="button"
-              className={css.secondary}
+              variant="outline"
               disabled={state.loading}
               onClick={() => void props.refreshEnterprises()}
             >
               {t.refresh}
-            </button>
+            </FormButton>
           </div>
         )}
         {!state.signedIn && <p className={css.muted}>{t.signIn}</p>}
@@ -459,21 +461,22 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
             {error}
           </p>
         )}
-        <div className={css.enterpriseActions}>
-          <button
+        <div className={css.dialogFooter}>
+          <FormButton
             type="button"
-            className={css.secondary}
+            variant="outline"
             disabled={disabled}
             onClick={props.onCancel}
           >
             {t.cancel}
-          </button>
-          <button
-            className={css.primary}
+          </FormButton>
+          <FormButton
+            type="submit"
+            variant="primary"
             disabled={disabled || (mode==='cloud' ? !cloudEnabled || !cloudName.trim() || !state.signedIn : !path.trim() || invalidPath)}
           >
             {disabled ? t.loading : t.createProject}
-          </button>
+          </FormButton>
         </div>
       </form>
     </Modal>

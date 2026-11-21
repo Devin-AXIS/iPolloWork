@@ -1,25 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
-import { IconBranchOutlineRegular, IconChevronDownOutlineRegular, IconClockOutlineRegular, IconCloseOutlineRegular,
-  IconLinkOutlineRegular, IconSparkleRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { IconLinkOutlineRegular, IconSparkleRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { ChoiceIcon, ChoicePicker, type Choice } from './ui.tsx';
 import { agentKey, type BoardAgent, type ProjectTask, type TaskDraft, type TaskWrite } from '../../../services/ipollowork/src/project-board-contract.ts';
 import { errorMessage, type Copy } from './copy.ts';
-import { dateOf, displayAgent, statuses, taskCollaborators, taskDefaults, updateCollaborator,
+import { displayAgent, statuses, taskCollaborators, taskDefaults, updateCollaborator,
   type AgentChoice, type AgentPlan, type Card, type ProjectRoster } from './model.ts';
 
+import { FormButton, OptionMenu, TextArea, TextInput } from '../../_shared/ui/controls.tsx';
+import { CalendarDays, Clock3, lineStroke, X } from '../../_shared/ui/icons.ts';
+import { ScheduleRangeField } from '../../_shared/ui/date-time-field.tsx';
+
 const priorities = ['normal','high','urgent'] as const;
-function inputTime(value: number | null) {
-  if (value === null) return '';
-  const local = new Date(value);
-  return dateOf(value)+'T'+[local.getHours(),local.getMinutes()].map(value=>String(value).padStart(2,'0')).join(':');
+
+function durationParts(totalMinutes: number, t: Copy): string[] {
+  const days = Math.floor(totalMinutes / 1440);
+  const hours = Math.floor(totalMinutes % 1440 / 60);
+  const minutes = totalMinutes % 60;
+  return [
+    days ? days + t.day : '',
+    hours ? hours + t.hour : '',
+    minutes || totalMinutes === 0 ? minutes + t.minute : '',
+  ].filter(Boolean);
 }
+
 export function countdown(dueAt: number | null, t: Copy, now: number) {
   if (dueAt === null) return t.unscheduled;
   const minutes = Math.ceil((dueAt-now)/60_000);
   if (minutes<=0) return t.overdue;
-  const days=Math.floor(minutes/1440), hours=Math.floor(minutes%1440/60);
-  const value=days ? `${days}${t.day} ${hours}${t.hour}` : hours ? `${hours}${t.hour} ${minutes%60}${t.minute}` : `${minutes}${t.minute}`;
-  return t.remaining+' '+value;
+  return t.remaining + ' ' + durationParts(minutes, t).slice(0, 2).join(' ');
 }
 export function aiInstruction(id: string, t: Copy, plan?: AgentPlan) {
   const instructions = t.aiWork.replace('{id}', id);
@@ -31,8 +39,8 @@ export function aiInstruction(id: string, t: Copy, plan?: AgentPlan) {
     ...(plan.external.length ? [t.aiExternal.replace('{tools}', JSON.stringify(plan.external))] : []),
   ].join('\n');
 }
-export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writable, t, clock, initialStatus, projectTitle, close, save, open, sessions, delegate, report, conversation }: {
-  card: Card | undefined; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[]; tasks: readonly ProjectTask[]; writable: boolean; t: Copy;
+export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writable, t, locale, clock, initialStatus, projectTitle, close, save, open, sessions, delegate, report, conversation }: {
+  card: Card | undefined; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[]; tasks: readonly ProjectTask[]; writable: boolean; t: Copy; locale: string;
   clock: number; projectTitle: string; initialStatus: TaskDraft['status'] | undefined; sessions: readonly string[];
   close(): void; save(input:TaskWrite):Promise<void>; open(sessionId:string):void; delegate(taskId:string):Promise<void>; report(error: unknown):void;
   refreshAgents(): void;
@@ -67,6 +75,10 @@ export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writabl
     return ()=>element?.close();
   },[creating]);
   useEffect(()=>()=>shareRequest.current?.abort(),[]);
+  function dismiss() {
+    dialog.current?.close();
+    close();
+  }
   function field<K extends keyof TaskDraft>(key:K,value:TaskDraft[K]) {setDraft(current=>({...current,[key]:value}));}
   const aiOptions = agents.map(({ id, name }): BoardAgent => ({ id, name, ownerId: roster?.viewerId ?? null }));
   const { lead, members } = taskCollaborators(draft);
@@ -128,7 +140,7 @@ export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writabl
     try {
       await save({id,revision:card?.task?.revision ?? 0,task:draft});
       if (run) await delegate(id).catch(report);
-      close();
+      dismiss();
     }
     catch(error) {setError(error);}
     finally {setBusy(false);}
@@ -163,101 +175,100 @@ export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writabl
     try { await navigator.clipboard.writeText(link); setLinkCopied(true); }
     catch { setError(new Error('unavailable')); }
   }
+  const { startAt, dueAt } = draft;
+  const duration = startAt !== null && dueAt !== null && dueAt >= startAt
+    ? Math.round((dueAt - startAt) / 60_000) : null;
+  const durationText = duration === null ? undefined : durationParts(duration, t).join(' ');
   const linkedSession = draft.sessionId && sessions.includes(draft.sessionId) ? draft.sessionId : null;
-  return <dialog className="cb-dialog cb-sheet" ref={dialog} aria-labelledby="cb-edit-title"
-    onCancel={event => { event.preventDefault(); if (!busy && !granting) close(); }}
-    onClick={event => { if (event.target === event.currentTarget && !busy && !granting && !changed) close(); }}>
+  return <dialog className="cb-dialog cb-sheet ipw-ui ipw-frosted" ref={dialog} aria-labelledby="cb-edit-title"
+    onCancel={event => { event.preventDefault(); if (!busy && !granting) dismiss(); }}
+    onClick={event => { if (event.target === event.currentTarget && !busy && !granting && !changed) dismiss(); }}>
     <form onSubmit={event => { event.preventDefault(); void submit(); }}>
       <header className="cb-dialog-head cb-sheet-head">
-        <div><span className="cb-sheet-project">{projectTitle}</span><h2 id="cb-edit-title">{card ? t.details : t.newTask}</h2></div>
-        <button type="button" aria-label={t.close} disabled={busy || granting} className="cb-icon cb-ghost" onClick={close}>
-          <IconCloseOutlineRegular size={19} aria-hidden="true" />
+        <div>
+          <h2 id="cb-edit-title">{card ? t.details : t.newTask}</h2>
+          <span className="cb-sheet-project" title={projectTitle}>{projectTitle}</span>
+        </div>
+        <button type="button" aria-label={t.close} disabled={busy || granting} className="cb-icon cb-ghost" onClick={dismiss}>
+          <X strokeWidth={lineStroke} size={19} aria-hidden="true" />
         </button>
       </header>
       <div className="cb-sheet-body">
         <fieldset className="cb-sheet-fields" disabled={busy || granting || !writable}>
-          <div className="cb-sheet-main">
-            <label className="cb-title-field"><span className="cb-label">{t.titleField}</span>
-              <input ref={title} value={draft.title} maxLength={160} required placeholder={t.taskPlaceholder}
+          <div className="cb-sheet-identity">
+            <label className="cb-title-field"><span className="cb-sr-only">{t.titleField}</span>
+              <TextInput ref={title} value={draft.title} maxLength={160} required placeholder={t.taskPlaceholder}
                 onChange={event => field('title',event.target.value)} />
             </label>
             <label className="cb-description-field"><span className="cb-label">{t.description}</span>
-              <textarea value={draft.description} rows={4} maxLength={8000} placeholder={t.optionalDescription}
+              <TextArea value={draft.description} rows={2} maxLength={8000} placeholder={t.optionalDescription}
                 onChange={event => field('description',event.target.value)} />
             </label>
-            <section className="cb-collaboration" aria-label={t.collaborators}>
-              <h3 className="cb-label">{t.collaborators}</h3>
-              <ChoicePicker actions={[
-                {kind:'person',label:t.participants,search:t.searchPeople,empty:t.noPeople},
-                {kind:'ai',label:t.addAI,search:t.searchAI,onOpen:refreshAgents},
-              ]} choices={assignmentChoices} selected={[...members.keys()]} choose={changeCollaborator} t={t} showChips={false} />
-              {selectedChoices.length > 0 && <ul className="cb-collaborators">
-                {selectedChoices.map(choice => {
-                  const isLead = lead === choice.id;
-                  const role = (isLead ? t.clearLead : t.makeLead) + ' · ' + choice.name;
-                  return <li key={choice.id}>
-                    <ChoiceIcon choice={choice} />
-                    <span className="cb-collaborator-name" title={choice.name}>{choice.name}</span>
-                    <button type="button" className="cb-role" aria-label={role} aria-pressed={isLead}
-                      disabled={choice.unavailable} onClick={()=>changeCollaborator(choice.id,'lead')}>{isLead ? t.lead : t.makeLead}</button>
-                    <button type="button" className="cb-icon cb-ghost cb-remove-member" aria-label={t.removeChoice.replace('{name}',choice.name)}
-                      onClick={()=>changeCollaborator(choice.id)}><IconCloseOutlineRegular size={12} aria-hidden="true" /></button>
-                  </li>;
-                })}
-              </ul>}
-              {conversation && selectedMembers.length > 0 && <div className="cb-conversation-access">
-                {!recipients.length ? <>
-                  <p className="cb-inline-note" role="status">{t.canViewConversation}</p>
-                  {sharedLink && <button type="button" className="cb-ghost" onClick={()=>void copyConversation(sharedLink)}>
-                    <IconLinkOutlineRegular size={14} aria-hidden="true" />{linkCopied ? t.copied : t.copyConversation}
-                  </button>}
-                </> : <>
-                  <button type="button" className="cb-ghost" onClick={()=>void grantConversation()}>
-                    <IconLinkOutlineRegular size={14} aria-hidden="true" />{granting ? t.grantPending : t.grantConversation}
-                  </button>
-                  <p className="cb-inline-note">{t.grantTarget.replace('{title}', conversation.title)}</p>
-                </>}
-              </div>}
-            </section>
-            <section className="cb-dependencies" aria-label={t.predecessors}>
-              <h3 className="cb-label"><IconBranchOutlineRegular size={14} aria-hidden="true" />{t.predecessors}</h3>
-              <ChoicePicker actions={[{label:t.predecessors,text:t.choosePredecessors,search:t.search,empty:t.noPredecessors}]}
-                choices={dependencyChoices} selected={draft.predecessorIds}
-                choose={value=>field('predecessorIds',draft.predecessorIds.includes(value)
-                  ? draft.predecessorIds.filter(item=>item!==value) : [...draft.predecessorIds,value])} t={t} />
-              {waiting && <p className="cb-inline-note"><IconClockOutlineRegular size={14} aria-hidden="true" />{t.waiting}</p>}
-            </section>
           </div>
-          <aside className="cb-properties" aria-label={t.editProperties}>
-            <div className="cb-property-pair">
-              <label className="cb-property"><span className="cb-label">{t.status}</span>
-                <span className="cb-select" data-status={draft.status}><i className="cb-status-dot" aria-hidden="true" />
-                  <select value={draft.status} onChange={event=>field('status',event.target.value as TaskDraft['status'])}>
-                    {statuses.map(value=><option key={value} value={value} disabled={waiting && value!=='todo'}>{t[value]}</option>)}
-                  </select>
-                  <IconChevronDownOutlineRegular size={13} aria-hidden="true" />
-                </span>
-              </label>
-              <label className="cb-property"><span className="cb-label">{t.priority}</span>
-                <span className="cb-select">
-                  <select value={draft.priority} onChange={event=>field('priority',event.target.value as TaskDraft['priority'])}>
-                    {priorities.map(value=><option key={value} value={value}>{t[value]}</option>)}
-                  </select>
-                  <IconChevronDownOutlineRegular size={13} aria-hidden="true" />
-                </span>
-              </label>
+          <div className="cb-property-pair" role="group" aria-label={t.editProperties}>
+            <div className="cb-property">
+              <span className="cb-label">{t.status}</span>
+              <OptionMenu label={t.status} value={draft.status} change={value=>field('status',value)}
+                choices={statuses.map(id=>({id,label:t[id],disabled:waiting && id!=='todo'}))} />
             </div>
-            <div className="cb-dates">
-              <label className="cb-property"><span className="cb-label">{t.start}</span><input type="datetime-local" value={inputTime(draft.startAt)}
-                onChange={event=>field('startAt',event.target.value ? new Date(event.target.value).getTime() : null)} /></label>
-              {autoStart && <p className="cb-inline-note"><IconClockOutlineRegular size={14} aria-hidden="true" />{t.autoStart}</p>}
-              <label className="cb-property"><span className="cb-label">{t.due}</span><input type="datetime-local" value={inputTime(draft.dueAt)}
-                onChange={event=>field('dueAt',event.target.value ? new Date(event.target.value).getTime() : null)} /></label>
-              {draft.dueAt!==null && draft.status!=='done' && <span className="cb-inline-note" data-overdue={draft.dueAt<=clock}>
-                <IconClockOutlineRegular size={14} aria-hidden="true" />{countdown(draft.dueAt,t,clock)}
-              </span>}
+            <div className="cb-property">
+              <span className="cb-label">{t.priority}</span>
+              <OptionMenu label={t.priority} value={draft.priority} change={value=>field('priority',value)}
+                choices={priorities.map(id=>({id,label:t[id]}))} />
             </div>
-          </aside>
+          </div>
+          <section className="cb-dates" aria-label={t.dates}>
+            <h3 className="cb-section-title"><CalendarDays size={14} strokeWidth={lineStroke} aria-hidden="true" />{t.dates}</h3>
+            <ScheduleRangeField
+              start={{ dateLabel: t.start, timeLabel: t.startTime, timePlaceholder: t.timeFrom, value: startAt, change: value => field('startAt', value) }}
+              end={{ dateLabel: t.due, timeLabel: t.dueTime, timePlaceholder: t.timeTo, value: dueAt, change: value => field('dueAt', value) }}
+              clear={() => setDraft(current => ({ ...current, startAt: null, dueAt: null }))}
+              duration={durationText} locale={locale} t={t} />
+            {autoStart && <p className="cb-inline-note" role="status">{t.autoStart}</p>}
+            {draft.dueAt!==null && draft.status!=='done' && <span className="cb-inline-note" data-overdue={draft.dueAt<=clock}>
+              <Clock3 strokeWidth={lineStroke} size={14} aria-hidden="true" />{countdown(draft.dueAt,t,clock)}
+            </span>}
+          </section>
+          <section className="cb-collaboration" aria-label={t.collaborators}>
+            <ChoicePicker heading={t.collaborators} actions={[
+              {kind:'person',label:t.participants,search:t.searchPeople,empty:t.noPeople},
+              {kind:'ai',label:t.addAI,search:t.searchAI,onOpen:refreshAgents},
+            ]} choices={assignmentChoices} selected={[...members.keys()]} choose={changeCollaborator} t={t} showChips={false} />
+            {selectedChoices.length > 0 && <ul className="cb-collaborators">
+              {selectedChoices.map(choice => {
+                const isLead = lead === choice.id;
+                const role = (isLead ? t.clearLead : t.makeLead) + ' · ' + choice.name;
+                return <li key={choice.id}>
+                  <ChoiceIcon choice={choice} />
+                  <span className="cb-collaborator-name" title={choice.name}>{choice.name}</span>
+                  <button type="button" className="cb-role" aria-label={role} aria-pressed={isLead}
+                    disabled={choice.unavailable} onClick={()=>changeCollaborator(choice.id,'lead')}>{isLead ? t.lead : t.makeLead}</button>
+                  <button type="button" className="cb-icon cb-ghost cb-remove-member" aria-label={t.removeChoice.replace('{name}',choice.name)}
+                    onClick={()=>changeCollaborator(choice.id)}><X strokeWidth={lineStroke} size={12} aria-hidden="true" /></button>
+                </li>;
+              })}
+            </ul>}
+            {conversation && selectedMembers.length > 0 && <div className="cb-conversation-access">
+              {!recipients.length ? <>
+                <p className="cb-inline-note" role="status">{t.canViewConversation}</p>
+                {sharedLink && <button type="button" className="cb-ghost" onClick={()=>void copyConversation(sharedLink)}>
+                  <IconLinkOutlineRegular size={14} aria-hidden="true" />{linkCopied ? t.copied : t.copyConversation}
+                </button>}
+              </> : <>
+                <button type="button" className="cb-ghost" onClick={()=>void grantConversation()}>
+                  <IconLinkOutlineRegular size={14} aria-hidden="true" />{granting ? t.grantPending : t.grantConversation}
+                </button>
+                <p className="cb-inline-note">{t.grantTarget.replace('{title}', conversation.title)}</p>
+              </>}
+            </div>}
+          </section>
+          <section className="cb-dependencies" aria-label={t.predecessors}>
+            <ChoicePicker heading={t.predecessors} actions={[{label:t.predecessors,text:t.choosePredecessors,search:t.search,empty:t.noPredecessors}]}
+              choices={dependencyChoices} selected={draft.predecessorIds}
+              choose={value=>field('predecessorIds',draft.predecessorIds.includes(value)
+                ? draft.predecessorIds.filter(item=>item!==value) : [...draft.predecessorIds,value])} t={t} />
+            {waiting && <p className="cb-inline-note"><Clock3 strokeWidth={lineStroke} size={14} aria-hidden="true" />{t.waiting}</p>}
+          </section>
         </fieldset>
       </div>
       <footer className="cb-sheet-footer">
@@ -269,15 +280,15 @@ export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writabl
               <IconLinkOutlineRegular size={15} aria-hidden="true" />{t.open}
             </button>}
             {card?.task && writable && !autoStart && <button type="button" className="cb-ghost" disabled={busy || granting}
-              onClick={()=>void copyInstructions()}><IconClockOutlineRegular size={15} aria-hidden="true" />{copied?t.copied:t.ai}</button>}
+              onClick={()=>void copyInstructions()}><Clock3 strokeWidth={lineStroke} size={15} aria-hidden="true" />{copied?t.copied:t.ai}</button>}
           </div>
           <div className="cb-sheet-save">
-            {writable && <button type="button" className="cb-ghost" disabled={busy || granting} onClick={close}>{t.cancel}</button>}
-            {writable && card?.task && !changed && ready && <button type="button" className="cb-ai-action" disabled={busy || granting}
-              onClick={()=>void sendToAi()}><IconSparkleRegular size={16} aria-hidden="true" />{t.delegate}</button>}
-            {writable && changed && hasAI && ready && <button type="button" className="cb-ai-action" disabled={busy || granting || !draft.title.trim()}
-              onClick={()=>void submit(true)}><IconSparkleRegular size={16} aria-hidden="true" />{t.saveAndDelegate}</button>}
-            {writable && <button type="submit" className="cb-primary" disabled={busy || granting || !draft.title.trim()}>{t.save}</button>}
+            {writable && <FormButton type="button" variant="ghost" disabled={busy || granting} onClick={dismiss}>{t.cancel}</FormButton>}
+            {writable && card?.task && !changed && ready && <FormButton type="button" className="cb-ai-action" disabled={busy || granting}
+              onClick={()=>void sendToAi()}><IconSparkleRegular size={16} aria-hidden="true" />{t.delegate}</FormButton>}
+            {writable && changed && hasAI && ready && <FormButton type="button" className="cb-ai-action" disabled={busy || granting || !draft.title.trim()}
+              onClick={()=>void submit(true)}><IconSparkleRegular size={16} aria-hidden="true" />{t.saveAndDelegate}</FormButton>}
+            {writable && <FormButton variant="primary" type="submit" disabled={busy || granting || !draft.title.trim()}>{t.save}</FormButton>}
           </div>
         </div>
       </footer>

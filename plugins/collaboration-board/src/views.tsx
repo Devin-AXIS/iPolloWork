@@ -1,22 +1,43 @@
 import { useState } from 'react';
-import { IconBranchOutlineRegular, IconClockOutlineRegular, IconEllipsisOutlineRegular, IconPlusOutlineRegular,
+import { Button, IconBranchOutlineRegular,
   IconSparkleRegular, IconUsersOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { Avatar } from './ui.tsx';
+import { Clock3, Ellipsis, lineStroke, Plus } from '../../_shared/ui/icons.ts';
+import { OptionMenu, SegmentedControl, Tag } from '../../_shared/ui/controls.tsx';
 import type { Copy } from './copy.ts';
 import { countdown } from './editor.tsx';
-import { assigneeProfile, dayOffset, shiftDay, span, statuses, timelinePosition, todayKey,
+import { assigneeProfile, dateOf, dayOffset, displayAgent, shiftDay, span, statuses, timelinePosition, todayKey,
   type AgentChoice, type DateRange, type ProjectRoster, type Status, type Card } from './model.ts';
 
 type Open = (task: Card) => void;
 const shortDate = (key: string) => key.slice(5).replace('-', '/');
-function schedule(task: Card, t: Copy) {
-  const dates = span(task);
-  if (!dates) return t.unscheduled;
-  return dates.from === dates.to ? shortDate(dates.from) : `${shortDate(dates.from)} – ${shortDate(dates.to)}`;
+const timeFormatter = (locale: string) => new Intl.DateTimeFormat(locale, {
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+function assigneeFor(task: Card, roster: ProjectRoster | null | undefined, agents: readonly AgentChoice[], t: Copy) {
+  const person = assigneeProfile(task, roster, agents);
+  if (!person) return;
+  const agent = task.task?.assigneeAgent;
+  return { ...person, avatarName: person.name, name: agent ? displayAgent(agent, t.currentAI) : person.name };
 }
 
-export function Board({ tasks, t, roster, agents, open, move, writable, clock, add, searching }: {
-  tasks: Card[]; t: Copy; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[];
+function schedule(task: Card, t: Copy, time: Intl.DateTimeFormat) {
+  const dates = span(task);
+  if (!dates) return t.unscheduled;
+  const start = task.task?.startAt;
+  const end = task.task?.dueAt;
+  if (dates.from === dates.to) {
+    const times = [start, end].flatMap(value => value == null ? [] : [time.format(value)]);
+    return [shortDate(dates.from), [...new Set(times)].join('–')].filter(Boolean).join(' ');
+  }
+  const from = start == null ? shortDate(dates.from) : shortDate(dates.from) + ' ' + time.format(start);
+  const to = end == null ? shortDate(dates.to) : shortDate(dates.to) + ' ' + time.format(end);
+  return from + ' – ' + to;
+}
+
+export function Board({ tasks, t, locale, roster, agents, open, move, writable, clock, add, searching }: {
+  tasks: Card[]; t: Copy; locale: string; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[];
   open: Open; writable:boolean; clock:number; searching:boolean;
   move(task: Card, status: Status): void; add(status: Status): void;
 }) {
@@ -24,14 +45,14 @@ export function Board({ tasks, t, roster, agents, open, move, writable, clock, a
   const [over, setOver] = useState<Status | null>(null);
   const [status, setStatus] = useState<Status | null>(null);
   const active = searching && !tasks.some(task => task.status === status) ? tasks[0]?.status ?? 'todo' : status ?? 'todo';
+  const time = timeFormatter(locale);
+  const today = dateOf(clock);
   return <>
-    <nav className="cb-lane-picker" aria-label={t.columnStatus}>
-      {statuses.map(value => <button type="button" className="cb-ghost" key={value} data-status={value}
-        aria-pressed={active === value} onClick={() => setStatus(value)}>
-        <i className="cb-status-dot" aria-hidden="true" />{t[value]}
-        <span>{tasks.filter(task=>task.status===value).length}</span>
-      </button>)}
-    </nav>
+    <SegmentedControl<Status> label={t.columnStatus} value={active} change={setStatus} className="cb-lane-picker"
+      options={statuses.map(value => ({
+        id: value, label: t[value], status: value, count: tasks.filter(task => task.status === value).length,
+        icon: <i className="cb-status-dot" aria-hidden="true" />,
+      }))} />
     <div className="cb-columns">
       {statuses.map(value => {
         const items = tasks.filter(task => task.status === value);
@@ -50,19 +71,24 @@ export function Board({ tasks, t, roster, agents, open, move, writable, clock, a
           }}>
           <header className="cb-lane-head">
             <i className="cb-status-dot" aria-hidden="true" /><h3>{t[value]}</h3><span className="cb-lane-count">{items.length}</span>
-            {writable && <button type="button" className="cb-icon cb-ghost" onClick={()=>add(value)} aria-label={createLabel} title={createLabel}>
-              <IconPlusOutlineRegular size={16} aria-hidden="true" />
-            </button>}
+            {writable && <Button type="button" variant="ghost" size="sm" className="cb-icon cb-ghost" onClick={()=>add(value)} aria-label={createLabel} title={createLabel}>
+              <Plus strokeWidth={lineStroke} size={16} aria-hidden="true" />
+            </Button>}
           </header>
           <div className="cb-stack">
             {!items.length && <p className="cb-empty-lane">{t.emptyLane}</p>}
             {items.map(task => {
               const data = task.task;
-              const person = assigneeProfile(task,roster,agents);
+              const person = assigneeFor(task, roster, agents, t);
               const participants = (data?.participantIds.length ?? 0) + (data?.participantAgents?.length ?? 0);
               const scheduled = span(task);
               const due = data?.dueAt;
-              const countdownText = due != null && task.status!=='done' ? countdown(due,t,clock) : null;
+              const countdownText = due != null && task.status !== 'done' ? countdown(due,t,clock) : null;
+              const instant = due ?? data?.startAt ?? null;
+              const day = dateOf(instant) ?? task.dueOn ?? task.startOn;
+              const timeLabel = instant === null || day === null ? schedule(task,t,time)
+                : (day === today ? t.today : shortDate(day)) + ' ' + time.format(instant);
+              const tagged = data?.priority === 'high' || data?.priority === 'urgent' || data?.blocked || task.running;
               return <article className="cb-card" key={task.id} draggable={writable}
                 onDragStart={event => {
                   event.dataTransfer.effectAllowed='move'; event.dataTransfer.setData('text/plain',task.id); setDragging(task);
@@ -72,27 +98,31 @@ export function Board({ tasks, t, roster, agents, open, move, writable, clock, a
                   <strong>{task.title}</strong>
                   {data?.description && <span className="cb-card-description">{data.description}</span>}
                 </button>
-                {writable && <label className="cb-card-status" title={t.changeStatus.replace('{name}',task.title)}>
-                  <IconEllipsisOutlineRegular size={17} aria-hidden="true" />
-                  <select value={task.status} aria-label={t.changeStatus.replace('{name}',task.title)}
-                    onChange={event=>move(task,event.target.value as Status)}>
-                    {statuses.map(option=><option key={option} value={option} disabled={data?.blocked && option!=='todo'}>{t[option]}</option>)}
-                  </select>
-                </label>}
-                {(data || task.running) && <div className="cb-card-flags">
-                  {data && <span className="cb-chip-tag cb-priority" data-priority={data.priority}>{t[data.priority]}</span>}
-                  {data?.blocked && <span className="cb-chip-tag cb-waiting"><IconBranchOutlineRegular size={11} aria-hidden="true" />{t.waiting}</span>}
-                  {task.running && <span className="cb-chip-tag cb-running"><IconSparkleRegular size={11} aria-hidden="true" />{t.active}</span>}
+                {writable && <OptionMenu label={t.changeStatus.replace('{name}',task.title)} value={task.status}
+                  choices={statuses.map(id=>({id,label:t[id],disabled:Boolean(data?.blocked && id!=='todo')}))}
+                  change={status=>move(task,status)} iconClassName="cb-icon cb-ghost" menuClassName="cb-card-status" glyph={<Ellipsis strokeWidth={lineStroke} size={17} aria-hidden="true" />} />}
+                {tagged && <div className="cb-card-flags">
+                  {data && data.priority !== 'normal' && <Tag className="cb-chip-tag" tone={data.priority === 'urgent' ? 'warning' : 'neutral'}>{t[data.priority]}</Tag>}
+                  {data?.blocked && <Tag className="cb-chip-tag" tone="warning"><IconBranchOutlineRegular size={11} aria-hidden="true" />{t.waiting}</Tag>}
+                  {task.running && <Tag className="cb-chip-tag" tone="neutral"><IconSparkleRegular size={11} aria-hidden="true" />{t.active}</Tag>}
                 </div>}
-                {(person || participants>0 || scheduled) && <div className="cb-card-meta">
-                  {person && <span className="cb-card-person" title={t.assignee+' · '+person.name}>
-                    <Avatar name={person.name} photo={person.avatar} ai={person.ai} /><span>{person.name}</span>
-                  </span>}
-                  {participants>0 && <span className="cb-card-people" title={t.participants+' · '+participants}>
-                    <IconUsersOutlineRegular size={13} aria-hidden="true" />{participants}
-                  </span>}
-                  {scheduled && <span className="cb-card-date" data-overdue={Boolean(due!=null && due<=clock && countdownText)}
-                    title={schedule(task,t)}><IconClockOutlineRegular size={12} aria-hidden="true" />{countdownText ?? schedule(task,t)}</span>}
+                {(person || participants > 0 || scheduled) && <div className="cb-card-meta">
+                  {(person || participants > 0) && <div className="cb-card-team">
+                    {person && <span className="cb-card-person" title={t.assignee+' · '+person.name}>
+                      <Avatar name={person.avatarName} photo={person.avatar} /><span>{person.name}</span>
+                    </span>}
+                    {participants > 0 && <span className="cb-card-people" title={t.participants+' · '+participants}>
+                      <IconUsersOutlineRegular size={13} aria-hidden="true" />{participants}
+                    </span>}
+                  </div>}
+                  {scheduled && <div className="cb-card-date" data-overdue={due != null && due <= clock && task.status !== 'done'}
+                    title={schedule(task,t,time)}>
+                    <span className="cb-card-when">
+                      <Clock3 strokeWidth={lineStroke} size={13} aria-hidden="true" />
+                      {instant === null ? <span>{timeLabel}</span> : <time dateTime={new Date(instant).toISOString()}>{timeLabel}</time>}
+                    </span>
+                    {countdownText && <span className="cb-card-countdown">{countdownText}</span>}
+                  </div>}
                 </div>}
               </article>;
             })}
@@ -103,20 +133,21 @@ export function Board({ tasks, t, roster, agents, open, move, writable, clock, a
   </>;
 }
 
-export function TaskList({ tasks, t, roster, agents, open }: {
-  tasks: Card[]; t: Copy; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[]; open: Open;
+export function TaskList({ tasks, t, locale, roster, agents, open }: {
+  tasks: Card[]; t: Copy; locale: string; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[]; open: Open;
 }) {
+  const time = timeFormatter(locale);
   return <div className="cb-overflow"><table className="cb-table">
     <thead><tr>{[t.name, t.status, t.assignee, t.dates].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
     <tbody>{tasks.map(task => {
-      const person = assigneeProfile(task,roster,agents);
+      const person = assigneeFor(task, roster, agents, t);
       return <tr key={task.id}>
         <td><button type="button" className="cb-task-link" onClick={() => open(task)}>{task.title}</button></td>
-        <td><span className="cb-status" data-status={task.status}><i className="cb-status-dot" aria-hidden="true" />{t[task.status]}</span></td>
+        <td><Tag className="cb-status" tone="neutral">{t[task.status]}</Tag></td>
         <td>{person ? <span className="cb-list-person" title={person.name}>
-          <Avatar name={person.name} photo={person.avatar} ai={person.ai} /><span>{person.name}</span>
+          <Avatar name={person.avatarName} photo={person.avatar} /><span>{person.name}</span>
         </span> : t.unassigned}</td>
-        <td>{schedule(task, t)}</td>
+        <td className="cb-list-date">{schedule(task, t, time)}</td>
       </tr>;
     })}</tbody>
   </table></div>;
@@ -134,6 +165,7 @@ export function Calendar({ tasks, range, anchor, locale, t, open }: {
   }
   const today = todayKey();
   const fullDate = new Intl.DateTimeFormat(locale, { dateStyle: 'full', timeZone: 'UTC' });
+  const time = timeFormatter(locale);
   return <div className="cb-overflow"><div className="cb-calendar">
     {t.weekdays.map(day => <div className="cb-weekday" key={day}>{day}</div>)}
     {Array.from({ length: 42 }, (_, index) => {
@@ -141,37 +173,46 @@ export function Calendar({ tasks, range, anchor, locale, t, open }: {
       return <div key={date} className="cb-day" data-other={date.slice(0, 7) !== anchor.slice(0, 7)}>
         <time dateTime={date} aria-current={date === today ? 'date' : undefined}>{Number(date.slice(8))}</time>
         {byDay.get(date)?.map(({ task, due }) => {
-          const label = `${task.title} · ${due ? t.due : t.start} · ${fullDate.format(new Date(date + 'T00:00:00Z'))}`;
+          const instant = due ? task.task?.dueAt : task.task?.startAt;
+          const hour = instant == null ? '' : time.format(instant);
+          const label = [task.title, due ? t.due : t.start, fullDate.format(new Date(date + 'T00:00:00Z')), hour].filter(Boolean).join(' · ');
           return <button type="button" className="cb-event" data-status={task.status} key={task.id} title={label}
-            aria-label={label} onClick={() => open(task)}>{task.title}</button>;
+            aria-label={label} onClick={() => open(task)}>
+            {hour && <span className="cb-calendar-hour">{hour}</span>}
+            <span>{task.title}</span>
+          </button>;
         })}
       </div>;
     })}
   </div></div>;
 }
 
-export function Timeline({ tasks, range, t, open }: {
-  tasks: Card[]; range: DateRange; t: Copy; open: Open;
+export function Timeline({ tasks, range, t, locale, open }: {
+  tasks: Card[]; range: DateRange; t: Copy; locale: string; open: Open;
 }) {
   const rows = tasks.flatMap(task => {
     const position = timelinePosition(task, range);
     return position ? [{ task, position }] : [];
   }).sort((a, b) => span(a.task)!.from.localeCompare(span(b.task)!.from));
   const weekCount = Math.ceil((dayOffset(range.from, range.to) + 1) / 7);
+  const time = timeFormatter(locale);
   return <div className="cb-overflow"><div className="cb-timeline">
     <div className="cb-timeline-row cb-timeline-head"><span>{t.name}</span><div className="cb-weeks">
       {Array.from({ length: weekCount }, (_, index) => <span key={index}>{shortDate(shiftDay(range.from, index * 7))}</span>)}
     </div></div>
     {!rows.length && <p className="cb-empty">{t.noDates}</p>}
-    {rows.map(({ task, position }) => <div className="cb-timeline-row" key={task.id}>
-      <button type="button" className="cb-line-name cb-task-link" onClick={() => open(task)}>
-        <strong>{task.title}</strong><span>{schedule(task, t)}</span>
-      </button>
-      <div className="cb-track">
-        <button type="button" className="cb-bar" data-status={task.status} style={position}
-          aria-label={`${task.title} · ${schedule(task, t)}`} title={`${task.title} · ${schedule(task, t)}`}
-          onClick={() => open(task)} />
-      </div>
-    </div>)}
+    {rows.map(({ task, position }) => {
+      const dates = schedule(task, t, time);
+      return <div className="cb-timeline-row" key={task.id}>
+        <button type="button" className="cb-line-name cb-task-link" onClick={() => open(task)}>
+          <strong>{task.title}</strong><span>{dates}</span>
+        </button>
+        <div className="cb-track">
+          <button type="button" className="cb-bar" data-status={task.status} style={position}
+            aria-label={task.title + ' · ' + dates} title={task.title + ' · ' + dates}
+            onClick={() => open(task)} />
+        </div>
+      </div>;
+    })}
   </div></div>;
 }

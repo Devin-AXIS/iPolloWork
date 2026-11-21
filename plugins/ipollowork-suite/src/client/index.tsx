@@ -1,4 +1,5 @@
 /** Browser entry: native slots compose the theme, market, and account modules. */
+import '../../../_shared/ui/controls.css'
 import type { ClientContext } from './native.ts'
 import type { SuiteInfo, MarketState, MarketEntry } from '../shared/types.ts'
 import { request } from './api.ts'

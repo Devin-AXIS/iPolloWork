@@ -10,6 +10,26 @@
 .ipw-chat-error strong { color: var(--dsw-alias-state-error-primary, currentColor); }
 .ipw-chat-error code { margin-inline-start: auto; font-size: 11px; opacity: .75; }
 
+/* Suite screens can also run under the native DSH skin. */
+body:not([data-ipw-suite]) {
+  --ipw-surface: var(--dsw-alias-bg-layer-1);
+  --ipw-muted-surface: var(--dsw-alias-bg-module-platform);
+  --ipw-text: var(--dsw-alias-label-primary);
+  --ipw-muted: var(--dsw-alias-label-secondary);
+  --ipw-border: var(--dsw-alias-border-l2);
+  --ipw-accent: var(--dsw-alias-brand-primary);
+  --ipw-accent-ink: var(--dsw-alias-label-primary-foreground);
+  --ipw-action-hover: var(--dsw-alias-button-primary-hover);
+  --ipw-wash: var(--dsw-alias-bg-module-platform);
+  --ipw-selection: var(--dsw-alias-interactive-bg-active);
+  --ipw-shadow: var(--dsw-elevation-panel);
+}
+
+body[data-ipw-suite] { --dsw-menu-backdrop-filter: blur(6px); }
+@media (prefers-reduced-transparency: reduce) {
+  body[data-ipw-suite] { --dsw-menu-backdrop-filter: none; }
+}
+
 /* iPolloWork artwork in DSH's brand places. Rules apply only while the suite theme marks the body. */
 body[data-ipw-suite] [data-home-whale] { display: none; }
 /* The home headline follows the original iPolloWork home: the wordmark above a large title, left-aligned with the
@@ -53,17 +73,19 @@ body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:
     max-inline-size: 100%;
     gap: 8px;
     padding-inline: 10px;
-    border: 1px solid var(--ipw-border);
-    border-radius: 8px;
+    min-block-size: var(--ipw-control-height);
+    border: 0;
+    border-radius: var(--ipw-control-radius);
     color: var(--ipw-text);
-    background: var(--ipw-surface);
+    background: var(--ipw-field-fill);
+    box-shadow: inset 0 0 0 .5px var(--ipw-hairline);
     cursor: pointer;
   }
   body[data-ipw-suite] select:not([multiple]):is(:not([size]), [size="1"]):enabled:is(:hover, :open) {
     background: var(--ipw-muted-surface);
   }
   body[data-ipw-suite] select:not([multiple]):is(:not([size]), [size="1"]):focus-visible {
-    outline: 2px solid var(--ipw-accent);
+    outline: 2px solid var(--dsw-focus-ring-color);
     outline-offset: 2px;
   }
   body[data-ipw-suite] select:not([multiple]):is(:not([size]), [size="1"]):disabled {
@@ -80,8 +102,8 @@ body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:
     max-block-size: min(20rem, 55dvh);
     margin-block: 4px;
     padding: 4px;
-    border: 1px solid var(--ipw-border);
-    border-radius: 10px;
+    border: .5px solid var(--ipw-hairline);
+    border-radius: 14px;
     color: var(--ipw-text);
     background: var(--ipw-surface);
     box-shadow: var(--ipw-shadow);
@@ -90,12 +112,13 @@ body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:
     min-block-size: 30px;
     padding: 5px 8px;
     gap: 8px;
-    border-radius: 6px;
+    border-radius: var(--ipw-control-radius);
     white-space: normal;
     overflow-wrap: anywhere;
   }
   body[data-ipw-suite] select:not([multiple]):is(:not([size]), [size="1"]) option:checked {
     color: var(--ipw-accent);
+    background: var(--ipw-wash);
   }
   body[data-ipw-suite] select:not([multiple]):is(:not([size]), [size="1"]) option:enabled:is(:hover, :focus) {
     background: var(--ipw-muted-surface);
@@ -103,4 +126,28 @@ body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:
   body[data-ipw-suite] select:not([multiple]):is(:not([size]), [size="1"]) option:disabled {
     color: var(--ipw-muted);
   }
+}
+
+/* The bundled Studio scopes these aliases to its editor and overlay roots.
+   Document previews render in their own frames with their own colors. */
+body[data-ipw-suite] .ipw-studio-native:is([data-studio-editor], [data-studio-overlay]) {
+  --brand-accent: var(--ipw-accent);
+  --brand-strong: var(--ipw-accent);
+  --brand-soft: var(--ipw-action-hover);
+  --action-background: var(--ipw-accent);
+  --action-foreground: var(--ipw-accent-ink);
+  --action-hover: var(--ipw-action-hover);
+  --action-pressed: var(--ipw-action-hover);
+  --action-pressed-foreground: var(--ipw-accent-ink);
+  --primary: var(--ipw-accent);
+  --primary-foreground: var(--ipw-accent-ink);
+  --primary-text: var(--ipw-accent);
+  --ring: var(--dsw-focus-ring-color);
+  --input: var(--ipw-hairline);
+  --border: var(--ipw-border);
+  --popover-border: var(--ipw-border);
+  --accent: var(--ipw-wash);
+  --accent-foreground: var(--ipw-text);
+  --feedback-info-background: var(--ipw-wash);
+  --project-dialog-accent: var(--ipw-accent);
 }
