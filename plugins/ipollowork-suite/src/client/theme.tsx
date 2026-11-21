@@ -3,13 +3,16 @@ import css from './suite.module.css'
 import { useCopy } from './locale.ts'
 import './brand.css'
 import { productTheme } from '../../../_shared/ui/theme.ts'
+import { brandAttribute } from '../../../custom-appearance/src/model.ts'
 /** DSH's product titles across its build profile and baseline locales. */
 const DSH_TITLE = /DeepSeek Harness|DSH Local Build|DSH 本地构建/g
 export function mountTheme(ctx: ClientContext): void {
   ctx.effect(() => ctx.theme.overrideTokens('@ipollo/dsh-suite', productTheme), 'ipollowork-suite: palette')
   ctx.effect(() => { document.body.setAttribute('data-ipw-suite', ''); return () => document.body.removeAttribute('data-ipw-suite') }, 'ipollowork-suite: scope')
+  ctx.provide('ipolloSuiteThemeReady', true)
   ctx.effect(() => {
     const rename = () => {
+      if (document.documentElement.hasAttribute(brandAttribute)) return
       const title = document.title.replace(DSH_TITLE, 'iPolloWork')
       if (title !== document.title) document.title = title
     }

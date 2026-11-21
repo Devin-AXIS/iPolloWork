@@ -56,12 +56,12 @@ button.ipw-form-button[data-ipw-variant="outline"] {
   box-shadow: inset 0 0 0 .5px var(--ipw-hairline);
 }
 button.ipw-form-button[data-ipw-variant="primary"] {
-  background: var(--dsw-alias-label-primary);
-  color: var(--dsw-alias-bg-base);
+  background: var(--dsw-alias-button-primary-fill);
+  color: var(--dsw-alias-label-primary-foreground);
   box-shadow: 0 1px 2px var(--dsw-alias-border-l1);
 }
 button.ipw-form-button[data-ipw-variant="primary"]:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--dsw-alias-label-primary) 86%, var(--dsw-alias-bg-base));
+  background: var(--dsw-alias-button-primary-hover);
 }
 :is(dialog, div).ipw-frosted {
   background: var(--dsw-alias-bg-layer-1);

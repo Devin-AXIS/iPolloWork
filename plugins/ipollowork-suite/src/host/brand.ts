@@ -1,6 +1,7 @@
 /** iPolloWork identity in the page DSH serves, so the title and icons are right before any client plugin loads. */
 import { readFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { brandAttribute, logoAttribute } from "../../../custom-appearance/src/model.ts";
 
 /** Anonymous route for brand files; the page requests them before it is signed in, like DSH's own icons. */
 export const BRAND_PATH = "/ipollowork-suite/brand";
@@ -31,16 +32,20 @@ const BOOT_STYLE = [
  * @returns the document with DSH's title, icons, manifest and boot wordmark replaced.
  */
 export function brandIndex(html: string): string {
+  const hasLogo = html.includes("<link " + logoAttribute + " ");
   const head = [
-    `<link rel="icon" type="image/svg+xml" href="${BRAND_PATH}/favicon.svg" />`,
-    `<link rel="apple-touch-icon" href="${BRAND_PATH}/apple-touch-icon.png" />`,
+    ...(!hasLogo ? [
+      `<link rel="icon" type="image/svg+xml" href="${BRAND_PATH}/favicon.svg" />`,
+      `<link rel="apple-touch-icon" href="${BRAND_PATH}/apple-touch-icon.png" />`,
+    ] : []),
     `<link rel="manifest" href="${BRAND_PATH}/manifest.webmanifest" />`,
     `<style>${BOOT_STYLE}</style>`,
   ].join("\n    ");
-  return html
-    .replace(/<link rel="(?:icon|apple-touch-icon|manifest)"[^>]*>\s*/g, "")
+  const branded = html.includes("<html " + brandAttribute + "=") ? html : html
     .replace(/<title>[^<]*<\/title>/, `<title>${TITLE}</title>`)
-    .replace(/(<meta name="apple-mobile-web-app-title" content=")[^"]*(")/, `$1${TITLE}$2`)
+    .replace(/(<meta name="apple-mobile-web-app-title" content=")[^"]*(")/, `$1${TITLE}$2`);
+  return branded
+    .replace(/<link rel="(?:icon|apple-touch-icon|manifest)"[^>]*>\s*/g, "")
     .replace("</head>", `  ${head}\n  </head>`);
 }
 

@@ -6,7 +6,7 @@ const root = resolve('../..')
 const nodePaths = [resolve('node_modules')]
 const sharedClient = ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives']
 
-for (const feature of ['notification-center', 'collaboration-board', 'project-files']) {
+for (const feature of ['notification-center', 'collaboration-board', 'project-files', 'custom-appearance']) {
   const source = resolve(root, 'plugins', feature)
   const destination = resolve('lib', 'subplugins', feature)
   const { name, version, license, engines, dsh } = JSON.parse(await readFile(resolve(source, 'package.json'), 'utf8'))

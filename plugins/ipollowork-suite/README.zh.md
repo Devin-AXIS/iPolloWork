@@ -24,6 +24,8 @@
 
 项目文件、项目看板和通知中心是套件的原生子插件。项目文件在右侧边栏显示输入、输出和实际工作区目录。可在「插件 → iPolloWork」详情内查看 `ipollo-project-files`、`ipollo-collaboration-board` 和 `ipollo-notification-center`。看板仍在项目对话顶部，头像旁的铃铛和「设置 → 通知」沿用相同的通知来源和偏好。
 
+「设置 → 自定义外观」支持切换皮肤、自定义应用名称、Logo 及浅色和深色配色。外观子插件 ID 为 `ipollo-custom-appearance`。
+
 如果开发配置曾单独安装这两项，请先用原生插件管理器移除独立的 `@ipollo/dsh-collaboration-board` 和 `@ipollo/dsh-notification-center`，再更新套件。继续使用原配置。如果 `cordis.patch.yml` 中对应条目以 `name` 断言旧包名，只移除这行断言，保留 ID 和其它字段，包括通知偏好。套件沿用原条目 ID 和存储域，继续读取已有看板、定时任务和设置。
 
 ## 模块

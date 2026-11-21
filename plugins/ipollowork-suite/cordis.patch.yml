@@ -18,6 +18,8 @@
       name: './lib/subplugins/collaboration-board/host.js'
     - id: ipollo-project-files
       name: './lib/subplugins/project-files/host.js'
+    - id: ipollo-custom-appearance
+      name: './lib/subplugins/custom-appearance/host.js'
     - id: ipollowork-im
       name: '@ipollo/dsh-suite/im'
     - id: ipollowork-app-data

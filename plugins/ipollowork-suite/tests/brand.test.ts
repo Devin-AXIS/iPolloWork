@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
+import { appearanceIndex } from "../../custom-appearance/src/brand.ts";
 import { BRAND_PATH, brandIndex, serveBrand } from "../src/host/brand.ts";
 
 const DSH_INDEX = `<!doctype html>
@@ -50,4 +51,17 @@ test("brand files are served by name only", async () => {
   } finally {
     await new Promise<void>((done, reject) => server.close((error) => (error ? reject(error) : done())));
   }
+});
+
+
+test("custom branding composes with the Suite in either tap order", () => {
+  const custom = (html: string) => appearanceIndex(html, "North Lab", true, 7);
+  for (const html of [custom(brandIndex(DSH_INDEX)), brandIndex(custom(DSH_INDEX))]) {
+    assert.match(html, /<title>North Lab<\/title>/);
+    assert.equal([...html.matchAll(/rel="icon"/g)].length, 1);
+    assert.match(html, /href="\/ipollo-appearance\/logo.png\?v=7"/);
+    assert.match(html, /manifest.webmanifest/);
+  }
+  assert.match(brandIndex(appearanceIndex(DSH_INDEX, "North Lab", false, 1)), /title>North Lab/);
+  assert.match(brandIndex(appearanceIndex(DSH_INDEX, "", true, 1)), /title>iPolloWork/);
 });
