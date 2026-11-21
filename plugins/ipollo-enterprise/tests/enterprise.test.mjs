@@ -85,6 +85,49 @@ test('credentials and raw provider error messages never become UI connection dat
   assert.deepEqual(await connector.list(), [])
 })
 
+test('normal membership checks and background renewal share a single refresh and persist only the renewed token on the Host', async () => {
+  const store = credentialStore()
+  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString()
+  await store.modifyRecord(RECORD_KEY, () => ({ kind: 'grant', payload: { version: 1, connections: [
+    { id: 'active', memberId: 'active', role: 'member', status: 'active', origin: 'https://company.example', token: 'previous', expiresAt },
+    { id: 'suspended', memberId: 'suspended', role: 'member', status: 'active', origin: 'https://company.example', token: 'suspended', expiresAt },
+    { id: 'expired', memberId: 'expired', origin: 'https://company.example', token: 'expired', expiresAt: '2000-01-01T00:00:00.000Z' },
+  ] } }))
+  const calls = []
+  const renewedUntil = new Date(Date.now() + 7 * 86400_000).toISOString()
+  const connector = new EnterpriseConnector(store, async (url, init) => {
+    const token = init.headers.Authorization.slice(7)
+    calls.push({ url, token })
+    if (url.endsWith('/membership')) return Response.json({ membership: {
+      id: token === 'suspended' ? 'suspended' : 'active', role: 'member', status: token === 'suspended' ? 'suspended' : 'active',
+    } })
+    assert.equal(token, 'previous')
+    return Response.json({ session: { token: 'renewed', expiresAt: renewedUntil } })
+  })
+  const [, connection] = await Promise.all([connector.renewDueConnections(), connector.refresh('active'), connector.refresh('active')])
+  assert.equal(connection.expiresAt, renewedUntil)
+  assert.equal('token' in connection, false)
+  assert.equal((await store.readRecord(RECORD_KEY)).payload.connections.find(row => row.id === 'active').token, 'renewed')
+  assert.deepEqual(calls.filter(call => call.url.endsWith('/session/refresh')).map(call => call.token), ['previous'])
+  assert.equal(calls.some(call => call.token === 'expired'), false)
+  assert.equal((await connector.list()).find(row => row.id === 'suspended').status, 'suspended')
+})
+
+test('an older enterprise can still check membership when renewal is unavailable', async () => {
+  const store = credentialStore()
+  const expiresAt = new Date(Date.now() + 60_000).toISOString()
+  await store.modifyRecord(RECORD_KEY, () => ({ kind: 'grant', payload: { version: 1, connections: [
+    { id: 'active', memberId: 'active', role: 'member', status: 'active', origin: 'https://company.example', token: 'previous', expiresAt },
+  ] } }))
+  const statuses = [404, 503, 401]
+  const connector = new EnterpriseConnector(store, async url => url.endsWith('/membership')
+    ? Response.json({ membership: { id: 'active', role: 'member', status: 'active' } })
+    : Response.json({}, { status: statuses.shift() }))
+  assert.equal((await connector.refresh('active')).expiresAt, expiresAt)
+  assert.equal((await connector.refresh('active')).expiresAt, expiresAt)
+  await assert.rejects(connector.refresh('active'), { status: 401 })
+})
+
 const osRoot = process.env.IPOLLO_OS_SOURCE
 
 test('joins the real OS/PGlite enterprise API, survives reload, and enforces live membership changes',
@@ -141,8 +184,14 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
       send({ error: 'unauthorized' }, 401)
     })
     const accountOrigin = await listen(accountServer)
+    let renewalRequests = 0
     const companyServer = createServer(async (request, response) => {
       try {
+        if (request.url === '/fixture-website') {
+          response.writeHead(200, { 'Content-Type': 'text/html' }).end('<title>Fixture enterprise portal</title><h1>Fixture enterprise portal</h1>')
+          return
+        }
+        if (request.url === '/api/v1/session/refresh') renewalRequests++
         if (request.url === '/web/manifest') {
           assert.equal(request.headers.authorization, undefined, 'console discovery has no enterprise token')
           response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ kind: 'enterprise' }))
@@ -153,8 +202,15 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
           method: request.method, headers: request.headers,
           ...(['GET', 'HEAD'].includes(request.method) ? {} : { body: Buffer.concat(chunks) }),
         }, undefined, { origin, accountIssuer: accountOrigin, clientOnly: true })
-        response.writeHead(result.status, Object.fromEntries(result.headers))
-        response.end(Buffer.from(await result.arrayBuffer()))
+        const headers = new Headers(result.headers)
+        if (request.url === '/api/v1/join') headers.delete('content-length')
+        response.writeHead(result.status, Object.fromEntries(headers))
+        const payload = Buffer.from(await result.arrayBuffer())
+        if (request.url === '/api/v1/join' && result.ok) {
+          const joined = JSON.parse(payload)
+          joined.session.expiresAt = new Date(Date.now() + 5 * 60_000).toISOString()
+          response.end(JSON.stringify(joined))
+        } else response.end(payload)
       } catch { response.writeHead(500).end() }
     })
     origin = await listen(companyServer)
@@ -169,6 +225,17 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
       assert.equal(overviewResponse.status, 200)
       const department = await management('department', { name: 'Engineering', parentId: null })
       const invitation = await management('invite', { email, role: 'admin' })
+      await management('member', { status: 'invited', role: 'admin', departmentId: department.id }, invitation.id)
+      if (overview.webShortcutsEnabled) {
+        await management('web-shortcut', {
+          revision: overview.navigation.revision,
+          item: { label: 'Fixture portal', url: origin + '/fixture-website', departmentIds: [department.id], roles: ['admin'] },
+        })
+        const settings = await (await runtime.request(space, 'view=web-shortcuts')).json()
+        assert.deepEqual(settings.items.map(item => item.label), ['Fixture portal'])
+        const current = await (await runtime.request(space, 'view=overview')).json()
+        assert.ok(!JSON.stringify(current).includes('/fixture-website'))
+      }
       const members = await (await runtime.request(space, 'view=members')).json()
       const personalCode = members.items.find(member => member.id === invitation.id)?.invitation?.code
       const code = personalCode ?? overview.join?.code
@@ -194,7 +261,7 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
       assert.equal((await reloaded.refresh(connection.id)).memberId, invitation.id)
       const soon = new Date(Date.now() + 60_000).toISOString()
       stored.payload.connections[0].expiresAt = soon
-      assert.ok(Date.parse((await reloaded.inspect(connection.id, true)).expiresAt) > Date.parse(soon))
+      assert.ok(Date.parse((await reloaded.refresh(connection.id)).expiresAt) > Date.parse(soon))
       assert.ok((await reloaded.directory(connection.id, 'members')).items.some(member => member.id === invitation.id))
       assert.ok((await reloaded.directory(connection.id, 'departments')).items.some(item => item.id === department.id))
       const manifest = await reloaded.memberRequest(connection.id, '/client-manifest')
@@ -208,6 +275,11 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
       assert.equal(detail.mcpRequiresOAuth, true)
       const shortcuts = await reloaded.memberRequest(connection.id, '/navigation-shortcuts')
       assert.ok(Array.isArray(shortcuts.items))
+      const websites = overview.webShortcutsEnabled ? await reloaded.webShortcuts(connection.id) : { items: [] }
+      if (overview.webShortcutsEnabled) {
+        assert.deepEqual(websites.items.map(item => item.label), ['Fixture portal'])
+        assert.deepEqual(await reloaded.webShortcuts(connection.id, websites.items[0].id), { url: origin + '/fixture-website' })
+      }
       assert.equal((await reloaded.memberRequest(connection.id, '/messages')).nextCursor, null)
       const access = await reloaded.memberRequest(connection.id, '/resources/' + mcp.id + '/access')
       const saved = await reloaded.memberRequest(connection.id, '/resources/' + mcp.id + '/access', { method: 'PUT', body: {
@@ -256,6 +328,17 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
         const joinedNative = await call('/join', input)
         const native = suite ? joinedNative : joinedNative.connection
         assert.equal(native.memberId, invitation.id)
+        if (!suite) {
+          const count = renewalRequests
+          const approved = await call('/membership?id=' + native.id)
+          assert.ok(Date.parse(approved.connection.expiresAt) > Date.parse(native.expiresAt))
+          assert.equal(renewalRequests, count + 1)
+          if (overview.webShortcutsEnabled) {
+            const visible = await call('/web-shortcuts?id=' + native.id)
+            assert.deepEqual(visible, websites)
+            assert.deepEqual(await call('/web-shortcut', { id: native.id, shortcut: visible.items[0].id }), { url: origin + '/fixture-website' })
+          }
+        }
         const catalog = await call(suite ? '' : '/state')
         assert.ok(catalog.connections.some(item => item.id === native.id))
         assert.ok(!JSON.stringify(catalog).includes(password))
@@ -274,6 +357,10 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
           await call('/' + native.id, undefined, 'DELETE')
           await verifyEnterpriseUi(start, input)
         }
+        if (!suite && overview.webShortcutsEnabled && process.env.IPW_ENTERPRISE_BROWSER_PROOF) {
+          const { verifyConnectorUi } = await import(process.env.IPW_ENTERPRISE_BROWSER_PROOF)
+          await verifyConnectorUi(start, () => management('member', { status: 'active', role: 'member', departmentId: department.id }, invitation.id))
+        }
         if (suite) await call('/' + native.id, undefined, 'DELETE')
         else await call('/disconnect', { id: native.id })
         assert.ok(!(await call(suite ? '' : '/state')).connections.some(item => item.id === native.id))
@@ -283,6 +370,10 @@ test('joins the real OS/PGlite enterprise API, survives reload, and enforces liv
       assert.equal(moved.role, 'member')
       assert.equal(moved.departmentName, 'Engineering')
       assert.deepEqual(await reloaded.managementConsole(connection.id), { url: null })
+      if (overview.webShortcutsEnabled) {
+        assert.deepEqual(await reloaded.webShortcuts(connection.id), { items: [] })
+        await assert.rejects(reloaded.webShortcuts(connection.id, websites.items[0].id), { status: 404 })
+      }
       await assert.rejects(reloaded.memberRequest(connection.id, '/resources', {
         method: 'POST', body: { name: 'Unauthorized MCP', url: 'https://mcp.example.test/forbidden' },
       }), { status: 403 })

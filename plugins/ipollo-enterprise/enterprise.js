@@ -3,6 +3,12 @@ import { isIP } from 'node:net'
 
 export const RECORD_KEY = 'ipollo-enterprise-connector/connections'
 export const DEFAULT_ACCOUNT_ORIGIN = 'https://i.ipollo.ai'
+const RENEWAL_WINDOW = 24 * 60 * 60 * 1000
+
+const needsRenewal = row => {
+  const remaining = Date.parse(row.expiresAt) - Date.now()
+  return remaining > 0 && remaining <= RENEWAL_WINDOW
+}
 
 /** A bounded, user-facing protocol failure. Never contains a credential. */
 export class EnterpriseError extends Error {
@@ -68,6 +74,8 @@ const publicErrors = new Set(['JOIN_CODE_NOT_FOUND', 'MEMBER_SUSPENDED', 'MEMBER
 
 /** HTTP adapter for the existing OS/Enterprise and iPollo Account contracts. */
 export class EnterpriseConnector {
+  #membershipChecks = new Map()
+
   constructor(credentials, fetcher = fetch, signal) {
     this.credentials = credentials
     this.fetcher = fetcher
@@ -201,14 +209,14 @@ export class EnterpriseConnector {
     if (membership?.id !== row.memberId) throw new EnterpriseError('identity_changed', 403)
     const next = { ...row, role: membership.role, status: membership.removed ? 'removed' : membership.status,
       departmentId: membership.departmentId ?? null, departmentName: membership.departmentName ?? null }
-    if (renew && next.status === 'active' && Date.parse(row.expiresAt) - Date.now() < 15 * 60 * 1000) {
+    if (renew && next.status === 'active' && needsRenewal(row)) {
       try {
         const { session } = await this.send(row.origin, '/api/v1/session/refresh', { method: 'POST', token: row.token })
         if (typeof session?.token !== 'string' || !(Date.parse(session.expiresAt) > Date.parse(row.expiresAt)))
           throw new EnterpriseError('invalid_response', 502)
         Object.assign(next, { token: session.token, expiresAt: session.expiresAt })
       } catch (error) {
-        if (!(error instanceof EnterpriseError) || ![404, 405].includes(error.status)) throw error
+        if (!(error instanceof EnterpriseError) || ![404, 405, 429].includes(error.status) && error.status < 500) throw error
       }
     }
     if (next.role === row.role && next.status === row.status && next.departmentId === row.departmentId &&
@@ -221,9 +229,19 @@ export class EnterpriseConnector {
   }
 
   async refresh(id) {
-    const current = await this.inspect(id)
+    let check = this.#membershipChecks.get(id)
+    if (!check) {
+      check = this.inspect(id, true).finally(() => this.#membershipChecks.delete(id))
+      this.#membershipChecks.set(id, check)
+    }
+    const current = await check
     if (current.status !== 'active') throw new EnterpriseError('enterprise_member_inactive', 403)
     return current
+  }
+
+  async renewDueConnections() {
+    const rows = await this.stored()
+    await Promise.allSettled(rows.filter(row => !row.controlSession && needsRenewal(row)).map(row => this.refresh(row.id)))
   }
 
   async memberRequest(id, path, options = {}, binary = false) {
@@ -232,6 +250,28 @@ export class EnterpriseConnector {
     if (row.status !== 'active') throw new EnterpriseError('enterprise_member_inactive', 403)
     const response = await this.response(row.origin, '/api/v1' + path, { ...options, token: row.token })
     return binary && response.ok ? response : this.checked(response)
+  }
+
+  async webShortcuts(id, shortcut) {
+    const query = new URLSearchParams({ view: 'web' })
+    if (shortcut !== undefined) query.set('shortcut', required(shortcut, 128))
+    let data
+    try { data = await this.memberRequest(id, '/navigation-shortcuts?' + query) }
+    catch (error) {
+      if (shortcut === undefined && error instanceof EnterpriseError && [404, 405].includes(error.status)) return { items: [] }
+      throw error
+    }
+    if (shortcut !== undefined) {
+      const url = typeof data?.url === 'string' && data.url.length <= 4096 ? URL.parse(data.url) : null
+      if (!url || !['https:', 'http:'].includes(url.protocol) || url.username || url.password) {
+        throw new EnterpriseError('not_found', 404)
+      }
+      return { url: url.href }
+    }
+    if (!Array.isArray(data?.items) || data.items.length > 50) throw new EnterpriseError('invalid_response', 502)
+    // Older servers ignore the view query and return only built-in or plugin items.
+    return { items: data.items.filter(item => !item?.kind && typeof item?.id === 'string' && item.id.length <= 128
+      && typeof item?.label === 'string' && item.label.length <= 80).map(({ id, label }) => ({ id, label })) }
   }
 
   async managementConsole(id) {

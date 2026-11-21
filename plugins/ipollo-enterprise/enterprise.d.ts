@@ -27,6 +27,9 @@ export class EnterpriseConnector {
   join(input: { origin: string; accountOrigin?: string | undefined; email: string; password: string; joinCode: string; allowInsecureAccount?: boolean | undefined }): Promise<EnterpriseConnection>
   inspect(id: string, renew?: boolean): Promise<EnterpriseConnection>
   refresh(id: string): Promise<EnterpriseConnection>
+  renewDueConnections(): Promise<void>
+  webShortcuts(id: string): Promise<{ items: Array<{ id: string; label: string }> }>
+  webShortcuts(id: string, shortcut: string): Promise<{ url: string }>
   disconnect(id: string): Promise<void>
   managementConsole(id: string): Promise<{ url: string | null }>
   memberRequest(id: string, path: string, options?: {

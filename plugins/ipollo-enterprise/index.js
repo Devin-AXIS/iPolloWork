@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { EnterpriseConnector, EnterpriseError, DEFAULT_ACCOUNT_ORIGIN } from './enterprise.js'
 
 export const name = 'ipollo-enterprise-connector'
-export const inject = ['webServer', 'connection', 'credentials', 'workspaceRegistry']
+export const inject = ['webServer', 'credentials', 'workspaceRegistry']
 const PREFIX = '/ipollo-enterprise/api'
 
 function reply(response, status, value) {
@@ -32,13 +32,25 @@ async function readBody(request) {
 export function apply(ctx) {
   const lifetime = new AbortController()
   const connector = new EnterpriseConnector(ctx.credentials, fetch, lifetime.signal)
-  ctx.effect(() => () => lifetime.abort(), 'ipollo-enterprise: request lifetime')
+  ctx.effect(() => {
+    let renewing = false
+    const renew = async () => {
+      if (renewing || lifetime.signal.aborted) return
+      renewing = true
+      try { await connector.renewDueConnections() }
+      catch { /* Interactive requests still report credential store failures. */ }
+      finally { renewing = false }
+    }
+    const timer = setInterval(renew, 5 * 60 * 1000)
+    timer.unref()
+    void renew()
+    return () => { clearInterval(timer); lifetime.abort() }
+  }, 'ipollo-enterprise: session renewal lifetime')
   ctx.effect(() => ctx.webServer.register({
-    kind: 'prefix', path: '/ipollo-enterprise',
-    handler: async (request, response) => {
+    kind: 'prefix', path: '/ipollo-enterprise', auth: 'required',
+    handler: async (request, response, peer) => {
       try {
-        const rejection = ctx.connection.requestRejection({ headers: request.headers })
-        if (rejection !== undefined) { reply(response, rejection, { error: 'unauthorized' }); return }
+        if (peer?.principal.kind !== 'owner') { reply(response, 403, { error: 'forbidden' }); return }
         const url = new URL(request.url ?? '/', 'http://127.0.0.1')
         const endpoint = url.pathname.slice(PREFIX.length)
         if (!url.pathname.startsWith(PREFIX + '/')) { reply(response, 404, { error: 'not_found' }); return }
@@ -46,6 +58,7 @@ export function apply(ctx) {
           const id = url.searchParams.get('id')
           if (endpoint === '/state') reply(response, 200, { connections: await connector.list(), accountOrigin: DEFAULT_ACCOUNT_ORIGIN })
           else if (endpoint === '/membership') reply(response, 200, { connection: await connector.refresh(id) })
+          else if (endpoint === '/web-shortcuts') reply(response, 200, await connector.webShortcuts(id))
           else if (endpoint === '/members' || endpoint === '/departments') reply(response, 200, await connector.directory(id, endpoint.slice(1), url.searchParams.get('cursor')))
           else reply(response, 404, { error: 'not_found' })
           return
@@ -55,6 +68,7 @@ export function apply(ctx) {
         if (endpoint === '/discover') reply(response, 200, { enterprise: await connector.discover(input.origin) })
         else if (endpoint === '/join') reply(response, 200, { connection: await connector.join(input) })
         else if (endpoint === '/disconnect') { await connector.disconnect(input.id); reply(response, 200, { ok: true }) }
+        else if (endpoint === '/web-shortcut') reply(response, 200, await connector.webShortcuts(input.id, input.shortcut ?? ''))
         else if (endpoint === '/workspace') {
           const enterprise = await connector.refresh(input.id)
           const path = join(process.env.DSH_HOME || join(homedir(), '.dsh'), 'enterprise-workspaces', enterprise.enterpriseId, enterprise.memberId)

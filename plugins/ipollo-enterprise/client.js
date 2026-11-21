@@ -18,6 +18,7 @@ window.__ModuleLoader__.load({
       connections: '已连接企业', empty: '还没有连接企业', add: '加入其他企业', close: '返回已连接企业',
       loading: '正在读取…', working: '正在处理…', refresh: '重新检查权限', workspace: '在企业工作区新建会话',
       workspaceHint: '使用此设备上的 DSH 原生工作区；会话不会自动上传或变成多人共享会话。',
+      websites: '企业网页入口', not_found: '入口已经移除或你的权限已变更。',
       reauth: '重新登录', checking: '尚未验证',
       disconnect: '断开此设备', disconnectHint: '移除本机连接，企业成员和已有会话会保留。',
       overview: '连接信息', members: '企业成员', departments: '企业部门', role: '企业角色', status: '成员状态',
@@ -54,6 +55,7 @@ window.__ModuleLoader__.load({
       connections: 'Connected enterprises', empty: 'No connected enterprise', add: 'Join another enterprise', close: 'Back to connections',
       loading: 'Loading…', working: 'Working…', refresh: 'Check access again', workspace: 'Start a session in the enterprise workspace',
       workspaceHint: 'Uses a native DSH workspace on this device. Sessions are not automatically uploaded or shared with colleagues.',
+      websites: 'Enterprise websites', not_found: 'This shortcut was removed or your access changed.',
       reauth: 'Sign in again', checking: 'Not verified',
       disconnect: 'Disconnect this device', disconnectHint: 'Removes this connection; enterprise membership and existing sessions are retained.',
       overview: 'Connection', members: 'Members', departments: 'Departments', role: 'Role', status: 'Membership', expires: 'Sign-in expires',
@@ -122,6 +124,7 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState('')
       const [tab, setTab] = useState('overview')
       const [directory, setDirectory] = useState(null)
+      const [websites, setWebsites] = useState([])
       const [accessVerified, setAccessVerified] = useState(false)
       const generation = useRef(0)
       const mounted = useRef(true)
@@ -158,6 +161,7 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         const current = ++generation.current
         setDirectory(null)
+        setWebsites([])
         setAccessVerified(false)
         setError('')
         if (!selected || adding) return
@@ -167,8 +171,11 @@ window.__ModuleLoader__.load({
         api(`${path}?id=${encodeURIComponent(selected)}`, undefined, signal).then(data => {
           if (generation.current !== current) return
           setAccessVerified(true)
-          if (tab === 'overview') setState(previous => ({ ...previous, connections: previous.connections.map(item => item.id === selected ? data.connection : item) }))
-          else setDirectory(data)
+          if (tab !== 'overview') { setDirectory(data); return }
+          setState(previous => ({ ...previous, connections: previous.connections.map(item => item.id === selected ? data.connection : item) }))
+          return api('/web-shortcuts?id=' + encodeURIComponent(selected), undefined, signal).then(({ items }) => {
+            if (generation.current === current) setWebsites(items)
+          })
         }).catch(error => { if (!signal.aborted && generation.current === current) setError(message(error.message)) })
         return () => abort.abort()
       }, [selected, tab, adding])
@@ -192,8 +199,22 @@ window.__ModuleLoader__.load({
       }
       const refresh = () => run(async signal => {
         setAccessVerified(false)
+        setWebsites([])
         await api('/membership?id=' + encodeURIComponent(selected), undefined, signal)
         await load(signal); setAccessVerified(true)
+        const { items } = await api('/web-shortcuts?id=' + encodeURIComponent(selected), undefined, signal)
+        if (!signal.aborted) setWebsites(items)
+      })
+      const openWebsite = shortcut => run(async signal => {
+        try {
+          const { url } = await api('/web-shortcut', { id: selected, shortcut }, signal)
+          if (!signal.aborted) window.open(url, '_blank', 'noopener,noreferrer')
+        } catch (error) {
+          if (!signal.aborted && ['not_found', 'enterprise_member_inactive', 'enterprise_session_expired', 'unauthorized'].includes(error.message)) {
+            setWebsites(websites => error.message === 'not_found' ? websites.filter(item => item.id !== shortcut) : [])
+          }
+          throw error
+        }
       })
       const openWorkspace = () => run(async signal => {
         const data = await api('/workspace', { id: selected }, signal)
@@ -244,6 +265,9 @@ window.__ModuleLoader__.load({
             h('dt', null, t('expires')), h('dd', null, new Date(connection.expiresAt).toLocaleString(language))),
           h('div', { className: 'iec-row' }, button('workspace', openWorkspace, true, !accessVerified), button('refresh', refresh)),
           h('p', { className: 'iec-notice' }, t('workspaceHint')),
+          accessVerified && websites.length ? h('section', { 'aria-label': t('websites') },
+            h('h2', null, t('websites')), h('div', { className: 'iec-row' }, websites.map(item =>
+              h(Button, { key: item.id, type: 'button', variant: 'outline', disabled: busy, onClick: () => openWebsite(item.id) }, item.label)))) : null,
           h('div', { className: 'iec-row' }, button('reauth', () => {
             setOrigin(connection.origin); setAccountOrigin(connection.accountOrigin); setEmail(connection.email); setInsecureAccount(false)
             setCode(''); setPassword(''); setVerified(null); setAdding(true)

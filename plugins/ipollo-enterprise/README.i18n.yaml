@@ -3,8 +3,8 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write plugins/ipollo-enterprise/README.md
 /ipolloos-enterprise-connector-for-dsh:
-  en: 8dcc4767f96c5553
-  zh: 0403bf2f38eed53a
+  en: 69095a9f40057b3c
+  zh: b8eded9e6e6ee3c5
 /ipolloos-enterprise-connector-for-dsh/install:
   en: 63302ba292cf50c4
   zh: 549244bf040c2272

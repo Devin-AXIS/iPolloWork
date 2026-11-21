@@ -6,9 +6,11 @@ A native DeepSeek Harness plugin for joining an existing enterprise hosted by iP
 
 The plugin adds **加入企业 / Join enterprise** to the native sidebar. It verifies the enterprise address, signs in through the explicitly displayed account provider, binds the returned enterprise membership, and shows the member directory and departments with pagination. The account-provider URL is configurable for private deployments; its default is `https://i.ipollo.ai`. Public enterprise HTTP endpoints are rejected; private-network HTTP endpoints and HTTPS reverse-proxy prefixes are supported. An administrator-supplied legacy HTTP account provider requires explicit confirmation of unencrypted sign-in. The plugin never downgrades a failed HTTPS request automatically.
 
-Enterprise credentials are kept on the Host through DSH's native credential-record service. Account passwords, account login tokens, and identity tokens are not persisted. Browser responses contain connection metadata only. Expired enterprise credentials require sign-in again; member status and role changes are checked against the enterprise before protected operations. **Disconnect this device** removes this plugin's saved connection and leaves enterprise membership and existing sessions intact.
+Enterprise credentials are kept on the Host through DSH's native credential-record service. Account passwords, account login tokens, and identity tokens are not persisted. Browser responses contain connection metadata only. The plugin automatically renews active enterprise sign-ins in their last 24 hours while the Host is running, if the server supports renewal. An already expired sign-in requires signing in again. Member status and role changes are checked against the enterprise before protected operations. **Disconnect this device** removes this plugin's saved connection and leaves enterprise membership and existing sessions intact.
 
 **Start a session in the enterprise workspace** creates or reuses a normal local DSH workspace for this enterprise and member. It does not upload sessions, provide remote execution, or grant colleagues access to native conversation logs. The existing local enterprise-management prototype, other plugins, DSH settings, and original upstream source files are independent of this package.
+
+The connection panel lists company websites available to the active member. Clicking a shortcut rechecks access at the enterprise and opens the approved URL in the browser. The destination website handles its own sign-in.
 
 ## Install
 
