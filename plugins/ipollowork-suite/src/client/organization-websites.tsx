@@ -55,7 +55,7 @@ export function OrganizationWebsites({ detail, t, call }: { detail: EnterpriseDe
         return <Row key={item.id} title={item.label}
           actions={<>
             {visibleIds.has(item.id) && <FormButton type="button" variant="outline" disabled={task.busy}
-              onClick={() => open(item.id)}>{t.open}</FormButton>}
+              onClick={() => open(item.id)}>{t.openWebsite}</FormButton>}
             {entry && <FormButton type="button" variant="outline" disabled={task.busy || !!editing}
               onClick={() => { task.setError(''); setEditing(entry) }}>{t.edit}</FormButton>}
           </>}/>

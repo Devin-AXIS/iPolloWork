@@ -141,6 +141,13 @@ test("organization assets enforce member and department grants, and project owne
     assert.equal((await http(websites + "/manage", owner.token, { revision: 1, items: [] }, "PUT")).status, 200);
     assert.equal((await http(target, design.token)).status, 404);
 
+    const retiredDepartment = await dep("临时部门");
+    const retiredPortal = { ...portal, id: randomUUID(), departmentId: retiredDepartment };
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 2, items: [retiredPortal] }, "PUT")).status, 200);
+    assert.equal((await http(base + "/departments/" + retiredDepartment, owner.token, undefined, "DELETE")).status, 200);
+    assert.equal((await http(websites + "/manage", owner.token, { revision: 3, items: [retiredPortal, portal] }, "PUT")).status, 200);
+    assert.deepEqual((await http(websites, design.token)).data, { items: [{ id: portal.id, label: portal.label }] });
+
     const secured = { title:"Selected project", enterpriseId:enterprise, nativeId:"selected-test",
       access:{mode:"selected",grants:[{kind:"member",subjectId:design.id,role:"participate"}]} };
     const securedProject = await http<{id:string}>("/api/v1/projects/with-access",owner.token,secured);

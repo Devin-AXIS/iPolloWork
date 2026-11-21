@@ -2,7 +2,7 @@ import type { ClientContext } from "./native.ts";
 import { language } from "./locale.ts";
 const en = {
   batchInvite: "Invite by email", batchHint: "One email per line. Invitations use the selected department and role.", batchEmails: "Employee emails", invitationDays: "Valid for (days)", invitationLinks: "Invitation links",
-  organizationWebsites: "Organization websites", addWebsite: "Add website", websiteUrl: "Website URL",
+  organizationWebsites: "Organization websites", addWebsite: "Add website", openWebsite: "Open website", websiteUrl: "Website URL",
   websiteDepartment: "Visible department", websiteRole: "Visible role", websiteAllDepartments: "All departments",
   websiteAllRoles: "All roles", websiteOwner: "Owner", websiteDepartmentUnavailable: "Department unavailable",
   noOrganizationWebsites: "No websites available", removeWebsite: "Remove website",
@@ -504,7 +504,7 @@ const en = {
 };
 const zh: typeof en = {
   batchInvite: "批量邮箱邀请", batchHint: "每行一个员工邮箱，使用当前选择的部门和角色。", batchEmails: "员工邮箱", invitationDays: "有效天数", invitationLinks: "邀请链接",
-  organizationWebsites: "组织网页入口", addWebsite: "添加网页入口", websiteUrl: "网页地址",
+  organizationWebsites: "组织网页入口", addWebsite: "添加网页入口", openWebsite: "打开网页", websiteUrl: "网页地址",
   websiteDepartment: "可见部门", websiteRole: "可见角色", websiteAllDepartments: "全部部门",
   websiteAllRoles: "全部角色", websiteOwner: "所有者", websiteDepartmentUnavailable: "部门已不可用",
   noOrganizationWebsites: "暂无可用网页入口", removeWebsite: "移除网页入口",

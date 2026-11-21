@@ -68,7 +68,9 @@ export function mountOrganizationWebsites(app: App, store: Store, settings: Sett
       const current = await read(id);
       if (current.revision !== update.revision)
         throw new ServiceError("ORGANIZATION_WEBSITES_CONFLICT", 409, "网页入口已经更新，请重新加载");
-      const departmentIds = [...new Set(update.items.flatMap(item => item.departmentId ? [item.departmentId] : []))];
+      const existingDepartments = new Map(current.items.map(item => [item.id, item.departmentId]));
+      const departmentIds = [...new Set(update.items.flatMap(({ id, departmentId }) =>
+        departmentId && departmentId !== existingDepartments.get(id) ? [departmentId] : []))];
       if (departmentIds.length) {
         const placeholders = departmentIds.map(() => "?").join(",");
         const choices = await store.all(`SELECT id FROM departments WHERE enterprise_id=? AND id IN (${placeholders})`, id, ...departmentIds);
