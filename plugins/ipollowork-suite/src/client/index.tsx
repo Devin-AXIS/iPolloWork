@@ -5,6 +5,7 @@ import type { SuiteInfo, MarketState, MarketEntry } from '../shared/types.ts'
 import { request } from './api.ts'
 import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
+import { brandAttribute } from '../../../custom-appearance/src/model.ts'
 import { mountCurrentVersion } from './desktop-version.tsx'
 import { MarketPanel } from './market.tsx'
 import { MarketInstallation } from './market-installation.ts'
@@ -118,7 +119,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     const props = () => ({ refresh: account.refresh, signIn: account.signIn, signUp: account.signUp, signOut: account.signOut, bindSettings: account.bindSettings, hooks: { labels, account } })
     if (info.dedicatedDesktop) {
       const { mountDesktopOnboarding } = await import('./desktop-onboarding.ts')
-      document.title = 'iPolloWork'
+      if (!document.documentElement.hasAttribute(brandAttribute)) document.title = 'iPolloWork'
       ctx.effect(() => ctx.remote.$on('credentials/record-updated', () => { void account.refresh() }),
         'ipollowork-suite: native account changes')
       mountDesktopOnboarding(ctx, account)

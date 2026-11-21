@@ -23,6 +23,7 @@ export interface ClientContext {
   }) => void): unknown;
   configForms: import('@deepseek-ai/dsh-client-ui-settings/client').ConfigForms;
   provide(name: 'ipolloConnections', value: import('../shared/connections.ts').ConnectionManager): void;
+  provide(name: 'ipolloSuiteThemeReady', value: true): void;
   provide(name: 'ipolloData', value: import('../shared/app-data.ts').IpolloData): void;
   provide(name: 'ipolloProjectConversationShare', value: import('../shared/enterprise.ts').ProjectConversationShare): void;
   effect(effect: () => void | (() => void), label?: string): unknown;

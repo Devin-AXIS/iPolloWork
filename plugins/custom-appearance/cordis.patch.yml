@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-custom-appearance
+      name: '@ipollo/dsh-custom-appearance'

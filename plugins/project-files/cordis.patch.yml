@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-project-files
+      name: '@ipollo/dsh-project-files'
