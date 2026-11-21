@@ -127,6 +127,45 @@
           }
         }
       ]
+    },
+    {
+      "name": "@ipollo/dsh-enterprise-connector",
+      "title": {
+        "en": "Enterprise connector",
+        "zh": "企业连接器"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "en": "Join an iPollo Enterprise Server, keep your enterprise session active, and open authorized company websites.",
+        "zh": "连接企业服务、自动续期，并打开有权限访问的企业网页入口。"
+      },
+      "repository": {
+        "url": "https://github.com/Devin-AXIS/iPolloWork",
+        "directory": "plugins/ipollo-enterprise"
+      },
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "enterprise",
+          "organization",
+          "企业"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.1",
+          "publishTimestamp": 1795232889,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/Devin-AXIS/iPolloWork.git",
+            "commit": "f948b323d97bbb0e823b0b9f0bec17bf6286e6da",
+            "path": "plugins/ipollo-enterprise"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ]
     }
   ]
 }
