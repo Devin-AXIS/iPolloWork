@@ -1,3 +1,4 @@
+import { mountOrganizationWebsites } from "./organization-websites.js";
 import { mountProjectBoard } from "./project-board.js";
 import { mountMarket } from './market.js';
 import { Admission } from './admission.js';
@@ -465,6 +466,7 @@ export async function createService(config: Config) {
     mountEnterpriseAssets(app, store, storage, config);
     mountEnterpriseMcp(app, store, settings, config.secret, undefined, config.origin);
     mountEnterprise(app, store, config, cloud, organizationMembers);
+    mountOrganizationWebsites(app, store, settings);
     mountOrganizationPublications(app, store);
     mountOrganizationConversations(app, store);
     organizationMembers.mount(app);

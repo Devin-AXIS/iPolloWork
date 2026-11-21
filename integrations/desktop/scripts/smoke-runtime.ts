@@ -253,7 +253,7 @@ export function apply(ctx) {
       }
       const rows = inventory.result.value?.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
       const optionalModules = new Set(['@ipollo/dsh-suite/aliyun-sandbox', '@ipollo/dsh-suite/cloud'])
-      const subplugins = ['notification-center', 'collaboration-board'].map(name => {
+      const subplugins = ['notification-center', 'collaboration-board', 'project-files', 'custom-appearance'].map(name => {
         const suffix = '/dsh-suite/lib/subplugins/' + name + '/host.js'
         return inventory.result.value?.filter(row => row.moduleName.endsWith(suffix)) ?? []
       })

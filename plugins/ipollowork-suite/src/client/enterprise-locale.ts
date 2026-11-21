@@ -2,6 +2,11 @@ import type { ClientContext } from "./native.ts";
 import { language } from "./locale.ts";
 const en = {
   batchInvite: "Invite by email", batchHint: "One email per line. Invitations use the selected department and role.", batchEmails: "Employee emails", invitationDays: "Valid for (days)", invitationLinks: "Invitation links",
+  organizationWebsites: "Organization websites", addWebsite: "Add website", websiteUrl: "Website URL",
+  websiteDepartment: "Visible department", websiteRole: "Visible role", websiteAllDepartments: "All departments",
+  websiteAllRoles: "All roles", websiteOwner: "Owner", websiteDepartmentUnavailable: "Department unavailable",
+  noOrganizationWebsites: "No websites available", removeWebsite: "Remove website",
+  websiteConflict: "The website list has changed. Reload it before saving.", websiteUnavailable: "This website is unavailable or your access has changed.",
   identityNotifications: "Member change notifications", notificationEndpoint: "HTTPS receiver", notificationEnabled: "Send member changes", notificationSecret: "Signing secret — copy once to your receiver", rotateSecret: "Rotate signing secret",
   credentialMode: "API key ownership", sharedKey: "Organization key", memberKey: "Each member supplies a key",
   ownKey: "My API key", clearKey: "Remove my key", memberKeyHint: "Your key is used only for this organization's projects. Other members cannot read it.",
@@ -499,6 +504,11 @@ const en = {
 };
 const zh: typeof en = {
   batchInvite: "批量邮箱邀请", batchHint: "每行一个员工邮箱，使用当前选择的部门和角色。", batchEmails: "员工邮箱", invitationDays: "有效天数", invitationLinks: "邀请链接",
+  organizationWebsites: "组织网页入口", addWebsite: "添加网页入口", websiteUrl: "网页地址",
+  websiteDepartment: "可见部门", websiteRole: "可见角色", websiteAllDepartments: "全部部门",
+  websiteAllRoles: "全部角色", websiteOwner: "所有者", websiteDepartmentUnavailable: "部门已不可用",
+  noOrganizationWebsites: "暂无可用网页入口", removeWebsite: "移除网页入口",
+  websiteConflict: "网页入口已更新，请重新加载后保存。", websiteUnavailable: "网页入口已移除或你的权限已变更。",
   identityNotifications: "身份变更通知", notificationEndpoint: "HTTPS 接收地址", notificationEnabled: "发送成员变更通知", notificationSecret: "签名密钥，请复制到接收系统，仅此次显示", rotateSecret: "更换签名密钥",
   credentialMode: "凭证模式", sharedKey: "组织共用 Key", memberKey: "每位成员填写自己的 Key",
   ownKey: "我的 API Key", clearKey: "删除我的 Key", memberKeyHint: "仅用于本组织的项目，其他成员无法读取你的 Key。",
@@ -982,6 +992,8 @@ export function format(
   );
 }
 export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.operationFailed): string {
+  if (code === "ORGANIZATION_WEBSITES_CONFLICT" || code === "IPW_ORGANIZATION_WEBSITES_CONFLICT") return t.websiteConflict;
+  if (code === "ORGANIZATION_WEBSITE_UNAVAILABLE" || code === "IPW_ORGANIZATION_WEBSITE_UNAVAILABLE") return t.websiteUnavailable;
   const diagnostic = /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? ` (${code})` : '';
   if (code === 'IPW_ACCOUNT_UNAVAILABLE') return t.accountUnavailable + diagnostic;
   if (code === 'IPW_ACCOUNT_TIMEOUT') return t.accountTimeout + diagnostic;

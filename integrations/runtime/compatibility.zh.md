@@ -18,6 +18,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 
 | 功能与产品代码 | DSH 依赖 | 验证 |
 | --- | --- | --- |
+| [组织网页入口](../../plugins/ipollowork-suite/src/client/organization-websites.tsx) | 复用组织设置页面和当前 DSH 连接身份下的套件 Host 接口，由 Work 账号服务判定可见性，并在打开时解析网址。 | 用管理员账号添加按部门和角色授权的链接，用有权限的成员账号打开。修改成员权限后，确认此前显示的入口也无法继续打开。检查深浅主题和窄窗口。 |
 | [插件后台安装](../../plugins/ipollowork-suite/src/client/market-installation.ts)与[原生添加插件入口](../../plugins/ipollowork-suite/src/client/add-plugin.ts) | DSH Plugin Manager 的安装请求 ID、`plugin-manager/install-state`、`plugin-manager/changed`、连接重置、`shell.overlay`、`plugins.tab`。原生工具栏的 DOM 是额外依赖，涉及 `data-plugin-toolbar`、菜单角色和本地化标签。 | 分别从工具栏主按钮、下拉菜单和市场开始安装。关闭弹窗并切换页面，确认安装继续、重新打开可见进度、安装结束按钮自动刷新。上游提供可替换的安装入口后移除 DOM 拦截。 |
 | 原生会话归档与工作区移除 | 会话菜单、归档确认、已归档筛选、取消归档和工作区移除均由 DSH 负责。产品回收站、额外删除入口、移除工作区后的归档监听和归档文件 IPC 已在 `dsh-v0.2.2-rc.3` 上移除。已有归档数据继续由 DSH 管理。 | 确认侧栏没有产品回收站，会话菜单没有额外删除入口。通过 DSH 归档和取消归档，再移除可丢弃的测试工作区，核对原生行为。 |
 | [组织资源共享](../../services/ipollowork/src/organization-publications.ts) | Work 保存审核过的插件包名和固定版本，DSH 插件管理器负责检查、确认及安装。已发布且授权的 Skill 进入 DSH 技能注册表。成员打开组织或资源页时刷新授权，Host 也在后台定期刷新。 | 成员保持登录时发布版本。打开资源页，在新会话用原生斜杠菜单选择 Skill。验证撤回授权会移除对应 Skill，插件由原生管理器检查且初始禁用。 |
