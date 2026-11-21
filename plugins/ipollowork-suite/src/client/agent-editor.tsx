@@ -2,6 +2,7 @@
 import { useEffect, useId, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { FormButton, OptionMenu, TextArea, TextInput } from '../../../_shared/ui/controls.tsx'
 import type { AgentItem, AgentService, AgentModelChoice, AgentModelOption } from '../shared/agents.ts'
 import type { AgentLabels } from './agent-locale.ts'
 import css from './suite.module.css'
@@ -34,19 +35,31 @@ export function AgentEditor({ t, draft, busy, error, services, skills, models, m
   const options = skills.filter(skill => `${skill.name} ${skill.description}`.toLowerCase().includes(skillSearch.toLowerCase()))
   useEffect(() => { setSkillSearch(''); setExtra(false) }, [draft.id])
   const example = (kind: 'research' | 'writing' | 'review') => onChange({ ...draft, name: t[`${kind}Name`], prompt: t[`${kind}Prompt`] })
-  return <Modal open title={draft.id ? t.editTitle : t.createTitle} closeLabel={t.close} onClose={() => { if (!busy) onClose() }} className={`${css.page} ${css.agentDialog}`} contentClassName={css.agentDialogContent!} description={t.basicsHint}
-    footer={<><button className={css.secondary} disabled={busy} onClick={onClose}>{t.cancel}</button><button className={css.primary} form={formId} type="submit" disabled={busy || avatarBusy || !draft.name.trim()}>{busy ? t.working : t.save}</button></>}>
+  const selectedModel = modelKey(draft.model)
+  const modelsForSelect = [
+    { id: '', label: t.followModel },
+    ...(draft.model && !models.some(model => modelKey(model) === selectedModel)
+      ? [{ id: selectedModel, label: `${draft.model.model} · ${t.unavailable}` }] : []),
+    ...models.map(model => ({ id: modelKey(model), label: `${model.providerName} · ${model.name}` })),
+  ]
+  return <Modal open title={draft.id ? t.editTitle : t.createTitle} closeLabel={t.close} onClose={() => { if (!busy) onClose() }} className={`${css.page} ${css.agentDialog} ipw-frosted`} contentClassName={css.agentDialogContent!} description={t.basicsHint}
+    footer={<><FormButton variant="outline" disabled={busy} onClick={onClose}>{t.cancel}</FormButton><FormButton variant="primary" form={formId} type="submit" disabled={busy || avatarBusy || !draft.name.trim()}>{busy ? t.working : t.save}</FormButton></>}>
     <form id={formId} className={css.agentFields} onSubmit={event => { event.preventDefault(); if (!avatarBusy && !busy) onSave() }}>
       <AvatarPicker name={draft.name} value={draft.avatar} disabled={busy} t={t} onProcessing={setAvatarBusy} onChange={avatar => onChange(current => ({ ...current, avatar }))} />
       {!draft.id && <div className={css.agentExamples}><span>{t.examples}</span>{(['research', 'writing', 'review'] as const).map(kind => <button type="button" className={css.secondary} key={kind} disabled={busy} onClick={() => example(kind)}>{t[kind]}</button>)}</div>}
-      <label>{t.name}<input required maxLength={100} placeholder={t.nameHint} value={draft.name} disabled={busy} onChange={event => change('name', event.target.value)} /></label>
-      <label>{t.prompt}<textarea rows={5} placeholder={t.promptHint} value={draft.prompt} disabled={busy} maxLength={32000} onChange={event => change('prompt', event.target.value)} /></label>
-      <label>{t.model}<select aria-label={t.model} value={modelKey(draft.model)} disabled={busy} onChange={event => {
-        const selected = models.find(model => modelKey(model) === event.target.value)
-        change('model', selected ? { provider: selected.provider, model: selected.model } : null)
-      }}><option value="">{t.followModel}</option>{draft.model && !models.some(model => modelKey(model) === modelKey(draft.model)) && <option value={modelKey(draft.model)}>{draft.model.model} · {t.unavailable}</option>}{models.map(model => <option key={modelKey(model)} value={modelKey(model)}>{model.providerName} · {model.name}</option>)}</select><small className={css.muted}>{draft.model ? t.fixedModelHint : t.followModelHint}</small>{modelsUnavailable && <small className={css.muted}>{t.modelsUnavailable}</small>}</label>
+      <label>{t.name}<TextInput required maxLength={100} placeholder={t.nameHint} value={draft.name} disabled={busy} onChange={event => change('name', event.target.value)} /></label>
+      <label>{t.prompt}<TextArea rows={5} placeholder={t.promptHint} value={draft.prompt} disabled={busy} maxLength={32000} onChange={event => change('prompt', event.target.value)} /></label>
+      <div className={css.agentField}>
+        <span>{t.model}</span>
+        <OptionMenu label={t.model} value={selectedModel} choices={modelsForSelect} disabled={busy} change={value => {
+          const selected = models.find(model => modelKey(model) === value)
+          change('model', selected ? { provider: selected.provider, model: selected.model } : null)
+        }} />
+        <small className={css.muted}>{draft.model ? t.fixedModelHint : t.followModelHint}</small>
+        {modelsUnavailable && <small className={css.muted}>{t.modelsUnavailable}</small>}
+      </div>
       <details className={css.agentCapability}><summary><span>{t.skills}</span><span>{draft.skillNames.length ? `${draft.skillNames.length} ${t.selected}` : t.optional}</span></summary>
-        <p className={css.muted}>{t.skillsHint}</p><input type="search" aria-label={t.searchSkills} placeholder={t.searchSkills} value={skillSearch} onChange={event => setSkillSearch(event.target.value)} />
+        <p className={css.muted}>{t.skillsHint}</p><TextInput type="search" aria-label={t.searchSkills} placeholder={t.searchSkills} value={skillSearch} onChange={event => setSkillSearch(event.target.value)} />
         <div className={css.agentOptions}>{options.map(skill => <label key={skill.name} className={css.agentCheck} title={skill.description}><input type="checkbox" checked={draft.skillNames.includes(skill.name)} disabled={busy} onChange={event => toggle('skillNames', skill.name, event.target.checked)} /><span>{skill.name}<small>{skill.description}</small></span></label>)}{!options.length && <p className={css.muted}>{t.noSkills}</p>}</div>
       </details>
       <details className={css.agentCapability}><summary><span>{t.services}</span><span>{draft.serviceNames.length ? `${draft.serviceNames.length} ${t.selected}` : t.optional}</span></summary>
@@ -57,7 +70,7 @@ export function AgentEditor({ t, draft, busy, error, services, skills, models, m
         {draft.mcp.length > 0 && <p className={css.muted}>{t.legacy}</p>}
       </details>
       <button className={css.textAction} type="button" aria-expanded={extra} onClick={() => setExtra(!extra)}>{t.more}</button>
-      {extra && <><label>{t.description} · {t.optional}<input maxLength={1000} value={draft.description} disabled={busy} onChange={event => change('description', event.target.value)} /></label><label className={css.agentCheck}><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => change('enabled', event.target.checked)} />{t.enabled}</label></>}
+      {extra && <><label>{t.description} · {t.optional}<TextInput maxLength={1000} value={draft.description} disabled={busy} onChange={event => change('description', event.target.value)} /></label><label className={css.agentCheck}><input type="checkbox" checked={draft.enabled} disabled={busy} onChange={event => change('enabled', event.target.checked)} />{t.enabled}</label></>}
       {error && <p className={css.error} role="alert">{error}</p>}
     </form>
   </Modal>

@@ -1,16 +1,15 @@
 /** Shared avatar presentation and a cancellable local-image upload. */
 import { useEffect, useRef, useState } from 'react'
 import { IconUsersOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Avatar } from '../../../_shared/ui/controls.tsx'
 import { AVATAR_MAX_DATA_URL_LENGTH, AVATAR_MAX_UPLOAD_BYTES, AVATAR_SIZE } from '../shared/avatar.ts'
 import type { AgentLabels } from './agent-locale.ts'
 import css from './suite.module.css'
 
 /** Display a saved image, retaining the initial when the image cannot decode. */
 export function BotAvatar({ name, avatar, large = false }: { name: string; avatar?: string | undefined; large?: boolean }) {
-  const [failed, setFailed] = useState<string>()
-  return <span className={`${css.botAvatar} ${large ? css.botAvatarLarge : ''}`} aria-hidden="true">
-    {avatar && failed !== avatar ? <img src={avatar} alt="" onError={() => setFailed(avatar)} /> : Array.from(name)[0] || <IconUsersOutlineRegular size={24} />}
-  </span>
+  return <Avatar photo={avatar} className={large ? css.botAvatarLarge! : css.botAvatar!}
+    fallback={Array.from(name)[0] || <IconUsersOutlineRegular size={24} />} />
 }
 
 /** Decode locally, crop the center square and encode a compact raster preview.

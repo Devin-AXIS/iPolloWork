@@ -1,3 +1,4 @@
+import { FormButton, FormSelect, SegmentedControl, TextInput } from '../../../_shared/ui/controls.tsx'
 import { MarketAdd } from './market-add.tsx'
 /** Native plugin-page tab. Installation and component management stay with DSH. */
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
@@ -80,17 +81,17 @@ export function MarketPanel({ useLabels, load, installation, openPackage, add, d
       <div className={css.heading}>
         <div><h1>{t.market}</h1><p>{t.intro}</p></div>
         <div className={css.marketAdminActions}>
-          <button className={css.secondary} onClick={installation.invalidate} disabled={loading}>{t.refresh}</button>
-          {data?.canManage && !enterprise && add && discover && <button className={css.primary} onClick={() => setAdding(true)}>{t.marketAdd}</button>}
+          <FormButton variant="outline" onClick={installation.invalidate} disabled={loading}>{t.refresh}</FormButton>
+          {data?.canManage && !enterprise && add && discover && <FormButton variant="primary" onClick={() => setAdding(true)}>{t.marketAdd}</FormButton>}
         </div>
       </div>
       <div className={css.toolbar}>
-        <div className={css.segmented} role="group" aria-label={t.market}>
-          <button aria-pressed={!enterprise} onClick={() => setEnterprise(false)}>{t.public}</button><button aria-pressed={enterprise} onClick={() => setEnterprise(true)}>{t.enterprise}</button>
-        </div>
+        <SegmentedControl label={t.market} value={enterprise ? 'enterprise' : 'public'}
+          options={[{id: 'public', label: t.public}, {id: 'enterprise', label: t.enterprise}]}
+          change={section => setEnterprise(section === 'enterprise')}/>
         {!enterprise && <div className={css.filters}>
-          <input className={css.search} type="search" placeholder={t.search} aria-label={t.search} value={query} onChange={event => setQuery(event.target.value)}/>
-          <select aria-label={t.all} value={category} onChange={event => setCategory(event.target.value)}><option value="">{t.all}</option>{data?.categories.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>
+          <TextInput className={css.search!} type="search" placeholder={t.search} aria-label={t.search} value={query} onChange={event => setQuery(event.target.value)}/>
+          <FormSelect aria-label={t.all} value={category} onChange={event => setCategory(event.target.value)}><option value="">{t.all}</option>{data?.categories.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</FormSelect>
         </div>}
       </div>
       {enterprise ? <p className={css.empty}>{t.enterpriseEmpty}</p> : loading && !data ? <div role="status" className={css.skeletonList}>

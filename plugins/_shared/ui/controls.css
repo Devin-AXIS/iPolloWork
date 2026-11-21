@@ -1,0 +1,339 @@
+/* These tokens and surfaces apply only to iPolloWork plugin UI. */
+body {
+  --ipw-control-height: 32px;
+  --ipw-control-radius: 999px;
+  --ipw-field-fill: color-mix(in srgb, var(--dsw-alias-label-primary) 3%, var(--dsw-alias-bg-layer-1));
+  --ipw-edge: color-mix(in srgb, var(--dsw-alias-bg-base) 90%, var(--dsw-alias-bg-layer-1));
+  --ipw-hairline: color-mix(in srgb, var(--dsw-alias-label-primary) 9%, transparent);
+}
+body[data-ds-dark-theme] {
+  --ipw-edge: color-mix(in srgb, var(--dsw-alias-label-primary) 9%, var(--dsw-alias-bg-layer-1));
+}
+.ipw-control:is(span, div, button, textarea, select) {
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: var(--ipw-control-height);
+  padding-inline: 9px;
+  border: 0;
+  border-radius: var(--ipw-control-radius);
+  corner-shape: round;
+  background: var(--ipw-field-fill);
+  box-shadow: inset 0 0 0 .5px var(--ipw-hairline);
+  color: var(--dsw-alias-label-primary);
+  font: inherit;
+  font-size: 13px;
+}
+.ipw-control:focus-within {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dsw-alias-label-primary) 28%, transparent);
+}
+.ipw-control:has(:disabled), .ipw-control:disabled { opacity: .55; }
+.ipw-control:is(span, div) input { width: 100%; min-width: 0; padding: 0; font: inherit; }
+.ipw-text-input input:focus-visible { outline: none; }
+html[data-input-modality="keyboard"] .ipw-text-input:focus-within {
+  outline: 1px solid var(--dsw-focus-ring-color, var(--dsw-alias-label-secondary));
+  outline-offset: 1px;
+}
+.ipw-control :is(input,textarea)::placeholder, textarea.ipw-control::placeholder {
+  color: var(--dsw-alias-label-secondary);
+  opacity: .88;
+  font-weight: 400;
+}
+textarea.ipw-text-area { width: 100%; min-height: 84px; padding: 8px 12px; border-radius: 14px; resize: vertical; }
+.ipw-form-select { width: 100%; height: var(--ipw-control-height); }
+@media (pointer: coarse) {
+  .ipw-control:is(textarea, select), .ipw-control:is(span, div) input { font-size: 16px; }
+}
+button.ipw-form-button[data-ipw-variant] {
+  height: var(--ipw-control-height);
+  min-height: var(--ipw-control-height);
+  border-radius: var(--ipw-control-radius);
+  corner-shape: round;
+  font-size: 12px;
+  font-weight: 500;
+}
+button.ipw-form-button[data-ipw-variant="outline"] {
+  background: var(--ipw-edge);
+  box-shadow: inset 0 0 0 .5px var(--ipw-hairline);
+}
+button.ipw-form-button[data-ipw-variant="primary"] {
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-base);
+  box-shadow: 0 1px 2px var(--dsw-alias-border-l1);
+}
+button.ipw-form-button[data-ipw-variant="primary"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 86%, var(--dsw-alias-bg-base));
+}
+:is(dialog, div).ipw-frosted {
+  background: var(--dsw-alias-bg-layer-1);
+  box-shadow: var(--dsw-elevation-panel);
+}
+@supports (backdrop-filter: blur(1px)) {
+  :is(dialog, div).ipw-frosted {
+    background: color-mix(in srgb, var(--dsw-alias-bg-layer-1) var(--ipw-frosted-opacity, 94%), transparent);
+    backdrop-filter: blur(6px);
+  }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :is(dialog, div).ipw-frosted { background: var(--dsw-alias-bg-layer-1); backdrop-filter: none; }
+}
+
+.ipw-setting-switch { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 13px; }
+
+.ipw-segmented, .ipw-tab-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px;
+  border-radius: var(--ipw-control-radius);
+  corner-shape: round;
+  background: var(--ipw-field-fill);
+}
+.ipw-segmented button.ipw-segment, .ipw-tab-strip > button[role="tab"] {
+  min-width: 0;
+  min-height: 26px;
+  height: auto;
+  padding: 4px 9px;
+  border: 0;
+  border-radius: var(--ipw-control-radius);
+  corner-shape: round;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+.ipw-segmented button.ipw-segment[aria-pressed="true"],
+.ipw-segmented button.ipw-segment[aria-pressed="true"]:hover,
+.ipw-tab-strip > button[role="tab"][aria-selected="true"] {
+  background: var(--ipw-edge);
+  color: var(--dsw-alias-label-primary);
+  box-shadow: 0 1px 3px var(--dsw-alias-border-l2);
+}
+.ipw-segmented button.ipw-segment:disabled { opacity: .5; }
+.ipw-tab-strip {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ipw-tab-strip > button[role="tab"] { flex: 0 0 auto; cursor: pointer; }
+.ipw-tab-strip > button[role="tab"]:focus-visible { outline-offset: -2px; }
+.ipw-tab-strip > button[role="tab"]:hover { color: var(--dsw-alias-label-primary); }
+
+.ipw-segment-count { color: var(--dsw-alias-label-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+.ipw-field-menu { display: grid; min-width: 0; }
+.ipw-field-layer .ipw-menu-body { display: block; width: 100%; }
+.ipw-field-layer .ipw-menu-body .ipw-field-options {
+  position: relative;
+  inset: auto;
+  min-width: 0;
+  width: 100%;
+  max-width: none;
+  max-height: min(256px, calc(100dvh - 24px));
+  border-radius: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.ipw-field-layer .ipw-field-options button[role="menuitem"] { min-height: 28px; padding-inline: 8px; border-radius: 999px; font-size: 12px; }
+button.ipw-control.ipw-select-trigger {
+  display: flex;
+  justify-content: space-between;
+  height: var(--ipw-control-height);
+  padding-block: 0;
+  font-variant-numeric: tabular-nums;
+}
+.ipw-select-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ipw-select-trigger svg { color: var(--dsw-alias-label-secondary); }
+.ipw-schedule { display: grid; gap: 8px; min-width: 0; }
+.ipw-date-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ipw-control.ipw-date-control { display: flex; align-items: center; padding-inline: 7px 4px; gap: 1px; }
+
+.ipw-date-control .ipw-date-entry, .ipw-custom-time-entry .ipw-date-entry {
+  flex: 1;
+  min-width: 0;
+  height: calc(var(--ipw-control-height) - 2px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.ipw-date-entry input { width: 100%; min-width: 0; padding: 0; font: inherit; font-variant-numeric: tabular-nums; }
+.ipw-date-entry input::-webkit-calendar-picker-indicator { display: none; }
+.ipw-date-field { min-width: 0; display: grid; align-content: start; gap: 4px; }
+.ipw-date-label { color: var(--dsw-alias-label-secondary); font-size: 13px; font-weight: 500; line-height: 1.3; }
+.ipw-date-field button.ipw-date-icon-button, .ipw-custom-time-entry button.ipw-date-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  min-height: 22px;
+  flex: none;
+  border-radius: 50%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+}
+.ipw-field-layer:popover-open {
+  --ipw-popover-width: 240px;
+  position: fixed;
+  width: min(var(--ipw-popover-width), calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  overflow: auto;
+  color: inherit;
+  box-shadow: var(--dsw-elevation-panel);
+}
+.ipw-field-layer[data-width="time"]:popover-open { --ipw-popover-width: 136px; }
+@supports (position-anchor: --ipw-date-anchor) {
+  .ipw-field-layer:popover-open {
+    inset: auto;
+    top: calc(anchor(bottom) + 5px);
+    left: clamp(12px, anchor(left), max(12px, calc(100vw - var(--ipw-popover-width) - 12px)));
+    right: auto;
+    margin: 0;
+    position-try-fallbacks: --ipw-field-above, --ipw-field-window;
+  }
+  .ipw-field-layer[data-width="anchor"]:popover-open {
+    width: anchor-size(width, 128px);
+    left: anchor(left);
+  }
+}
+@position-try --ipw-field-above {
+  top: auto;
+  bottom: calc(anchor(top) + 5px);
+}
+@position-try --ipw-field-window {
+  top: 12px;
+  bottom: auto;
+}
+.ipw-date-pop { min-width: 0; padding: 9px 8px; border-radius: 16px; }
+.ipw-calendar-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.ipw-calendar-picker-head strong { padding: 4px 9px; font-size: 12px; font-weight: 500; }
+.ipw-calendar-picker-grid { display: grid; grid-template-columns: repeat(7,minmax(0,1fr)); justify-items: center; align-items: center; gap: 3px; }
+.ipw-calendar-picker-weekday { color: var(--dsw-alias-label-secondary); font-size: 10px; text-align: center; padding-block: 3px; }
+.ipw-calendar-adjacent { color: var(--dsw-alias-label-tertiary); font-size: 11px; }
+.ipw-calendar-picker-grid button.ipw-calendar-pick-day {
+  position: relative;
+  width: 27px;
+  height: 27px;
+  min-width: 0;
+  min-height: 27px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  corner-shape: round;
+  background: transparent;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.ipw-calendar-picker-grid button.ipw-calendar-pick-day:hover { background: var(--ipw-field-fill); }
+.ipw-calendar-picker-grid button.ipw-calendar-pick-day:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--dsw-alias-label-primary) 48%, transparent);
+  outline-offset: -1px;
+}
+.ipw-calendar-pick-day[aria-current="date"]::after {
+  position: absolute;
+  inset: auto calc(50% - 1.5px) 4px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+.ipw-calendar-picker-grid button.ipw-calendar-pick-day[aria-pressed="true"],
+.ipw-calendar-picker-grid button.ipw-calendar-pick-day[aria-pressed="true"]:hover {
+  background: var(--dsw-alias-label-primary);
+  color: var(--dsw-alias-bg-base);
+}
+.ipw-date-field button.ipw-date-clear {
+  margin-top: 5px;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 0;
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+}
+.ipw-time-range {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 3px;
+  border-radius: var(--ipw-control-radius);
+  corner-shape: round;
+  background: var(--ipw-edge);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.ipw-time-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1.18fr);
+  align-items: center;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+  padding-inline: 7px;
+  border-radius: var(--ipw-control-radius);
+  background: var(--ipw-field-fill);
+}
+.ipw-time-edge { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.ipw-time-edge > svg, .ipw-time-arrow { flex: none; color: var(--dsw-alias-label-secondary); }
+.ipw-time-part { flex: none; }
+.ipw-time-duration {
+  overflow: hidden;
+  color: var(--dsw-alias-label-secondary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ipw-time-range button:is(.ipw-inline-time, .ipw-time-clear) {
+  min-height: 28px;
+  height: 28px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: var(--ipw-control-radius);
+  background: transparent;
+  font: inherit;
+  font-weight: 500;
+}
+.ipw-time-range button.ipw-inline-time { font-size: 14px; }
+.ipw-time-range button.ipw-inline-time[data-empty] { font-size: 12px; }
+.ipw-time-range button.ipw-inline-time[data-empty],
+.ipw-time-range button.ipw-time-clear { color: var(--dsw-alias-label-secondary); }
+.ipw-time-range button.ipw-time-clear {
+  flex: none;
+  width: 27px;
+  padding: 0;
+  background: var(--ipw-field-fill);
+}
+.ipw-time-range button:is(.ipw-inline-time, .ipw-time-clear):hover:not(:disabled),
+.ipw-time-range button.ipw-inline-time[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--dsw-alias-label-primary) 7%, transparent);
+}
+.ipw-custom-time { padding: 4px 6px; border-radius: 13px; }
+.ipw-custom-time-entry { display: flex; align-items: center; gap: 3px; }
+
+.ipw-avatar {
+  --ipw-avatar-size: 26px;
+  position: relative; display: inline-grid; flex: none; place-items: center;
+  width: var(--ipw-avatar-size); height: var(--ipw-avatar-size);
+  border-radius: 50%; corner-shape: round; overflow: hidden;
+  font-size: 9px; font-weight: 500; line-height: 1; background: color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-layer-1));
+  color: var(--dsw-alias-label-primary); box-shadow: 0 1px 3px var(--dsw-alias-border-l1);
+}
+.ipw-avatar::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; corner-shape: inherit;
+  pointer-events: none; box-shadow: inset 0 0 0 .5px var(--dsw-alias-border-l2);
+}
+.ipw-avatar img {
+  width: 100%; height: 100%; display: block; object-fit: cover;
+  border-radius: inherit; corner-shape: inherit;
+}

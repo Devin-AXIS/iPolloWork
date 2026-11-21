@@ -1,51 +1,46 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import {
-  IconBranchOutlineRegular, IconCheckOutlineRegular, IconClockOutlineRegular,
-  IconCloseOutlineRegular, IconFlatListOutlineRegular, IconPanelLeftOutlineRegular, IconPlanOutlineRegular,
-  IconPlusOutlineRegular, IconSearchOutlineRegular,
+  Button, Input, MenuSurface,
+  IconCheckOutlineRegular, IconClockOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives';
+import { CalendarDays, Columns3, GanttChart, lineStroke, List, Plus, Search, X } from '../../_shared/ui/icons.ts';
+import { Avatar as SharedAvatar, Tag } from '../../_shared/ui/controls.tsx';
 import type { Copy } from './copy.ts';
 import type { View } from './model.ts';
 import { avatarInitial } from './avatar-initial.ts';
 
 export const viewIcons = {
-  board: IconPanelLeftOutlineRegular, list: IconFlatListOutlineRegular,
-  calendar: IconPlanOutlineRegular, timeline: IconBranchOutlineRegular,
-} satisfies Record<View, typeof IconPlanOutlineRegular>;
+  board: Columns3, list: List, calendar: CalendarDays, timeline: GanttChart,
+} satisfies Record<View, typeof CalendarDays>;
 
-export function Avatar({ name, photo, ai = false }: { name: string; photo?: string | undefined; ai?: boolean }) {
-  const [failed,setFailed] = useState<string>();
-  const hue = Array.from(name).reduce((sum, char) => (sum * 31 + char.codePointAt(0)!) % 5, 0);
-  return <span aria-hidden="true" className="cb-avatar" data-ai={ai} data-hue={hue}>
-    {photo && failed !== photo
-      ? <img src={photo} alt="" decoding="async" loading="lazy" referrerPolicy="no-referrer" onError={()=>setFailed(photo)} />
-      : avatarInitial(name)}
-  </span>;
+export function Avatar({ name, photo }: { name: string; photo?: string | undefined }) {
+  return <SharedAvatar className="cb-avatar" photo={photo} fallback={avatarInitial(name)} />;
 }
 
 export function SearchBox({ value, change, label, clear, inputRef, onKeyDown }: {
   value: string; change(value: string): void; label: string; clear: string;
   inputRef?: React.Ref<HTMLInputElement>; onKeyDown?(event: KeyboardEvent<HTMLInputElement>): void;
 }) {
-  return <div className="cb-search">
-    <IconSearchOutlineRegular size={16} aria-hidden="true" />
-    <input type="search" ref={inputRef} value={value} aria-label={label} placeholder={label} onKeyDown={onKeyDown}
+  return <div className="cb-search ipw-control">
+    <Input className="cb-search-entry" icon={<Search strokeWidth={lineStroke} size={16} aria-hidden="true" />}
+      type="search" ref={inputRef} value={value} aria-label={label} placeholder={label} onKeyDown={onKeyDown}
       onChange={event => change(event.target.value)} />
-    {value && <button type="button" className="cb-icon cb-ghost" aria-label={clear} onClick={() => change('')}>
-      <IconCloseOutlineRegular size={14} aria-hidden="true" />
-    </button>}
+    {value && <Button variant="ghost" size="sm" type="button" className="cb-icon cb-ghost" aria-label={clear} onClick={() => change('')}>
+      <X strokeWidth={lineStroke} size={14} aria-hidden="true" />
+    </Button>}
   </div>;
 }
 
 export type Choice = { id: string; name: string; avatar?: string; avatarName?: string; hint?: string; tag?: string; canView?: boolean; unavailable?: boolean; kind?: 'person' | 'ai' | 'task' };
 export function ChoiceIcon({ choice }: { choice: Choice }) {
   if (choice.kind === 'task') return <IconClockOutlineRegular size={15} aria-hidden="true" />;
-  return <Avatar name={choice.avatarName ?? choice.name} photo={choice.avatar} ai={choice.kind === 'ai'} />;
+  return <Avatar name={choice.avatarName ?? choice.name} photo={choice.avatar} />;
 }
 
 type ChoiceAction = { kind?: 'person' | 'ai'; label: string; text?: string; search: string; empty?: string; onOpen?(): void };
 
-export function ChoicePicker({ actions, choices, selected, choose, t, showChips = true }: {
+export function ChoicePicker({ heading, actions, choices, selected, choose, t, showChips = true }: {
+  heading: string;
   actions: readonly ChoiceAction[]; choices: Choice[]; selected: readonly string[];
   choose(id: string): void; t: Copy; showChips?: boolean;
 }) {
@@ -81,24 +76,27 @@ export function ChoicePicker({ actions, choices, selected, choose, t, showChips 
       close();
     }
   }}>
-    <div className="cb-picker-actions">
-      {actions.map((action, index) => <button key={action.label} type="button" className="cb-picker-trigger" data-kind={action.kind}
-        aria-label={action.label} aria-expanded={index === active} aria-controls={index === active ? panelId : undefined}
-        onClick={event => {
-          trigger.current = event.currentTarget;
-          setQuery('');
-          if(index !== active) action.onOpen?.();
-          setActive(index === active ? null : index);
-        }}>
-        <span>{action.text ?? action.label}</span><IconPlusOutlineRegular size={14} aria-hidden="true" />
-      </button>)}
+    <div className="cb-picker-head">
+      <h3 className="cb-section-title">{heading}</h3>
+      <div className="cb-picker-actions">
+        {actions.map((action, index) => <Button key={action.label} type="button" className="cb-picker-trigger" variant="ghost"
+          aria-label={action.label} aria-expanded={index === active} aria-controls={index === active ? panelId : undefined}
+          onClick={event => {
+            trigger.current = event.currentTarget;
+            setQuery('');
+            if(index !== active) action.onOpen?.();
+            setActive(index === active ? null : index);
+          }}>
+          <span>{action.text ?? action.label}</span><Plus strokeWidth={lineStroke} size={14} aria-hidden="true" />
+        </Button>)}
+      </div>
     </div>
     {showChips && current.length > 0 && <div className="cb-chips">{current.map(option =>
       <button key={option.id} type="button" className="cb-chip" onClick={() => choose(option.id)}
         aria-label={t.removeChoice.replace('{name}', option.name)}>
-        <ChoiceIcon choice={option} /><span>{option.name}</span><IconCloseOutlineRegular size={11} aria-hidden="true" />
+        <ChoiceIcon choice={option} /><span>{option.name}</span><X strokeWidth={lineStroke} size={11} aria-hidden="true" />
       </button>)}</div>}
-    {open && <div id={panelId} className="cb-picker-pop" role="group" aria-label={open.label}>
+    {open && <MenuSurface compact id={panelId} className="cb-picker-pop" role="group" aria-label={open.label}>
       <SearchBox label={open.search} clear={t.clearSearch} value={query} change={setQuery} inputRef={searchInput}
         onKeyDown={event => {
           if (event.key === 'Enter') event.preventDefault();
@@ -117,8 +115,8 @@ export function ChoicePicker({ actions, choices, selected, choose, t, showChips 
             <span className="cb-choice-profile">
               <span>{choice.name}</span>
               {choice.hint && <small>{choice.hint}</small>}
-              {choice.tag && <span className="cb-choice-tags"><small>{choice.tag}</small>
-                {choice.canView && <small>{t.canViewConversation}</small>}
+              {choice.tag && <span className="cb-choice-tags"><Tag tone="neutral">{choice.tag}</Tag>
+                {choice.canView && <Tag tone="neutral">{t.canViewConversation}</Tag>}
               </span>}
             </span>
             {active && <IconCheckOutlineRegular className="cb-option-check" size={15} aria-hidden="true" />}
@@ -126,6 +124,6 @@ export function ChoicePicker({ actions, choices, selected, choose, t, showChips 
         })}
       </div>
       <div className="cb-picker-footer"><button type="button" className="cb-ghost" onClick={close}>{t.doneChoosing}</button></div>
-    </div>}
+    </MenuSurface>}
   </div>;
 }

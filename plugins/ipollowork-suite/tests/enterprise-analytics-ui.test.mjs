@@ -13,7 +13,7 @@ test('analytics replaces stale data, retries errors and hides administrator data
   const dom = new JSDOM('<div id="root"></div>');
   const globals = {window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true};
   const saved = Object.fromEntries(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]));
-  const bundle = await build({entryPoints:['src/client/enterprise-analytics.tsx'],bundle:true,platform:'node',format:'cjs',write:false,outfile:'/tmp/analytics-ui.cjs',loader:{'.css':'empty','.module.css':'empty'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']});
+  const bundle = await build({ nodePaths: ['node_modules'],entryPoints:['src/client/enterprise-analytics.tsx'],bundle:true,platform:'node',format:'cjs',write:false,outfile:'/tmp/analytics-ui.cjs',loader:{'.css':'empty','.module.css':'empty'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']});
   const module = {exports:{}};
   runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,Intl,Date,require:name=>name==='@deepseek-ai/dsh-client-ui-primitives'?{IconRefreshOutlineRegular:()=>null,Button:({children,variant,size,...props})=>React.createElement('button',props,children)}:require(name)});
   const labels = new Proxy({}, {get:(_target,key)=>String(key)});

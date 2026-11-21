@@ -1,3 +1,4 @@
+import { Button, Input } from './native-form-primitives.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
@@ -8,13 +9,13 @@ import { JSDOM } from 'jsdom';
 const require=createRequire(import.meta.url);
 
 test('cloud mode appears only while available and does not invoke local directory creation',async()=>{
- const bundle=await build({entryPoints:['src/client/project-creation.tsx'],bundle:true,platform:'node',format:'cjs',write:false,loader:{'.css':'empty','.module.css':'empty'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']});
+ const bundle=await build({ nodePaths: ['node_modules'],entryPoints:['src/client/project-creation.tsx'],bundle:true,platform:'node',format:'cjs',write:false,loader:{'.css':'empty','.module.css':'empty'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']});
  const dom=new JSDOM('<div id="root"></div>',{url:'http://localhost'});
  const old={window:globalThis.window,document:globalThis.document,navigator:globalThis.navigator,IS_REACT_ACT_ENVIRONMENT:globalThis.IS_REACT_ACT_ENVIRONMENT};
  Object.defineProperties(globalThis,{window:{value:dom.window,configurable:true},document:{value:dom.window.document,configurable:true},navigator:{value:dom.window.navigator,configurable:true},IS_REACT_ACT_ENVIRONMENT:{value:true,configurable:true}});
  let enabled=true,localCreates=0;
  const module={exports:{}};
- runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,window:dom.window,crypto,AbortController,URL,fetch:async()=>({ok:true,json:async()=>({enabled})}),require:name=>name==='@deepseek-ai/dsh-client-ui-primitives'?{Modal:({children})=>React.createElement('div',{role:'dialog'},children)}:require(name)});
+ runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,window:dom.window,crypto,AbortController,URL,fetch:async()=>({ok:true,json:async()=>({enabled})}),require:name=>name==='@deepseek-ai/dsh-client-ui-primitives'?{Button,Input,Modal:({children})=>React.createElement('div',{role:'dialog'},children)}:require(name)});
  const labels=new Proxy({title:'组织空间',personal:'个人'},{get:(value,key)=>Reflect.get(value,key)??key});
  const props={open:true,useEnterpriseLabels:select=>select(labels),useEnterpriseState:select=>select({signedIn:true,loading:false,error:'',catalog:{enterprises:[]}}),refreshEnterprises:async()=>{},createProject:async()=>{localCreates++;},onCancel:()=>{}};
  const {createRoot}=await import('react-dom/client');

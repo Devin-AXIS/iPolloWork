@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import { FormButton, SettingSwitch, TextArea, TextInput } from '../../../_shared/ui/controls.tsx'
 import type { EnterpriseDetail } from '../shared/enterprise.ts'
 import type { EnterpriseController } from './enterprise-controller.ts'
 import type { EnterpriseLabels } from './enterprise-locale.ts'
@@ -40,8 +40,8 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
         }}>
           <div className={css.organizationProfileFields}>
             <div className={css.organizationProfileText}>
-              <Field label={t.name}><input required maxLength={120} disabled={task.busy} value={value} onChange={event => setName(event.target.value)}/></Field>
-              <Field label={t.organizationDescription}><textarea rows={3} maxLength={1000} disabled={task.busy} value={summary} onChange={event => setDescription(event.target.value)}/></Field>
+              <Field label={t.name}><TextInput required maxLength={120} disabled={task.busy} value={value} onChange={event => setName(event.target.value)}/></Field>
+              <Field label={t.organizationDescription}><TextArea rows={3} maxLength={1000} disabled={task.busy} value={summary} onChange={event => setDescription(event.target.value)}/></Field>
             </div>
             <div className={css.organizationBrand}>
               {shownLogo && <img className={css.organizationLogo} src={shownLogo} alt={t.organizationLogo}/>}
@@ -63,11 +63,11 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
                 }
                 reader.readAsDataURL(file)
               }}/>
-              {shownLogo && <div><Button variant="outline" type="button" disabled={task.busy} onClick={()=>{setLogo(null);setLogoFiles([])}}>{t.remove}</Button></div>}
+              {shownLogo && <div><FormButton variant="outline" type="button" disabled={task.busy} onClick={()=>{setLogo(null);setLogoFiles([])}}>{t.remove}</FormButton></div>}
             </div>
           </div>
           <FormError message={task.error}/>
-          <div className={css.organizationSettingsFooter}><Button type="submit" variant="primary" disabled={task.busy || !changed}>{t.save}</Button></div>
+          <div className={css.organizationSettingsFooter}><FormButton type="submit" variant="primary" disabled={task.busy || !changed}>{t.save}</FormButton></div>
         </form> : <>
           {shownLogo && <img className={css.organizationLogo} src={shownLogo} alt={t.organizationLogo}/>}
           <Row title={enterprise.name} meta={summary}/>
@@ -113,16 +113,15 @@ function WebhookForm({ path, t, call, initial }: { path: string; t: EnterpriseLa
   });
   const changed = endpoint.trim() !== saved.endpoint || enabled !== saved.enabled;
   return <form className={css.enterpriseForm} onSubmit={event => { event.preventDefault(); save(); }}>
-    <Field label={t.notificationEndpoint}><input type="url" maxLength={2048} required={enabled}
+    <Field label={t.notificationEndpoint}><TextInput type="url" maxLength={2048} required={enabled}
       value={endpoint} disabled={task.busy} onChange={event => setEndpoint(event.target.value)}/></Field>
-    <label><input type="checkbox" checked={enabled} disabled={task.busy}
-      onChange={event => setEnabled(event.target.checked)}/> {t.notificationEnabled}</label>
+    <SettingSwitch checked={enabled} disabled={task.busy} onChange={setEnabled} label={t.notificationEnabled}/>
     <FormError message={task.error}/>
     {confirmed && !changed && <p className={css.quietLine} role="status">{t.settingsSaved}</p>}
     {secret && <CopyLink url={secret} t={t} label={t.notificationSecret}/>}
     <div className={css.dialogFooter}>
-      {saved.configured && <Button type="button" variant="outline" disabled={task.busy || changed} onClick={() => save(true)}>{t.rotateSecret}</Button>}
-      <Button type="submit" variant="primary" disabled={task.busy || !changed || (enabled && !endpoint.trim())}>{t.save}</Button>
+      {saved.configured && <FormButton type="button" variant="outline" disabled={task.busy || changed} onClick={() => save(true)}>{t.rotateSecret}</FormButton>}
+      <FormButton type="submit" variant="primary" disabled={task.busy || !changed || (enabled && !endpoint.trim())}>{t.save}</FormButton>
     </div>
   </form>;
 }

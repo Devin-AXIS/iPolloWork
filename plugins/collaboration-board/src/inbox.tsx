@@ -4,6 +4,7 @@ import { IconBranchOutlineRegular, IconCloseOutlineRegular, IconMailUnreadOutlin
 import type { BoardNotice, ProjectTask, TaskStatusWrite } from '../../../services/ipollowork/src/project-board-contract.ts';
 import { errorMessage, type Copy } from './copy.ts';
 import { statuses } from './model.ts';
+import { OptionMenu } from '../../_shared/ui/controls.tsx';
 
 type ReceivedTask = Pick<ProjectTask, 'title' | 'description' | 'status' | 'priority' | 'startAt' | 'dueAt' | 'blocked' | 'revision'> & { editable: boolean };
 type StatusUpdate = Pick<TaskStatusWrite, 'status' | 'revision'>;
@@ -77,7 +78,7 @@ function NoticeDetails({ item, inbox, t, close }: { item: BoardNotice; inbox: In
     catch (error) { setError(error); void inbox.view(item.id).then(setTask).catch(() => {}); }
     finally { setBusy(false); }
   }
-  return <dialog className="cb-dialog" ref={ref} aria-labelledby="cb-notice-title" onCancel={event => { event.preventDefault(); close(); }}>
+  return <dialog className="cb-dialog ipw-ui ipw-frosted" ref={ref} aria-labelledby="cb-notice-title" onCancel={event => { event.preventDefault(); close(); }}>
     <div className="cb-notice-details">
       <header className="cb-dialog-head"><h2 id="cb-notice-title">{item.title}</h2>
         <button className="cb-icon" type="button" aria-label={t.close} onClick={close}><IconCloseOutlineRegular size={18} aria-hidden="true" /></button></header>
@@ -87,8 +88,10 @@ function NoticeDetails({ item, inbox, t, close }: { item: BoardNotice; inbox: In
         {task.dueAt !== null && <p>{t.due} · {new Date(task.dueAt).toLocaleString()}</p>}
         {task.blocked && <p>{t.waiting}</p>}
         {task.editable
-          ? <label>{t.status}<select disabled={busy || task.blocked} value={task.status} onChange={event => void change(event.target.value as ReceivedTask['status'])}>
-            {statuses.map(status => <option value={status} key={status}>{t[status]}</option>)}</select></label>
+          ? <div className="cb-property"><span className="cb-label">{t.status}</span>
+            <OptionMenu label={t.status} value={task.status} disabled={busy || task.blocked}
+              choices={statuses.map(id=>({id,label:t[id]}))} change={status=>void change(status)} />
+          </div>
           : <p>{t[task.status]}</p>}
       </>}
       {error !== undefined && <p role="alert">{errorMessage(error,t)}</p>}
@@ -99,10 +102,10 @@ export function InboxPanel({ inbox,t }: { inbox: Inbox; t: Copy }) {
   const notices = useSyncExternalStore(inbox.subscribe,inbox.get);
   const selected = useSyncExternalStore(inbox.subscribe,inbox.selection);
   const unread=notices.filter(item=>!item.read).length;
-  return <section className="cb-panel cb-inbox">
+  return <section className="cb-panel cb-inbox ipw-ui">
     <header className="cb-heading">
       <div className="cb-project-heading">
-        <span className="cb-project-icon"><IconMailUnreadOutlineRegular size={23} aria-hidden="true" /></span>
+        <span className="cb-notice-icon"><IconMailUnreadOutlineRegular size={20} aria-hidden="true" /></span>
         <div><h1>{t.notices}</h1>
           {unread>0 && <div className="cb-project-summary">{t.unreadCount.replace('{count}',String(unread))}</div>}
         </div>

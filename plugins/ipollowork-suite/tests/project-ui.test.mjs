@@ -1,3 +1,4 @@
+import { Button, Input } from './native-form-primitives.mjs';
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { build } from 'esbuild'
@@ -13,12 +14,11 @@ async function fixture(entry) {
   const globals = {window:dom.window,document:dom.window.document,Node:dom.window.Node,IS_REACT_ACT_ENVIRONMENT:true}
   const saved = Object.fromEntries(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]))
   Object.assign(globalThis,globals)
-  const Button = React.forwardRef(({icon,variant,size,...props},ref)=>React.createElement('button',{...props,ref},icon,props.children))
-  const primitives = new Proxy({Button,
+  const primitives = new Proxy({Button, Input,
     Modal:({title,children})=>React.createElement('div',{role:'dialog'},title,children),
     SegmentedTabs:({items,onChange})=>React.createElement('div',{},items.map(item=>React.createElement('button',{key:item.value,onClick:()=>onChange(item.value)},item.label))),
   },{get:(target,key)=>target[key] ?? (({children})=>React.createElement('span',{},children))})
-  const bundle = await build({entryPoints:[entry],bundle:true,platform:'node',format:'cjs',write:false,
+  const bundle = await build({ nodePaths: ['node_modules'],entryPoints:[entry],bundle:true,platform:'node',format:'cjs',write:false,
     loader:{'.css':'empty','.module.css':'text'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']})
   const module = {exports:{}}
   runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,require:name=>name==='@deepseek-ai/dsh-client-ui-primitives'?primitives:require(name),

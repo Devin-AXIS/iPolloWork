@@ -4,6 +4,7 @@ import type { AccountSnapshot } from './account-controller.ts'
 import type { Labels } from './locale.ts'
 import type { LauncherProps } from './native.ts'
 import { IconEyeOffOutlineRegular, IconEyeOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { FormButton, SegmentedControl, TextInput } from '../../../_shared/ui/controls.tsx'
 import { AccountArt, ArrowGlyph, LockGlyph, MailGlyph, Monogram } from './glyphs.tsx'
 import { MembershipPanel } from './membership.tsx'
 import css from './suite.module.css'
@@ -43,20 +44,24 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
         <AccountArt/>
         <h1>{registering ? t.createTitle : t.welcomeTitle}</h1>
         <p className={css.authLead}>{t.accountIntro}</p>
-        <div className={css.authSwitch} role="group" aria-label={t.account}>
-          <button type="button" aria-pressed={!registering} onClick={() => { setRegistering(false); setPassword('') }} disabled={busy}>{t.signIn}</button>
-          <button type="button" aria-pressed={registering} onClick={() => { setRegistering(true); setPassword('') }} disabled={busy}>{t.registerAccount}</button>
-        </div>
+        <SegmentedControl className={css.authSwitch!} label={t.account} value={registering ? 'register' : 'sign-in'}
+          options={[{ id: 'sign-in', label: t.signIn }, { id: 'register', label: t.registerAccount }]}
+          disabled={busy} change={mode => { setRegistering(mode === 'register'); setPassword('') }}/>
         <form className={css.authForm} onSubmit={submit}>
-          <label className={css.fieldPill}><MailGlyph size={15}/><span className={css.srOnly}>{t.email}</span>
-            <input type="email" placeholder={t.email} value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" required disabled={busy}/></label>
-          <label className={css.fieldPill}><LockGlyph size={15}/><span className={css.srOnly}>{t.password}</span>
-            <input type={reveal ? 'text' : 'password'} placeholder={registering ? t.passwordHint : t.password} value={password} onChange={event => setPassword(event.target.value)}
-              autoComplete={registering ? 'new-password' : 'current-password'} minLength={registering ? 10 : undefined} maxLength={1024} required disabled={busy}/>
-            <button type="button" className={css.fieldAction} aria-label={reveal ? t.hidePassword : t.showPassword} aria-pressed={reveal} onClick={() => setReveal(value => !value)}>
-              {reveal ? <IconEyeOffOutlineRegular size={15}/> : <IconEyeOutlineRegular size={15}/>}</button></label>
+          <TextInput icon={<MailGlyph size={15}/>} aria-label={t.email} type="email" placeholder={t.email}
+            value={email} onChange={event => setEmail(event.target.value)} autoComplete="username" required disabled={busy}/>
+          <div className={css.passwordField}>
+            <TextInput icon={<LockGlyph size={15}/>} aria-label={t.password} type={reveal ? 'text' : 'password'}
+              placeholder={registering ? t.passwordHint : t.password} value={password} onChange={event => setPassword(event.target.value)}
+              autoComplete={registering ? 'new-password' : 'current-password'} minLength={registering ? 10 : undefined}
+              maxLength={1024} required disabled={busy}/>
+            <FormButton type="button" className={css.fieldAction} aria-label={reveal ? t.hidePassword : t.showPassword}
+              aria-pressed={reveal} onClick={() => setReveal(value => !value)}>
+              {reveal ? <IconEyeOffOutlineRegular size={15}/> : <IconEyeOutlineRegular size={15}/>}
+            </FormButton>
+          </div>
           {message && <p role="alert" className={css.authError}>{message}</p>}
-          <button className={css.authSubmit} type="submit" disabled={busy || !email || !password}>{busy ? t.loading : registering ? t.registerAndSignIn : t.signIn}<ArrowGlyph size={14}/></button>
+          <FormButton variant="primary" className={css.authSubmit} type="submit" disabled={busy || !email || !password}>{busy ? t.loading : registering ? t.registerAndSignIn : t.signIn}<ArrowGlyph size={14}/></FormButton>
         </form>
         {registering && <p className={css.authService}>{t.email === '邮箱' ? '使用受邀邮箱注册后，打开邀请链接即可加入组织。' : 'Register with the invited email, then open the invitation link to join.'}</p>}
         {service}

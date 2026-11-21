@@ -1,3 +1,4 @@
+import { FormButton, TextInput } from '../../../_shared/ui/controls.tsx'
 /** Shared enterprise-page building blocks over native DSH primitives. */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Button, IconRefreshOutlineRegular, MarkdownText, Modal, Toast, UserMessageBubble, useClipboardCopy, relativeTime, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -150,7 +151,7 @@ export function Transcript({ messages, t, collapsed = 4 }: { messages: readonly 
 export function CopyLink({ url, t, onCopied, label = t.invitation }: { url: string; t: EnterpriseLabels; onCopied?: () => void; label?: string }) {
   const { copied, onCopy } = useClipboardCopy(url)
   useEffect(() => { if (copied) onCopied?.() }, [copied])
-  return <div className={css.enterpriseLink}><input aria-label={label} readOnly value={url} onFocus={e => e.currentTarget.select()}/><Button variant="outline" onClick={onCopy}>{copied ? t.copied : t.copy}</Button></div>
+  return <div className={css.enterpriseLink}><TextInput aria-label={label} readOnly value={url} onFocus={e => e.currentTarget.select()}/><FormButton variant="outline" onClick={onCopy}>{copied ? t.copied : t.copy}</FormButton></div>
 }
 
 /** Destructive confirmation; the dialog stays open with its error when the action fails. */

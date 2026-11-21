@@ -1,3 +1,5 @@
+import { calendarStart, dateOf, dateValue, shiftDay } from '../../_shared/ui/date-keys.ts';
+export { dateKey, dateOf, dateValue, shiftDay, shiftMonth, todayKey } from '../../_shared/ui/date-keys.ts';
 import { agentKey, type BoardAgent, type ProjectTask, type TaskDraft } from '../../../services/ipollowork/src/project-board-contract.ts';
 export const statuses = ['todo', 'doing', 'review', 'done'] as const;
 export type Status = typeof statuses[number];
@@ -71,7 +73,9 @@ export function assigneeProfile(card: Pick<Card, 'assignee' | 'task'>, roster: P
     ? roster.members.find(item => item.userId === card.assignee?.userId) : undefined;
   return member && { name: member.name, avatar: member.avatar, ai: false };
 }
-export function assigneeName(card: Pick<Card, 'assignee' | 'task'>, roster: ProjectRoster | null | undefined) {
+export function assigneeName(card: Pick<Card, 'assignee' | 'task'>, roster: ProjectRoster | null | undefined, currentLabel?: string) {
+  const agent = card.task?.assigneeAgent;
+  if (agent && currentLabel !== undefined) return displayAgent(agent, currentLabel);
   return assigneeProfile(card,roster)?.name;
 }
 export function projectCards(project: Project, summaries: Readonly<Record<string, NativeConversation>>,
@@ -93,11 +97,6 @@ export function projectCards(project: Project, summaries: Readonly<Record<string
       dueOn: note?.dueOn ?? null,
     }];
   }).sort((a, b) => b.updatedAt - a.updatedAt);
-}
-export function dateOf(instant: number | null): string | null {
-  if (instant === null) return null;
-  const date = new Date(instant);
-  return [String(date.getFullYear()).padStart(4,'0'), String(date.getMonth()+1).padStart(2,'0'), String(date.getDate()).padStart(2,'0')].join('-');
 }
 export function cardFor(task: ProjectTask, roster: ProjectRoster | null | undefined, sessions: Readonly<Record<string, NativeConversation>>): Card {
   return {
@@ -150,29 +149,9 @@ export function updateCollaborator(task: TaskDraft, member: Collaborator, action
 }
 export interface DateRange { from: string; to: string }
 
-export const dateKey = (date: Date) =>
-  [String(date.getUTCFullYear()).padStart(4, '0'), String(date.getUTCMonth() + 1).padStart(2, '0'), String(date.getUTCDate()).padStart(2, '0')].join('-');
-export const dateValue = (key: string) => new Date(key + 'T00:00:00Z');
-export function shiftDay(key: string, days: number): string {
-  const date = dateValue(key);
-  date.setUTCDate(date.getUTCDate() + days);
-  return dateKey(date);
-}
-export function shiftMonth(key: string, months: number): string {
-  const date = dateValue(key);
-  date.setUTCDate(1);
-  date.setUTCMonth(date.getUTCMonth() + months);
-  return dateKey(date);
-}
-export function todayKey(): string {
-  const now = new Date();
-  return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
-}
 export function dateRange(view: 'calendar' | 'timeline', anchor: string): DateRange {
   if (view === 'timeline') return { from: anchor, to: shiftDay(anchor, 27) };
-  const first = shiftMonth(anchor, 0);
-  const offset = (dateValue(first).getUTCDay() + 6) % 7;
-  const from = shiftDay(first, -offset);
+  const from = calendarStart(anchor);
   return { from, to: shiftDay(from, 41) };
 }
 export function span(task: Pick<Card, 'startOn' | 'dueOn'>): DateRange | null {

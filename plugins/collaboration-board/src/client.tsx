@@ -1,8 +1,9 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { IconChevronLeftOutlineRegular, IconChevronRightOutlineRegular, IconFolderOpenOutlineRegular,
-  IconPlusOutlineRegular, IconUserOutlineRegular, IconUsersOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, IconUserOutlineRegular, IconUsersOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { projectBoardOwnershipEvent, projectBoardPeopleEvent, type ProjectBoardPeopleAction,
   type ProjectConversationShare } from '../../ipollowork-suite/src/shared/enterprise.ts';
+import { FormButton, SegmentedControl, Tag } from '../../_shared/ui/controls.tsx';
+import { ChevronLeft, ChevronRight, lineStroke, Plus } from '../../_shared/ui/icons.ts';
 import { SearchBox, viewIcons } from './ui.tsx';
 import { copyFor, errorMessage, type Copy } from './copy.ts';
 import { TaskEditor, aiInstruction } from './editor.tsx';
@@ -13,6 +14,7 @@ import { cardFor, dateRange, dateValue, projectCards, shiftDay, shiftMonth, toda
   assigneeName, currentAgent, type AgentChoice, type AgentPlan, type BoardNote, type Card, type NativeConversation, type Project, type ProjectRoster, type View } from './model.ts';
 import { Board, Calendar, TaskList, Timeline } from './views.tsx';
 import stylesheet from './style.css';
+import controlsStyles from '../../_shared/ui/controls.css';
 
 interface Observable<T> {
   subscribe(listener: () => void): () => void;
@@ -148,7 +150,7 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
   const cards=[...taskItems.map(task=>cardFor(task,roster,summaries)),
     ...projectCards(project,summaries,archived,notes).filter(card=>!linked.has(card.id))];
   const filter=query.trim().toLocaleLowerCase();
-  const visible=filter ? cards.filter(card => [card.title, card.task?.description, assigneeName(card,roster)]
+  const visible=filter ? cards.filter(card => [card.title, card.task?.description, assigneeName(card,roster,t.currentAI)]
     .some(value=>value?.toLocaleLowerCase().includes(filter))) : cards;
   const done=cards.filter(card=>card.status==='done').length;
   const counts=t.taskTotals.replace('{total}',String(cards.length)).replace('{done}',String(done));
@@ -181,40 +183,43 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
   const navigate=(direction:number)=>setAnchor(current=>view==='calendar'?shiftMonth(current,direction):shiftDay(current,direction*28));
   const details=(card:Card)=>setEdit({card});
   const openPeople=(action:ProjectBoardPeopleAction)=>window.dispatchEvent(new CustomEvent(projectBoardPeopleEvent,{detail:action}));
-  return <section className="cb-panel" aria-label={t.title} data-project-board-view="" data-project-board={project.workspaceId}>
-    <header className="cb-heading">
+  return <section className="cb-panel ipw-ui" aria-label={t.title} data-project-board={project.workspaceId}>
+    <header className="cb-heading cb-project-header">
       <div className="cb-project-heading">
-        <span className="cb-project-icon"><IconFolderOpenOutlineRegular size={23} aria-hidden="true" /></span>
-        <div><h2 className="cb-project-name" title={project.title}>{project.title}</h2>
+        <h2 className="cb-project-name" title={project.title}>{project.title}</h2>
+        {(roster || page) && <div className="cb-scope-row">
+          <Tag className="cb-scope" tone="neutral">
+            {organization ? <IconUsersOutlineRegular size={13} aria-hidden="true" /> : <IconUserOutlineRegular size={13} aria-hidden="true" />}
+            <span>{organization ? roster?.organizationName ?? t.organizationScope : t.personalScope}</span>
+            {roster && <small>{t.projectPeople.replace('{count}',String(roster.members.length))}</small>}
+          </Tag>
           {page && <div className="cb-project-summary">
             <span>{counts}</span>
             {cards.length > 0 && <progress aria-label={counts} max={cards.length} value={done} />}
           </div>}
-        </div>
+          {roster?.canInvite && roster.projectId && roster.enterpriseId ? <button type="button" className="cb-ghost"
+            onClick={()=>openPeople({kind:'invite',projectId:roster.projectId!,enterpriseId:roster.enterpriseId!})}>
+            <Plus strokeWidth={lineStroke} size={13} aria-hidden="true" />{t.inviteProject}
+          </button> : !organization && suite && <button type="button" className="cb-ghost"
+            onClick={()=>openPeople({kind:'ownership',workspaceId:project.workspaceId})}>{t.connectOrganization}</button>}
+        </div>}
       </div>
-      <button type="button" className="cb-primary cb-create" disabled={!writable || pending} onClick={()=>setEdit({})}>
-        <IconPlusOutlineRegular size={17} aria-hidden="true" />{t.newTask}
-      </button>
+      <FormButton variant="primary" type="button" className="cb-create" disabled={!writable || pending} onClick={()=>setEdit({})}>
+        <Plus strokeWidth={lineStroke} size={15} aria-hidden="true" />{t.newTask}
+      </FormButton>
     </header>
-    {(roster || page) && <div className="cb-scope-row">
-      <span className="cb-scope" data-organization={organization}>
-        {organization ? <IconUsersOutlineRegular size={15} aria-hidden="true" /> : <IconUserOutlineRegular size={15} aria-hidden="true" />}
-        <span>{organization ? roster?.organizationName ?? t.organizationScope : t.personalScope}</span>
-        {roster && <small>{t.projectPeople.replace('{count}',String(roster.members.length))}</small>}
-      </span>
-      {roster?.canInvite && roster.projectId && roster.enterpriseId ? <button type="button" className="cb-ghost"
-        onClick={()=>openPeople({kind:'invite',projectId:roster.projectId!,enterpriseId:roster.enterpriseId!})}>
-        <IconPlusOutlineRegular size={14} aria-hidden="true" />{t.inviteProject}
-      </button> : !organization && suite && <button type="button" className="cb-ghost"
-        onClick={()=>openPeople({kind:'ownership',workspaceId:project.workspaceId})}>{t.connectOrganization}</button>}
-    </div>}
     <div className="cb-toolbar">
-      <nav aria-label={t.viewMode}>{views.map(item=>{
-        const Icon = viewIcons[item];
-        return <button type="button" key={item} aria-pressed={view===item} onClick={()=>setView(item)}>
-          <Icon size={16} aria-hidden="true" />{t[item]}
-        </button>;
-      })}</nav>
+      <SegmentedControl<View> label={t.viewMode} value={view} change={setView} className="cb-views"
+        options={views.map(item => {
+          const Icon = viewIcons[item];
+          return { id: item, label: t[item], icon: <Icon size={14} strokeWidth={lineStroke} aria-hidden="true" /> };
+        })} />
+      {range && <div className="cb-datebar">
+        <Button type="button" variant="ghost" className="cb-icon" aria-label={t.previous} onClick={()=>navigate(-1)}><ChevronLeft strokeWidth={lineStroke} size={16} aria-hidden="true" /></Button>
+        <strong>{view==='calendar'?month.format(dateValue(anchor)):date.formatRange(dateValue(range.from),dateValue(range.to))}</strong>
+        <Button type="button" variant="ghost" className="cb-icon" aria-label={t.next} onClick={()=>navigate(1)}><ChevronRight strokeWidth={lineStroke} size={16} aria-hidden="true" /></Button>
+        <Button type="button" variant="outline" onClick={()=>setAnchor(todayKey())}>{t.today}</Button>
+      </div>}
       <SearchBox value={query} change={setQuery} label={t.search} clear={t.clearSearch} />
     </div>
     {error!==undefined && <div className="cb-alert"><span role="alert">{errorMessage(error,t)}</span>
@@ -223,25 +228,19 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
       role={scheduleFeedback==='scheduleSaveFailed' ? 'alert' : 'status'}>{t[scheduleFeedback]}</p>}
     {(loading || !page && error===undefined) && <p className="cb-empty" role="status">{t.loading}</p>}
     {!loading && page && !visible.length && <p className="cb-empty cb-board-message">{filter ? t.noMatches : t.empty}</p>}
-    {range && <div className="cb-datebar">
-      <button type="button" className="cb-icon" aria-label={t.previous} onClick={()=>navigate(-1)}>‹</button>
-      <strong>{view==='calendar'?month.format(dateValue(anchor)):date.formatRange(dateValue(range.from),dateValue(range.to))}</strong>
-      <button type="button" className="cb-icon" aria-label={t.next} onClick={()=>navigate(1)}>›</button>
-      <button type="button" onClick={()=>setAnchor(todayKey())}>{t.today}</button>
-    </div>}
     <div className="cb-content">
-      {view==='board' && <Board tasks={visible} t={t} roster={roster} agents={agents} open={details} clock={clock} writable={writable && !pending} searching={Boolean(filter)} add={status=>setEdit({status})} move={(card,status)=>{
+      {view==='board' && <Board tasks={visible} t={t} locale={locale} roster={roster} agents={agents} open={details} clock={clock} writable={writable && !pending} searching={Boolean(filter)} add={status=>setEdit({status})} move={(card,status)=>{
         if(card.task && writable && !pending)void save({id:card.id,revision:card.revision,status}).catch(setError);
         else if(writable)setEdit({card,status});
       }} />}
-      {view==='list' && <TaskList tasks={visible} t={t} roster={roster} agents={agents} open={details} />}
+      {view==='list' && <TaskList tasks={visible} t={t} locale={locale} roster={roster} agents={agents} open={details} />}
       {view==='calendar' && range && <Calendar tasks={visible} t={t} open={details} range={range} anchor={anchor} locale={locale} />}
-      {view==='timeline' && range && <Timeline tasks={visible} t={t} open={details} range={range} />}
+      {view==='timeline' && range && <Timeline tasks={visible} t={t} locale={locale} open={details} range={range} />}
       {page?.next && <button type="button" disabled={pending} onClick={()=>void more()}>{t.more}</button>}
     </div>
     {edit && <TaskEditor key={sessionId+':'+(edit.card?.id ?? 'new')} card={edit.card} roster={page?.remote ? roster : null} agents={agents} tasks={taskItems}
       refreshAgents={()=>refreshAgents(value=>value+1)}
-      writable={writable} t={t} clock={clock} projectTitle={project.title} initialStatus={edit.status} report={setError} close={()=>setEdit(undefined)} save={save}
+      writable={writable} t={t} locale={locale} clock={clock} projectTitle={project.title} initialStatus={edit.status} report={setError} close={()=>setEdit(undefined)} save={save}
       open={id=>{setEdit(undefined);open(id);}} sessions={project.sessionIds.filter(id=>!archived.includes(id))}
       conversation={session && shareConversation ? {
         title: session.displayTitle || project.title,
@@ -289,7 +288,7 @@ export function apply(ctx: Client): void {
     return () => updateSharing(undefined);
   }));
   const style = document.createElement('style');
-  style.textContent = stylesheet;
+  style.textContent = stylesheet + '\n' + controlsStyles;
   const inboxId='ipollo-project-board-inbox';
   const inbox=projectInbox(async input=>{
     const params=new URLSearchParams({resource:'inbox'});
@@ -349,7 +348,7 @@ export function apply(ctx: Client): void {
     const share = useSnapshot(sharing);
     const t = copyFor(active);
     const project = workspaces.items.find(item => item.sessionIds.includes(sessionId));
-    if (!project) return <section className="cb-panel" aria-label={t.title} data-project-board-view="">
+    if (!project) return <section className="cb-panel ipw-ui" aria-label={t.title}>
       <p className="cb-empty">{workspaces.phase === 'pending' ? t.loading : t.noProject}</p>
     </section>;
     return <ProjectBoard key={project.workspaceId} project={project} sessionId={sessionId} summaries={sessions.byId}
