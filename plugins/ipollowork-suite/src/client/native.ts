@@ -1,6 +1,8 @@
 /** Minimal public DSH client capabilities consumed by the suite. */
 import type { ComponentType } from 'react'
 import type { ClientRemote, PluginInstallProgress } from '@deepseek-ai/dsh-api-remotes/client'
+// alpha.2's aggregate declaration omits the settings namespace augmentation.
+import type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
 import type { IWorkspaces, WorkspaceSnapshot } from '@deepseek-ai/dsh-api-workspace-controller/client'
 import type { ISessions } from '@deepseek-ai/dsh-api-session-controller/client'
 export interface NativeSessionBinding { readonly sessionId:string; readonly ctx:object }

@@ -6,6 +6,8 @@ import type { Config } from "./config.js";
 import { ServiceError } from "./errors.js";
 import { adoptStoredResources } from "./storage-import.js";
 
+export const SERVICE_SCHEMA_VERSION = 22;
+
 export type Row = Record<string, string | number | boolean | null>;
 type Parameter = string | number | boolean | Date | Buffer | null;
 
@@ -183,7 +185,7 @@ export async function migrate(store: Store, config: Config): Promise<void> {
         )
       )?.version,
     );
-    if (version > 22)
+    if (version > SERVICE_SCHEMA_VERSION)
       throw new Error("This database requires a newer iPolloWork service");
     if (version < 1) {
       await store.run(

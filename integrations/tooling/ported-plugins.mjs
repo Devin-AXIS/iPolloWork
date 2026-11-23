@@ -17,6 +17,8 @@ const sourceRevision = '05f917145cd320a93e514dbd01178133891bc4c6'
 const mapped = { 'design-agent': 'deepseek-idesign', 'video-agent': 'deepseek-ivideo', 'operation-recorder': '@ipollo/dsh-operation-recorder', 'labelu-data-annotation': '@ipollo/dsh-data-annotation' }
 const recordFile = join(root, 'integrations/runtime/ported-plugins.json')
 const command = process.argv[2] ?? 'build'
+const runtimePin=JSON.parse(await readFile(join(root,'integrations/runtime/upstream.json'),'utf8'))
+const suiteManifest=JSON.parse(await readFile(join(suite,'package.json'),'utf8'))
 const only = process.argv[3]
 const exists = path => access(path).then(() => true, () => false)
 const iconTile = svg => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#fff"/>${svg.replace(/<svg\b([^>]*)>/, (_match, attributes) => '<svg x="8" y="8" width="32" height="32"' + attributes.replace(/\s(?:width|height)="[^"]*"/g, '') + '>')}</svg>\n`
@@ -55,10 +57,10 @@ if (command === 'import') {
     await writeFile(join(destination, '.gitignore'), 'lib/\n*.tgz\nnode_modules/\nbusiness/runtime/\nbusiness/service/*.js\n')
     await writeFile(join(destination, 'package.json'), JSON.stringify({
       name, version: '0.1.0', description: manifest.description, type: 'module', license: 'SEE LICENSE IN LICENSE', icon: './icon.svg',
-      engines: { node: '>=24.9.0', dsh: '>=0.2.2-rc.3 <0.2.3-0' },
+      engines: { node: suiteManifest.engines.node, dsh: runtimePin.npmVersion },
       exports: { '.': './lib/host.js', './client': './lib/client.js', './package.json': './package.json', './locale/*.json': './locale/*.json' },
       files: ['lib', 'business', 'cordis.patch.yml', 'README.md', 'README.zh.md', 'LICENSE', 'NOTICE.md', 'icon.svg', 'locale'],
-      peerDependencies: { '@deepseek-ai/cordis': '^4.1.0', '@deepseek-ai/dsh-tools': '0.2.2-rc.3', '@deepseek-ai/dsh-credentials': '0.2.2-rc.3' },
+      peerDependencies: { '@deepseek-ai/cordis': suiteManifest.peerDependencies['@deepseek-ai/cordis'], '@deepseek-ai/dsh-tools': runtimePin.npmVersion, '@deepseek-ai/dsh-credentials': runtimePin.npmVersion },
       dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web', inject: ['@deepseek-ai/dsh-client-ui-layout', '@deepseek-ai/dsh-client-ui-sidebar', '@deepseek-ai/dsh-client-ui-workspace', '@deepseek-ai/dsh-client-ui-theme', '@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-primitives'] } },
       scripts: { build: `node ../../integrations/tooling/ported-plugins.mjs build ${slug}`, check: `node ../../integrations/tooling/ported-plugins.mjs check ${slug}`, 'pack:check': 'npm pack --dry-run' },
     }, null, 2) + '\n')

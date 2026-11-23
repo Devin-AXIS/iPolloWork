@@ -286,8 +286,9 @@ export function mountServiceModels(
               maxRequestImageBytes: 16 * 1024 * 1024,
               maxRequestImages: 100,
               imageOffloadCountQuantum: 10,
+              requestImageBudgetCount: 20,
               requestImagePixelBudget: 1000000,
-              requestImageMaxBytes: 1000000,
+              maxImageBytes: 1000000,
               retryPolicy: resolveRetryPolicy(
                 { mode: "normal", maxRetries: 0 },
                 service.enterprise

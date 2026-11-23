@@ -2,9 +2,21 @@
 
 [English](compatibility.md) | 中文
 
-DSH 基准由[运行时固定记录](upstream.json)指定。本次盘点基于 `dsh-v0.2.2-rc.3`（源码 `39163dd30f70`）、Jovan 的 `5104d080ba` 及 2026-11-16 工作区。以 `4c696c2b33` 拆分 DSH 源码的提交为历史分界。较早的迁移见[已有升级指南](../../docs/upgrade-guide)。
+DSH 基准由[运行时固定记录](upstream.json)指定：`dsh-v0.2.3-alpha.2`，源码 `4b399c39a6d1`。下文同时保留 `dsh-v0.2.2-rc.3` 的历史验证，不能将旧结果视为新版运行时的验收。以 `4c696c2b33` 拆分 DSH 源码的提交为历史分界。较早的迁移见[已有升级指南](../../docs/upgrade-guide)。
 
 ## 升级前复核的功能
+
+alpha.2 迁移对齐 Node.js（`^24.22.3 || >=26.13.1`）、Cordis（`4.2.0-alpha.1`）、Schemastery（`3.20.0-alpha.1`）、自有 SDK peer 依赖和私有桌面 Host 版本。DeepSeek 账号工程引用由 `credentials` 移至 `account`。模型配置改用 `maxImageBytes` 并提供 `requestImageBudgetCount`；MCP 探测改用公开的 `McpClientHost.probe`。隔离候选版已通过产品源码检查、桌面类型检查、原生源码暂存构建、模型/看板/MCP 契约测试和官方便携运行时检查。最终归档安装、外部账号验证及发布部署仍是独立验收项。
+
+Windows 安装核验准确的 Git commit 和 tree，无需文件符号链接权限；配置副本由哈希管理。显式 `--upgrade-upstream` 会保留旧的已核验缓存，拒绝修改过的官方源码和静默替换 pin。临时短路径目录联接让完整的官方 Python wheel/Office 检查避开 MAX_PATH。`npm test` 覆盖 Node 拒绝、不变源码检出和目录联接清理；`check:upstream` 在打包前拒绝混用 SDK 版本。
+
+可选的九步新手教程使用原生 `configForms`、`settings.section`、`shell.overlay`，只保存教程进度，保留原有初始化选择，支持继续未完成教程、重试和本地关闭，不会发送消息或创建项目。定位入口只聚焦或滚动；缺少入口时提供可阅读说明。后续升级应复核首次初始化衔接、设置中重新开始、关闭后迟到的保存响应、双语、明暗主题和受限窗口。
+
+服务 schema 22 是已有产品迁移，并非 DSH 新增 schema。构建按导出的服务 schema 常量复制全部迁移；部署从构建镜像读取目标版本，避免继续固定为 21。实际服务器完成备份、向前迁移和切换后就绪验证前，不能宣称部署已完成。
+
+alpha.2 的客户端聚合 remotes 类型不再自动引入 settings 命名空间。Suite 显式声明公开的 `@deepseek-ai/dsh-api-settings-controller/remote` 类型扩展；MCP 配置操作仍打开原生配置文档。Include 的 `applyEntryPatches` 改为返回 `{data,index}`，桌面组合测试读取 `data`，桌面 overlay 沿用 profile 所属的产品条目。下次更换 pin 时重跑 Suite 严格类型检查、MCP 设置入口及完整桌面测试。npm 安装后先运行 `link:workspace` 再测源码，让官方仅在工作区提供的开发依赖从固定版本依赖图解析。
+
+真实 Electron 冷启动发现两处配置变化：`group: true` 现在要求数组；原生 ConfigEditor 仅编辑所属 profile 配置树，嵌套 Include 的设置另有归属。桌面改由私有 Bundle 直接插入产品条目，保留既有条目 ID 和已保存偏好，最终 overlay 仅保持 Suite 启用。运行时根清单显式声明发货 Suite 依赖，使 alpha.2 能解析这些原生配置条目。回归检查真实 Loader 格式及偏好保留；真实 Electron 验证套件 `/info`、教程与通知设置发现、全部九步漫游、刷新保留进度和深色受限窗口。私有 Host 必须依赖当前发货的 Suite 版本，打包前强制核对。
 
 桌面 `integrations/desktop/src/web-document.ts` 不把 HTTP 工作台的 `Origin-Agent-Cluster` 转发到 `dsh-app://`。小红书的 `?1` 响应头在 Electron 44.7.0 中触发 Chromium `AddOriginAgentClusterStateForBrowsingInstance_Cpp` 检查，导致 browser 进程以 `0x80000003` 退出；普通 HTTP 浏览器验收无法覆盖这一差异。其余 CSP 和 CORP 保留，HTTP Host 的原始响应不变。升级桌面/Chromium 时复验真实桌面首次打开、切换后重开、账号弹窗及软件进程存活，不能仅用后台 `open-workbench` 成功代替。小红书子进程显式继承 Electron Node 模式；Canvas 在发送 AI 草稿前等待最新画布上下文写入。
 

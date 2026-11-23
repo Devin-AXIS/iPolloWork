@@ -1,12 +1,12 @@
 {
   "name": "@ipollo/dsh-custom-appearance",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Profile branding and color presets for iPolloWork and DeepSeek Harness.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
-    "node": ">=24.9.0",
-    "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+    "node": "^24.22.3 || >=26.13.1",
+    "dsh": "0.2.3-alpha.2"
   },
   "exports": {
     ".": "./lib/host.js",

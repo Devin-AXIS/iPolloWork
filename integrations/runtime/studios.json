@@ -1,0 +1,17 @@
+{
+  "sourceRepository": "https://github.com/Devin-AXIS/deepseek-design.git",
+  "sourceRevision": "85660cb3c5198de86efd5e4fa4ad9bd19cf4ea54",
+  "dshVersion": "0.2.3-alpha.2",
+  "patchFile": "studio-alpha2.patch",
+  "patchSha256": "38137f0a40adaf69753e78e5fe9c14e3f082da75ed292abb04d6c38d098b1857",
+  "packages": [
+    {
+      "name": "deepseek-idesign",
+      "version": "1.0.0-beta.39-ipollo.1"
+    },
+    {
+      "name": "deepseek-ivideo",
+      "version": "1.0.0-beta.27-ipollo.1"
+    }
+  ]
+}

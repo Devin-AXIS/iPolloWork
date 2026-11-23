@@ -177,6 +177,24 @@ test('the default market offers a compatible newer archive for an existing archi
   assert.equal((await item({ ...installed, source: '1.0.0-beta.22' })).update, undefined)
 })
 
+test('an older or incompatible service catalog cannot replace a newer reviewed bundled native plugin', async () => {
+  const name = '@ipollo/dsh-decision-intelligence', current = studioVersion(name)
+  const entry = (version: string, dsh: string) => ({ name, title: 'Service catalog', metadata: { category: 'productivity' },
+    versions: [{ version, publishTimestamp: 1, source: { type: 'npm' }, engines: { dsh } }] })
+  for (const dsh of [runtimeVersion, '0.2.2-rc.3']) {
+    const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576,
+      undefined, false, [entry('1.0.2', dsh)])
+    const item = state.items.find(item => item.name === name)!
+    assert.equal(item.version, current)
+    assert.equal(item.compatible, true)
+    assert(item.spec.startsWith('file:'))
+  }
+  const newer = semver.inc(current, 'patch')!
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576,
+    undefined, false, [entry(newer, runtimeVersion)])
+  assert.equal(state.items.find(item => item.name === name)?.version, newer)
+})
+
 test('market Git updates use the native same-repository pin contract', async () => {
   const name = 'git-plugin'
   const url = 'https://github.com/publisher/plugin'

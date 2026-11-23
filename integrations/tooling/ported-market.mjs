@@ -6,6 +6,7 @@ import { readFile, writeFile, cp, mkdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const suite = join(root, 'plugins/ipollowork-suite')
+const product=JSON.parse(await readFile(join(root,'package.json'),'utf8'))
 const indexPath = join(suite, 'catalog/index.json'), releasePath = join(suite, 'catalog/bundled-releases.json')
 const index = JSON.parse(await readFile(indexPath, 'utf8')), releases = JSON.parse(await readFile(releasePath, 'utf8'))
 const inventory = JSON.parse(await readFile(join(root, 'integrations/runtime/ported-plugins.json'), 'utf8'))
@@ -31,7 +32,7 @@ for (const item of inventory.plugins) {
   const bytes = await readFile(join(output, packed.filename)), sha256 = createHash('sha256').update(bytes).digest('hex')
   const file = packed.filename.replace(/\.tgz$/, '-' + sha256.slice(0, 12) + '.tgz')
   await cp(join(output, packed.filename), join(suite, 'catalog/packages', file))
-  const release = { name: manifest.name, version: manifest.version, file, sha256 }
+  const release = { name: manifest.name, version: manifest.version, file, sha256,tag:`v${product.version}` }
   releases.plugins = [...releases.plugins.filter(value => value.name !== manifest.name), release]
   const source = item.kind === 'existing-native'
     ? JSON.parse(execFileSync('git', ['show', `${inventory.sourceRevision}:${item.source}/ipollowork.plugin.json`], { cwd: root, encoding: 'utf8', maxBuffer: 2_000_000 }))

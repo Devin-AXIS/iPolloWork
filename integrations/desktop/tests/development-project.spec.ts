@@ -57,9 +57,12 @@ describe('desktop development project', () => {
     const root = temporaryRoot()
     const cli = join(root, 'apps', 'cli')
     const host = join(root, 'integrations', 'desktop-host')
+    const suite = join(root, 'plugins', 'suite')
     const dependencies = join(root, 'workspace-dependencies')
     mkdirSync(join(cli, 'lib'), { recursive: true })
     mkdirSync(join(host, 'lib'), { recursive: true })
+    mkdirSync(suite, { recursive: true })
+    writeFileSync(join(suite, 'package.json'), '{"name":"@ipollo/dsh-suite","version":"0.1.51"}\n')
     mkdirSync(join(dependencies, '@scope'), { recursive: true })
     mkdirSync(join(dependencies, '@deepseek-ai', 'dsh'), { recursive: true })
     writeFileSync(join(cli, 'package.json'), '{"name":"@deepseek-ai/dsh","version":"1.2.3"}\n')
@@ -75,6 +78,7 @@ describe('desktop development project', () => {
       projectDir: join(root, 'development'),
       cliDir: cli,
       hostDir: host,
+      suiteDir: suite,
       dependencyDir: dependencies,
       release: release(),
       target: 'win-x64',
@@ -90,6 +94,7 @@ describe('desktop development project', () => {
     }
     expect(manifest.dependencies['@deepseek-ai/dsh']).toBe('1.2.3')
     expect(manifest.dependencies['@ipollo/desktop-host']).toBe('1.2.3')
+    expect(manifest.dependencies['@ipollo/dsh-suite']).toBe('0.1.51')
     const descriptor = JSON.parse(readFileSync(join(project, 'desktop-runtime.json'), 'utf8')) as { platform: string; arch: string }
     expect(descriptor).toMatchObject({ platform: 'win32', arch: 'x64' })
     const manager = new DesktopProjectManager(resolveDesktopPaths(join(root, 'home')), {

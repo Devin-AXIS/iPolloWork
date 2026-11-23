@@ -95,6 +95,7 @@ export async function readMarket(path: string, manager: NativePluginManager, run
   let index
   try { index = parseMarketIndex(JSON.parse(content.toString('utf8')), 'https://catalog.ipollowork.invalid/index.json') }
   catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 500, { cause }) }
+  const supportsRuntime = (range: string | undefined) => !range || semver.satisfies(runtimeVersion, range, { includePrerelease: true })
   const remoteInstall = new Set<string>()
   if (curated.length) {
     try {
@@ -102,6 +103,13 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       const additional = parseMarketIndex({ format: 1, title: 'Curated', metadata: { categories: index.metadata.categories }, plugins: curated }, 'https://catalog.ipollowork.invalid/index.json')
       for (const plugin of additional.plugins) {
         const previous = merged.get(plugin.name)
+        // An older service catalog must not hide a newer reviewed archive carried by this application.
+        // Explicit operator catalogs remain authoritative; equal-version source changes retain their usual rules.
+        if (isDefaultMarket(path) && previous) {
+          const local = previous.versions.find(version => supportsRuntime(version.engines.dsh))
+          const remote = plugin.versions.find(version => supportsRuntime(version.engines.dsh))
+          if (local && (!remote || semver.gt(local.version, remote.version))) continue
+        }
         // Preserve archive upgrades only when the curated entry points at the same artifact.
         if (!previous?.versions.some(v => v.version === plugin.versions[0]?.version
           && isDeepStrictEqual(v.source, plugin.versions[0]?.source))) remoteInstall.add(plugin.name)
@@ -112,7 +120,6 @@ export async function readMarket(path: string, manager: NativePluginManager, run
   }
   const bundled = await bundledInstallTargets(path, cacheDirectory)
   const installed = new Map((await manager.listBundles()).map(bundle => [bundle.name, bundle]))
-  const supportsRuntime = (range: string | undefined) => !range || semver.satisfies(runtimeVersion, range, { includePrerelease: true })
   return {
     title: localized(index.title, language), runtimeVersion,
     categories: Object.entries(index.metadata.categories).map(([id, value]) => ({ id, title: localized(value.title, language, id) })),

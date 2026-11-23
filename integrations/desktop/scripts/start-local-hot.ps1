@@ -1,4 +1,4 @@
-param([switch]$Restart, [switch]$NoNativeHmr, [string]$NodeExecutable)
+param([switch]$Restart, [switch]$NoNativeHmr, [string]$NodeExecutable, [string]$RuntimeDirectory)
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..')).Path
@@ -32,14 +32,20 @@ if ($old) {
 
 $userData = (Resolve-Path -LiteralPath $userData).Path
 $development = Split-Path -Parent $userData
-$runtime = (Resolve-Path -LiteralPath (Join-Path (Split-Path -Parent $development) 'targets\win-x64\runtime\primary-runtime')).Path
+$builtRuntime = Join-Path $repo 'integrations\desktop\.desktop-build\targets\win-x64\runtime\primary-runtime'
+if (!$RuntimeDirectory -and (Test-Path -LiteralPath (Join-Path $builtRuntime 'runtime.json'))) { $RuntimeDirectory = $builtRuntime }
+if (!$RuntimeDirectory -and $saved.runtime -and (Test-Path -LiteralPath $saved.runtime)) { $RuntimeDirectory = $saved.runtime }
+if (!$RuntimeDirectory) { $RuntimeDirectory = Join-Path (Split-Path -Parent $development) 'targets\win-x64\runtime\primary-runtime' }
+$runtime = (Resolve-Path -LiteralPath $RuntimeDirectory).Path
 $runtimeNode = Join-Path $runtime 'dependencies\node\bin\node.exe'
 if (!$NodeExecutable -and (Test-Path -LiteralPath $runtimeNode)) { $NodeExecutable = $runtimeNode }
 if (!$NodeExecutable -and $saved) { $NodeExecutable = $saved.node }
 if (!$NodeExecutable) { $NodeExecutable = (Get-Command node).Source }
 $node = (Resolve-Path -LiteralPath $NodeExecutable).Path
 $nodeVersion = & $node --version
-if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v(\d+)\.' -or [int]$Matches[1] -lt 24) { throw 'The local development launcher requires Node.js 24 or later.' }
+if ($LASTEXITCODE -ne 0) { throw 'The selected Node.js executable could not start.' }
+& $node (Join-Path $repo 'integrations\tooling\node-runtime.mjs') $nodeVersion
+if ($LASTEXITCODE -ne 0) { throw 'Select a Node.js runtime supported by the current iPolloWork release with -NodeExecutable.' }
 $env:Path = (Split-Path -Parent $node) + ';' + $env:Path
 # Verify and build current shell/Host sources before reusing a watched window.
 # A failed build leaves the previous app and its profile running.
@@ -49,6 +55,9 @@ $stage = (Resolve-Path -LiteralPath ((Get-Content -LiteralPath (Join-Path $launc
 if (!$stage.StartsWith($launch + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'The desktop stage is outside this development workspace.' }
 $desktop = (Resolve-Path -LiteralPath (Join-Path $stage 'integrations\desktop')).Path
 $runtimeProject = (Resolve-Path -LiteralPath (Join-Path $stage 'runtime-project')).Path
+$pinnedElectron = Join-Path $repo '.upstream\dsh\apps\desktop\node_modules\electron\dist\electron.exe'
+if (!(Test-Path -LiteralPath $pinnedElectron)) { throw 'The pinned Electron executable is missing; prepare the current DSH dependencies first.' }
+$electronPath = $pinnedElectron
 $electron = (Resolve-Path -LiteralPath $electronPath).Path
 $env:DSH_HOME = (Resolve-Path -LiteralPath (Join-Path $development 'home')).Path
 $env:DSH_DESKTOP_PRIMARY_RUNTIME_DIR = $runtime
@@ -73,7 +82,7 @@ if ($old -and !$Restart -and !$NoNativeHmr -and $oldDesktop -eq $desktop) {
 if ($LASTEXITCODE -ne 0) { throw 'The Work build failed; the current desktop was left running.' }
 & $node $worker configure $patch $(if ($NoNativeHmr) { 'disabled' } else { 'enabled' })
 if ($LASTEXITCODE -ne 0) { throw 'Could not configure native DSH hot reload.' }
-[IO.File]::WriteAllText($manifest, (@{ node = $node; electron = $electron; userData = $userData } | ConvertTo-Json))
+[IO.File]::WriteAllText($manifest, (@{ node = $node; electron = $electron; userData = $userData; runtime = $runtime } | ConvertTo-Json))
 
 if ($old) {
   $previous = Get-Process -Id $oldId -ErrorAction SilentlyContinue

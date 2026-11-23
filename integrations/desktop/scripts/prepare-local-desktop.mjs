@@ -5,7 +5,7 @@ import { isAbsolute, join, relative, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { pnpm, run, verifySource } from '../../tooling/upstream.mjs'
-import { desktopApplicationEntries } from '../../tooling/desktop-composition.mjs'
+import { desktopApplicationEntries, desktopApplicationPatches } from '../../tooling/desktop-composition.mjs'
 import { resolveDesktopAccountOrigin } from '../../tooling/account-service.mjs'
 
 const root = fileURLToPath(new URL('../../..', import.meta.url))
@@ -67,7 +67,9 @@ export async function prepareLocalDesktop() {
   for (const name of ['desktop', 'desktop-host']) await pnpm(['exec', 'tsdown', '--config-loader', 'native', '--config', `integrations/${name}/tsdown.config.ts`], stage)
   const { load, dump } = createRequire(join(root, 'plugins/ipollowork-suite/package.json'))('js-yaml')
   const accountOrigin = resolveDesktopAccountOrigin()
-  await writeFile(join(stage, 'integrations/desktop-host/application.yml'), dump(desktopApplicationEntries(load(await readFile(join(root, 'plugins/ipollowork-suite/cordis.patch.yml'), 'utf8')), accountOrigin), { lineWidth: -1, noRefs: true }))
+  const applicationEntries = desktopApplicationEntries(load(await readFile(join(root, 'plugins/ipollowork-suite/cordis.patch.yml'), 'utf8')), accountOrigin)
+  await writeFile(join(stage, 'integrations/desktop-host/application.yml'), dump(applicationEntries, { lineWidth: -1, noRefs: true }))
+  await writeFile(join(stage, 'integrations/desktop-host/cordis.patch.yml'), dump(desktopApplicationPatches(applicationEntries), { lineWidth: -1, noRefs: true }))
   await mkdir(join(stage, 'integrations/desktop-host/assets'), { recursive: true })
   await cp(join(root, 'plugins/ipollowork-suite/assets/mark.svg'), join(stage, 'integrations/desktop-host/assets/mark.svg'))
   const project = join(stage, 'runtime-project')

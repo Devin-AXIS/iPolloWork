@@ -21,7 +21,9 @@ export function repairProfileRuntime(profile: string, runtime: string, descripto
   const conflicts: { name: string; version: string; expected: string; source: string }[] = []
   for (const entry of descriptor.sharedPackages) {
     const applicationOwned = APPLICATION_PACKAGES.has(entry.name)
-    if (!applicationOwned && !/^@deepseek-ai\/(?:dsh(?:-|$)|cordis(?:-|$))/.test(entry.name)) continue
+    // The verified installation closure also owns shared schema and utility packages.
+    // An old Schemastery/Cosmokit can otherwise shadow the new Cordis graph.
+    if (!applicationOwned && !entry.name.startsWith('@deepseek-ai/')) continue
     const source = join(root, 'node_modules', entry.name)
     let stat
     try { stat = lstatSync(source) }

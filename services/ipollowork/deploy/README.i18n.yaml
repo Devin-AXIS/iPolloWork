@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write services/ipollowork/deploy/README.md
 /alibaba-cloud-deployment:
-  en: 8912ce053c9bd016
-  zh: 0ed672f078a51755
+  en: a26956ab0dfc7210
+  zh: 7496c14d2fac31c3

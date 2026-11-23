@@ -1,0 +1,7 @@
+# Bilingual-pair consistency record for dsh-alpha2-validation-2026-11-23.md (docs/i18n/README.md): per heading
+# section, a hash of its English and Chinese blocks outside code blocks and generated regions.
+# After editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/dsh-alpha2-validation-2026-11-23.md
+/dsh-0-2-3-alpha-2-upgrade-verification:
+  en: 9824f77f8578ff02
+  zh: cb72e48b99e7dd06

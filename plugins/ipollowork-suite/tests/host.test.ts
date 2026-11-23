@@ -9,13 +9,14 @@ import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import packageInfo from "../package.json" with { type: "json" };
+import runtimePin from "../../../integrations/runtime/upstream.json" with { type: "json" };
 import { apply, type HostContext } from "../src/host/index.ts";
 import type { Decision, ToolCall } from "../src/host/management.ts";
 
 for (const dedicatedDesktop of [false, true]) test(`native authorization and delivery policy (${dedicatedDesktop})`, async () => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-host-"));
   const anchor = join(dir, "package.json");
-  const runtimeVersion = "0.2.2-rc.3";
+  const runtimeVersion = runtimePin.npmVersion;
   if (dedicatedDesktop) {
     const cli = join(dir, "node_modules", "@deepseek-ai", "dsh");
     await mkdir(cli, { recursive: true });

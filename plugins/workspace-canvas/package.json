@@ -1,12 +1,12 @@
 {
   "name": "@ipollo/dsh-workspace-canvas",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "A minimal MCP App canvas that can be edited by people and agents.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
-    "node": ">=24.9.0",
-    "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+    "node": "^24.22.3 || >=26.13.1",
+    "dsh": "0.2.3-alpha.2"
   },
   "exports": {
     ".": "./lib/host.js",
@@ -49,8 +49,8 @@
   },
   "icon": "./icon.svg",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-credentials": "0.2.2-rc.3"
+    "@deepseek-ai/cordis": "4.2.0-alpha.1",
+    "@deepseek-ai/dsh-tools": "0.2.3-alpha.2",
+    "@deepseek-ai/dsh-credentials": "0.2.3-alpha.2"
   }
 }

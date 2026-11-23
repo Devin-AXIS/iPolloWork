@@ -5,10 +5,11 @@ import { load } from 'js-yaml';
 
 test('suite uses the host DSH runtime instead of installing a second copy', async () => {
   const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  const pin = JSON.parse(await readFile(new URL('../../../integrations/runtime/upstream.json', import.meta.url), 'utf8'));
   const ownsRuntime = name => name.startsWith('@deepseek-ai/');
   assert.deepEqual(Object.keys(manifest.dependencies).filter(ownsRuntime), []);
   for (const name of ['@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-experimental-liveshare', '@deepseek-ai/dsh-client-store', '@deepseek-ai/dsh-settings']) {
-    assert.equal(manifest.peerDependencies[name], '0.2.2-rc.3');
+    assert.equal(manifest.peerDependencies[name], pin.npmVersion);
   }
 });
 

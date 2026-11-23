@@ -23,6 +23,8 @@ export interface OnboardingProgress {
 
 /** Host values may omit choices that have never been saved. */
 export interface OnboardingSettings extends Omit<OnboardingProgress, 'purpose' | 'process' | 'completion'> {
+  tutorialStatus?: 'never' | 'active' | 'done' | 'skipped'
+  tutorialStep?: number
   purpose?: OnboardingProgress['purpose']
   process?: OnboardingProgress['process']
   completion?: OnboardingProgress['completion']
@@ -30,6 +32,8 @@ export interface OnboardingSettings extends Omit<OnboardingProgress, 'purpose' |
 
 /** Validated defaults for a fresh installation. */
 export const OnboardingSettingsFields = {
+  tutorialStatus: z.union(['never', 'active', 'done', 'skipped']).default('never'),
+  tutorialStep: z.number().min(0).max(8).default(0),
   version: z.const(1).default(1),
   step: z.union(['welcome', 'credit', 'purpose', 'process', 'done']).default('welcome'),
   purpose: z.union(['office', 'development', 'both', z.const(null)]),

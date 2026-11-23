@@ -5,6 +5,7 @@ import { resolve, join, dirname, basename } from 'node:path'
 import { mkdir, readFile, writeFile, cp, access, readdir, realpath } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import { dependencyNotices } from './ported-licenses.mjs'
+import {pnpm} from './upstream.mjs'
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const suite = join(root, 'plugins/ipollowork-suite')
 const require = createRequire(join(suite, 'package.json'))
@@ -46,9 +47,8 @@ export async function buildBusiness(slug, directory) {
     const dependencyDirectory = slug === 'ipollo-onto' ? legacy : join(legacy, 'skills/xhs-ops-worker/app')
     if (!await exists(join(dependencyDirectory, 'node_modules'))) {
       if (slug === 'ipollo-onto') await cp(join(business, 'source-package.json'), join(business, 'package.json'))
-      const executable = process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'pnpm'
       const args = ['install', '--ignore-workspace', '--frozen-lockfile', '--ignore-scripts']
-      execFileSync(executable, process.platform === 'win32' ? ['/d', '/s', '/c', 'pnpm.cmd', ...args] : args, { cwd: dependencyDirectory, stdio: 'inherit', windowsHide: true, timeout: 300_000 })
+      await pnpm(args,dependencyDirectory)
     }
     if (slug === 'ipollo-onto') {
       const dependency = createRequire(join(legacy, 'package.json'))

@@ -52,7 +52,7 @@ iPolloWork 把多 Agent 团队、共享项目、插件、Skills 和可编辑成�
 
 ## 从源码启动
 
-需要 **Node.js 24.15 或更新版本**及 **pnpm 11**。在 macOS 或 Linux 终端执行：
+需要 **Node.js ^24.22.3 或 >=26.13.1**及 **pnpm 11.28.5**。在 macOS 或 Linux 终端执行：
 
 ```sh
 git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git

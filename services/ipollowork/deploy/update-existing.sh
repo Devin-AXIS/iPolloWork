@@ -58,7 +58,7 @@ case "$action" in
     http -fsS https://cloud.ipollo.net/api/health
     ;;
   stage)
-    [[ "$(schema)" =~ ^(19|20|21)$ ]]
+    [[ "$(schema)" =~ ^[0-9]+$ ]] && test "$(schema)" -ge 19
     schema > "$release/previous-schema"
     ready
     test ! -e "$release/candidate-id"
@@ -75,6 +75,8 @@ case "$action" in
     [[ "$node_image" =~ ^[a-zA-Z0-9./:_@-]+$ ]]
     docker run --rm --network=none --entrypoint node "$node_image" -e 'if(process.versions.node!=="24.22.3")process.exit(1)'
     docker build --pull=false --target runtime --build-arg "NODE_IMAGE=$node_image" --label "org.opencontainers.image.revision=$revision" --label "org.opencontainers.image.version=$version" -t "$tag" "$release/context/services/ipollowork" > "$release/build.log" 2>&1 || { tail -n 25 "$release/build.log"; exit 1; }
+    docker run --rm --network=none --entrypoint node "$tag" --input-type=module -e 'import{SERVICE_SCHEMA_VERSION}from"/app/dist/server/database.js";import{existsSync}from"node:fs";if(!Number.isSafeInteger(SERVICE_SCHEMA_VERSION)||!existsSync("/app/dist/server/migration-pg-"+String(SERVICE_SCHEMA_VERSION).padStart(3,"0")+".sql"))process.exit(1);console.log(SERVICE_SCHEMA_VERSION)' > "$release/target-schema"
+    [[ "$(cat "$release/target-schema")" =~ ^[0-9]+$ ]] && test "$(cat "$release/previous-schema")" -le "$(cat "$release/target-schema")"
     docker run --rm --network=none --entrypoint node "$tag" --input-type=module -e 'import assert from "node:assert/strict";import{readFileSync,existsSync}from"node:fs";await import("/app/dist/server/app.js");await import("/app/dist/server/http-server.js");assert.match(readFileSync("/app/dist/server/organization-publications.js","utf8"),/organization-templates/);assert.match(readFileSync("/app/dist/server/admission.js","utf8"),/SERVICE_QUEUE_TIMEOUT/);assert.equal(JSON.parse(readFileSync("/app/package.json")).version,process.argv[1]);for(const name of ["admin","migrate","backup"])assert.ok(existsSync("/app/dist/server/cli/"+name+".js"));assert.ok(existsSync("/app/dist/server/migration-pg-021.sql"));console.log("Candidate imports, compiled operations, migration and version verified")' "$version"
     cat > "$release/release.compose.yml" <<EOF
 services:
@@ -104,16 +106,35 @@ EOF
     assert_changes
     backup="$release/backup-$(date -u +%Y%m%dT%H%M%SZ)"
     mkdir -m 700 "$backup"
+    app_database=$(docker exec "$work" node -e 'const value=process.env.APP_DATA_DATABASE_URL;if(value)console.log(decodeURIComponent(new URL(value).pathname.slice(1)))')
+    [[ -z "$app_database" || "$app_database" =~ ^[a-zA-Z0-9_]+$ ]]
+    # Quiesce application writes while both databases and local customer files are saved.
+    # If backup fails, restore the unchanged application before returning the error.
+    restore_after_backup_failure() { local result=$?; if test "$result" -ne 0; then docker start "$work" >/dev/null; ready || true; fi; return "$result"; }
+    trap restore_after_backup_failure EXIT
+    docker stop --time 40 "$work" >/dev/null
     docker exec "$pg" sh -ec 'exec pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup/production.pgdump"
     docker exec -i "$pg" pg_restore -l < "$backup/production.pgdump" > "$backup/production.list"
     grep -q 'TABLE DATA.*service_schema' "$backup/production.list"
+    if test -n "$app_database"; then
+      docker exec "$pg" sh -ec 'exec pg_dump -Fc -U "$POSTGRES_USER" -d "$1"' sh "$app_database" > "$backup/app-data.pgdump"
+      docker exec -i "$pg" pg_restore -l < "$backup/app-data.pgdump" > "$backup/app-data.list"
+      test -s "$backup/app-data.pgdump" && test -s "$backup/app-data.list"
+    fi
+    docker cp "$work:/data/." "$backup/service-data"
+    test -d "$backup/service-data"
     docker cp "$work:/data/auth.secret" "$backup/auth.secret"
     chmod 600 "$backup/auth.secret"
     test -s "$backup/auth.secret"
     if test -f "$live/.env"; then cp -- "$live/.env" "$backup/service.env"; chmod 600 "$backup/service.env"; fi
-    printf 'Database, authentication secret and configuration backup verified\n'
+    mkdir -m 700 "$backup/compose"
+    for index in "${!files[@]}"; do cp -- "${files[$index]}" "$backup/compose/$index.yml"; chmod 600 "$backup/compose/$index.yml"; done
+    docker inspect "$work" > "$backup/container.json"
+    chmod 600 "$backup/container.json"
+    printf 'Both configured databases, local service data, authentication secret and Compose configuration backup verified\n'
+    trap - EXIT
     if "${compose[@]}" -f "$release/release.compose.yml" up -d --no-deps --no-build --pull never work && ready &&
-       test "$(schema)" = 21 && test "$(docker inspect -f '{{.Image}}' "$work")" = "$(cat "$release/candidate-id")" &&
+       test "$(schema)" = "$(cat "$release/target-schema")" && test "$(docker inspect -f '{{.Image}}' "$work")" = "$(cat "$release/candidate-id")" &&
        http -fsS https://cloud.ipollo.net/api/ready >/dev/null &&
        test "$(http -sS -o /dev/null -w '%{http_code}' https://cloud.ipollo.net/api/v1/me/organization-templates)" = 401 &&
        test "$(http -sS -o /dev/null -w '%{http_code}' https://cloud.ipollo.net/api/v1/admin/runtime)" = 401 &&

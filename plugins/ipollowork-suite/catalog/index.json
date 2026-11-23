@@ -54,13 +54,13 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.38",
-          "publishTimestamp": 1795087666,
+          "version": "1.0.0-beta.39-ipollo.1",
+          "publishTimestamp": 1795434302,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -89,13 +89,13 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.24",
-          "publishTimestamp": 1794808989,
+          "version": "1.0.0-beta.27-ipollo.1",
+          "publishTimestamp": 1795434303,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -117,13 +117,13 @@
       },
       "versions": [
         {
-          "version": "0.2.2-rc.3",
+          "version": "0.2.3-alpha.2",
           "publishTimestamp": 1794449291,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -151,13 +151,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -185,13 +185,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -219,13 +219,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -253,13 +253,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -287,13 +287,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -321,13 +321,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -355,13 +355,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -389,13 +389,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -423,13 +423,13 @@
       },
       "versions": [
         {
-          "version": "0.1.2",
+          "version": "0.1.3",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -457,13 +457,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -491,13 +491,13 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -525,13 +525,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -559,13 +559,13 @@
       },
       "versions": [
         {
-          "version": "0.2.2",
+          "version": "0.2.3",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -593,13 +593,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -627,13 +627,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -661,13 +661,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -695,13 +695,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -729,13 +729,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -763,13 +763,13 @@
       },
       "versions": [
         {
-          "version": "0.1.4",
+          "version": "0.1.5",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -797,13 +797,13 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -831,13 +831,13 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -865,13 +865,13 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ],
@@ -900,13 +900,13 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlZGYwZjUiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNGM2MDdiIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMTZ2NSI+PC9wYXRoPjxwYXRoIGQ9Ik0xNiAxNHY3Ij48L3BhdGg+PHBhdGggZD0iTTIwIDEwdjExIj48L3BhdGg+PHBhdGggZD0ibTIyIDMtOC42NDYgOC42NDZhLjUuNSAwIDAgMS0uNzA4IDBMOS4zNTQgOC4zNTRhLjUuNSAwIDAgMC0uNzA3IDBMMiAxNSI+PC9wYXRoPjxwYXRoIGQ9Ik00IDE4djMiPjwvcGF0aD48cGF0aCBkPSJNOCAxNHY3Ij48L3BhdGg+PC9zdmc+PC9zdmc+Cg==",
       "versions": [
         {
-          "version": "1.0.2",
+          "version": "1.0.3",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
-            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+            "dsh": "0.2.3-alpha.2"
           }
         }
       ]

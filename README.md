@@ -52,7 +52,7 @@ The video above is the original iPolloWork demo. The current `main` branch uses 
 
 ## Start from source
 
-Use Node.js **24.15 or newer** and **pnpm 11**. Run these commands in a terminal on macOS or Linux:
+Use Node.js **^24.22.3 or >=26.13.1** and **pnpm 11.28.5**. Run these commands in a terminal on macOS or Linux:
 
 ```sh
 git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git

@@ -2,6 +2,6 @@
 # section, a hash of its English and Chinese blocks outside code blocks and generated regions.
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write integrations/runtime/README.md
-/official-dsh-runtime:
-  en: 4e99ae8df0ab72c6
-  zh: c7207f42c1c1c4cb
+/official-dsh-dependency:
+  en: 8711bebb734fb085
+  zh: d6c3a616a07123d0
