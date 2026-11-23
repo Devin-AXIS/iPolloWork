@@ -64,10 +64,13 @@ test('discovery reads pinned GitHub metadata and fills editable copy from the pl
   const sha = 'a'.repeat(40);
   const data = new Map([
     ['https://api.github.com/repos/example/repo/commits/main', JSON.stringify({ sha, commit: { committer: { date: '2026-11-20T08:00:00Z' } } })],
-    [`https://raw.githubusercontent.com/example/repo/${sha}/packages/decision/package.json`, JSON.stringify({ name: '@example/decision', version: '1.0.0', dsh: { bundle: { patch: './bundle.yml' } } })],
-    [`https://raw.githubusercontent.com/example/repo/${sha}/packages/decision/README.md`, '# 决策情报\n\n为每项决策整理指标和来源。'],
+    [`https://api.github.com/repos/example/repo/contents/packages/decision/package.json?ref=${sha}`, JSON.stringify({ name: '@example/decision', version: '1.0.0', dsh: { bundle: { patch: './bundle.yml' } } })],
+    [`https://api.github.com/repos/example/repo/contents/packages/decision/README.md?ref=${sha}`, '# 决策情报\n\n为每项决策整理指标和来源。'],
   ]);
-  const fetcher: typeof fetch = async url => new Response(data.get(String(url)), { status: data.has(String(url)) ? 200 : 404 });
+  const fetcher: typeof fetch = async (url, init) => {
+    if (String(url).includes('/contents/')) assert.equal(new Headers(init?.headers).get('accept'), 'application/vnd.github.raw+json');
+    return new Response(data.get(String(url)), { status: data.has(String(url)) ? 200 : 404 });
+  };
   const entry = marketEntry.parse(await discoverMarket('https://github.com/example/repo/tree/main/packages/decision', fetcher));
   assert.equal(entry.title, '决策情报');
   assert.equal(entry.description, '为每项决策整理指标和来源。');
