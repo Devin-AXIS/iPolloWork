@@ -50,6 +50,29 @@ it('keeps matching core copies and unrelated plugin dependencies untouched', () 
   expect(existsSync(join(profile, 'node_modules/@ipollo/dsh-suite/index.js'))).toBe(true)
 })
 
+it('repairs the complete signed SDK closure including schema utilities without touching external plugins',()=>{
+  const root=mkdtempSync(join(tmpdir(),'ipollo-alpha-sdk-repair-'));roots.push(root)
+  const runtime=join(root,'runtime'),profile=join(root,'profile');mkdirSync(profile)
+  const descriptor=runtimeFixture(runtime,'0.2.3-alpha.2')
+  const entries=[
+    {name:'@deepseek-ai/schemastery',version:'3.20.0-alpha.1',path:'node_modules/@deepseek-ai/schemastery'},
+    {name:'@deepseek-ai/cosmokit',version:'1.10.0-alpha.1',path:'node_modules/@deepseek-ai/cosmokit'},
+  ]
+  for(const entry of entries){
+    writePackage(join(runtime,'node_modules'),entry.name,{version:entry.version},'signed SDK')
+    writePackage(join(profile,'node_modules'),entry.name,{version:'1.0.0'},'old SDK bytes')
+  }
+  writePackage(join(profile,'node_modules'),'@ipollo/external-plugin',{version:'0.1.0'},'user plugin')
+  const metadata={...descriptor,sharedPackages:[...descriptor.sharedPackages,...entries]}
+  const backup=repairProfileRuntime(profile,runtime,metadata)!
+  for(const entry of entries){
+    expect(existsSync(join(profile,'node_modules',entry.name))).toBe(false)
+    expect(readFileSync(join(backup,'node_modules',entry.name,'index.js'),'utf8')).toBe('old SDK bytes')
+  }
+  expect(readFileSync(join(profile,'node_modules/@ipollo/external-plugin/index.js'),'utf8')).toBe('user plugin')
+  expect(repairProfileRuntime(profile,runtime,metadata)).toBeUndefined()
+})
+
 it.each([
   ['@ipollo/dsh-suite', '0.1.35', '0.1.39'],
   ['@ipollo/dsh-suite', '0.1.39', '0.1.39'],

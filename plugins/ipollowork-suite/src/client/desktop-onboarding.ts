@@ -12,12 +12,16 @@ import { language } from './locale.ts'
 import type { TranscriptViewMode } from '@deepseek-ai/dsh-client-ui-chat/client'
 import type { ClientContext } from './native.ts'
 import type { AccountController } from './account-controller.ts'
+import {mountBeginnerTour} from './onboarding/BeginnerTour.tsx'
 
 /** Keep the original introduction without sharing account credentials.
  * @param ctx - Native client services and slot registration.
  * @param account - iPolloWork account state owner.
  */
 export function mountDesktopOnboarding(ctx: ClientContext, account: AccountController): void {
+  const tutorial=mountBeginnerTour(ctx)
+  let tutorialTimer:ReturnType<typeof setTimeout>|undefined
+  ctx.effect(()=>()=>clearTimeout(tutorialTimer),'ipollowork-suite: tutorial handoff')
   const platform = (globalThis as typeof globalThis & { dshPlatform?: PlatformBridge }).dshPlatform
   const pages = createPlatformPages()
   ctx.effect(() => () => pages.dispose(), 'ipollowork-suite: top-up page lifetime')
@@ -77,7 +81,11 @@ export function mountDesktopOnboarding(ctx: ClientContext, account: AccountContr
       setVisible: () => {},
       ...(platform ? { openPlatformPage: (page, closed) => pages.open(page, () => { closed(); void account.refresh() }) } : {}),
       update: change => controller.update(change),
-      complete: reason => controller.complete(reason),
+      complete: async reason => {
+        const accepted=await controller.complete(reason)
+        if(accepted&&reason==='completed')tutorialTimer=setTimeout(()=>{void tutorial.start()},200)
+        return accepted
+      },
       retry: () => controller.retry(),
     } satisfies DesktopOnboardingInjected),
   }, DesktopOnboardingEntry))

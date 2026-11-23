@@ -6,6 +6,7 @@ import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, useRe
 import { FilePicker } from "./file-picker.tsx";
 import { ProjectDownload } from "./project-files.tsx";
 import { projectCopy } from "./project-copy.ts";
+import { enterpriseError } from "./enterprise-locale.ts";
 import css from "./suite.module.css";
 
 export function OrganizationFilePackages(props: AssetProps) {
@@ -38,6 +39,7 @@ export function OrganizationFilePackages(props: AssetProps) {
         {selected === item.id && <PackageFiles {...props} path={path} afterChange={record.reload}/>}
       </div>;
     })}
+    {(record.data?.packages?.length ?? 0) >= 200 && <p className={css.quietLine}>{t.packageListLimit}</p>}
     {editing && <PackageEditor {...props} item={editing === "new" ? undefined : editing} title={editing === "new" ? add : t.edit}
       path={base + "/packages"} close={() => { setEditing(undefined); record.reload(); }} opened={setSelected}/>}
     {access && <AccessDialog {...props} kind="package" assetId={access.id} title={access.title} audience={access.audience} close={() => setAccess(undefined)}/>}
@@ -73,7 +75,13 @@ function PackageEditor({ item, title, path, close, opened, call, t, language }: 
 
 function PackageFiles({ path, afterChange, call, revision, controller, detail, t, language }: AssetProps & { path: string; afterChange(): void }) {
   const record = useRecord<PackageDetail>(path, call, revision);
-  const task = useTask(t);
+  const task = useTask(t, error => {
+    const code = error instanceof Error ? error.message : '';
+    if (code === 'FILE_NOT_FOUND') return t.packageFileMissing;
+    if (code === 'STORAGE_QUOTA_EXCEEDED') return t.packageQuotaExceeded;
+    return ['UPLOAD_TOO_LARGE', 'IPW_FILE_TOO_LARGE', 'IPW_REQUEST_TOO_LARGE'].includes(code)
+      ? t.packageFileLimit : enterpriseError(code, t, t.packageUploadFailed);
+  });
   const [files, setFiles] = useState<File[]>([]);
   const c = projectCopy(language);
   const refresh = () => { record.reload(); afterChange(); };
@@ -89,10 +97,11 @@ function PackageFiles({ path, afterChange, call, revision, controller, detail, t
         })}>{t.remove}</Button>}
       </>}/>)}
     {record.data?.files.length === 0 && <p className={css.quietLine}>{language.startsWith("zh") ? "暂无文件" : "No files yet"}</p>}
+    {(record.data?.files.length ?? 0) >= 500 && <p className={css.quietLine}>{t.packageFilesLimit}</p>}
     {detail.canManage && <div className={css.enterpriseForm}>
       <FilePicker label={c.upload} hint={language.startsWith("zh") ? "单个文件最大 24 MB" : "Up to 24 MB per file"} files={files}
         disabled={task.busy} language={language} onSelect={setFiles}/>
-      <Button size="sm" variant="outline" disabled={!files.length || task.busy} onClick={() => void task.run(async () => {
+      <Button size="sm" variant="outline" style={{ alignSelf: 'flex-start' }} disabled={!files.length || task.busy} onClick={() => void task.run(async () => {
         const file = files[0]!;
         if (file.size > 24 * 1024 * 1024) throw new Error("UPLOAD_TOO_LARGE");
         const form = new FormData();
@@ -101,7 +110,7 @@ function PackageFiles({ path, afterChange, call, revision, controller, detail, t
         if (!response.ok) throw new Error((await response.json().catch(() => null))?.error ?? "IPW_FILE_TRANSFER_FAILED");
         setFiles([]);
         refresh();
-      })}>{c.upload}</Button>
+      })}>{task.busy ? c.uploading : c.upload}</Button>
       <FormError message={task.error}/>
     </div>}
   </div>;

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Jev DSH Decision Engine",
+    "description": "Jev provides structured decisions for agent harnesses, helping select tools, Skills, and agents, score results, and make judgments. The current agent executes the selected actions."
+  }
+}

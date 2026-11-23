@@ -27,8 +27,22 @@ test("gateway recovery is bounded and stops on cancellation", async () => {
   await assert.rejects(recoverModelRequest(async () => {
     calls++;
     throw new SuiteError("SERVICE_CALL_RUNNING", 409);
-  }, new AbortController().signal), { code: "SERVICE_CALL_RUNNING" });
-  assert.equal(calls, 4);
+  }, new AbortController().signal, async()=>{}), { code: "SERVICE_CALL_RUNNING" });
+  assert.equal(calls, 6);
+});
+
+test('malformed gateway responses and restart admission recover using the same invocation without starting a new model request',async()=>{
+  const ids:string[]=[],waits:number[]=[];
+  const failures=['IPW_INVALID_RESPONSE','SERVICE_DRAINING','SERVICE_BUSY','SERVICE_QUEUE_TIMEOUT'];
+  const response=await recoverModelRequest(async()=>{
+    ids.push('original-request');
+    const failure=failures.shift();
+    if(failure)throw new SuiteError(failure,503);
+    return new Response('persisted completion');
+  },new AbortController().signal,async milliseconds=>{waits.push(milliseconds);});
+  assert.equal(await response.text(),'persisted completion');
+  assert.deepEqual(ids,Array(5).fill('original-request'));
+  assert.deepEqual(waits,[500,1000,2000,4000]);
 });
 
 test("rejections, unknown outcomes and programming errors never start another request", async () => {

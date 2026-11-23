@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": ">=24.9.0"
+    "node": "^24.22.3 || >=26.13.1"
   },
   "scripts": {
     "web": "dsh --profile web",
@@ -13,12 +13,13 @@
     "check:pin": "node check-pin.mjs"
   },
   "dependencies": {
-    "@deepseek-ai/dsh": "0.2.2-rc.3"
+    "@deepseek-ai/dsh": "0.2.3-alpha.2"
   },
   "license": "SEE LICENSE IN LICENSE",
   "overrides": {
     "undici@^8.0.0": "8.12.4",
     "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
     "fflate": "0.8.3"
   }
 }

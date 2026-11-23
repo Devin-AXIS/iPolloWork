@@ -151,8 +151,7 @@ async function main(): Promise<void> {
     writeFileSync(join(DSH_OUTPUT_ROOT, 'package.json'), `${JSON.stringify({
       name: '@ipollo/desktop-runtime', private: true, version: release.version, type: 'module',
       ipolloworkAccountOrigin: resolveDesktopAccountOrigin(process.env),
-      dependencies: Object.fromEntries(packageSet.packages.filter(entry => entry.name !== '@ipollo/dsh-suite')
-        .map(entry => [entry.name, entry.version])),
+        dependencies: Object.fromEntries(packageSet.packages.map(entry => [entry.name, entry.version])),
     }, undefined, 2)}\n`)
     for (const file of DESKTOP_HOST_RUNTIME_FILES) {
       if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', DESKTOP_HOST_PACKAGE, file))) {

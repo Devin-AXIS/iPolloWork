@@ -335,8 +335,10 @@ export class EnterpriseService {
     if (!project) return null;
     const path = "/api/v1/projects/" + project.projectId + "/board";
     if (call.operation === "write") return request(path, call.payload, "PATCH");
-    const query = call.operation === "get" ? "?task=" + id.parse(call.taskId) : call.after ? "?after=" + id.parse(call.after) : "";
-    return request(path + query);
+    const query=new URLSearchParams(call.operation==='get'?{task:id.parse(call.taskId)}:{
+      ...(call.after?{after:id.parse(call.after)}:{}),...(call.query?{query:call.query}:{}),...(call.scope?{scope:call.scope}:{}),
+    });
+    return request(path+(query.size?'?'+query:''));
   }
   /** Read the roster only after resolving the project and checking current access. */
   async projectRoster(workspaceId: string, signal: AbortSignal, sessionId?: string): Promise<ProjectRoster | null> {

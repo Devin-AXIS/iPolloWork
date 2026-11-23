@@ -3,7 +3,7 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import { createServer } from 'node:http'
 import { once } from 'node:events'
-import { Config as McpConfig, probeServer } from '@deepseek-ai/dsh-mcp-client'
+import { Config as McpConfig, McpClientHost } from '@deepseek-ai/dsh-mcp-client'
 import { AccountService } from '../src/host/account.ts'
 import { resolveConfig } from '../src/host/config.ts'
 import { mountEnterpriseMcp, type EnterpriseMcpScope } from '../src/host/enterprise-mcp.ts'
@@ -155,7 +155,7 @@ test('organization relay preserves protocol headers and native discovery falls b
     const registered = Array.from(live)[0]
     assert.ok(registered)
     const [name, entry] = registered
-    const result = await probeServer(new Context(), McpConfig({ ...entry, serverName: name, closeTimeoutMs: 1000 }), { timeoutMs: 5000 })
+    const result = await new McpClientHost(new Context()).probe(McpConfig({ ...entry, serverName: name, closeTimeoutMs: 1000 }), { timeoutMs: 5000 })
     assert.equal(result.ok, true, JSON.stringify(result))
     if (result.ok) assert.deepEqual(result.toolNames, ['ping'])
     assert.deepEqual(methods, ['server/discover', 'initialize', 'notifications/initialized', 'tools/list'])

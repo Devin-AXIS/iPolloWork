@@ -18,6 +18,8 @@
 .pluginList { display: flex; flex-direction: column; gap: 8px; }
 .card { display: flex; gap: 20px; align-items: center; border-radius: 12px; padding: 18px 12px; margin: 0 -12px; transition: background-color .15s; }
 .cardBody { min-width: 0; flex: 1; display: flex; gap: 16px; align-items: start; border: 0; padding: 0; text-align: left; background: transparent; color: inherit; cursor: pointer; font: inherit; border-radius: 8px; }
+.cardBody:not(button) { cursor: default; }
+.cardBody:not(button) .cardMeta { overflow-wrap: anywhere; }
 .cardCopy { min-width: 0; }
 .titleRow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .titleRow h1,.titleRow h2 { margin: 0; overflow-wrap: anywhere; }
@@ -261,6 +263,10 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 .enterpriseModal { width:min(560px,100%);max-width:560px;max-height:100%;margin:0;font-size:14px;color:var(--ipw-text, var(--dsw-alias-label-primary)); }
 .enterpriseWide { width:min(720px,100%);max-width:720px; }
 .enterpriseModalContent { min-height:0;overflow:auto;overscroll-behavior:contain;flex:1 1 auto; }
+.memberNoticeContent .rowText small { white-space:normal;overflow-wrap:anywhere; }
+.memberNoticeContent .enterpriseItem { flex-wrap:wrap;gap:4px 8px;padding-block:10px; }
+.memberNoticeContent .rowActions { flex-wrap:wrap; }
+.memberNoticeContent .rowMain { min-width:min(240px,100%); }
 .enterpriseForm,.projectCreationForm { display:flex;flex-direction:column;gap:12px;margin:8px 0 0; }
 .page .projectCreationForm > p { margin:0; }
 .enterpriseField { display:flex;flex-direction:column;gap:6px;min-width:0;font-size:13px; }

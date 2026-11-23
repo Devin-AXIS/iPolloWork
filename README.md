@@ -52,7 +52,7 @@ The video above is the original iPolloWork demo. The current `main` branch uses 
 
 ## Start from source
 
-Use Node.js **24.15 or newer** and **pnpm 11**. Run these commands in a terminal on macOS or Linux:
+Use Node.js **^24.22.3 or >=26.13.1** and **pnpm 11.28.5**. Run these commands in a terminal on macOS or Linux:
 
 ```sh
 git clone --branch main https://github.com/Devin-AXIS/iPolloWork.git
@@ -78,6 +78,9 @@ For ongoing development, see the [development guide](integrations/runtime/README
 ## Community and contributing
 
 Use [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues) for iPolloWork bugs and requests. Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes and [SECURITY.md](SECURITY.md) before running agent tasks. The upstream runtime is maintained by [DeepSeek](https://github.com/deepseek-ai/deepseek-harness).
+
+Repository edits and Git submissions follow the shared [Git workflow skill](.agents/skills/github-sync-pr-flow/SKILL.md).
+Normal setup installs its Git checks; existing checkouts can run `npm run setup:git`.
 
 ## Star History
 

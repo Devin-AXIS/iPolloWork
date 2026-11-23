@@ -37,7 +37,7 @@ jobs:
           path: source
       - uses: actions/setup-node@v4
         with:
-          node-version: '24.15.0'
+          node-version: '24.22.3'
       - name: Install the pinned packaging tools without rebuilding the application
         run: node integrations/tooling/setup.mjs --plugins
       - name: Download and verify the sealed application

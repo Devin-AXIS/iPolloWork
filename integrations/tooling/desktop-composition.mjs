@@ -16,10 +16,17 @@ export function desktopApplicationEntries(patches, accountOrigin) {
   })
 }
 
+/** Editable product entries belong to the native profile tree, preserving Settings ownership. */
+export function desktopApplicationPatches(entries) {
+  return [{ id: 'ui-settings-account', disabled: true }, { id: 'ui-account-notifications', disabled: true }, { insert: entries }]
+}
+
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   const { load, dump } = createRequire(new URL('../../.upstream/dsh/package.json', import.meta.url))('js-yaml')
   const patches = load(await readFile(join(root, 'plugins/ipollowork-suite/cordis.patch.yml'), 'utf8'))
-  await writeFile(join(root, 'integrations/desktop-host/application.yml'), dump(desktopApplicationEntries(patches, resolveDesktopAccountOrigin()), { lineWidth: -1, noRefs: true }))
+  const entries = desktopApplicationEntries(patches, resolveDesktopAccountOrigin())
+  await writeFile(join(root, 'integrations/desktop-host/application.yml'), dump(entries, { lineWidth: -1, noRefs: true }))
+  await writeFile(join(root, 'integrations/desktop-host/cordis.patch.yml'), dump(desktopApplicationPatches(entries), { lineWidth: -1, noRefs: true }))
   await mkdir(join(root, 'integrations/desktop-host/assets'), { recursive: true })
   await copyFile(join(root, 'plugins/ipollowork-suite/assets/mark.svg'), join(root, 'integrations/desktop-host/assets/mark.svg'))
 }

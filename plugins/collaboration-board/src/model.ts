@@ -108,7 +108,7 @@ export function cardFor(task: ProjectTask, roster: ProjectRoster | null | undefi
 }
 export function taskDefaults(card?: Card, roster?: ProjectRoster | null): TaskDraft {
   if (card?.task) {
-    const {id: _id, revision: _revision, blocked: _blocked, ...task} = card.task;
+    const {id: _id, revision: _revision, blocked: _blocked,archived:_archived,deletedAt:_deletedAt, ...task} = card.task;
     return task;
   }
   return {

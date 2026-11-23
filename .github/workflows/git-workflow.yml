@@ -1,0 +1,21 @@
+name: Git collaboration
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7.0.0
+        with:
+          node-version: '24.22.3'
+      - name: Check PR synchronization and shared Git policy
+        run: node integrations/tooling/git-workflow.mjs ci
+      - name: Test Git guards in disposable repositories
+        run: node --test integrations/tooling/tests/git-workflow.test.mjs

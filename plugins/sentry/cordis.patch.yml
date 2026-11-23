@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-sentry
+      name: "@ipollo/dsh-sentry"

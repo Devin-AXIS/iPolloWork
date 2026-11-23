@@ -1,0 +1,436 @@
+{
+  "schemaVersion": 2,
+  "id": "figma",
+  "name": "Figma",
+  "description": "完整的 Figma 设计到代码、Code Connect、设计系统和画布写入工作流。",
+  "category": "设计与创作",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false,
+    "reference": "https://github.com/openai/plugins/tree/main/plugins/figma"
+  },
+  "icon": {
+    "simpleIconSlug": "figma"
+  },
+  "composer": {
+    "prompt": "使用 Figma 插件读取设计上下文，并按当前项目规范完成实现。"
+  },
+  "setup": {
+    "instructions": "Figma 授权由 Figma Desktop 独立管理。在桌面应用中登录账号、打开 Design 文件、切换到 Dev Mode，然后在 Inspect 面板启用 Desktop MCP server。",
+    "primaryCta": "连接 Figma Desktop",
+    "secondaryCta": "查看官方设置指南"
+  },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Complete Figma design-to-code, Code Connect, design system, and canvas authoring workflows.",
+        "category": "Design & Creative",
+        "composer": {
+          "prompt": "Use the Figma plugin to read design context and implement it according to the current project's conventions."
+        },
+        "setup": {
+          "instructions": "Figma authorization is managed independently by Figma Desktop. Sign in to the desktop app, open a Design file, switch to Dev Mode, and enable the Desktop MCP server from the Inspect panel.",
+          "primaryCta": "Connect Figma Desktop",
+          "secondaryCta": "View Official Setup Guide"
+        },
+        "resources": {
+          "figma-mcp": {
+            "label": "Official Figma Desktop MCP",
+            "description": "Use the account signed in to Figma Desktop to provide read and write tools through the official local MCP service."
+          },
+          "figma-design-to-code": {
+            "label": "Design to Code"
+          },
+          "figma-create-new-file": {
+            "label": "Create Figma File"
+          },
+          "figma-generate-design": {
+            "label": "Generate and Update Designs"
+          },
+          "figma-generate-diagram": {
+            "label": "Generate Diagrams"
+          },
+          "figma-generate-library": {
+            "label": "Generate Design System Library"
+          },
+          "figma-implement-motion": {
+            "label": "Implement Motion"
+          },
+          "figma-swiftui": {
+            "label": "SwiftUI Workflow"
+          },
+          "figma-use-figjam": {
+            "label": "FigJam Workflow"
+          },
+          "figma-use-motion": {
+            "label": "Figma Motion Workflow"
+          },
+          "figma-use-slides": {
+            "label": "Figma Slides Workflow"
+          },
+          "figma-skill-files": {
+            "label": "Figma Skill References and Scripts"
+          },
+          "figma-command-implement": {
+            "label": "Implement from Figma"
+          },
+          "figma-command-connect-components": {
+            "label": "Connect Figma Components"
+          },
+          "figma-command-design-rules": {
+            "label": "Create Design System Rules"
+          },
+          "figma-command-parity-review": {
+            "label": "Review Design Parity"
+          },
+          "figma-agent-implementation": {
+            "label": "Figma Implementation Agent"
+          },
+          "figma-agent-design-rules": {
+            "label": "Design System Rules Agent"
+          },
+          "figma-agent-parity-review": {
+            "label": "Design Parity Review Agent"
+          },
+          "figma-assets": {
+            "label": "Figma Showcase Assets"
+          },
+          "figma-readme": {
+            "label": "Usage Guide"
+          },
+          "figma-upstream-readme": {
+            "label": "Upstream Guide"
+          }
+        },
+        "permissions": {
+          "network": {
+            "reason": "Connect to the official MCP service running in Figma Desktop and read or update files accessible to the current Figma account."
+          },
+          "workspace-read": {
+            "reason": "Analyze project components, design tokens, framework, and code conventions."
+          },
+          "workspace-write": {
+            "reason": "Implement designs, generate Code Connect files, and create project design rules as requested by the user."
+          }
+        }
+      }
+    }
+  },
+  "contributions": [
+    {
+      "type": "setup-instructions",
+      "ref": "https://developers.figma.com/docs/figma-mcp-server/local-server-installation/",
+      "location": "settings-detail"
+    }
+  ],
+  "package": {
+    "version": "2.0.18",
+    "publisher": {
+      "id": "figma",
+      "name": "Figma"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.17.28"
+    },
+    "updateId": "figma/official-workflows"
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "连接 Figma 桌面应用在本机运行的官方 MCP 服务，并读取或更新当前 Figma 账号可访问的文件。"
+    },
+    {
+      "id": "workspace-read",
+      "reason": "分析当前项目的组件、设计 Token、框架和代码规范。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "按照用户要求实现设计、生成 Code Connect 文件和项目设计规则。"
+    }
+  ],
+  "resources": [
+    {
+      "type": "mcp",
+      "id": "figma-mcp",
+      "label": "Figma 官方 Desktop MCP",
+      "description": "使用 Figma 桌面应用中已登录的账号，通过本机官方 MCP 服务提供读取和写入工具。",
+      "path": "mcp/figma.json",
+      "mcpServerName": "figma",
+      "oauth": false,
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-design-to-code",
+      "label": "设计转代码",
+      "path": "skills/figma-design-to-code/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-design-to-code"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-code-connect",
+      "label": "Code Connect",
+      "path": "skills/figma-code-connect/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-code-connect"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-create-new-file",
+      "label": "创建 Figma 文件",
+      "path": "skills/figma-create-new-file/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-create-file"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-generate-design",
+      "label": "生成和更新设计",
+      "path": "skills/figma-generate-design/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-generate-design"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-generate-diagram",
+      "label": "生成图表",
+      "path": "skills/figma-generate-diagram/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-generate-diagram"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-generate-library",
+      "label": "生成设计系统库",
+      "path": "skills/figma-generate-library/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-generate-library"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-implement-motion",
+      "label": "实现动效",
+      "path": "skills/figma-implement-motion/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-implement-motion"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-swiftui",
+      "label": "SwiftUI 工作流",
+      "path": "skills/figma-swiftui/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-swiftui"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-use-figjam",
+      "label": "FigJam 工作流",
+      "path": "skills/figma-use-figjam/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-figjam"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-use-motion",
+      "label": "Figma 动效工作流",
+      "path": "skills/figma-use-motion/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-motion"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-use-slides",
+      "label": "Figma Slides 工作流",
+      "path": "skills/figma-use-slides/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-slides"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "figma-use",
+      "label": "Figma Plugin API",
+      "path": "skills/figma-use/SKILL.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "provides": [
+        "workflow:figma-plugin-api"
+      ],
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "figma-skill-files",
+      "label": "Figma Skill 引用资料和脚本",
+      "path": "skills",
+      "required": true
+    },
+    {
+      "type": "command",
+      "id": "figma-command-implement",
+      "label": "从 Figma 实现",
+      "path": "commands/implement-from-figma.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "command",
+      "id": "figma-command-connect-components",
+      "label": "连接 Figma 组件",
+      "path": "commands/connect-figma-components.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "command",
+      "id": "figma-command-design-rules",
+      "label": "创建设计系统规则",
+      "path": "commands/create-design-system-rules.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "command",
+      "id": "figma-command-parity-review",
+      "label": "审查设计一致性",
+      "path": "commands/review-design-parity.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "agent",
+      "id": "figma-agent-implementation",
+      "label": "Figma 实现 Agent",
+      "path": "agents/figma-implementation-agent.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "agent",
+      "id": "figma-agent-code-connect",
+      "label": "Figma Code Connect Agent",
+      "path": "agents/figma-code-connect-agent.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "agent",
+      "id": "figma-agent-design-rules",
+      "label": "设计系统规则 Agent",
+      "path": "agents/design-system-rules-agent.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "agent",
+      "id": "figma-agent-parity-review",
+      "label": "设计一致性审查 Agent",
+      "path": "agents/design-parity-review-agent.md",
+      "requires": [
+        "resource:figma-mcp"
+      ],
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "figma-assets",
+      "label": "Figma 展示资源",
+      "path": "assets",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "figma-readme",
+      "label": "使用说明",
+      "path": "README.md",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "figma-upstream-readme",
+      "label": "上游说明",
+      "path": "UPSTREAM_README.md",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "figma-license",
+      "label": "Figma Developer Terms",
+      "path": "LICENSE.txt",
+      "required": true
+    }
+  ]
+}

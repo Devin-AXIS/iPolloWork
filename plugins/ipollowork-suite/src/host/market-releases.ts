@@ -19,15 +19,27 @@ const archive = z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   tag,
 }).strict()
-export const bundledReleases = z.object({ format: z.literal(1), plugins: z.array(archive).max(100) }).strict()
+export const bundledReleases = z.object({ format: z.literal(1), plugins: z.array(archive.partial({tag:true})).max(100) }).strict()
 const publishedRelease = archive.extend({
   dsh: z.string().max(120).refine(range => Boolean(range.trim()) && semver.validRange(range) !== null),
-}).refine(release => release.file === `${release.name}-${release.version}-${release.sha256.slice(0, 12)}.tgz`)
+}).refine(release => release.file === `${release.name.replace(/^@/,'').replace('/','-')}-${release.version}-${release.sha256.slice(0, 12)}.tgz`)
 const publishedReleases = z.object({ format: z.literal(1), plugins: z.array(publishedRelease).max(100) }).strict()
 export type PublishedRelease = z.infer<typeof publishedRelease>
 
 export function githubArchive(release: z.infer<typeof archive>) {
   return { spec: `${releaseBase}${release.tag}/${release.file}`, archiveSha256: release.sha256 }
+}
+
+/** Unpublished product bundles stay local; only explicitly published optional archives may download. */
+export async function readBundledArchive(release:z.infer<typeof bundledReleases>['plugins'][number],file:string):Promise<{bytes:Buffer}|{target:ReturnType<typeof githubArchive>} >{
+  let bytes:Buffer
+  try{bytes=await readFile(file)}catch(error){
+    if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error
+    if(release.name.startsWith('@ipollo/dsh-')||!release.tag)throw new Error('A bundled product plugin is missing from this installation')
+    return {target:githubArchive({...release,tag:release.tag})}
+  }
+  verifyArchive(bytes,release.sha256)
+  return {bytes}
 }
 
 /** One bounded check across list refreshes and installation requests. The bundled catalog works offline. */

@@ -1,0 +1,31 @@
+{
+  "name": "xiaohongshu-ops",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "xhs-ops": "./dist/cli.js"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 tests/**/*.test.ts",
+    "ops": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.0.12",
+    "@tabler/icons-webfont": "3.46.0",
+    "hono": "4.12.33",
+    "sharp": "0.34.5"
+  },
+  "devDependencies": {
+    "@types/node": "26.1.2",
+    "tsx": "4.23.1",
+    "typescript": "7.0.2"
+  },
+  "engines": {
+    "node": ">=22.22.0"
+  }
+}

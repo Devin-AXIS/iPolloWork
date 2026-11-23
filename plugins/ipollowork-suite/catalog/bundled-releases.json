@@ -2,18 +2,179 @@
   "format": 1,
   "plugins": [
     {
+      "name": "@ipollo/dsh-decision-intelligence",
+      "version": "1.0.3",
+      "file": "ipollo-dsh-decision-intelligence-1.0.3-a885fbc7aa71.tgz",
+      "sha256": "a885fbc7aa71983b53bc545f4c333dec81b42b5ad549c3a461be0414354cc72b",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-acme-research",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-acme-research-0.1.5-f691a3273d70.tgz",
+      "sha256": "f691a3273d70fdc44649fa9582ed3ae6df1e1c44cb5c20937c0937befe4f7457",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-context7",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-context7-0.1.5-67cd8fb5552a.tgz",
+      "sha256": "67cd8fb5552a907316173aa298dc945ae82feb92f2f71600e16b5a8dccfd3200",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-deepseek-harness",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-deepseek-harness-0.1.5-257534eb36ca.tgz",
+      "sha256": "257534eb36ca21d257ab51a5b765c7f2c15610c1f27d56deea707d9a9bd57da1",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-douyin-ops",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-douyin-ops-0.1.5-e89da67985a1.tgz",
+      "sha256": "e89da67985a1330c7b161835a6bf27a262f57dd473b2dabdb55f12acd49a4dbf",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-figma",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-figma-0.1.5-f50924e1acf0.tgz",
+      "sha256": "f50924e1acf0ff81297d13f736463f1fd51bb78127127214cae7520a77d60fb6",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-github",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-github-0.1.5-dfaba4f774e4.tgz",
+      "sha256": "dfaba4f774e4fe2f50a0ea7793f4505c33e7bd69cde8cb7575b75973c76cba79",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-ipollo-onto",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-ipollo-onto-0.1.5-557f38df19b8.tgz",
+      "sha256": "557f38df19b8f0e3a286c41a9854620ce1034f467c068d6dc9e00548dee33dea",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-jev-decision-model",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-jev-decision-model-0.1.5-0ff16653faf7.tgz",
+      "sha256": "0ff16653faf77ebaf5412fd2cd5a53b6c58919ffe86d0509668dbde7ec7cddf2",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-data-annotation",
+      "version": "0.1.3",
+      "file": "ipollo-dsh-data-annotation-0.1.3-00a1d26bc526.tgz",
+      "sha256": "00a1d26bc526b15493aa413330f9a7c7e8627b00e5aad625a628ccd88e556814",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-linear",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-linear-0.1.5-c4b28422ca1d.tgz",
+      "sha256": "c4b28422ca1debc627894e2ae651312d68dcebce66b01214a36db06af7a36cfe",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-media-studio",
+      "version": "0.1.7",
+      "file": "ipollo-dsh-media-studio-0.1.7-be5b21ca85e0.tgz",
+      "sha256": "be5b21ca85e073f753d2cd7230d7860726a2b60cac438dff9b32df1971853b4f",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-notion",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-notion-0.1.5-5686b6d1eb4f.tgz",
+      "sha256": "5686b6d1eb4fb4d8ab434b16e32c5c679c86e3eb0799bc0b84dc4b3f2c43dfd0",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-operation-recorder",
+      "version": "0.2.3",
+      "file": "ipollo-dsh-operation-recorder-0.2.3-80e4122e46ff.tgz",
+      "sha256": "80e4122e46ff8eef69e40e82341ddb060a3a20c834a3bcb6a09ced6d6c365e62",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-plugin-workshop",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-plugin-workshop-0.1.5-c50d16c047e2.tgz",
+      "sha256": "c50d16c047e259701daf703233a1fd13883259b8c3f20502fef0698c8382879b",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-reference-context",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-reference-context-0.1.5-c6c1ed7972ea.tgz",
+      "sha256": "c6c1ed7972ea33be9d16dbc545b9472fabd72e8e8df7fec4c026630f90beef9f",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-sentry",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-sentry-0.1.5-ee9d5f03b1bf.tgz",
+      "sha256": "ee9d5f03b1bf7aa28869ff39f7e599f9814ec1bb9963b1c58e66c6289ca05e32",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-short-video-studio",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-short-video-studio-0.1.5-40115bdb0f2f.tgz",
+      "sha256": "40115bdb0f2f287c35b68875625fd58b5cf1daba7441276410c7ba53e889e9c6",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-stripe",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-stripe-0.1.5-0b0bbafcf97b.tgz",
+      "sha256": "0b0bbafcf97bc621ab29b53a353fc91ddccec41e6c13f861134476a15adb9d87",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-wechat-channels-ops",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-wechat-channels-ops-0.1.5-a6ec1c78530a.tgz",
+      "sha256": "a6ec1c78530abdfacb22ee29a460d0558f76aba71cb2150c7d81c7251697596c",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-wechat-official",
+      "version": "0.1.7",
+      "file": "ipollo-dsh-wechat-official-0.1.7-14f7d55ded6d.tgz",
+      "sha256": "14f7d55ded6d7bff9c5424fe4ae4a56547278bc5a758f806550eab25aaf6c880",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-workspace-canvas",
+      "version": "0.1.6",
+      "file": "ipollo-dsh-workspace-canvas-0.1.6-746700f591cd.tgz",
+      "sha256": "746700f591cd6365f071e34389e432ac21d6e1df51d13dc3cb27937a26249d35",
+      "tag": "v1.0.16"
+    },
+    {
+      "name": "@ipollo/dsh-xiaohongshu-ops",
+      "version": "0.1.7",
+      "file": "ipollo-dsh-xiaohongshu-ops-0.1.7-09ce5f1d8d44.tgz",
+      "sha256": "09ce5f1d8d4474cc7002686fb66d1e11bb11f598e5035e8fdccf4ae34a9b3ce1",
+      "tag": "v1.0.16"
+    },
+    {
       "name": "deepseek-idesign",
-      "version": "1.0.0-beta.38",
-      "file": "deepseek-idesign-1.0.0-beta.38-a5f8ad80cd45.tgz",
-      "tag": "v1.0.12",
-      "sha256": "a5f8ad80cd45737074bac6118d362a64c6acdc04e342d64aa01825a2930c7cd2"
+      "version": "1.0.0-beta.39-ipollo.1",
+      "file": "deepseek-idesign-1.0.0-beta.39-ipollo.1-fa33485da3b5.tgz",
+      "sha256": "fa33485da3b50689683146245b5359afab953b3ab411c1f0d54dd30cc6f82cd1",
+      "tag": "v1.0.16"
     },
     {
       "name": "deepseek-ivideo",
-      "version": "1.0.0-beta.24",
-      "file": "deepseek-ivideo-1.0.0-beta.24-52dc02ecc384.tgz",
-      "tag": "v1.0.12",
-      "sha256": "52dc02ecc38466e111140c11d557a9f8a01112f11123e4dc708ee6a294cb49d0"
+      "version": "1.0.0-beta.27-ipollo.1",
+      "file": "deepseek-ivideo-1.0.0-beta.27-ipollo.1-93192b57cdf2.tgz",
+      "sha256": "93192b57cdf2de34560fb1a933c73a075ff3204b7fe9d1a2b169fe3a45adfe1b",
+      "tag": "v1.0.16"
     }
   ]
 }

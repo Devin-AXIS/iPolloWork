@@ -1,11 +1,11 @@
 {
   "name": "@ipollo/work-services",
-  "version": "0.1.18",
+  "version": "0.1.19",
   "private": true,
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
-    "node": ">=24.15.0"
+    "node": "^24.22.3 || >=26.13.1"
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -39,7 +39,7 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-experimental-liveshare-protocol": "^0.2.2-rc.2",
+    "@deepseek-ai/dsh-experimental-liveshare-protocol": "0.2.3-alpha.2",
     "@types/ali-oss": "6.23.3",
     "@types/node": "24.10.1",
     "@types/pg": "^8.23.1",
@@ -53,7 +53,8 @@
     "react-dom": "19.2.3",
     "tsx": "4.20.6",
     "typescript": "5.9.3",
-    "vite": "8.3.8"
+    "vite": "8.3.8",
+    "@deepseek-ai/cordis": "4.2.0-alpha.1"
   },
   "overrides": {
     "alipay-sdk": {

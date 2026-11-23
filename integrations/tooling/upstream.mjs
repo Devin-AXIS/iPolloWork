@@ -4,7 +4,10 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile, rename, rm, symlink, lstat, realpath } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
+import { join,dirname } from 'node:path'
+import {checkoutPinnedSource} from './source-checkout.mjs'
+import {retainAndActivateSource} from './source-cache.mjs'
+import {npmCommand} from './npm-command.mjs'
 
 export const root = fileURLToPath(new URL('../..', import.meta.url))
 export const upstreamRoot = join(root, '.upstream/dsh')
@@ -16,6 +19,12 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex')
 
 /** Run a child to completion, preserving its failure status. */
 export function run(command, args, options = {}) {
+  if (command === 'npm' || command === 'npm.cmd') {
+    const invocation = npmCommand(args, options.env ?? process.env)
+    command = invocation.command
+    args = invocation.args
+    options = { ...options, env: invocation.env }
+  }
   return new Promise((accept, reject) => {
     const child = spawn(command, args, { cwd: root, stdio: 'inherit', shell: process.platform === 'win32' && /\.cmd$/i.test(command), ...options })
     child.once('error', reject)
@@ -39,8 +48,12 @@ export async function verifyArchivedFiles(directory, files) {
 }
 
 /** Fetch a hash-pinned archive and materialize immutable official source in the local cache. */
-export async function prepareSource() {
+export async function prepareSource({upgrade=false}={}) {
   await mkdir(cache, { recursive: true })
+  const previous=existsSync(inventory)?JSON.parse(await readFile(inventory,'utf8')):undefined
+  const stale=previous&&(previous.revision!==pin.sourceRevision||previous.archive!==pin.sourceArchiveSha256)
+  if(stale&&!upgrade)throw new Error('DSH pin changed. Close the development desktop, then run npm run setup:build -- --upgrade-upstream to retain and replace the previous cache.')
+  if(stale)await verifyArchivedFiles(upstreamRoot,previous.files)
   let bytes = existsSync(archive) ? await readFile(archive) : undefined
   if (!bytes || digest(bytes) !== pin.sourceArchiveSha256) {
     const url = `${pin.upstreamRepository.replace('https://github.com/', 'https://codeload.github.com/').replace(/\.git$/, '')}/tar.gz/${pin.sourceRevision}`
@@ -48,29 +61,42 @@ export async function prepareSource() {
     if (!response.ok) throw new Error(`Could not download official DSH: HTTP ${response.status}`)
     bytes = Buffer.from(await response.arrayBuffer())
     if (digest(bytes) !== pin.sourceArchiveSha256) throw new Error('Official DSH archive checksum mismatch')
+    if(stale&&existsSync(archive))await rename(archive,join(cache,'source-previous-'+Date.now()+'.tar.gz'))
     await writeFile(archive, bytes)
   }
-  if (!existsSync(inventory)) {
+  if (!existsSync(inventory)||stale) {
     const staging = join(cache, `extract-${process.pid}`)
+    const pendingInventory=join(cache,`source-files-${process.pid}.pending.json`)
     await mkdir(staging)
     try {
-      await run('tar', ['-xzf', archive, '--strip-components=1', '-C', staging])
+      if(process.platform==='win32')await checkoutPinnedSource({directory:staging,repository:pin.upstreamRepository,revision:pin.sourceRevision,tree:pin.sourceTree})
+      else await run('tar', ['-xzf', archive, '--strip-components=1', '-C', staging])
       const { readdir } = await import('node:fs/promises')
       const files = {}
       async function visit(directory, prefix = '') {
         for (const entry of await readdir(directory, { withFileTypes: true })) {
+          if(entry.name==='.git')continue
           const path = prefix + entry.name
           if (entry.isDirectory()) await visit(join(directory, entry.name), path + '/')
           else if (entry.isFile()) files[path] = digest(await readFile(join(directory, entry.name)))
         }
       }
       await visit(staging)
-      if (existsSync(upstreamRoot)) {
+      const staged=JSON.parse(await readFile(join(staging,'package.json'),'utf8'))
+      if(staged.version!==pin.npmVersion||staged.packageManager!==pin.packageManager)throw new Error('Staged DSH source does not match the pin')
+      await writeFile(pendingInventory,JSON.stringify({revision:pin.sourceRevision,archive:pin.sourceArchiveSha256,files})+'\n')
+      if(stale){
+        if(!/^[a-f0-9]{40}$/.test(previous.revision))throw new Error('Invalid previous DSH cache revision')
+        const backup=join(cache,'retained-'+previous.revision.slice(0,12)+'-'+Date.now())
+        await mkdir(backup)
+        await retainAndActivateSource({current:upstreamRoot,staged:staging,backup,inventory,pendingInventory})
+        console.log('Retained previous DSH cache: '+backup)
+      }else if (existsSync(upstreamRoot)) {
         // Existing caches are adopted only when their original source bytes match the pinned archive.
         for (const [path, hash] of Object.entries(files)) if (digest(await readFile(join(upstreamRoot, path))) !== hash) throw new Error(`DSH cache differs from archive: ${path}`)
       } else await rename(staging, upstreamRoot)
-      await writeFile(inventory, JSON.stringify({ revision: pin.sourceRevision, archive: pin.sourceArchiveSha256, files }) + '\n')
-    } finally { await rm(staging, { recursive: true, force: true }) }
+      if(!stale)await rename(pendingInventory,inventory)
+    } finally { await rm(pendingInventory,{force:true});await rm(staging, { recursive: true, force: true }) }
   }
   if (!existsSync(join(upstreamRoot, '.git'))) {
     await run('git', ['init', '-q', upstreamRoot])
@@ -83,14 +109,21 @@ export async function prepareSource() {
 /** Create ignored resolution links; official source remains exclusively inside the cache. */
 export async function linkWorkspace() {
   const links = ['apps', 'packages', 'vendor', 'native', 'scripts', 'node_modules', 'tsconfig.base.json', 'tsconfig.base.client.json', 'tsconfig.node.base.json', 'vitest.shared.ts']
+  const managedFile=join(cache,'workspace-file-links.json')
+  let managed={}
+  try{managed=JSON.parse(await readFile(managedFile,'utf8'))}catch(error){if(error.code!=='ENOENT')throw error}
   for (const name of links) {
     const target = join(root, name)
+    const copy=process.platform==='win32'&&name.includes('.')&&name!=='node_modules'
+    const source=join(upstreamRoot,name)
+    const bytes=copy?await readFile(source):undefined
     try {
       const stat = await lstat(target)
-      if (!stat.isSymbolicLink()) throw new Error(`Refusing to replace a real product path: ${name}`)
+      if (!stat.isSymbolicLink()&&!(copy&&stat.isFile()&&digest(await readFile(target))===(managed[name]??digest(bytes)))) throw new Error(`Refusing to replace a real product path: ${name}`)
       await rm(target)
     } catch (error) { if (error.code !== 'ENOENT') throw error }
-    await symlink(join(upstreamRoot, name), target, process.platform === 'win32' ? (name.includes('.') && name !== 'node_modules' ? 'file' : 'junction') : undefined)
+    if(copy){await writeFile(target,bytes);managed[name]=digest(bytes);await writeFile(managedFile,JSON.stringify(managed)+'\n')}
+    else await symlink(source, target, process.platform === 'win32' ? 'junction' : undefined)
   }
   for (const name of ['desktop', 'desktop-host']) {
     const target = join(root, 'integrations', name, 'node_modules')
@@ -113,9 +146,11 @@ export async function linkWorkspace() {
     await symlink(await realpath(yamlSource), target, process.platform === 'win32' ? 'junction' : undefined)
   }
   const cli = join(upstreamRoot, 'apps/desktop-host/node_modules/@deepseek-ai/dsh')
+  await mkdir(dirname(cli),{recursive:true})
   await rm(cli, { recursive: true, force: true })
   await symlink(join(upstreamRoot, 'apps/cli'), cli, process.platform === 'win32' ? 'junction' : undefined)
   const publisher = join(upstreamRoot, 'apps/desktop/node_modules/@deepseek-ai/dsh-desktop-publisher')
+  await mkdir(dirname(publisher),{recursive:true})
   try { await rm(publisher, { recursive: true, force: true }) } catch (error) { if (error.code !== 'ENOENT') throw error }
   await symlink(join(root, 'integrations/publisher'), publisher, process.platform === 'win32' ? 'junction' : undefined)
 }

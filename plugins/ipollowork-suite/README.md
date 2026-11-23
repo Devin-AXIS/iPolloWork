@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 One installable DSH Bundle supplies the iPolloWork skin, a curated native-plugin market, optional iPollo Account sign-in, reusable project agents, and integrated IM channels. DSH owns execution, installed bundles, configuration layers, credentials, and the application launcher. No alternate agent runtime or installer is included.
 
+Suite 0.1.46 carries independent native bundles for the former multi-engine collection. All 24 identities have a migration target; the curated market has 25 entries including the existing session-title plugin. Installable archives use SHA-256 verification and the native manager. See the [migration inventory and capability limits](../../docs/multi-engine-plugin-migration.zh.md).
+
 Organization Space includes a manager-only analytics tab grouped by department, member or service/model (SKU), over 7, 30 or 90 days. Calls are enterprise-owned service requests, excluding polling and personal services; departments are captured at dispatch. Token coverage is explicit. Project creation and current skill/plugin inventory counts are separate; skill loads and tool calls are reported for linked enterprise projects. `enterpriseUsageReporting` (default true) controls metadata reporting; `enterpriseUsageQueueLimit` (default 200) bounds pending reports. Failed or overflowed reports are not retried and never delay tools, so counts may be incomplete. Arguments, results and credentials are excluded.
 
 In Organization Space → Settings → Websites, managers can add links for all active members or limit them by department and role. The account service rechecks permission when a member opens a link in their browser.
@@ -25,6 +27,8 @@ Install a built local checkout using `dsh plugin --profile <profile> add link:/a
 ## Included project tools
 
 Project Files, Project Board and Notification Center are native parts of this suite. Project Files appears in the right sidebar with inputs, outputs and actual workspace folders. Its **Plugins** details list the parts by their native entry IDs `ipollo-project-files`, `ipollo-collaboration-board` and `ipollo-notification-center`. The Board remains in the project conversation tabs. The notification bell and **Settings → Notifications** use the same notification feeds and preferences.
+
+Account-backed model requests recover transient transport failures, malformed gateway responses, service restarts, admission pressure and an invocation still running. Up to five retries reuse the original invocation ID, with waits of 0.5, 1, 2, 4 and 8 seconds. Cancellation stops the wait. Recovery stops once response headers are returned and never starts a fresh invocation for an unknown outcome. Persistent failures retain their specific gateway guidance in the native turn error; generated workspace files remain available. This does not automatically resume a historically failed conversation turn.
 
 **Settings → Custom appearance** switches skins and sets the app name, logo, and separate light/dark palettes. The appearance plugin ID is `ipollo-custom-appearance`.
 
@@ -204,6 +208,8 @@ Source and desktop profile setup permits the pinned esbuild and sharp builds use
 Organization model connections support `shared` (default) and `member` credential modes. In member mode each authorized member saves their own key from **My API key**; it is encrypted in the account service, never returned by list APIs, and requires a project belonging to the organization at execution. Changing the endpoint or credential mode clears member keys. Removing a member or service clears its corresponding keys. Signing out disconnects the local account but preserves server-side member keys; other devices are not modified.
 
 ## Curated market administration
+
+The market's **Enterprise** tab reads the same authorized plugin publications as Organization Space. Select an organization to browse and search its published releases; pending submissions stay in Organization Space. Installing resolves the exact release under the current account again, then uses DSH's existing plugin inspection and installation dialog. Sign-in, membership, permission and network failures have separate states. Account changes clear pending directory and release requests.
 
 The existing market shows **Add plugin** only after `/api/v1/market/manage` confirms the signed-in account has the platform `admin` role. Enterprise owner/admin roles do not grant permission to publish to the public market. Every write is checked again by the account service. Paste a public GitHub repository URL, npm package name or npm package page into the form. The unmodified official DSH reference generator reads names, localized descriptions, icons, release versions and compatibility without executing plugin code. Choose a plugin when a repository contains several, preview its compatible pinned release, then confirm. Advanced settings contain optional display text, category and npm registry overrides. It does not copy, install, execute or audit third-party code. Duplicate package names are refused; existing bundled entries keep precedence.
 

@@ -9,12 +9,14 @@ export const scheduledStart = z.object({
   signature: z.string(),
   account: z.string().nullable(),
   scheduleId: z.string().nullable(),
+  deferred:z.boolean().optional(),
 });
 type ScheduledStart = z.infer<typeof scheduledStart>;
 export interface ScheduleTable {
   get(key: string): ScheduledStart | undefined;
   put(key: string, value: ScheduledStart): Promise<void>;
   delete(key: string): Promise<void>;
+  entries():IterableIterator<[string,ScheduledStart]>;
 }
 export type NativeSchedule = Pick<ScheduleService, 'create' | 'view' | 'edit'>;
 type ScheduleId = Parameters<NativeSchedule['view']>[0]['id'];
@@ -29,7 +31,7 @@ function instruction(id: string, token: string) {
   return `The project board owner authorized one automatic start. First call ipollo_project_tasks with action "scheduled_start", taskId "${id}" and token "${token}". Do not act on the task unless that call returns started: true. Use the returned task title and description. For ai.delegates use ipollo_delegate with the listed agent_preset values. For ai.external use the exact listed tools in the project working directory. If both lists are empty, do the task in this conversation. Wait for real results, report failures, and summarize the work in the conversation's language. Mark the task complete using its latest revision only after verifying the work is done.`;
 }
 
-async function ownedSchedule(service: NativeSchedule, link: ScheduledStart) {
+export async function ownedSchedule(service: NativeSchedule, link: ScheduledStart) {
   if (!link.scheduleId) return undefined;
   const entry = await service.view({ id: link.scheduleId as ScheduleId });
   return 'code' in entry || !entry.prompt.includes(link.token) ? undefined : entry;

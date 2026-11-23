@@ -1,6 +1,7 @@
 import { cp, mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { builtinModules } from "node:module";
 
 import { defineConfig } from "vite";
 
@@ -27,7 +28,7 @@ export default defineConfig({
     minify: false,
     outDir: serviceDist,
     rollupOptions: {
-      external: ["canvas", "path2d"],
+      external: ["canvas", "path2d", ...builtinModules, ...builtinModules.map(name => `node:${name}`)],
       input: resolve(serviceRoot, "data-annotation.ts"),
       output: {
         entryFileNames: "data-annotation.mjs",

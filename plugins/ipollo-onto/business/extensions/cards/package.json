@@ -1,0 +1,29 @@
+{
+  "name": "@ipollo-data/cards",
+  "version": "1.0.0",
+  "type": "module",
+  "files": [
+    "client.js"
+  ],
+  "ipolloData": {
+    "id": "cards",
+    "name": "卡片视图",
+    "description": "使用卡片浏览同一份业务数据",
+    "protocol": 1,
+    "categories": [
+      "views"
+    ],
+    "defaultInstalled": true,
+    "dependencies": [
+      "core"
+    ],
+    "contributes": {
+      "views": [
+        "cards"
+      ]
+    },
+    "entrypoints": {
+      "client": "client.js"
+    }
+  }
+}

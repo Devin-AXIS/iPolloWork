@@ -1,0 +1,1603 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>短片创作工作台</title><style>/* plugins/short-video-studio/business/src/ui.css */
+:root {
+  font: 16px/1.5 var(--ipollowork-font-sans);
+  color-scheme: light dark;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  font-size: var(--ui-body-size);
+  line-height: var(--ui-body-line);
+  margin: 0;
+  background: var(--sv-canvas);
+  color: var(--sv-text);
+  height: 100vh;
+  overflow: hidden;
+}
+label {
+  display: block;
+  font: 500 var(--ui-control-size)/var(--ui-control-line) var(--ipollowork-font-sans);
+  color: var(--sv-muted);
+  margin: 16px 0 8px;
+}
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+h1 {
+  font: 600 var(--ui-page-title-size)/var(--ui-page-title-line) var(--ipollowork-font-sans);
+}
+h2 {
+  font: 600 var(--ui-page-title-size)/var(--ui-page-title-line) var(--ipollowork-font-sans);
+}
+h3 {
+  font: 600 var(--ui-section-title-size)/var(--ui-section-title-line) var(--ipollowork-font-sans);
+}
+small,
+.muted {
+  color: var(--sv-muted);
+}
+small {
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
+}
+#app {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.topbar {
+  height: 59px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--sv-border);
+  background: var(--sv-surface);
+}
+.brand {
+  height: 29px;
+  width: 29px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--sv-border);
+  border-radius: 8px;
+  color: var(--sv-accent);
+  font-weight: 700;
+}
+.project-picker {
+  width: 210px;
+  min-width: 0;
+}
+.spacer {
+  flex: 1;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.row > * {
+  min-width: 0;
+}
+.workspace {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+.main {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+.page {
+  padding: 26px;
+  max-width: 1500px;
+  margin: auto;
+}
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+  gap: 12px;
+}
+.page-heading p {
+  margin-top: 8px;
+  font-size: var(--ui-body-size);
+  line-height: var(--ui-body-line);
+  color: var(--sv-muted);
+}
+.toolbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.canvas {
+  height: 100%;
+  overflow: hidden;
+  background-image: radial-gradient(var(--sv-grid) 1px, transparent 1px);
+  background-size: 20px 20px;
+  touch-action: none;
+}
+.plane {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+.edges {
+  position: absolute;
+  left: -10000px;
+  top: -10000px;
+  width: 20000px;
+  height: 20000px;
+  overflow: visible;
+  pointer-events: none;
+}
+.edges path {
+  stroke: var(--sv-accent);
+  stroke-width: 2;
+  fill: none;
+  opacity: .55;
+}
+.node {
+  position: absolute;
+  width: 245px;
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-border);
+  border-radius: 10px;
+  box-shadow: 0 5px 18px #00000008;
+  overflow: hidden;
+  text-align: left;
+  user-select: none;
+}
+.node.selected {
+  outline: 2px solid var(--sv-accent);
+  outline-offset: 2px;
+}
+.node-head {
+  height: 36px;
+  padding: 0 11px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: grab;
+  border-bottom: 1px solid var(--sv-border);
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
+}
+.node-head b {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sv-accent);
+}
+.node-body {
+  height: 146px;
+  overflow: hidden;
+  padding: 13px;
+  color: var(--sv-muted);
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
+  white-space: pre-wrap;
+}
+.node-body.media {
+  padding: 0;
+  display: grid;
+  place-items: center;
+  background: var(--sv-canvas);
+}
+.node-body img,
+.node-body video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.node-body audio {
+  width: 220px;
+}
+.node-foot {
+  padding: 7px 10px;
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
+  color: var(--sv-muted);
+  border-top: 1px solid var(--sv-border);
+}
+.floating-tools {
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-border);
+  border-radius: 9px;
+  box-shadow: 0 4px 15px #00000007;
+  z-index: 3;
+}
+.zoom {
+  position: absolute;
+  bottom: 18px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-border);
+  border-radius: 8px;
+  padding: 4px;
+  z-index: 3;
+}
+.zoom small {
+  min-width: 40px;
+  text-align: center;
+}
+.inspector {
+  width: 278px;
+  flex-shrink: 0;
+  background: var(--sv-surface);
+  border-left: 1px solid var(--sv-border);
+  overflow: auto;
+  padding: 18px;
+  z-index: 5;
+}
+.inspector-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+.inspector .primary {
+  width: 100%;
+  margin-top: 20px;
+}
+.inspector .row label {
+  flex: 1;
+}
+.inspector hr {
+  border: 0;
+  border-top: 1px solid var(--sv-border);
+  margin: 20px 0;
+}
+.canvas > .cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(235px, 1fr));
+  gap: 15px;
+}
+.card {
+  border: 1px solid var(--sv-border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--sv-surface);
+}
+.card-media {
+  height: 155px;
+  background: var(--sv-canvas);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: var(--sv-muted);
+}
+.card-media img,
+.card-media video {
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
+}
+.card-media audio {
+  width: 95%;
+}
+.card-content {
+  padding: 14px;
+}
+.card-content .row {
+  margin-top: 12px;
+}
+.script-area {
+  min-height: 55vh;
+}
+.track {
+  border: 1px solid var(--sv-border);
+  border-radius: 8px;
+  margin: 12px 0;
+  overflow: hidden;
+  background: var(--sv-surface);
+}
+.track-header {
+  padding: 9px 14px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: var(--sv-elevated);
+}
+.track-body {
+  padding: 10px;
+  overflow: auto;
+}
+.ruler {
+  height: 38px;
+  position: relative;
+  min-width: 600px;
+  background: var(--sv-canvas);
+  border-radius: 5px;
+  margin-bottom: 9px;
+}
+.clip-bar {
+  position: absolute;
+  height: 28px;
+  top: 5px;
+  background: var(--sv-selected);
+  border: 1px solid var(--sv-accent);
+  border-radius: 4px;
+  overflow: hidden;
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
+  min-width: 20px;
+  padding: 4px;
+}
+.clip-row {
+  display: grid;
+  grid-template-columns: 1.5fr repeat(4, 72px) 34px;
+  gap: 7px;
+  align-items: end;
+  min-width: 560px;
+  margin: 7px 0;
+}
+.clip-row label {
+  margin: 0;
+  font-size: var(--ui-control-size);
+  line-height: var(--ui-control-line);
+}
+.job {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  border-bottom: 1px solid var(--sv-border);
+  padding: 16px 0;
+}
+footer {
+  padding: 5px 16px;
+  border-top: 1px solid var(--sv-border);
+  font-size: var(--ui-meta-size);
+  line-height: var(--ui-meta-line);
+  color: var(--sv-muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--sv-surface);
+}
+a {
+  color: var(--primary-text);
+  overflow-wrap: anywhere;
+}
+.loading {
+  padding: 60px;
+  text-align: center;
+  color: var(--sv-muted);
+}
+@media (max-width: 760px) {
+  .topbar {
+    padding: 0 10px;
+    gap: 6px;
+  }
+  .topbar .minor {
+    display: none;
+  }
+  .project-picker {
+    width: 210px;
+    min-width: 0;
+  }
+  .page {
+    padding: 18px;
+  }
+  .inspector {
+    position: absolute;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: min(300px, 86%);
+    box-shadow: -10px 0 30px #0002;
+  }
+  .floating-tools {
+    left: 10px;
+    top: 10px;
+    max-width: calc(100% - 20px);
+    flex-wrap: wrap;
+  }
+  .cards {
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  }
+  .page-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+.view-navigation {
+  overflow-x: auto;
+  flex-shrink: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--sv-border);
+  background: var(--sv-surface);
+}
+.workbench-views,
+.workbench-tabs {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0;
+}
+.workbench-panel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.topbar {
+  height: auto;
+  min-height: 59px;
+  flex-wrap: wrap;
+  padding-block: 8px;
+  flex-shrink: 0;
+}
+.view-navigation {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+#save-status:empty {
+  display: none;
+}
+#save-status {
+  padding: 8px 16px;
+}
+.reference-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+[data-shared-empty] {
+  min-height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-select-island] {
+  min-width: 0;
+}
+.row > [data-select-island] {
+  flex: 1;
+}
+.inspector > [data-slot] + small,
+.inspector > [data-select-island] + small {
+  display: block;
+  margin-top: var(--field-hint-gap);
+}
+.canvas > [data-shared-empty] {
+  position: relative;
+  z-index: 1;
+}
+
+/* plugins/short-video-studio/business/src/responsive.css */
+.row > label {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.row > [data-select-island] {
+  flex: 1;
+}
+#dialog {
+  max-width: calc(100vw - 32px);
+}
+#dialog [data-slot=dialog-description] {
+  white-space: pre-line;
+}
+#dialog-error {
+  margin-block: 12px;
+  color: var(--sv-danger);
+  overflow-wrap: anywhere;
+}
+</style></head><body><script type="module">// plugins/short-video-studio/business/src/workspace-theme.mjs
+var aliases = Object.freeze({
+  canvas: "var(--background)",
+  surface: "var(--card)",
+  elevated: "var(--popover)",
+  text: "var(--foreground)",
+  muted: "var(--muted-foreground)",
+  border: "var(--border)",
+  grid: "var(--border)",
+  accent: "var(--primary)",
+  accentText: "var(--primary-foreground)",
+  selected: "var(--secondary)",
+  danger: "var(--destructive)"
+});
+var workspaceThemeTokens = Object.freeze({ light: aliases, dark: aliases });
+function applyWorkspaceTheme(root, hostContext, systemDark = false) {
+  const explicit = hostContext?.theme;
+  const previous = root.dataset.theme;
+  const theme = explicit === "light" || explicit === "dark" ? explicit : previous === "light" || previous === "dark" ? previous : systemDark ? "dark" : "light";
+  root.dataset.theme = theme;
+  root.style.colorScheme = theme;
+  for (const [name, value] of Object.entries(workspaceThemeTokens[theme])) {
+    root.style.setProperty(`--sv-${name}`, value);
+  }
+  return theme;
+}
+
+// plugins/short-video-studio/business/src/bridge.mjs
+function createBridge(onContext, onTool) {
+  let nextId = 0, initialized = false;
+  const pending = /* @__PURE__ */ new Map();
+  function request(method, params = {}) {
+    const id = ++nextId;
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error("Work \u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u5DE5\u4F5C\u53F0\u8FDE\u63A5"));
+      }, 12e4);
+      pending.set(id, { resolve, reject, timeout });
+      parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
+    });
+  }
+  function theme(context) {
+    applyWorkspaceTheme(document.documentElement, context, matchMedia("(prefers-color-scheme: dark)").matches);
+    onContext(context);
+  }
+  addEventListener("message", async (event) => {
+    if (event.source !== parent || event.data?.jsonrpc !== "2.0") return;
+    const message = event.data;
+    if (message.id !== void 0 && !message.method) {
+      const handler = pending.get(message.id);
+      if (!handler) return;
+      pending.delete(message.id);
+      clearTimeout(handler.timeout);
+      message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result);
+      return;
+    }
+    if (message.method === "ui/notifications/host-context-changed") {
+      theme(message.params);
+      return;
+    }
+    if (message.id === void 0) return;
+    try {
+      const result = message.method === "ui/resource-teardown" ? {} : await onTool(message.method, message.params);
+      parent.postMessage({ jsonrpc: "2.0", id: message.id, result }, "*");
+    } catch (error) {
+      parent.postMessage({ jsonrpc: "2.0", id: message.id, error: { code: -32602, message: error.message } }, "*");
+    }
+  });
+  return {
+    request,
+    async start() {
+      theme({});
+      if (parent === window) throw new Error("\u8BF7\u4ECE iPolloWork \u63D2\u4EF6\u8BE6\u60C5\u6253\u5F00\uFF1B\u672C\u5730\u9884\u89C8\u8BF7\u8FD0\u884C\u5F00\u53D1\u670D\u52A1");
+      const result = await request("ui/initialize", { protocolVersion: "2025-11-21", appInfo: { name: "iPolloWork \u77ED\u7247\u5DE5\u4F5C\u53F0", version: "0.1.0" }, appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] } });
+      theme(result.hostContext || {});
+      initialized = true;
+      parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} }, "*");
+      return result;
+    },
+    async call(name, args = {}) {
+      const result = await request("tools/call", { name, arguments: args });
+      if (result.isError) throw new Error(result.content?.find((c) => c.type === "text")?.text || "\u64CD\u4F5C\u672A\u5B8C\u6210");
+      if (result.structuredContent) return result.structuredContent;
+      const text = result.content?.find((c) => c.type === "text")?.text;
+      try {
+        return JSON.parse(text);
+      } catch {
+        throw new Error(text || "Work \u8FD4\u56DE\u683C\u5F0F\u65E0\u6548");
+      }
+    },
+    context(project, selection) {
+      if (!initialized) return;
+      void request("ui/update-model-context", { content: [{ type: "text", text: `\u77ED\u7247\u5DE5\u4F5C\u53F0\uFF1A${project.title}\uFF1B\u7248\u672C ${project.revision}\uFF1B\u9009\u4E2D ${selection || "\u65E0"}\u3002\u4F7F\u7528 project_read \u67E5\u770B\uFF0C\u518D\u7528 project_update \u66F4\u65B0\uFF1B\u751F\u6210\u7D20\u6750\u4F7F\u7528 generate\uFF0C\u9700\u8981\u7528\u6237\u6388\u6743\u3002` }], structuredContent: { projectId: project.id, revision: project.revision, selection, nodeCount: project.nodes.length, shotCount: project.shots.length } }).catch(() => {
+      });
+    }
+  };
+}
+
+// plugins/short-video-studio/business/src/project.mjs
+var uuid = (prefix) => `${prefix}_${crypto.randomUUID().replaceAll("-", "")}`;
+function addNode(project, kind, position = {}) {
+  const names2 = { text: "\u521B\u610F\u7B14\u8BB0", image: "\u56FE\u7247", video: "\u89C6\u9891", audio: "\u97F3\u9891", script: "\u5267\u672C", storyboard: "\u5206\u955C" };
+  const node = { id: uuid("n"), kind, title: names2[kind], prompt: "", x: position.x ?? 80 + project.nodes.length % 3 * 280, y: position.y ?? 80 + Math.floor(project.nodes.length / 3) * 260 };
+  project.nodes.push(node);
+  return node;
+}
+
+// plugins/ipollowork-suite/src/ported/frame-runtime.ts
+function requireRuntime() {
+  const runtime = Reflect.get(window.parent, "__ipolloPortedUi");
+  if (!runtime) throw new Error("\u8BF7\u4ECE iPolloWork \u77ED\u7247\u5DE5\u4F5C\u53F0\u6253\u5F00");
+  return runtime;
+}
+
+// plugins/short-video-studio/business/src/ui.mjs
+var $ = (selector) => document.querySelector(selector);
+var esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+var names = { text: "\u7B14\u8BB0", image: "\u56FE\u7247", video: "\u89C6\u9891", audio: "\u97F3\u9891", script: "\u5267\u672C", storyboard: "\u5206\u955C" };
+var tabs = { canvas: "\u521B\u4F5C\u753B\u5E03", shots: "\u5206\u955C", script: "\u5267\u672C", roles: "\u89D2\u8272", assets: "\u7D20\u6750", tracks: "\u8F68\u9053\u7F16\u6392", jobs: "\u751F\u6210\u8BB0\u5F55" };
+var presets = { "\u81EA\u7531\u521B\u4F5C": "", "\u7535\u5F71\u5206\u955C\u56DB\u5BAB\u683C": "\u5C06\u4EE5\u4E0B\u5185\u5BB9\u5236\u4F5C\u6210 2\xD72 \u7535\u5F71\u5206\u955C\uFF0C\u4FDD\u6301\u89D2\u8272\u4E00\u81F4\uFF1A", "\u89D2\u8272\u4E09\u89C6\u56FE": "\u540C\u4E00\u89D2\u8272\u7684\u6B63\u9762\u3001\u4FA7\u9762\u3001\u80CC\u9762\u4E09\u89C6\u56FE\uFF0C\u7EAF\u8272\u80CC\u666F\uFF1A", "\u89D2\u8272\u8BBE\u5B9A": "\u89D2\u8272\u8BBE\u5B9A\u8868\uFF0C\u5305\u542B\u5168\u8EAB\u3001\u9762\u90E8\u3001\u8868\u60C5\uFF0C\u4FDD\u6301\u4E00\u81F4\u6027\uFF1A", "\u4EA7\u54C1\u5C55\u793A": "\u5546\u4E1A\u4EA7\u54C1\u6444\u5F71\uFF0C\u5E72\u51C0\u80CC\u666F\u3001\u67D4\u548C\u5E03\u5149\u3001\u6750\u8D28\u7EC6\u8282\uFF1A", "\u591A\u89D2\u5EA6\u573A\u666F": "\u540C\u4E00\u573A\u666F\u4E0D\u540C\u673A\u4F4D\u7684\u89C6\u89C9\u8BBE\u5B9A\uFF0C\u7A7A\u95F4\u5E03\u5C40\u4E00\u81F4\uFF1A", "\u65F6\u95F4\u6F14\u53D8": "\u540C\u4E00\u573A\u666F\u5728\u4E0D\u540C\u65F6\u6BB5\u7684\u56DB\u683C\u65F6\u95F4\u6F14\u53D8\uFF1A", "\u7535\u5F71\u5E03\u5149": "\u7535\u5F71\u7EA7\u5E03\u5149\uFF0C\u7CBE\u786E\u7684\u5149\u5F71\u4E0E\u666F\u6DF1\uFF1A" };
+var cameraOptions = ["\u81EA\u52A8", "\u56FA\u5B9A\u955C\u5934", "\u7F13\u6162\u63A8\u8FDB", "\u62C9\u8FDC", "\u6C34\u5E73\u6447\u955C", "\u5782\u76F4\u6447\u955C", "\u73AF\u7ED5\u62CD\u6444", "\u8DDF\u968F\u955C\u5934", "\u4FEF\u62CD", "\u4EF0\u62CD", "\u5FAE\u8DDD", "\u822A\u62CD", "\u624B\u6301\u7EAA\u5B9E", "\u6162\u52A8\u4F5C", "\u53D8\u7126"];
+var state = { project: null, projects: [], tab: "canvas", selection: null, capabilities: null, context: {}, zoom: 1, pan: { x: 0, y: 0 }, busy: false, undo: [], redo: [] };
+var previews = /* @__PURE__ */ new Map();
+var previewEpoch = 0;
+var queue = Promise.resolve();
+var drag;
+var ui;
+var presetFocusPending;
+var selectRoots = [];
+var selectSpecs = [];
+var drafts = /* @__PURE__ */ new Map();
+var draftTimer;
+var saveError = "";
+async function flushDrafts() {
+  clearTimeout(draftTimer);
+  if (!drafts.size) return;
+  const pending = new Map(drafts);
+  drafts.clear();
+  try {
+    await mutate((p) => [...pending.values()].forEach((edit) => edit(p)));
+    saveError = "";
+    showSaveStatus();
+  } catch (error) {
+    for (const [key, edit] of pending) if (!drafts.has(key)) drafts.set(key, edit);
+    saveError = error.message || "\u4FDD\u5B58\u5931\u8D25";
+    showSaveStatus();
+    throw error;
+  }
+}
+function notify(message) {
+  ui?.toast(message, { duration: 5500 });
+}
+function fail(error) {
+  ui?.toast.error(error?.message || String(error), { duration: 5500 });
+}
+function select(options, value, attrs = "") {
+  const index = selectSpecs.push({ options: options.map((o) => ({ value: String(typeof o === "object" ? o.id : o), label: String(typeof o === "object" ? o.label : o) })), value: String(value ?? "") }) - 1;
+  return `<div data-select-island="${index}" ${attrs}></div>`;
+}
+var fieldIndex = 0;
+function field(label, control) {
+  const key = `field-${++fieldIndex}`;
+  return `<label for="${key}">${esc(label)}</label>${control.replace(/<(input|div|textarea)/, `<$1 id="${key}"`)}`;
+}
+var closeIcon = '<svg class="size-4" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12"/></svg>';
+var button = (action2, text, attrs = "") => `<button data-ipw-control="button" data-ipw-variant="${attrs.includes("danger") ? "destructive" : attrs.includes("primary") ? "default" : "ghost"}" data-ipw-size="${action2 === "close-inspector" ? "icon-sm" : "default"}" data-action="${action2}" ${attrs}>${action2 === "close-inspector" ? closeIcon : text}</button>`;
+var empty = (title, detail, action2 = "") => `<div data-shared-empty data-title="${esc(title)}" data-detail="${esc(detail)}">${action2}</div>`;
+var statuses = { submitting: "\u63D0\u4EA4\u4E2D", running: "\u751F\u6210\u4E2D", saving: "\u4FDD\u5B58\u4E2D", succeeded: "\u5DF2\u5B8C\u6210", failed: "\u5931\u8D25", uncertain: "\u9700\u786E\u8BA4", save_failed: "\u4FDD\u5B58\u5931\u8D25" };
+var schema = (properties) => ({ type: "object", properties, additionalProperties: false });
+var tools = [
+  { name: "project_read", description: "Read the open short-video project: nodes, edges, assets, shots, roles, tracks, jobs and revision.", inputSchema: schema({}) },
+  { name: "project_update", description: "Save the full project after project_read. Preserve unrelated content and use its current revision. Assets, jobs, exports are service-owned. This does not call paid providers.", inputSchema: schema({ project: { type: "object" } }) },
+  { name: "generate", description: "Generate the selected image/video node using Work channels. Requires user intent to generate; may incur provider charges. requestId must be a UUID; reuse it on retries. Inspect capabilities first.", inputSchema: schema({ nodeId: { type: "string" }, requestId: { type: "string" } }) },
+  { name: "capabilities", description: "Read actual connected Work image/video models and supported parameters.", inputSchema: schema({}) },
+  { name: "generation_status", description: "Refresh existing generation jobs without generating again.", inputSchema: schema({}) },
+  { name: "import_asset", description: "Import a user-selected workspace media path into this project. Include durationSeconds metadata for audio/video when unavailable from inspection.", inputSchema: schema({ path: { type: "string" }, name: { type: "string" }, metadata: { type: "object" } }) },
+  { name: "arrange_shots", description: "Replace current rough-cut tracks with the ordered shots; video, original sound and captions remain separate. Confirm replacement when existing manual track edits matter.", inputSchema: schema({}) },
+  { name: "handoff", description: "Write a new native editable multitrack HTML project and freeze local assets. Return its path as a clickable local file link in left chat. Never overwrite the native editor document.", inputSchema: schema({}) }
+];
+var bridge = createBridge((context) => {
+  state.context = { ...state.context, ...context };
+}, async (method, params) => {
+  if (method === "tools/list") return { tools };
+  if (method !== "tools/call") throw new Error("\u4E0D\u652F\u6301\u7684\u65B9\u6CD5");
+  if (!state.project) throw new Error("\u5148\u521B\u5EFA\u6216\u6253\u5F00\u4E00\u4E2A\u77ED\u7247\u9879\u76EE");
+  await flushDrafts();
+  await queue;
+  const args = params?.arguments ?? {};
+  let result;
+  if (params.name === "project_read") result = { project: state.project };
+  else if (params.name === "project_update") {
+    if (args.project?.id !== state.project.id) throw new Error("\u4E0D\u80FD\u66F4\u65B0\u5176\u4ED6\u9879\u76EE");
+    result = await bridge.call("project-save", args);
+  } else {
+    const action2 = { generate: "generate", capabilities: "capabilities", generation_status: "generation-status", import_asset: "asset-import", arrange_shots: "arrange", handoff: "handoff" }[params.name];
+    if (!action2) throw new Error("\u672A\u77E5\u5DE5\u5177");
+    result = await bridge.call(action2, { ...args, projectId: state.project.id, revision: state.project.revision });
+  }
+  if (result.project) {
+    state.project = result.project;
+    render();
+  }
+  return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
+});
+async function dialog(title, description, initial, submit) {
+  const trigger = document.activeElement, root = ui.createRoot($("#dialog-root")), h = ui.React.createElement;
+  return new Promise((resolve) => {
+    function Form() {
+      const [open, setOpen] = ui.React.useState(true), [value, setValue] = ui.React.useState(initial ?? "");
+      const [busy, setBusy] = ui.React.useState(false), [error, setError] = ui.React.useState("");
+      const input = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => {
+        const close = $('#dialog [data-slot="dialog-close"]');
+        if (close) close.disabled = busy;
+      }, [busy]);
+      const finish = (result) => {
+        setOpen(false);
+        queueMicrotask(() => {
+          root.unmount();
+          requestAnimationFrame(() => {
+            trigger?.focus();
+            resolve(result);
+          });
+        });
+      };
+      const save = async (event) => {
+        event.preventDefault();
+        if (busy) return;
+        if (input.current && !input.current.reportValidity()) return;
+        setBusy(true);
+        setError("");
+        try {
+          finish(submit ? await submit(value) : initial !== void 0 ? value : true);
+        } catch (reason) {
+          setError(reason.message || "\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5");
+          setBusy(false);
+          input.current?.focus();
+        }
+      };
+      return h(
+        ui.Dialog,
+        { open, onOpenChange: (next, details) => {
+          if (!next) {
+            if (busy) details.cancel();
+            else finish(false);
+          }
+        } },
+        h(
+          ui.DialogContent,
+          { id: "dialog", closeLabel: "\u5173\u95ED", initialFocus: initial !== void 0 ? input : void 0, finalFocus: false, className: "max-w-[480px]", "aria-busy": busy },
+          h(ui.DialogHeader, null, h(ui.DialogTitle, null, title), h(ui.DialogDescription, null, description)),
+          h(
+            "div",
+            { role: "form", "aria-label": title, onKeyDown: (event) => {
+              if (event.key === "Enter" && event.target === input.current) void save(event);
+            } },
+            initial !== void 0 ? h(ui.Input, { ref: input, name: "value", "aria-label": title, value, maxLength: 96, required: true, disabled: busy, "aria-invalid": Boolean(error), "aria-describedby": error ? "dialog-error" : void 0, onChange: (event) => {
+              setValue(event.target.value);
+              setError("");
+            } }) : null,
+            h("p", { id: "dialog-error", role: "alert", hidden: !error }, error),
+            h(
+              ui.DialogFooter,
+              { className: "mt-4" },
+              h(ui.Button, { type: "button", variant: "outline", "data-dialog": "cancel", disabled: busy, onClick: () => finish(false) }, "\u53D6\u6D88"),
+              h(ui.Button, { type: "button", "data-dialog": "ok", disabled: busy, onClick: save }, busy ? "\u63D0\u4EA4\u4E2D\u2026" : "\u786E\u5B9A")
+            )
+          )
+        )
+      );
+    }
+    root.render(h(Form));
+  });
+}
+function mountPresetSelect() {
+  const element = $('[data-shared-select="preset"]');
+  if (!element) return;
+  const nodeId = state.selection, node = state.project.nodes.find((n) => n.id === nodeId);
+  const root = ui.createRoot(element);
+  selectRoots.push(root);
+  const h = ui.React.createElement;
+  function PresetSelect() {
+    const saved = node.settings?.preset || "\u81EA\u7531\u521B\u4F5C";
+    const [value, setValue] = ui.React.useState(saved), [busy, setBusy] = ui.React.useState(false), [error, setError] = ui.React.useState("");
+    const trigger = ui.React.useRef(null);
+    ui.React.useLayoutEffect(() => {
+      if (!busy && presetFocusPending === nodeId) {
+        presetFocusPending = void 0;
+        trigger.current?.focus();
+      }
+    }, [busy]);
+    const choose = async (next) => {
+      if (typeof next !== "string" || next === value || busy) return;
+      presetFocusPending = nodeId;
+      setValue(next);
+      setBusy(true);
+      setError("");
+      try {
+        await flushDrafts();
+        await mutate((p) => {
+          const n = p.nodes.find((n2) => n2.id === nodeId);
+          n.settings ??= {};
+          n.settings.preset = next;
+          if (presets[next]) n.prompt = presets[next] + "\n" + n.prompt;
+        });
+      } catch (reason) {
+        setValue(saved);
+        setBusy(false);
+        setError(reason.message || "\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u91CD\u65B0\u9009\u62E9");
+      }
+    };
+    return h(
+      ui.React.Fragment,
+      null,
+      h(
+        ui.Select,
+        { value, items: Object.keys(presets).map((value2) => ({ value: value2, label: value2 })), onValueChange: choose, disabled: busy },
+        h(ui.SelectTrigger, { ref: trigger, id: "preset-select-trigger", "aria-labelledby": "preset-label", "aria-invalid": Boolean(error), "aria-describedby": error ? "preset-error" : void 0, className: "w-full" }, h(ui.SelectValue)),
+        h(ui.SelectContent, { finalFocus: () => presetFocusPending === nodeId ? false : trigger.current ?? false, className: "max-w-[calc(100vw-32px)]" }, Object.keys(presets).map((value2) => h(ui.SelectItem, { key: value2, value: value2 }, value2)))
+      ),
+      h("p", { id: "preset-error", role: "alert", hidden: !error }, error)
+    );
+  }
+  root.render(h(PresetSelect));
+}
+function mountIsland(element, component) {
+  const root = ui.createRoot(element);
+  selectRoots.push(root);
+  root.render(component);
+}
+var saveRoot;
+function showSaveStatus() {
+  const element = $("#save-status");
+  if (!element) return;
+  saveRoot?.unmount();
+  saveRoot = void 0;
+  element.replaceChildren();
+  if (!saveError) return;
+  const h = ui.React.createElement;
+  saveRoot = ui.createRoot(element);
+  saveRoot.render(h(
+    ui.Alert,
+    { id: "save-error", variant: "destructive" },
+    h(ui.AlertTitle, null, "\u6539\u52A8\u5C1A\u672A\u4FDD\u5B58"),
+    h(ui.AlertDescription, null, `${saveError}\u3002\u8F93\u5165\u4ECD\u6682\u5B58\uFF0C\u8BF7\u91CD\u8BD5\uFF1B\u4E0D\u8981\u5173\u95ED\u5DE5\u4F5C\u53F0\u3002`),
+    h(ui.AlertAction, null, h(ui.Button, { "data-action": "retry-save", variant: "outline" }, "\u91CD\u8BD5\u4FDD\u5B58"))
+  ));
+}
+function mountControls() {
+  const h = ui.React.createElement;
+  for (const element of document.querySelectorAll("[data-select-island]")) {
+    let SharedSelect = function() {
+      const [value, setValue] = ui.React.useState(spec.value), [error, setError] = ui.React.useState(""), [busy, setBusy] = ui.React.useState(false);
+      const choose = async (next) => {
+        if (next === null || next === value || busy) return;
+        setValue(next);
+        setBusy(true);
+        setError("");
+        try {
+          await handleField({ type: "change", target: { id, value: next, type: "select-one", dataset, closest: (selector) => element.closest(selector) } });
+          await flushDrafts();
+          setBusy(false);
+        } catch (reason) {
+          if (id === "project-picker") setValue(spec.value);
+          setBusy(false);
+          setError(reason.message || "\u4FDD\u5B58\u5931\u8D25\uFF0C\u8BF7\u91CD\u8BD5");
+        }
+      };
+      ui.React.useLayoutEffect(() => {
+        if (id === pendingFocus?.id) {
+          document.getElementById(id)?.focus({ preventScroll: true });
+          pendingFocus = null;
+        }
+      }, []);
+      return h(
+        ui.React.Fragment,
+        null,
+        h(
+          ui.Select,
+          { value, items: spec.options, onValueChange: choose, disabled: busy },
+          h(ui.SelectTrigger, { ...attrs, id, "aria-label": element.getAttribute("aria-label") || document.querySelector(`label[for="${id}"]`)?.textContent, "aria-invalid": Boolean(error), "aria-describedby": error ? `${id}-error` : void 0, className: "w-full" }, h(ui.SelectValue)),
+          h(ui.SelectContent, { className: "max-w-[calc(100vw-32px)]" }, spec.options.map((o) => h(ui.SelectItem, { key: o.value, value: o.value }, o.label)))
+        ),
+        error ? h("p", { id: `${id}-error`, role: "alert" }, error) : null
+      );
+    };
+    const spec = selectSpecs[Number(element.dataset.selectIsland)], id = element.id;
+    const attrs = Object.fromEntries([...element.attributes].filter((a) => a.name.startsWith("data-") && a.name !== "data-select-island").map((a) => [a.name, a.value]));
+    const dataset = { ...element.dataset };
+    element.removeAttribute("id");
+    for (const name of Object.keys(attrs)) element.removeAttribute(name);
+    mountIsland(element, h(SharedSelect));
+  }
+  const tabsElement = $("#view-tabs");
+  if (tabsElement) {
+    const workspace = $(".workspace"), status = $("#save-status"), tab = state.tab;
+    mountIsland(tabsElement, h(
+      ui.Tabs,
+      { value: tab, className: "workbench-tabs", onValueChange: (next) => {
+        if (next !== state.tab) void action(`tab:${next}`, tabsElement).catch(fail);
+      } },
+      h("div", { className: "view-navigation" }, h(ui.TabsList, { "aria-label": "\u5DE5\u4F5C\u53F0\u89C6\u56FE" }, Object.entries(tabs).map(([key, label]) => h(ui.TabsTrigger, { key, value: key, id: `view-tab-${key}`, "aria-controls": `view-panel-${key}`, ref: (element) => {
+        if (element && pendingFocus?.id === element.id) {
+          element.focus({ preventScroll: true });
+          pendingFocus = null;
+        }
+      }, "data-action": `tab:${key}`, "data-view-tab": key }, label)))),
+      h("div", { ref: (element) => {
+        if (element && status.parentElement !== element) element.append(status);
+      } }),
+      h(ui.TabsContent, { value: tab, id: `view-panel-${tab}`, "aria-labelledby": `view-tab-${tab}`, className: "workbench-panel", ref: (element) => {
+        if (element && workspace.parentElement !== element) element.append(workspace);
+      } })
+    ));
+  }
+  for (const element of document.querySelectorAll("[data-shared-empty]")) {
+    let SharedEmpty = function() {
+      const content = ui.React.useRef(null);
+      ui.React.useLayoutEffect(() => {
+        if (content.current) ui.enhance(content.current);
+      }, []);
+      return h(ui.Empty, { variant: "ghost" }, h(ui.EmptyHeader, null, h(ui.EmptyTitle, null, element.dataset.title), h(ui.EmptyDescription, { dangerouslySetInnerHTML: { __html: element.dataset.detail } })), actions ? h(ui.EmptyContent, { ref: content, dangerouslySetInnerHTML: { __html: actions } }) : null);
+    };
+    const actions = element.innerHTML;
+    mountIsland(element, h(SharedEmpty));
+  }
+  for (const element of document.querySelectorAll(".badge,.job-status")) {
+    const label = element.textContent;
+    element.classList.remove("badge", "job-status", "pulse");
+    mountIsland(element, h(ui.Badge, { variant: "secondary" }, label));
+  }
+  for (const element of document.querySelectorAll(".notice")) {
+    const html = element.innerHTML;
+    element.classList.remove("notice");
+    mountIsland(element, h(ui.Alert, { variant: element.dataset.feedbackVariant || "default" }, h(ui.AlertDescription, { dangerouslySetInnerHTML: { __html: html } })));
+  }
+  const references = $("[data-reference-checkboxes]");
+  if (references) {
+    let ReferenceCheckboxes = function() {
+      const [selected, setSelected] = ui.React.useState(node.settings.referenceIds ?? []);
+      return state.project.assets.map((asset) => h("label", { key: asset.id, className: "reference-option" }, h(ui.Checkbox, { checked: selected.includes(asset.id), "aria-label": asset.name, "data-focus-key": asset.id, ref: (element) => {
+        if (element && pendingFocus?.key === asset.id) {
+          element.focus({ preventScroll: true });
+          pendingFocus = null;
+        }
+      }, onCheckedChange: (checked) => {
+        const next = checked ? [...selected, asset.id] : selected.filter((id) => id !== asset.id);
+        setSelected(next);
+        void handleField({ type: "change", target: { type: "checkbox-group", value: next, dataset: { setting: "referenceIds" }, id: "referenceIds", closest: (selector) => references.closest(selector) } }).catch(fail);
+      } }), asset.name));
+    };
+    const node = state.project.nodes.find((n) => n.id === state.selection);
+    mountIsland(references, h(ReferenceCheckboxes));
+  }
+  ui.enhance($("#app"));
+  showSaveStatus();
+}
+var pendingFocus;
+async function mutate(fn, history = true) {
+  queue = queue.catch(() => {
+  }).then(async () => {
+    const before = structuredClone(state.project), next = structuredClone(before);
+    fn(next);
+    state.busy = true;
+    try {
+      const result = await bridge.call("project-save", { project: next });
+      if (history) {
+        state.undo.push(before);
+        state.undo = state.undo.slice(-30);
+        state.redo = [];
+      }
+      state.project = result.project;
+      render();
+    } finally {
+      state.busy = false;
+    }
+  });
+  return queue;
+}
+async function operation(name, args = {}) {
+  await queue.catch(() => {
+  });
+  state.busy = true;
+  try {
+    const result = await bridge.call(name, { projectId: state.project.id, revision: state.project.revision, ...args });
+    if (result.project) state.project = result.project;
+    render();
+    return result;
+  } finally {
+    state.busy = false;
+  }
+}
+function preview(assetId, controls = false) {
+  const asset = state.project.assets.find((a) => a.id === assetId);
+  if (!asset) return "<span>\u7B49\u5F85\u7D20\u6750</span>";
+  const url = previews.get(assetId);
+  if (!url) return `<span data-preview="${assetId}">\u70B9\u51FB\u540E\u8F7D\u5165 ${esc(asset.kind === "image" ? "\u56FE\u7247" : asset.kind === "video" ? "\u89C6\u9891" : "\u97F3\u9891")}</span>`;
+  const tag = asset.kind === "image" ? "img" : asset.kind;
+  return `<${tag} src="${esc(url)}" ${tag === "img" ? `alt="${esc(asset.name)}"` : `${controls ? "controls" : "muted"} preload="metadata" playsinline`}></${tag}>`;
+}
+async function loadPreview(assetId) {
+  if (previews.has(assetId)) return;
+  const projectId = state.project.id, chunks = [];
+  let offset = 0, result;
+  do {
+    result = await bridge.call("asset-read", { projectId, assetId, offset });
+    chunks.push(Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0)));
+    if (result.nextOffset <= offset && offset < result.size) throw new Error("\u7D20\u6750\u8BFB\u53D6\u672A\u524D\u8FDB");
+    offset = result.nextOffset;
+  } while (offset < result.size);
+  if (state.project.id !== projectId) return;
+  if (previews.size >= 24) {
+    const [key, url] = previews.entries().next().value;
+    URL.revokeObjectURL(url);
+    previews.delete(key);
+  }
+  previews.set(assetId, URL.createObjectURL(new Blob(chunks, { type: result.mime })));
+}
+function releasePreviews() {
+  for (const url of previews.values()) URL.revokeObjectURL(url);
+  previews.clear();
+}
+function nodeMarkup(node) {
+  const job = [...state.project.jobs].reverse().find((j) => j.nodeId === node.id);
+  return `<section class="node ${state.selection === node.id ? "selected" : ""}" data-node="${node.id}" style="left:${node.x}px;top:${node.y}px" tabindex="0" role="button" aria-label="\u7F16\u8F91 ${esc(node.title)}"><div class="node-head"><span class="dot"></span><b>${esc(node.title)}</b><span class="spacer"></span><small>${names[node.kind]}</small></div><div class="node-body ${node.assetId ? "media" : ""}">${node.assetId ? preview(node.assetId) : esc(node.prompt || "\u9009\u4E2D\u8282\u70B9\uFF0C\u7F16\u8F91\u521B\u610F\u4E0E\u53C2\u6570")}</div><div class="node-foot"><span class="badge">${job ? esc(statuses[job.status] || job.status) : node.assetId ? "\u7D20\u6750\u5DF2\u5C31\u7EEA" : "\u8349\u7A3F"}</span><span>\xB7\xB7\xB7</span></div></section>`;
+}
+function edgeMarkup() {
+  return state.project.edges.map((e) => {
+    const a = state.project.nodes.find((n) => n.id === e.from), b = state.project.nodes.find((n) => n.id === e.to);
+    if (!a || !b) return "";
+    const x = a.x + 245 + 1e4, y = a.y + 106 + 1e4, bx = b.x + 1e4, by = b.y + 106 + 1e4;
+    return `<path d="M${x},${y} C${x + 100},${y} ${bx - 100},${by} ${bx},${by}"/>`;
+  }).join("");
+}
+function canvas() {
+  return `<div class="canvas" id="canvas"><div class="plane" style="transform:translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})"><svg class="edges">${edgeMarkup()}</svg>${state.project.nodes.map(nodeMarkup).join("")}</div>${!state.project.nodes.length ? empty("\u4ECE\u4E00\u4E2A\u521B\u610F\u5F00\u59CB", "\u6DFB\u52A0\u8282\u70B9\uFF0C\u6216\u5728\u5DE6\u4FA7\u5BF9\u8BDD\u4E2D\u63CF\u8FF0\u4F60\u7684\u77ED\u7247\u3002<br>\u5206\u955C\u3001\u53C2\u8003\u7D20\u6750\u4E0E\u751F\u6210\u7ED3\u679C\u90FD\u4FDD\u5B58\u5728\u8FD9\u91CC\u3002", button("add:image", "\uFF0B \u56FE\u7247\u8282\u70B9", 'class="primary"')) : ""}<div class="floating-tools">${["text", "image", "video", "audio"].map((k) => button(`add:${k}`, `\uFF0B ${names[k]}`)).join("")}${button("upload", "\u5BFC\u5165\u7D20\u6750")}</div><div class="zoom">${button("zoom-out", "\u2212")}<small>${Math.round(state.zoom * 100)}%</small>${button("zoom-in", "+")}${button("fit", "\u5F52\u4F4D")}</div></div>`;
+}
+function inspector() {
+  const n = state.project.nodes.find((n2) => n2.id === state.selection);
+  if (!n) return "";
+  if (n.kind === "audio") return `<aside class="inspector"><div class="inspector-head"><h3>\u914D\u97F3 / \u97F3\u9891</h3>${button("close-inspector", "\u2715", 'class="ghost" aria-label="\u5173\u95ED\u5C5E\u6027"')}</div>${field("\u540D\u79F0", `<input data-node-field="title" value="${esc(n.title)}" maxlength="96">`)}${field("\u914D\u97F3\u6587\u672C", `<textarea rows="8" data-node-field="prompt">${esc(n.prompt)}</textarea>`)}${field("\u97F3\u8272 ID\uFF08\u7559\u7A7A\u4F7F\u7528\u9ED8\u8BA4\u97F3\u8272\uFF09", `<input data-setting="voice" value="${esc(n.settings?.voice || "")}">`)}<p class="notice">\u4F7F\u7528 Work \u767E\u70BC CosyVoice \u914D\u97F3\u3002${state.capabilities?.audio?.configured ? "\u6E20\u9053\u5DF2\u8FDE\u63A5\u3002" : "\u8BF7\u5148\u5728 Work \u6388\u6743\u4E2D\u5FC3\u8FDE\u63A5\u767E\u70BC\u3002"}\u97F3\u4E50\u548C\u97F3\u6548\u53EF\u76F4\u63A5\u5BFC\u5165\uFF1B\u8FD9\u91CC\u4E0D\u4F1A\u628A\u8BED\u97F3\u63A5\u53E3\u5192\u5145\u97F3\u4E50\u751F\u6210\u3002</p>${button("generate", "\u751F\u6210\u914D\u97F3", `class="primary" ${state.capabilities?.audio?.configured ? "" : "disabled"}`)}${field("\u7ED1\u5B9A\u672C\u5730\u97F3\u9891", select([{ id: "", label: "\u4E0D\u4F7F\u7528" }, ...state.project.assets.filter((a) => a.kind === "audio").map((a) => ({ id: a.id, label: a.name }))], n.assetId || "", 'data-node-field="assetId"'))}<div class="toolbar" style="margin-top:16px">${button("preview-node", "\u9884\u89C8")}${button("node-audio-track", "\u52A0\u5165\u97F3\u8F68")}${button("delete-node", "\u5220\u9664", 'class="danger"')}</div></aside>`;
+  const s = n.settings ?? {}, models = n.kind === "image" ? state.capabilities?.images?.models ?? [] : state.capabilities?.videos?.models ?? [];
+  const usable = models.filter((m) => m.available !== false && m.configured !== false);
+  const model = usable.find((m) => m.id === s.model) ?? usable[0];
+  const assets2 = state.project.assets;
+  const assetSelect = (key, kinds, label) => field(label, select([{ id: "", label: "\u4E0D\u4F7F\u7528" }, ...assets2.filter((a) => kinds.includes(a.kind)).map((a) => ({ id: a.id, label: a.name }))], s[key] || "", `data-setting="${key}"`));
+  const params = n.kind === "image" ? ["size", "quality"].map((key) => {
+    const values = model?.parameters?.[key]?.values;
+    return values?.length ? field(key === "size" ? "\u5C3A\u5BF8" : "\u8D28\u91CF", select(["auto", ...values.filter((v) => v !== "auto")], s[key] || "auto", `data-setting="${key}"`)) : "";
+  }).join("") : model ? field("\u751F\u6210\u65B9\u5F0F", select(model.operations, s.operation || "text", 'data-setting="operation"')) + field("\u5206\u8FA8\u7387", select(model.resolutions, s.resolution || model.defaultResolution, 'data-setting="resolution"')) + field("\u65F6\u957F\uFF08\u79D2\uFF09", select(model.durations, s.duration || model.durations.find((d) => d !== "-1"), 'data-setting="duration"')) + field("\u753B\u5E45", select(["first", "first-last", "edit", "extend"].includes(s.operation) ? ["adaptive"] : model.ratios, s.ratio || "16:9", 'data-setting="ratio"')) : "";
+  return `<aside class="inspector"><div class="inspector-head"><h3>${names[n.kind]} \xB7 \u8282\u70B9\u8BBE\u7F6E</h3>${button("close-inspector", "\u2715", 'class="ghost" aria-label="\u5173\u95ED\u5C5E\u6027"')}</div>${field("\u540D\u79F0", `<input data-node-field="title" value="${esc(n.title)}" maxlength="96">`)}${field("\u521B\u4F5C\u63CF\u8FF0", `<textarea data-node-field="prompt" rows="6" maxlength="8000">${esc(n.prompt)}</textarea>`)}${["image", "video"].includes(n.kind) ? `${field("Work \u751F\u6210\u6E20\u9053", select(usable.length ? usable.map((m) => ({ id: m.id, label: m.label })) : [{ id: "", label: "\u5C1A\u672A\u8FDE\u63A5\u53EF\u7528\u6E20\u9053" }], s.model || model?.id, 'data-setting="model"'))}${!usable.length ? '<p class="notice">\u8BF7\u5728 Work \u7684\u6388\u6743\u4E2D\u5FC3\u8FDE\u63A5\u56FE\u7247\u6216\u89C6\u9891\u6E20\u9053\u3002\u63D2\u4EF6\u4E0D\u5355\u72EC\u4FDD\u5B58\u5BC6\u94A5\u3002</p>' : ""}${params}<label id="preset-label">\u98CE\u683C\u63D0\u793A</label><div data-shared-select="preset"></div>${field("\u955C\u5934\u610F\u56FE", select(cameraOptions, s.camera || "\u81EA\u52A8", 'data-setting="camera"'))}${assetSelect("referenceId", ["image"], n.kind === "image" ? "\u53C2\u8003\u56FE / \u7F16\u8F91\u539F\u56FE" : "\u9996\u5E27\u56FE\u7247")}${n.kind === "video" && s.operation === "first-last" ? assetSelect("lastFrameId", ["image"], "\u5C3E\u5E27\u56FE\u7247") : ""}${n.kind === "video" && ["reference", "edit", "extend"].includes(s.operation) ? field("\u591A\u6A21\u6001\u53C2\u8003\uFF08\u53EF\u9009\u62E9\u591A\u4E2A\u7D20\u6750\uFF09", `<div data-reference-checkboxes></div>`) : ""}${button("generate", "\u751F\u6210\u7D20\u6750", `class="primary" ${!model ? "disabled" : ""}`)}<small>\u8C03\u7528\u771F\u5B9E\u6E20\u9053\uFF0C\u53EF\u80FD\u4EA7\u751F\u8D39\u7528\u3002\u955C\u5934\u548C\u98CE\u683C\u662F\u63D0\u793A\u8BCD\u610F\u56FE\uFF0C\u5E76\u975E\u7CBE\u786E\u6E32\u67D3\u63A7\u5236\u3002</small>` : ""}<hr>${field("\u8282\u70B9\u7D20\u6750", select([{ id: "", label: "\u672A\u7ED1\u5B9A" }, ...assets2.map((a) => ({ id: a.id, label: a.name }))], n.assetId || "", 'data-node-field="assetId"'))}${field("\u5173\u8054\u524D\u5E8F\u8282\u70B9", select([{ id: "", label: "\u6DFB\u52A0\u4E00\u6761\u8FDE\u7EBF\u2026" }, ...state.project.nodes.filter((x) => x.id !== n.id).map((x) => ({ id: x.id, label: x.title }))], "", 'data-link="true"'))}<small>\u8FDE\u7EBF\u7EC4\u7EC7\u521B\u4F5C\u5173\u7CFB\uFF1B\u751F\u6210\u53C2\u8003\u4EE5\u6B64\u9762\u677F\u6240\u9009\u7D20\u6750\u4E3A\u51C6\u3002</small><div class="toolbar" style="margin-top:14px">${button("preview-node", "\u9884\u89C8")}${button("node-shot", "\u52A0\u5165\u5206\u955C")}${button("duplicate-node", "\u590D\u5236")}${button("unlink-node", "\u65AD\u5F00\u8FDE\u7EBF")}${button("delete-node", "\u5220\u9664", 'class="danger"')}</div></aside>`;
+}
+function heading(title, desc, controls = "") {
+  return `<div class="page-heading"><div><h2>${title}</h2><p>${desc}</p></div><div class="toolbar">${controls}</div></div>`;
+}
+function shots() {
+  return `<div class="page">${heading("\u5206\u955C", "\u5148\u786E\u5B9A\u6545\u4E8B\u8282\u594F\uFF0C\u518D\u4E3A\u6BCF\u4E2A\u955C\u5934\u9009\u62E9\u7D20\u6750\u3002", button("add-shot", "\uFF0B \u5206\u955C") + button("arrange", "\u7F16\u6392\u5230\u8F68\u9053", 'class="primary"'))}${state.project.shots.length ? `<div class="cards">${state.project.shots.map((s, i) => `<article class="card" data-shot="${s.id}"><div class="card-media" data-action="preview-shot" data-id="${s.id}">${preview(s.assetId)}</div><div class="card-content"><div class="row"><span class="badge">${String(i + 1).padStart(2, "0")}</span><input class="title" data-shot-field="title" value="${esc(s.title)}" aria-label="\u5206\u955C\u540D\u79F0"></div>${field("\u753B\u9762\u63CF\u8FF0", `<textarea data-shot-field="prompt">${esc(s.prompt)}</textarea>`)}${field("\u65C1\u767D / \u5B57\u5E55", `<textarea data-shot-field="narration" style="min-height:55px">${esc(s.narration)}</textarea>`)}${field("\u955C\u5934\u7D20\u6750", select([{ id: "", label: "\u9009\u62E9\u7D20\u6750" }, ...state.project.assets.filter((a) => a.kind !== "audio").map((a) => ({ id: a.id, label: a.name }))], s.assetId || "", 'data-shot-field="assetId"'))}<div class="row"><input type="number" min=".1" max="3600" step=".1" value="${s.duration}" data-shot-field="duration" aria-label="\u79D2\u6570"><small>\u79D2</small>${button("shot-up", "\u2191")}${button("shot-down", "\u2193")}${button("shot-node", "\u751F\u6210\u8282\u70B9")}${button("shot-delete", "\xD7", 'aria-label="\u5220\u9664\u5206\u955C"')}</div></div></article>`).join("")}</div>` : empty("\u6545\u4E8B\u4ECE\u7B2C\u4E00\u4E2A\u955C\u5934\u5F00\u59CB", "\u624B\u52A8\u6DFB\u52A0\u5206\u955C\uFF0C\u6216\u8BA9\u5DE6\u4FA7 AI \u8BFB\u53D6\u5267\u672C\u540E\u5199\u5165\u3002")}</div>`;
+}
+function roles() {
+  return `<div class="page">${heading("\u89D2\u8272\u6863\u6848", "\u4EBA\u7269\u8BBE\u5B9A\u548C\u53C2\u8003\u56FE\u7247\uFF0C\u968F\u9879\u76EE\u4FDD\u5B58\u3002", button("add-role", "\uFF0B \u89D2\u8272", 'class="primary"'))}<div class="cards">${state.project.roles.map((r) => `<article class="card" data-role="${r.id}"><div class="card-media">${preview(r.assetId)}</div><div class="card-content"><input class="title" value="${esc(r.name)}" data-role-field="name" aria-label="\u89D2\u8272\u540D\u79F0">${field("\u5916\u8C8C / \u6027\u683C / \u670D\u88C5 / \u4E00\u81F4\u6027\u8BF4\u660E", `<textarea rows="6" data-role-field="description">${esc(r.description)}</textarea>`)}${field("\u89D2\u8272\u53C2\u8003\u56FE", select([{ id: "", label: "\u9009\u62E9\u53C2\u8003\u56FE" }, ...state.project.assets.filter((a) => a.kind === "image").map((a) => ({ id: a.id, label: a.name }))], r.assetId || "", 'data-role-field="assetId"'))}<div class="row">${button("role-node", "\u521B\u5EFA\u89D2\u8272\u56FE\u8282\u70B9")}${button("role-delete", "\u5220\u9664", 'class="danger"')}</div></div></article>`).join("")}</div>${!state.project.roles.length ? empty("\u4FDD\u6301\u89D2\u8272\u4E00\u81F4", "\u6DFB\u52A0\u89D2\u8272\u540E\uFF0CAI \u53EF\u4EE5\u8BFB\u53D6\u8FD9\u4E9B\u8BBE\u5B9A\uFF1B\u751F\u6210\u65F6\u4ECD\u9700\u9009\u62E9\u53C2\u8003\u56FE\u3002") : ""}</div>`;
+}
+function assets() {
+  return `<div class="page">${heading("\u9879\u76EE\u7D20\u6750", `${state.project.assets.length} \u4E2A\u6587\u4EF6 \xB7 \u672C\u5730\u4FDD\u5B58\uFF0C\u5378\u8F7D\u63D2\u4EF6\u4E0D\u4F1A\u5220\u9664\u521B\u4F5C\u6587\u4EF6`, button("upload", "\uFF0B \u5BFC\u5165\u7D20\u6750", 'class="primary"'))}<div class="cards">${state.project.assets.slice(-100).reverse().map((a) => `<article class="card"><div class="card-media" data-action="preview-asset" data-id="${a.id}">${preview(a.id, true)}</div><div class="card-content"><h3>${esc(a.name)}</h3><small>${esc(a.kind)} \xB7 ${(a.size / 1048576).toFixed(1)} MB${a.durationSeconds ? ` \xB7 ${a.durationSeconds.toFixed(1)} \u79D2` : ""}</small><div class="row">${button("asset-node", "\u52A0\u5165\u753B\u5E03", `data-id="${a.id}"`)}${button(a.kind === "audio" ? "asset-track" : "asset-shot", a.kind === "audio" ? "\u6DFB\u52A0\u97F3\u8F68" : "\u52A0\u5165\u5206\u955C", `data-id="${a.id}"`)}</div></div></article>`).join("")}</div>${!state.project.assets.length ? empty("\u5BFC\u5165\u4F60\u7684\u521B\u4F5C\u7D20\u6750", "\u652F\u6301\u56FE\u7247\u3001\u89C6\u9891\u548C\u97F3\u9891\uFF1B\u53EF\u76F4\u63A5\u62D6\u5165\u6587\u4EF6\uFF0C\u5355\u4E2A\u4E0D\u8D85\u8FC7 256 MB\u3002") : ""}</div>`;
+}
+function tracks() {
+  const p = state.project, fps = p.fps.numerator / p.fps.denominator;
+  const maxFrame = Math.max(1, ...p.tracks.flatMap((t) => t.clips.map((c) => c.startFrame + c.durationFrames)));
+  return `<div class="page">${heading("\u8F68\u9053\u7F16\u6392", "\u4FDD\u7559\u72EC\u7ACB\u89C6\u9891\u3001\u539F\u58F0\u3001\u914D\u4E50\u548C\u5B57\u5E55\uFF1B\u7CBE\u7EC6\u526A\u8F91\u4EA4\u7ED9 Work \u89C6\u9891\u5DE5\u5177\u3002", button("arrange", "\u4ECE\u5206\u955C\u91CD\u65B0\u7F16\u6392") + button("handoff", "\u4EA4\u5230 Work \u526A\u8F91", 'class="primary"'))}<div class="row">${field("\u753B\u5E45", select(["1920x1080", "1080x1920", "1080x1080", "2560x1440"], `${p.width}x${p.height}`, 'data-project-size="true"'))}${field("\u5E27\u7387", select(["24", "25", "30", "60"], String(fps), 'data-project-fps="true"'))}</div>${p.tracks.map((t) => `<section class="track" data-track="${t.id}"><div class="track-header"><h3>${esc(t.label)}</h3><span class="badge">${t.kind}</span><span class="spacer"></span>${button("track-delete", "\u79FB\u9664\u8F68\u9053", 'class="ghost danger"')}</div><div class="track-body"><div class="ruler">${t.clips.map((c) => `<div class="clip-bar" style="left:${100 * c.startFrame / maxFrame}%;width:${100 * c.durationFrames / maxFrame}%">${esc(c.label)}</div>`).join("")}</div>${t.clips.map((c) => `<div class="clip-row" data-clip="${c.id}"><label>${t.kind === "caption" ? "\u5B57\u5E55\u6587\u5B57" : "\u7247\u6BB5"}<input data-clip-field="${t.kind === "caption" ? "text" : "label"}" value="${esc(t.kind === "caption" ? c.text : c.label)}"></label>${[["startFrame", "\u8D77\u70B9/\u79D2", c.startFrame / fps], ["durationFrames", "\u65F6\u957F/\u79D2", c.durationFrames / fps], ["sourceStartSeconds", "\u5165\u70B9/\u79D2", c.sourceStartSeconds ?? 0], ["volume", "\u97F3\u91CF", c.volume ?? 1]].map(([key, label, value]) => `<label>${label}<input type="number" step="${key === "volume" ? ".05" : 1 / fps}" min="0" ${key === "volume" ? 'max="1"' : ""} data-clip-field="${key}" value="${Number(value.toFixed(3))}" ${t.kind === "caption" && ["sourceStartSeconds", "volume"].includes(key) ? "disabled" : ""}></label>`).join("")}${button("clip-delete", "\xD7", 'aria-label="\u5220\u9664\u7247\u6BB5"')}</div>`).join("")}</div></section>`).join("")}${!p.tracks.length ? empty("\u8FD8\u6CA1\u6709\u7F16\u6392\u8F68\u9053", "\u5728\u5206\u955C\u4E2D\u9009\u597D\u7D20\u6750\uFF0C\u70B9\u51FB\u300C\u7F16\u6392\u5230\u8F68\u9053\u300D\u3002\u97F3\u9891\u53EF\u4ECE\u7D20\u6750\u5E93\u5355\u72EC\u6DFB\u52A0\u3002") : ""}${p.exports.length ? `<div class="notice">\u5DF2\u4EA4\u63A5 ${p.exports.length} \u4EFD\u539F\u751F\u5DE5\u7A0B\u3002\u539F\u751F\u526A\u8F91\u540E\u7684\u4FEE\u6539\u4E0D\u4F1A\u88AB\u753B\u5E03\u8986\u76D6\u3002${p.exports.slice(-3).map((e) => `<p>${esc(e.path)}</p>`).join("")}</div>` : ""}</div>`;
+}
+function jobs() {
+  return `<div class="page">${heading("\u751F\u6210\u8BB0\u5F55", "\u4EFB\u52A1\u72B6\u6001\u6765\u81EA Work \u6E20\u9053\u3002\u5173\u95ED\u5DE5\u4F5C\u53F0\u540E\u89C6\u9891\u4EFB\u52A1\u7531 Work \u7EE7\u7EED\u67E5\u8BE2\u3002", button("refresh-jobs", "\u5237\u65B0\u72B6\u6001"))}${state.project.jobs.slice().reverse().map((j) => `<div class="job"><span class="job-status ${["submitting", "running", "saving"].includes(j.status) ? "pulse" : ""}">${esc(statuses[j.status] || j.status)}</span><div><h3>${esc(j.title)}</h3><small>${esc(j.message || j.kind)} \xB7 ${new Date(j.createdAt).toLocaleString()}</small></div><span class="spacer"></span>${j.assetId ? button("preview-asset", "\u67E5\u770B\u7D20\u6750", `data-id="${j.assetId}"`) : ""}</div>${["failed", "uncertain", "save_failed"].includes(j.status) ? `<p class="notice" data-feedback-variant="${j.status === "uncertain" ? "warning" : "destructive"}">${esc(j.message || "\u4EFB\u52A1\u672A\u5B8C\u6210\uFF0C\u8BF7\u67E5\u770B\u6E20\u9053\u72B6\u6001\uFF1B\u4E0D\u4F1A\u81EA\u52A8\u91CD\u590D\u4ED8\u8D39\u63D0\u4EA4\u3002")}</p>` : ""}`).join("") || empty("\u5C1A\u65E0\u751F\u6210\u4EFB\u52A1", "\u5728\u753B\u5E03\u9009\u4E2D\u56FE\u7247\u6216\u89C6\u9891\u8282\u70B9\uFF0C\u586B\u5199\u63CF\u8FF0\u540E\u751F\u6210\u3002")}</div>`;
+}
+function render() {
+  if (!state.project) return;
+  const focused = document.activeElement;
+  const focusState = (focused?.id || focused?.dataset.focusKey) && focused.closest("#app") ? { id: focused.id, key: focused.dataset.focusKey, start: focused.selectionStart, end: focused.selectionEnd } : null;
+  fieldIndex = 0;
+  selectSpecs.length = 0;
+  const savedProject = state.project, p = structuredClone(savedProject);
+  for (const edit of drafts.values()) edit(p);
+  state.project = p;
+  for (const root of selectRoots.splice(0)) root.unmount();
+  saveRoot?.unmount();
+  saveRoot = void 0;
+  $("#app").innerHTML = `<header class="topbar"><div class="brand">\u25A7</div>${select([{ id: p.id, label: p.title }, ...state.projects.filter((x) => x.id !== p.id).map((x) => ({ id: x.id, label: x.title }))], p.id, 'class="project-picker" id="project-picker" aria-label="\u5207\u6362\u9879\u76EE"')}${button("new-project", "\uFF0B", 'aria-label="\u65B0\u5EFA\u9879\u76EE"')}${button("rename-project", "\u91CD\u547D\u540D", 'class="ghost minor"')}<span class="spacer"></span>${button("undo", "\u21B6", `aria-label="\u64A4\u9500" ${!state.undo.length ? "disabled" : ""}`)}${button("redo", "\u21B7", `aria-label="\u91CD\u505A" ${!state.redo.length ? "disabled" : ""}`)}${button("handoff", "\u4EA4\u5230 Work \u526A\u8F91", 'class="primary"')}</header><div class="workbench-views" id="view-tabs"></div><div id="save-status"></div><div class="workspace"><main class="main">${state.tab === "canvas" ? canvas() : state.tab === "shots" ? shots() : state.tab === "roles" ? roles() : state.tab === "assets" ? assets() : state.tab === "tracks" ? tracks() : state.tab === "jobs" ? jobs() : `<div class="page">${heading("\u5267\u672C", "\u811A\u672C\u548C\u5206\u955C\u90FD\u53EF\u4EE5\u7531\u5DE6\u4FA7 AI \u8BFB\u53D6\u548C\u4FEE\u6539\u3002", button("split-script", "\u6309\u6BB5\u843D\u62C6\u5206\u955C") + button("ask-script", "\u8BA9 AI \u5B8C\u5584", 'class="primary"'))}<textarea class="script-area" data-script="true" aria-label="\u5267\u672C\u5185\u5BB9" placeholder="\u5199\u4E0B\u521B\u610F\u3001\u65C1\u767D\u6216\u5B8C\u6574\u5267\u672C\u2026">${esc(p.script)}</textarea></div>`}</main>${state.tab === "canvas" ? inspector() : ""}</div><footer><span>iPolloWork \u77ED\u7247\u5DE5\u4F5C\u53F0 \xB7 \u672C\u5730\u5DE5\u7A0B</span><span>\u5DF2\u4FDD\u5B58 \xB7 r${p.revision} \xB7 ${p.nodes.length} \u4E2A\u8282\u70B9</span></footer>`;
+  $(".topbar .spacer").insertAdjacentHTML("beforebegin", button("reload-project", "\u91CD\u65B0\u8F7D\u5165", 'class="ghost minor"'));
+  if (state.tab === "tracks") for (const track of p.tracks.filter((t) => t.kind === "video")) for (const input of document.querySelectorAll(`[data-track="${track.id}"] [data-clip-field="volume"]`)) {
+    input.disabled = true;
+    input.title = "\u89C6\u9891\u8F68\u4E0D\u6DF7\u5165\u58F0\u97F3\uFF0C\u8BF7\u5728\u72EC\u7ACB\u539F\u58F0\u8F68\u8C03\u8282\u97F3\u91CF";
+  }
+  for (const element of document.querySelectorAll("#app input,#app textarea")) {
+    element.dataset.ipwControl = element.tagName === "INPUT" ? "input" : "textarea";
+    if (!element.id) element.id = `field-${++fieldIndex}`;
+  }
+  for (const element of document.querySelectorAll("#app [data-action]")) if (!element.id) element.id = `action-${element.dataset.action}-${element.dataset.id || ""}`;
+  pendingFocus = focusState;
+  mountControls();
+  if (focusState) {
+    const next = document.getElementById(focusState.id);
+    next?.focus({ preventScroll: true });
+    if (next && typeof focusState.start === "number" && ["text", "textarea"].includes(next.type)) next.setSelectionRange(focusState.start, focusState.end);
+  }
+  mountPresetSelect();
+  state.project = savedProject;
+  bridge.context(p, state.selection);
+  const epoch = ++previewEpoch;
+  void (async () => {
+    const pending = [...document.querySelectorAll("[data-preview]")].filter((el) => p.assets.find((a) => a.id === el.dataset.preview)?.kind === "image").slice(0, 12);
+    for (const element of pending) {
+      if (epoch !== previewEpoch) break;
+      try {
+        await loadPreview(element.dataset.preview);
+        if (element.isConnected) element.outerHTML = preview(element.dataset.preview);
+      } catch {
+        if (element.isConnected) element.textContent = "\u70B9\u51FB\u91CD\u8BD5\u9884\u89C8";
+      }
+    }
+  })();
+}
+async function importFiles(files) {
+  for (const file of files) {
+    if (!file.size || file.size > 256 * 1024 * 1024) throw new Error(`${file.name} \u4E3A\u7A7A\u6216\u8D85\u8FC7 256 MB`);
+    let durationSeconds;
+    if (/\.(mp4|mov|webm|mp3|wav|m4a|ogg)$/i.test(file.name)) {
+      const url = URL.createObjectURL(file), media = document.createElement("video");
+      media.preload = "metadata";
+      media.src = url;
+      try {
+        durationSeconds = await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("\u5A92\u4F53\u65E0\u6CD5\u89E3\u7801\uFF0C\u8BF7\u8F6C\u6362\u4E3A MP4 \u6216 WAV")), 15e3);
+          media.onloadedmetadata = () => {
+            clearTimeout(timer);
+            resolve(media.duration);
+          };
+          media.onerror = () => {
+            clearTimeout(timer);
+            reject(new Error("\u6D4F\u89C8\u5668\u65E0\u6CD5\u8BFB\u53D6\u5A92\u4F53\uFF0C\u8BF7\u8F6C\u6362\u683C\u5F0F"));
+          };
+        });
+      } finally {
+        media.removeAttribute("src");
+        media.load();
+        URL.revokeObjectURL(url);
+      }
+      if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) throw new Error("\u65E0\u6CD5\u8BFB\u53D6\u5A92\u4F53\u65F6\u957F");
+    }
+    const uploadId = uuid("u");
+    for (let offset = 0; offset < file.size; offset += 1024 * 1024) {
+      notify(`\u6B63\u5728\u5BFC\u5165 ${file.name} \xB7 ${Math.round(offset / file.size * 100)}%`);
+      const blob = file.slice(offset, offset + 1024 * 1024), dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      await operation("asset-upload", { uploadId, filename: file.name, total: file.size, offset, data: dataUrl.split(",")[1], durationSeconds });
+    }
+  }
+  state.tab = "assets";
+  render();
+  notify("\u7D20\u6750\u5DF2\u5BFC\u5165");
+}
+function shotFromAsset(p, assetId) {
+  const a = p.assets.find((a2) => a2.id === assetId);
+  if (!a || a.kind === "audio") throw new Error("\u8BF7\u9009\u62E9\u56FE\u7247\u6216\u89C6\u9891");
+  p.shots.push({ id: uuid("s"), title: a.name.slice(0, 96), prompt: "", narration: "", duration: Math.min(a.durationSeconds || 4, 6), assetId });
+}
+async function action(name, target) {
+  if (name === "upload") {
+    $("#upload").click();
+    return;
+  }
+  if (name === "reload-project") {
+    const result = await bridge.call("project-read", { projectId: state.project.id });
+    state.project = result.project;
+    await flushDrafts();
+    render();
+    notify("\u9879\u76EE\u5DF2\u91CD\u65B0\u8F7D\u5165");
+    return;
+  }
+  await flushDrafts();
+  if (name === "retry-save") return;
+  const [key, value] = name.split(":"), p = state.project, node = p.nodes.find((n) => n.id === state.selection), shotId = target.closest("[data-shot]")?.dataset.shot, roleId = target.closest("[data-role]")?.dataset.role;
+  if (key === "tab") {
+    state.tab = value;
+    state.selection = null;
+    render();
+    return;
+  }
+  if (key === "add") {
+    await mutate((p2) => {
+      state.selection = addNode(p2, value).id;
+    });
+    return;
+  }
+  if (key === "new-project") {
+    const created = await dialog("\u65B0\u5EFA\u77ED\u7247", "\u6BCF\u4E2A\u9879\u76EE\u72EC\u7ACB\u4FDD\u5B58\u3002", "\u672A\u547D\u540D\u77ED\u7247", (title) => bridge.call("project-create", { title }));
+    if (!created) return;
+    releasePreviews();
+    state.project = created.project;
+    state.projects = (await bridge.call("project-list")).projects;
+    state.selection = null;
+    state.undo = [];
+    state.redo = [];
+    state.tab = "canvas";
+    render();
+    document.querySelector('[aria-label="\u65B0\u5EFA\u9879\u76EE"]')?.focus();
+    ui.toast.success("\u77ED\u7247\u5DF2\u521B\u5EFA");
+    return;
+  }
+  if (key === "rename-project") {
+    const title = await dialog("\u9879\u76EE\u540D\u79F0", "", p.title);
+    if (title) await mutate((p2) => p2.title = title);
+    return;
+  }
+  if (["zoom-in", "zoom-out", "fit"].includes(key)) {
+    if (key === "fit") {
+      state.zoom = 1;
+      state.pan = { x: 0, y: 0 };
+    } else state.zoom = Math.max(0.25, Math.min(2, state.zoom + (key === "zoom-in" ? 0.1 : -0.1)));
+    render();
+    return;
+  }
+  if (key === "close-inspector") {
+    state.selection = null;
+    render();
+    return;
+  }
+  if (key === "delete-node") {
+    await mutate((p2) => {
+      p2.nodes = p2.nodes.filter((n) => n.id !== node.id);
+      p2.edges = p2.edges.filter((e) => e.from !== node.id && e.to !== node.id);
+    });
+    state.selection = null;
+    render();
+    return;
+  }
+  if (key === "duplicate-node") {
+    await mutate((p2) => {
+      const copy = { ...structuredClone(node), id: uuid("n"), x: node.x + 35, y: node.y + 35 };
+      p2.nodes.push(copy);
+      state.selection = copy.id;
+    });
+    return;
+  }
+  if (key === "unlink-node") {
+    await mutate((p2) => p2.edges = p2.edges.filter((e) => e.to !== node.id && e.from !== node.id));
+    return;
+  }
+  if (key === "node-shot") {
+    await mutate((p2) => shotFromAsset(p2, node.assetId));
+    notify("\u5DF2\u52A0\u5165\u5206\u955C");
+    return;
+  }
+  if (key === "node-audio-track") {
+    if (!node.assetId) throw new Error("\u5148\u751F\u6210\u6216\u9009\u62E9\u97F3\u9891");
+    await action("asset-track", { dataset: { id: node.assetId }, closest: () => null });
+    return;
+  }
+  if (key === "upload") {
+    $("#upload").click();
+    return;
+  }
+  if (key === "generate") {
+    if (!await dialog("\u751F\u6210\u7D20\u6750", "\u5C06\u901A\u8FC7 Work \u5DF2\u8FDE\u63A5\u7684\u6E20\u9053\u751F\u6210\uFF0C\u53EF\u80FD\u4EA7\u751F\u8D39\u7528\u3002\u7EE7\u7EED\u5417\uFF1F")) return;
+    await mutate((p2) => {
+      const n = p2.nodes.find((x) => x.id === node.id), s = n.settings ??= {};
+      if (n.kind === "audio") {
+        if (!state.capabilities?.audio?.configured) throw new Error("\u8BF7\u5148\u8FDE\u63A5 Work \u767E\u70BC\u914D\u97F3\u6E20\u9053");
+        return;
+      }
+      const models = (n.kind === "image" ? state.capabilities?.images?.models : state.capabilities?.videos?.models) || [], m = models.find((m2) => m2.id === s.model) || models.find((m2) => m2.available !== false && m2.configured !== false);
+      if (!m) throw new Error("\u5C1A\u672A\u914D\u7F6E\u53EF\u7528\u6E20\u9053");
+      s.model = m.id;
+      if (n.kind === "video") {
+        s.operation ||= "text";
+        s.resolution ||= m.defaultResolution;
+        s.duration ||= m.durations.find((d) => d !== "-1");
+        s.ratio ||= "16:9";
+        if (["first", "first-last", "edit", "extend"].includes(s.operation)) s.ratio = "adaptive";
+        if (s.operation === "edit") s.duration = "-1";
+      }
+    });
+    await operation("generate", { nodeId: node.id, requestId: crypto.randomUUID() });
+    notify("\u5DF2\u63D0\u4EA4\uFF0C\u8BF7\u5728\u751F\u6210\u8BB0\u5F55\u4E2D\u67E5\u770B");
+    return;
+  }
+  if (key === "refresh-jobs") {
+    await operation("generation-status");
+    return;
+  }
+  if (key === "add-shot") {
+    await mutate((p2) => p2.shots.push({ id: uuid("s"), title: `\u955C\u5934 ${p2.shots.length + 1}`, prompt: "", narration: "", duration: 4 }));
+    return;
+  }
+  if (key === "shot-delete") {
+    await mutate((p2) => p2.shots = p2.shots.filter((s) => s.id !== shotId));
+    return;
+  }
+  if (key === "shot-up" || key === "shot-down") {
+    await mutate((p2) => {
+      const i = p2.shots.findIndex((s) => s.id === shotId), j = i + (key === "shot-up" ? -1 : 1);
+      if (j >= 0 && j < p2.shots.length) [p2.shots[i], p2.shots[j]] = [p2.shots[j], p2.shots[i]];
+    });
+    return;
+  }
+  if (key === "shot-node") {
+    await mutate((p2) => {
+      const s = p2.shots.find((s2) => s2.id === shotId), n = addNode(p2, "image");
+      n.title = s.title;
+      n.prompt = s.prompt;
+      state.selection = n.id;
+    });
+    state.tab = "canvas";
+    render();
+    return;
+  }
+  if (key === "split-script") {
+    if (p.shots.length && !await dialog("\u66FF\u6362\u5206\u955C\uFF1F", "\u73B0\u6709\u5206\u955C\u4F1A\u88AB\u5267\u672C\u6BB5\u843D\u66FF\u6362\uFF0C\u53EF\u64A4\u9500\u3002")) return;
+    await mutate((p2) => {
+      p2.shots = p2.script.split(/\n\s*\n/).map((s) => s.trim()).filter(Boolean).map((text, i) => ({ id: uuid("s"), title: `\u955C\u5934 ${i + 1}`, prompt: text, narration: "", duration: 4 }));
+    });
+    state.tab = "shots";
+    render();
+    return;
+  }
+  if (key === "ask-script") {
+    await bridge.request("ui/message", { role: "user", content: [{ type: "text", text: "\u8BF7\u8BFB\u53D6\u77ED\u7247\u5DE5\u4F5C\u53F0\u5F53\u524D\u9879\u76EE\uFF0C\u5B8C\u5584\u5267\u672C\u5E76\u89C4\u5212\u5206\u955C\uFF0C\u4FDD\u7559\u6211\u7684\u521B\u610F\u3002\u5148\u89C4\u5212\uFF0C\u4E0D\u8981\u81EA\u52A8\u4ED8\u8D39\u751F\u6210\u7D20\u6750\u3002" }] });
+    return;
+  }
+  if (key === "add-role") {
+    await mutate((p2) => p2.roles.push({ id: uuid("r"), name: "\u65B0\u89D2\u8272", description: "" }));
+    return;
+  }
+  if (key === "role-delete") {
+    await mutate((p2) => p2.roles = p2.roles.filter((r) => r.id !== roleId));
+    return;
+  }
+  if (key === "role-node") {
+    await mutate((p2) => {
+      const r = p2.roles.find((r2) => r2.id === roleId), n = addNode(p2, "image");
+      n.title = r.name;
+      n.prompt = `\u89D2\u8272\u8BBE\u5B9A\u56FE\uFF1A${r.description}`;
+      n.settings = { referenceId: r.assetId || "" };
+      state.selection = n.id;
+    });
+    state.tab = "canvas";
+    render();
+    return;
+  }
+  if (key === "asset-node") {
+    await mutate((p2) => {
+      const a = p2.assets.find((a2) => a2.id === target.dataset.id), n = addNode(p2, a.kind);
+      n.title = a.name.slice(0, 96);
+      n.assetId = a.id;
+      state.selection = n.id;
+    });
+    state.tab = "canvas";
+    render();
+    return;
+  }
+  if (key === "asset-shot") {
+    await mutate((p2) => shotFromAsset(p2, target.dataset.id));
+    notify("\u5DF2\u52A0\u5165\u5206\u955C");
+    return;
+  }
+  if (key === "asset-track") {
+    await mutate((p2) => {
+      const a = p2.assets.find((a2) => a2.id === target.dataset.id), fps = p2.fps.numerator / p2.fps.denominator;
+      p2.tracks.push({ id: uuid("t"), label: a.name.slice(0, 96), kind: "audio", clips: [{ id: uuid("c"), label: a.name.slice(0, 96), startFrame: 0, durationFrames: Math.floor(a.durationSeconds * fps), source: `assets/${a.file}`, sourceDurationSeconds: a.durationSeconds, sourceStartSeconds: 0, volume: 1, playbackRate: 1 }] });
+    });
+    state.tab = "tracks";
+    render();
+    return;
+  }
+  if (key === "track-delete") {
+    const trackId = target.closest("[data-track]").dataset.track;
+    await mutate((p2) => p2.tracks = p2.tracks.filter((t) => t.id !== trackId));
+    return;
+  }
+  if (key === "clip-delete") {
+    const clipId = target.closest("[data-clip]").dataset.clip;
+    await mutate((p2) => p2.tracks.forEach((t) => t.clips = t.clips.filter((c) => c.id !== clipId)));
+    return;
+  }
+  if (key === "arrange") {
+    if (p.tracks.length && !await dialog("\u91CD\u65B0\u7F16\u6392\uFF1F", "\u5C06\u66FF\u6362\u73B0\u6709\u8F68\u9053\uFF0C\u5305\u62EC\u624B\u52A8\u6DFB\u52A0\u7684\u914D\u4E50\u3002\u539F\u751F\u526A\u8F91\u6587\u4EF6\u4E0D\u53D7\u5F71\u54CD\u3002")) return;
+    await operation("arrange");
+    state.tab = "tracks";
+    render();
+    return;
+  }
+  if (key === "handoff") {
+    const result = await operation("handoff");
+    const path = result.absolutePath || `${state.context["ai.ipollo/workspace"]?.workspaceRoot || ""}/${result.path}`;
+    if (!await dialog("\u5206\u8F68\u5DE5\u7A0B\u5DF2\u4FDD\u5B58", `${result.clipCount} \u4E2A\u72EC\u7ACB\u7247\u6BB5\uFF0C\u539F\u58F0\u3001\u914D\u4E50\u3001\u5B57\u5E55\u4FDD\u6301\u53EF\u7F16\u8F91\u3002
+${result.path}
+\u70B9\u51FB\u786E\u5B9A\uFF0C\u5728\u5DE6\u4FA7\u5BF9\u8BDD\u63D0\u4F9B\u6253\u5F00\u5165\u53E3\u3002`)) return;
+    const response = await bridge.request("ui/message", { role: "user", content: [{ type: "text", text: `\u77ED\u7247\u5DE5\u4F5C\u53F0\u5DF2\u751F\u6210\u539F\u751F\u591A\u8F68\u5DE5\u7A0B\uFF1A${path}\u3002\u8BF7\u76F4\u63A5\u7ED9\u6211\u8FD9\u4E2A index.html \u6587\u4EF6\u7684\u53EF\u70B9\u51FB\u672C\u5730\u94FE\u63A5\uFF0C\u5728\u73B0\u6709\u89C6\u9891\u5DE5\u5177\u6253\u5F00\u7EE7\u7EED\u526A\u8F91\u3002\u4E0D\u8981\u91CD\u65B0\u751F\u6210\u3001\u4E0D\u8981\u6241\u5E73\u5316\u3001\u4E0D\u8981\u8986\u76D6\u5B83\u3002` }] });
+    if (response?.isError) notify(`\u5DE5\u7A0B\u5DF2\u4FDD\u5B58\uFF0C\u8BF7\u8BA9\u5DE6\u4FA7 AI \u6253\u5F00\uFF1A${result.path}`);
+    return;
+  }
+  if (key.startsWith("preview")) {
+    const assetId = key === "preview-node" ? node.assetId : key === "preview-shot" ? p.shots.find((s) => s.id === target.dataset.id)?.assetId : target.dataset.id;
+    if (!assetId) throw new Error("\u8FD8\u6CA1\u6709\u7D20\u6750");
+    notify("\u6B63\u5728\u8BFB\u53D6\u7D20\u6750\u2026");
+    await loadPreview(assetId);
+    render();
+    return;
+  }
+  if (key === "undo" || key === "redo") {
+    const from = key === "undo" ? state.undo : state.redo, to = key === "undo" ? state.redo : state.undo, old = from.pop();
+    if (!old) return;
+    to.push(structuredClone(state.project));
+    const result = await bridge.call("project-save", { project: { ...old, revision: state.project.revision } });
+    state.project = result.project;
+    render();
+    return;
+  }
+}
+document.body.innerHTML = '<div id="app"><div class="loading">\u6B63\u5728\u8FDE\u63A5 Work \u77ED\u7247\u5DE5\u4F5C\u53F0\u2026</div></div><div id="toast-root"></div><div id="dialog-root"></div><input id="upload" type="file" multiple accept=".png,.jpg,.jpeg,.webp,.mp4,.mov,.webm,.mp3,.wav,.m4a,.ogg" hidden>';
+document.addEventListener("click", (e) => {
+  if (e.target.closest("video,audio")) return;
+  const target = e.target.closest("[data-action]");
+  if (target && !target.matches('[data-slot="tabs-trigger"]')) void action(target.dataset.action, target).catch(fail);
+  else {
+    const node = e.target.closest("[data-node]");
+    if (node && !drag) {
+      void flushDrafts().then(() => {
+        state.selection = node.dataset.node;
+        render();
+      }).catch(fail);
+    }
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("#dialog") && !$('[data-slot="select-content"]')) {
+    state.selection = null;
+    render();
+  }
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches("[data-node]")) {
+    e.preventDefault();
+    state.selection = e.target.dataset.node;
+    render();
+  }
+});
+async function handleField(e) {
+  const target = e.target, value = target.type === "number" ? Number(target.value) : target.value;
+  if (e.type === "input" && target.id === "project-picker") return;
+  if (target.id === "upload") {
+    void importFiles([...target.files]).catch(fail);
+    target.value = "";
+    return;
+  }
+  if (target.id === "project-picker") {
+    try {
+      await flushDrafts();
+      const r = await bridge.call("project-read", { projectId: value });
+      releasePreviews();
+      state.project = r.project;
+      state.selection = null;
+      state.undo = [];
+      state.redo = [];
+      render();
+    } catch (e2) {
+      target.value = state.project.id;
+      throw e2;
+    }
+    return;
+  }
+  const nodeId = state.selection, shotId = target.closest("[data-shot]")?.dataset.shot, roleId = target.closest("[data-role]")?.dataset.role, clipId = target.closest("[data-clip]")?.dataset.clip;
+  const dataset = { ...target.dataset };
+  if (!Object.keys(dataset).some((k) => ["nodeField", "setting", "link", "shotField", "roleField", "script", "projectSize", "projectFps", "clipField"].includes(k))) return;
+  drafts.set(target.id || JSON.stringify([dataset, nodeId, shotId, roleId, clipId]), (p) => {
+    const n = p.nodes.find((n2) => n2.id === nodeId);
+    if (dataset.nodeField && n) n[dataset.nodeField] = value;
+    else if (dataset.setting && n) {
+      const s = n.settings ??= {}, key = dataset.setting;
+      s[key] = value;
+      if (key === "preset" && presets[value]) n.prompt = `${presets[value]}
+${n.prompt}`;
+      if (key === "model") {
+        n.settings = { model: value };
+      }
+    } else if (dataset.link && n && value && !p.edges.some((e2) => e2.from === value && e2.to === n.id)) p.edges.push({ id: uuid("e"), from: value, to: n.id });
+    else if (dataset.shotField) p.shots.find((s) => s.id === shotId)[dataset.shotField] = value;
+    else if (dataset.roleField) p.roles.find((r) => r.id === roleId)[dataset.roleField] = value;
+    else if (dataset.script) p.script = value;
+    else if (dataset.projectSize) [p.width, p.height] = value.split("x").map(Number);
+    else if (dataset.projectFps) {
+      if (p.tracks.some((t) => t.clips.length)) throw new Error("\u5DF2\u6709\u8F68\u9053\u65F6\u8BF7\u5728 Work \u89C6\u9891\u5DE5\u5177\u8C03\u6574\u5E27\u7387\uFF0C\u907F\u514D\u6539\u53D8\u7247\u6BB5\u65F6\u957F");
+      p.fps = { numerator: Number(value), denominator: 1 };
+    } else if (dataset.clipField) {
+      const c = p.tracks.flatMap((t) => t.clips).find((c2) => c2.id === clipId), key = dataset.clipField;
+      c[key] = ["startFrame", "durationFrames"].includes(key) ? Math.round(value * p.fps.numerator / p.fps.denominator) : value;
+    }
+  });
+  const footer = $("footer");
+  if (footer) footer.textContent = "\u6B63\u5728\u4FDD\u5B58\u6539\u52A8\u2026";
+  clearTimeout(draftTimer);
+  draftTimer = setTimeout(() => void flushDrafts().catch(fail), e.type === "change" ? 0 : 500);
+}
+document.addEventListener("change", (e) => void handleField(e).catch(fail));
+document.addEventListener("input", (e) => {
+  if (e.target.type !== "file") void handleField(e).catch(fail);
+});
+document.addEventListener("pointerdown", (e) => {
+  if (e.button !== 0 || e.target.closest("button,input,textarea,select,video,audio")) return;
+  const head = e.target.closest(".node-head"), canvas2 = e.target.closest("#canvas");
+  if (!canvas2) return;
+  const node = head ? state.project.nodes.find((n) => n.id === head.closest("[data-node]").dataset.node) : null;
+  if (!head && e.target.closest(".node")) return;
+  drag = { node, element: head?.closest("[data-node]"), startX: e.clientX, startY: e.clientY, x: node?.x ?? state.pan.x, y: node?.y ?? state.pan.y, moved: false };
+  canvas2.setPointerCapture(e.pointerId);
+});
+document.addEventListener("pointermove", (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.startX, dy = e.clientY - drag.startY;
+  drag.moved ||= Math.abs(dx) + Math.abs(dy) > 4;
+  if (drag.node) {
+    drag.element.style.left = `${drag.x + dx / state.zoom}px`;
+    drag.element.style.top = `${drag.y + dy / state.zoom}px`;
+  } else {
+    state.pan = { x: drag.x + dx, y: drag.y + dy };
+    $(".plane").style.transform = `translate(${state.pan.x}px,${state.pan.y}px) scale(${state.zoom})`;
+  }
+});
+document.addEventListener("pointerup", (e) => {
+  if (!drag) return;
+  const d = drag;
+  drag = null;
+  if (d.node && d.moved) {
+    const x = Math.max(-1e4, Math.min(1e4, d.x + (e.clientX - d.startX) / state.zoom)), y = Math.max(-1e4, Math.min(1e4, d.y + (e.clientY - d.startY) / state.zoom));
+    void mutate((p) => Object.assign(p.nodes.find((n) => n.id === d.node.id), { x, y })).catch(fail);
+  }
+});
+document.addEventListener("dragover", (e) => {
+  if (e.dataTransfer.types.includes("Files")) e.preventDefault();
+});
+document.addEventListener("drop", (e) => {
+  if (e.dataTransfer.files.length) {
+    e.preventDefault();
+    void importFiles([...e.dataTransfer.files]).catch(fail);
+  }
+});
+await Promise.resolve().then(() => {
+  ui = requireRuntime(1, ["createRoot", "enhance", "Button", "Input", "Textarea", "Tabs", "TabsList", "TabsTrigger", "TabsContent", "Checkbox", "Badge", "Empty", "EmptyHeader", "EmptyTitle", "EmptyDescription", "EmptyContent", "Alert", "AlertTitle", "AlertDescription", "AlertAction", "Skeleton", "Select", "SelectTrigger", "SelectValue", "SelectContent", "SelectItem", "Dialog", "DialogContent", "DialogHeader", "DialogTitle", "DialogDescription", "DialogFooter", "Toaster", "toast"], 3);
+  ui.createRoot($("#toast-root")).render(ui.React.createElement(ui.Toaster, { closeLabel: "\u5173\u95ED" }));
+  mountIsland($(".loading"), ui.React.createElement(ui.React.Fragment, null, "\u6B63\u5728\u8FDE\u63A5 Work \u77ED\u7247\u5DE5\u4F5C\u53F0\u2026", ui.React.createElement(ui.Skeleton, { className: "h-8 w-full mt-4" })));
+  return bridge.start();
+}).then(async () => {
+  state.capabilities = await bridge.call("capabilities");
+  state.projects = (await bridge.call("project-list")).projects;
+  state.project = state.projects.length ? (await bridge.call("project-read", { projectId: state.projects[0].id })).project : (await bridge.call("project-create", { title: "\u6211\u7684\u7B2C\u4E00\u90E8\u77ED\u7247" })).project;
+  render();
+}).catch((e) => {
+  for (const root of selectRoots.splice(0)) root.unmount();
+  if (ui) {
+    mountIsland($("#app"), ui.React.createElement(ui.Alert, { variant: "destructive" }, ui.React.createElement(ui.AlertTitle, null, "\u6682\u672A\u8FDE\u63A5"), ui.React.createElement(ui.AlertDescription, null, e.message)));
+  } else {
+    $("#app").innerHTML = `<div><h2>\u6682\u672A\u8FDE\u63A5</h2><p role="alert">${esc(e.message)}</p></div>`;
+  }
+});
+async function pollJobs() {
+  try {
+    if (state.project && !document.hidden && !state.busy && !drafts.size && !document.activeElement?.matches("input,textarea,select") && state.project.jobs.some((j) => ["submitting", "running", "saving"].includes(j.status))) {
+      const projectId = state.project.id;
+      const result = await bridge.call("generation-status", { projectId });
+      if (state.project.id === projectId && !state.busy && !drafts.size && result.project.revision !== state.project.revision) {
+        state.project = result.project;
+        render();
+      }
+    }
+  } catch {
+  } finally {
+    setTimeout(pollJobs, 5e3);
+  }
+}
+setTimeout(pollJobs, 5e3);
+</script></body></html>

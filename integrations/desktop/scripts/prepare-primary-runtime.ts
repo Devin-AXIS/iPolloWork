@@ -6,6 +6,7 @@ import { preparePrimaryRuntime as preparePayload, smokePrimaryRuntime as smokePa
 import { parsePrimaryRuntime, workspaceDependencyPaths } from '../../../packages/skill/tool-workspace-dependencies/src/index.ts'
 import { resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { scrubWindowsSigningEnvironment } from './windows-sign.mjs'
+import {withShortRuntimePath} from './portable-runtime-path.mjs'
 
 /**
  * Prepare Desktop resources for its selected packaging target.
@@ -29,7 +30,11 @@ export function smokePrimaryRuntime(root: string): void {
   if (Object.keys(manifest.pythonPackages).length === 0) throw new Error('primary runtime: missing Python distribution versions; prepare the payload before running its smoke checks.')
   const entries = workspaceDependencyPaths(root, manifest)
   if (entries.node === undefined || entries.pnpm === undefined) throw new Error('primary runtime: the Desktop payload must declare node and pnpm components.')
-  smokePayload(root, scrubWindowsSigningEnvironment(process.env))
+  const verify=(path:string)=>smokePayload(path,scrubWindowsSigningEnvironment(process.env))
+  // Python's Windows metadata checks can reject an existing file once its path
+  // reaches MAX_PATH. A short alias preserves every official check and payload byte.
+  if(process.platform==='win32')withShortRuntimePath(root,verify)
+  else verify(root)
 }
 
 if (import.meta.main) await preparePrimaryRuntime()

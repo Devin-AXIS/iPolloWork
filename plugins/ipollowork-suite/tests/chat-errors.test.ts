@@ -22,6 +22,12 @@ test('gateway outages and other common failures display recovery guidance withou
   }, 'zh')
   assert.equal(outage.code, 'IPW_SERVICE_UNAVAILABLE')
   assert.match(outage.message, /暂时不可用/)
+  for(const [code,description] of [['SERVICE_DRAINING',/正在重启/],['IPW_INVALID_RESPONSE',/异常响应/]] as const){
+    const result=describeChatError({code:'SERVER',message:`503: {"code":"${code}","message":"private provider diagnostic"}`},'zh')
+    assert.equal(result.code,code)
+    assert.match(result.message,description)
+    assert.doesNotMatch(result.message,/private provider diagnostic/)
+  }
   for (const [code, action] of [
     ['AUTH', /API 密钥/], ['RATE_LIMIT', /稍等/], ['TIMEOUT', /超时/],
     ['CONTEXT_WINDOW_EXCEEDED', /新建对话/], ['ACCOUNT_QUOTA', /额度/],

@@ -52,3 +52,9 @@ test('a failed download leaves no installable file and a verified download stays
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+test('scoped native plugin archives use npm filenames in the same verified release feed',async t=>{
+  const scoped={...release,name:'@ipollo/dsh-media-studio',version:'0.1.7',tag:'v1.0.16',file:`ipollo-dsh-media-studio-0.1.7-${sha256.slice(0,12)}.tgz`,dsh:'0.2.3-alpha.2'}
+  t.mock.method(globalThis,'fetch',async()=>Response.json({format:1,plugins:[release,scoped]}))
+  assert.deepEqual(await createReleaseFeed(new AbortController().signal)(),[release,scoped])
+})

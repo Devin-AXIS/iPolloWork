@@ -3,8 +3,33 @@
 - id: ui-account-notifications
   disabled: true
 - insert:
-    - id: ipollowork-application
-      name: '@deepseek-ai/cordis-plugin-include'
-      group: true
+    - id: ipollowork-onboarding
+      name: '@ipollo/dsh-suite/onboarding'
+    - id: liveshare-share-host
+      name: '@deepseek-ai/dsh-experimental-liveshare'
+      config: {}
+    - id: ipollowork-suite
+      name: '@ipollo/dsh-suite'
       config:
-        path: application.yml
+        accountOrigin: https://cloud.ipollo.net
+        dedicatedDesktop: true
+    - id: ipollowork-agents
+      name: '@ipollo/dsh-suite/agents'
+    - id: ipollo-notification-center
+      name: ../dsh-suite/lib/subplugins/notification-center/host.js
+    - id: ipollo-collaboration-board
+      name: ../dsh-suite/lib/subplugins/collaboration-board/host.js
+    - id: ipollo-project-files
+      name: ../dsh-suite/lib/subplugins/project-files/host.js
+    - id: ipollo-custom-appearance
+      name: ../dsh-suite/lib/subplugins/custom-appearance/host.js
+    - id: ipollowork-im
+      name: '@ipollo/dsh-suite/im'
+    - id: ipollowork-app-data
+      name: '@ipollo/dsh-suite/app-data'
+    - id: ipollowork-aliyun-sandbox
+      name: '@ipollo/dsh-suite/aliyun-sandbox'
+      disabled: true
+    - id: ipollowork-cloud-projects
+      name: '@ipollo/dsh-suite/cloud'
+      disabled: true

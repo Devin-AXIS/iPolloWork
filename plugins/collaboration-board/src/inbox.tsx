@@ -51,7 +51,7 @@ export function projectInbox(request: InboxRequest) {
 }
 export type Inbox = ReturnType<typeof projectInbox>;
 export const noticeMessage = (kind: BoardNotice['kind'], t: Copy) =>
-  kind === 'ready' ? t.readyNotice : kind === 'assigned' ? t.assignedNotice : t.participatingNotice;
+  kind==='due'?t.dueNotice:kind === 'ready' ? t.readyNotice : kind === 'assigned' ? t.assignedNotice : t.participatingNotice;
 export function InboxBadge({ inbox }: { inbox: Inbox }) {
   const notices = useSyncExternalStore(inbox.subscribe, inbox.get);
   const unread = notices.filter(item => !item.read).length;

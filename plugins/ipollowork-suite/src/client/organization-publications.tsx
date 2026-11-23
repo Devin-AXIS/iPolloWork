@@ -361,7 +361,8 @@ export function MemberNoticeDialog({ controller, state, t, language, close, noti
   const { memberNotices: feed, memberNoticeError: error } = state;
   const zh = language.startsWith("zh");
   const items = noticeId ? feed?.items.filter(row => row.id === noticeId) : feed?.items;
-  return <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!} onClose={close}>
+  return <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!}
+    contentClassName={css.enterpriseModalContent + " " + css.memberNoticeContent} onClose={close}>
     <Notice error={error} t={t} retry={() => void controller.openNotices()}/>
     <FormError message={task.error}/>
     {!feed && !error && <ListSkeleton/>}

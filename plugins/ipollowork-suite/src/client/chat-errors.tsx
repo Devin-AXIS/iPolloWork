@@ -19,6 +19,8 @@ const copy = {
   timeout: ['模型服务响应超时。请稍后重试，或切换模型。', 'The model service timed out. Try again later or choose another model.'],
   network: ['连接模型服务时网络中断。请检查网络连接后重试。', 'The connection to the model service was interrupted. Check your network and try again.'],
   service: ['模型服务暂时不可用。请稍后重试，或切换到其他可用模型。', 'The model service is temporarily unavailable. Try again later or choose another available model.'],
+  draining: ['模型网关正在重启。已完成的文件会保留，请稍后点击继续生成。', 'The model gateway is restarting. Saved files are retained; try continuing later.'],
+  gatewayResponse: ['模型网关返回了异常响应。已完成的文件会保留，请稍后继续。', 'The model gateway returned an invalid response. Saved files are retained; try continuing later.'],
   stopped: ['账号已退出登录，本轮已停止。请重新登录后继续。', 'This turn stopped because you signed out. Sign in again to continue.'],
   interrupted: ['应用在本轮完成前退出。你可以重新发送消息。', 'The app closed before this turn finished. You can send your message again.'],
   unknown: ['本轮未能完成。请重新发送消息；如果仍然失败，可凭错误代码联系管理员。', 'This turn could not finish. Send your message again. If it still fails, share the error code with your administrator.'],
@@ -42,6 +44,8 @@ const category = new Map<string, keyof typeof copy>([
   ['TRANSPORT', 'network'], ['STREAM_CLOSED', 'network'],
   ['SERVER', 'service'], ['EMPTY_RESPONSE', 'service'], ['MALFORMED_RESPONSE', 'service'],
   ['IPW_SERVICE_UNAVAILABLE', 'service'], ['IPW_MODEL_REGISTRATION_FAILED', 'service'],
+  ['SERVICE_DRAINING', 'draining'], ['SERVICE_BUSY', 'rateLimit'], ['SERVICE_QUEUE_TIMEOUT', 'timeout'],
+  ['IPW_INVALID_RESPONSE', 'gatewayResponse'],
   ['ACCOUNT_SIGNED_OUT', 'stopped'], ['INTERRUPTED', 'interrupted'],
 ])
 

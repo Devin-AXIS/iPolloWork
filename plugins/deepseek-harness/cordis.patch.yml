@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-deepseek-harness
+      name: "@ipollo/dsh-deepseek-harness"

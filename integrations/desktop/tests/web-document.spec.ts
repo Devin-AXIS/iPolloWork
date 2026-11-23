@@ -65,6 +65,20 @@ it('drops connection-level headers the Host wrote for its own transport', async 
   expect(response.headers.get('etag')).toBe('"1"')
 })
 
+it('keeps HTTP origin-agent-cluster opt-ins out of custom-scheme workbench documents', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('<h1>Workbench</h1>', { headers: {
+    'origin-agent-cluster': '?1', 'content-type': 'text/html',
+    'content-security-policy': "default-src 'self'; frame-ancestors 'self'",
+    'cross-origin-resource-policy': 'same-origin',
+  } })))
+  const response = await forwardWebRequest(new Request('dsh-app://app/ipollo-ported/xiaohongshu-ops/workbench/qa/accounts'),
+    'http://127.0.0.1:1234/', 'session=owned')
+  expect(response.headers.get('origin-agent-cluster')).toBeNull()
+  expect(response.headers.get('content-security-policy')).toBe("default-src 'self'; frame-ancestors 'self'")
+  expect(response.headers.get('cross-origin-resource-policy')).toBe('same-origin')
+  expect(await response.text()).toBe('<h1>Workbench</h1>')
+})
+
 it('replaces the immutable cache header of plugin bundles with no-store and leaves other routes alone', async () => {
   const immutable = 'public, max-age=31536000, immutable'
   const fetch = vi.fn().mockImplementation(async () => new Response('js', { headers: { 'cache-control': immutable } }))

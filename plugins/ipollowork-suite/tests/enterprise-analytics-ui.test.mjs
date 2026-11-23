@@ -38,6 +38,25 @@ test('analytics replaces stale data, retries errors and hides administrator data
     await act(async()=>dom.window.document.querySelector('button').click());
     await act(async()=>finish.resolve(fixture));
     assert.match(dom.window.document.body.textContent,/77/);
+
+    // Both independent pagers recover when a refresh reduces the available groups.
+    const expanded = {...fixture,totalRows:51,activityTotalRows:51,
+      activityRows:[{id:'tool',name:'Tool',kind:'tool',calls:3,succeeded:2}]};
+    await act(async()=>root.render(React.createElement(module.exports.AnalyticsTab,{...props,revision:1})));
+    await act(async()=>finish.resolve(expanded));
+    const next = () => [...dom.window.document.querySelectorAll('button')].filter(button=>button.textContent==='analyticsNext');
+    await act(async()=>next()[0].click());
+    assert.equal(requests.at(-1).page,2);
+    await act(async()=>finish.resolve({...expanded,page:2}));
+    await act(async()=>next()[1].click());
+    assert.equal(requests.at(-1).activityPage,2);
+    await act(async()=>finish.resolve({...expanded,page:2,activityPage:2}));
+    await act(async()=>root.render(React.createElement(module.exports.AnalyticsTab,{...props,revision:2})));
+    await act(async()=>finish.resolve({...fixture,rows:[],activityRows:[],activityTotalRows:1}));
+    assert.equal(requests.at(-1).page,1);
+    assert.equal(requests.at(-1).activityPage,1);
+    await act(async()=>finish.resolve(fixture));
+    assert.match(dom.window.document.body.textContent,/77/);
     await act(async()=>root.render(React.createElement(module.exports.AnalyticsTab,{...props,canManage:false})));
     assert.match(dom.window.document.body.textContent,/analyticsManager/);
     assert(!dom.window.document.querySelector('table'));

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "DeepSeek Harness",
+    "description": "使用当前 DSH 原生 Agent、子任务和会话完成开发、审查与研究，无需第二套运行时。"
+  }
+}

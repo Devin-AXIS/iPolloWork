@@ -9,7 +9,7 @@ import { parseInstallSpec, pinnedGitOrigin, type BundleInfo } from '@deepseek-ai
 import semver from 'semver'
 import type { MarketItem, MarketState } from '../shared/types.ts'
 import { SuiteError } from './errors.ts'
-import { bundledReleases, githubArchive, verifyArchive, type PublishedRelease } from './market-releases.ts'
+import { bundledReleases, githubArchive, readBundledArchive, verifyArchive, type PublishedRelease } from './market-releases.ts'
 
 export interface InstalledBundle {
   name: string; installed: boolean; enabled: boolean; version?: string;
@@ -48,14 +48,12 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
       if (targets.has(key)) throw new Error('Duplicate bundled release')
       names.add(release.name)
       const file = fileURLToPath(new URL(`../../catalog/packages/${release.file}`, import.meta.url))
-      let bytes: Buffer
-      try { bytes = await readFile(file) }
-      catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        targets.set(key, githubArchive(release))
+      const content=await readBundledArchive(release,file)
+      if('target'in content){
+        targets.set(key,content.target)
         continue
       }
-      verifyArchive(bytes, release.sha256)
+      const {bytes}=content
       let target = file
       if (cacheDirectory) {
         await mkdir(cacheDirectory, { recursive: true })
@@ -97,6 +95,7 @@ export async function readMarket(path: string, manager: NativePluginManager, run
   let index
   try { index = parseMarketIndex(JSON.parse(content.toString('utf8')), 'https://catalog.ipollowork.invalid/index.json') }
   catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 500, { cause }) }
+  const supportsRuntime = (range: string | undefined) => !range || semver.satisfies(runtimeVersion, range, { includePrerelease: true })
   const remoteInstall = new Set<string>()
   if (curated.length) {
     try {
@@ -104,6 +103,13 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       const additional = parseMarketIndex({ format: 1, title: 'Curated', metadata: { categories: index.metadata.categories }, plugins: curated }, 'https://catalog.ipollowork.invalid/index.json')
       for (const plugin of additional.plugins) {
         const previous = merged.get(plugin.name)
+        // An older service catalog must not hide a newer reviewed archive carried by this application.
+        // Explicit operator catalogs remain authoritative; equal-version source changes retain their usual rules.
+        if (isDefaultMarket(path) && previous) {
+          const local = previous.versions.find(version => supportsRuntime(version.engines.dsh))
+          const remote = plugin.versions.find(version => supportsRuntime(version.engines.dsh))
+          if (local && (!remote || semver.gt(local.version, remote.version))) continue
+        }
         // Preserve archive upgrades only when the curated entry points at the same artifact.
         if (!previous?.versions.some(v => v.version === plugin.versions[0]?.version
           && isDeepStrictEqual(v.source, plugin.versions[0]?.source))) remoteInstall.add(plugin.name)
@@ -114,7 +120,6 @@ export async function readMarket(path: string, manager: NativePluginManager, run
   }
   const bundled = await bundledInstallTargets(path, cacheDirectory)
   const installed = new Map((await manager.listBundles()).map(bundle => [bundle.name, bundle]))
-  const supportsRuntime = (range: string | undefined) => !range || semver.satisfies(runtimeVersion, range, { includePrerelease: true })
   return {
     title: localized(index.title, language), runtimeVersion,
     categories: Object.entries(index.metadata.categories).map(([id, value]) => ({ id, title: localized(value.title, language, id) })),
@@ -131,7 +136,7 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       const update = acceptable ? updateKind(current, target, selectedVersion, archive !== undefined) : undefined
       return {
         name: plugin.name, title: localized(plugin.title, language, plugin.name), description: localized(plugin.description, language),
-        author: plugin.author ?? '', icon: current?.meta?.icon ?? plugin.icon ?? null, homepage: plugin.homepage ?? null,
+        author: plugin.author ?? '', icon: (current?.version && current.version !== selectedVersion ? plugin.icon : undefined) ?? current?.meta?.icon ?? plugin.icon ?? null, homepage: plugin.homepage ?? null,
         category: plugin.metadata.category ?? '', categoryTitle: localized(index.metadata.categories[plugin.metadata.category ?? '']?.title, language), version: selectedVersion, ...target,
         compatible: acceptable, requirement: release?.dsh ?? version.engines.dsh ?? null,
         ...(update && { update }),

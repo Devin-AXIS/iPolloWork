@@ -187,15 +187,15 @@ export function mountEnterpriseAssets(
     const id = c.req.param("id"),
       actor = c.get("actor");
     await enterpriseAccess(store, actor, id);
-    const packages = await visible(
-      store,
-      actor,
-      id,
-      "package",
-      await store.all<PackageRow & { file_count: number; bytes: number }>(
-        "SELECT p.*,COUNT(f.resource_id) AS file_count,COALESCE(SUM(r.bytes),0) AS bytes FROM file_packages p LEFT JOIN package_files f ON f.package_id=p.id LEFT JOIN resources r ON r.id=f.resource_id WHERE p.enterprise_id=? GROUP BY p.id ORDER BY p.updated_at DESC LIMIT 200",
-        id,
-      ),
+    const canManage = await isEnterpriseManager(store, actor, id);
+    // Apply recipient visibility before the limit so newer private packages cannot hide granted ones.
+    const packageVisibility = canManage ? "" : ` AND EXISTS(SELECT 1 FROM members m
+      WHERE m.enterprise_id=p.enterprise_id AND m.user_id=? AND m.status='active' AND ${grantedTo("p.id")})`;
+    const packages = await store.all<PackageRow & { file_count: number; bytes: number }>(
+      `SELECT p.*,COUNT(f.resource_id) AS file_count,COALESCE(SUM(r.bytes),0) AS bytes FROM file_packages p
+        LEFT JOIN package_files f ON f.package_id=p.id LEFT JOIN resources r ON r.id=f.resource_id
+        WHERE p.enterprise_id=?${packageVisibility} GROUP BY p.id ORDER BY p.updated_at DESC,p.id LIMIT 200`,
+      id, ...(canManage ? [] : [actor.id, "package"]),
     );
     const skills = await visible(
       store,
@@ -208,7 +208,7 @@ export function mountEnterpriseAssets(
       ),
     );
     return c.json({
-      canManage: await isEnterpriseManager(store, actor, id),
+      canManage,
       packages: await Promise.all(
         packages.map(async (p) => ({
           id: p.id,

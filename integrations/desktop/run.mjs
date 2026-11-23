@@ -2,6 +2,8 @@
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { prepareSource, linkWorkspace, pnpm, run, root, upstreamRoot } from '../tooling/upstream.mjs'
+import {assertNodeRuntime} from '../tooling/node-runtime.mjs'
+assertNodeRuntime()
 await prepareSource()
 if (!existsSync(join(upstreamRoot, 'node_modules/pnpm/bin/pnpm.cjs'))) await pnpm(['install', '--frozen-lockfile'], upstreamRoot, { ...process.env, LEFTHOOK: '0' })
 await linkWorkspace()

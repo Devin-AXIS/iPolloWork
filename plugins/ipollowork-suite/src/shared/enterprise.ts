@@ -71,7 +71,7 @@ export type ProjectBoardPeopleAction =
   | { kind: "invite"; projectId: string; enterpriseId: string };
 export type ProjectRosterSource = (workspaceId: string, signal: AbortSignal, sessionId?: string) => Promise<ProjectRoster | null>;
 export type ProjectBoardCall =
-  | { operation: "list"; workspaceId: string; after?: string }
+  | { operation: "list"; workspaceId: string; after?: string;query?:string;scope?:'active'|'archived'|'trash' }
   | { operation: "get"; workspaceId: string; taskId: string }
   | { operation: "write"; workspaceId: string; payload: unknown }
   | { operation: "inbox" }

@@ -610,7 +610,7 @@ textarea:focus-visible {
 }
 
 .empty-projects strong {
-  color: var(--annotation-color-5);
+  color: var(--annotation-color-0);
   font-size: 14px;
 }
 

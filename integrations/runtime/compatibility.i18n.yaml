@@ -3,17 +3,20 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write integrations/runtime/compatibility.md
 /dsh-compatibility-record:
-  en: 792550d77eb6b28c
-  zh: 5e09362b9918c48f
+  en: 3a7bd0919a1afa5e
+  zh: 3764a283d9eadb23
 /dsh-compatibility-record/features-to-verify-when-upgrading:
-  en: afdfb30b64221d1a
-  zh: f71f4421c9f96aeb
+  en: 49622152a89202b8
+  zh: 03d797a97dbc4951
 /dsh-compatibility-record/updating-and-verifying:
-  en: 967e8d1a0fe9df57
-  zh: e3b3924894d8626e
+  en: 5001e9912e0088d4
+  zh: 935524fd740de6f4
 /dsh-compatibility-record/latest-verification:
   en: 28fd30b6a3db96a6
   zh: c71006a16fcb92bd
 /dsh-compatibility-record/2026-11-20-distribution-account-configuration:
-  en: 52067b79a84afc24
-  zh: 5e14817e1704b8b1
+  en: a79f1242161cccba
+  zh: 1d1960c4980e9111
+/dsh-compatibility-record/2026-11-20-distribution-account-configuration/organization-space-workflows:
+  en: e2c305ff47bd0ec9
+  zh: 4299b2e701e05bf1

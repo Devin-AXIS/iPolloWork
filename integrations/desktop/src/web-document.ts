@@ -76,6 +76,10 @@ export async function removeLegacyHostCookies(cookies: HostCookieStore, url: str
  */
 const WITHHELD_RESPONSE_HEADERS = [
   'set-cookie',
+  // This HTTP-origin opt-in cannot be carried onto dsh-app://. Chromium's
+  // OriginAgentCluster registration rejects the custom-scheme navigation and
+  // terminates the browser process when an embedded workbench sends ?1.
+  'origin-agent-cluster',
   'content-encoding', 'content-length',
   'transfer-encoding', 'connection', 'keep-alive', 'te', 'trailer', 'upgrade', 'proxy-authenticate', 'proxy-authorization',
 ]

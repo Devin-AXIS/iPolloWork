@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 Install the iPolloWork DSH suite and open **Notifications** using the bell next to the account avatar in the DSH sidebar. The center combines the available feeds, shows an unread badge, and lets you open or mark an item as read. It supports the native sidebar rail.
 
+Organization Space notices use this same inbox, including membership changes, resource reviews and deliveries, project updates, and shared conversations. The organization page hides its separate bell while the center is available and restores it when the center is disabled. Opening a notice keeps its existing authorized destination and read state. The panel keeps its heading and filters visible while the list scrolls, and wraps long titles and messages.
+
 In **Settings → Notifications**, switch individual sources on or off. Sources are enabled by default. DSH saves the switches in its profile settings. Turning a source off hides its items and unread count in the center. Turning it back on shows its current notifications with their original read state.
 
 The first feeds are native unread conversation updates and Project Board task notifications. The suite ships both sources. The board source requires Project Board 0.4.9 or later in a standalone development profile. It uses the existing organization inbox and read state. Native conversation items come from DSH's session reading state, disappear when acknowledged, and have the lifetime of the running DSH Host. The center does not create a separate history or change the underlying read state format.

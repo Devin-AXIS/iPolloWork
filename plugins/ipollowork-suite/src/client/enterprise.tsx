@@ -90,6 +90,7 @@ export interface Props
   useEnterpriseLabels<T>(selector: (labels: EnterpriseLabels) => T): T;
   useLocale<T>(selector: (value: string) => T): T;
   useDesignAvailable<T>(selector: (value: boolean) => T): T;
+  useNotificationCenterAvailable<T>(selector: (value: boolean) => T): T;
   controller: EnterpriseController;
   actions: CollaborationActions;
   openAccountSettings(): boolean;
@@ -164,6 +165,7 @@ function EnterpriseFeedback({ useEnterpriseState, useEnterpriseLabels, useLocale
 
 function EnterprisePanel(props: Props) {
   const designAvailable = props.useDesignAvailable(value => value);
+  const notificationCenterAvailable = props.useNotificationCenterAvailable(value => value);
   const t = props.useEnterpriseLabels((v) => v),
     state = props.useEnterpriseState((v) => v),
     language = props.useLocale((v) => v);
@@ -206,7 +208,7 @@ function EnterprisePanel(props: Props) {
             <p>{t.intro}</p>
           </div>
           <div className={css.enterpriseActions}>
-            <MemberNoticeHistory controller={controller} state={state} t={t} language={language}/>
+            {!notificationCenterAvailable && <MemberNoticeHistory controller={controller} state={state} t={t} language={language}/>}
             {joinService}
           </div>
         </div>
@@ -250,7 +252,7 @@ function EnterprisePanel(props: Props) {
               <p>{t.intro}</p>
             </div>
             <div className={css.enterpriseActions}>
-              <MemberNoticeHistory controller={controller} state={state} t={t} language={language}/>
+              {!notificationCenterAvailable && <MemberNoticeHistory controller={controller} state={state} t={t} language={language}/>}
               {enterpriseId && joinService}
               {enterpriseId && (
                 <EnterpriseSwitcher
@@ -776,6 +778,19 @@ export function mountEnterprise(
 ): void {
   const controller = new EnterpriseController(),
     labels = enterpriseLabels(ctx);
+  let notificationCenterEnabled = false;
+  const notificationListeners = new Set<() => void>();
+  const notificationCenterAvailable = {
+    getSnapshot: () => notificationCenterEnabled,
+    subscribe(listener: () => void) {
+      notificationListeners.add(listener);
+      return () => { notificationListeners.delete(listener); };
+    },
+  };
+  const setNotificationCenter = (enabled: boolean) => {
+    notificationCenterEnabled = enabled;
+    for (const listener of notificationListeners) listener();
+  };
   let designEnabled = false;
   const designListeners = new Set<() => void>();
   const designAvailable = { getSnapshot: () => designEnabled, subscribe(listener: () => void) {
@@ -803,9 +818,9 @@ export function mountEnterprise(
     window.addEventListener("focus", controller.refreshIfStale);
     return () => window.removeEventListener("focus", controller.refreshIfStale);
   }, "ipollowork-suite: refresh collaboration");
-  ctx.inject(["ipolloNotificationCenter", "layout"], scope => scope.effect(() =>
-    scope.ipolloNotificationCenter.registerSource("ipollo.organization", {
-      label: () => enterpriseCopy(ctx).memberNotices,
+  ctx.inject(["ipolloNotificationCenter", "layout"], scope => scope.effect(() => {
+    const unregister = scope.ipolloNotificationCenter.registerSource("ipollo.organization", {
+      label: () => enterpriseCopy(ctx).title,
       getSnapshot: () => {
         const t = enterpriseCopy(ctx);
         const zh = language(ctx) === "zh";
@@ -829,7 +844,10 @@ export function mountEnterprise(
         if (!row) throw new Error("IPW_NOT_FOUND");
         await controller.openOrganizationNotice(row, () => scope.layout.selectPanel(PANEL));
       },
-    }), "iPolloWork organization notifications"));
+    });
+    setNotificationCenter(true);
+    return () => { unregister(); setNotificationCenter(false); };
+  }, "iPolloWork organization notifications"));
   const pendingOwnership = new Set<string>();
   const actions: CollaborationActions = {
     openSession: async (id) => {
@@ -879,7 +897,7 @@ export function mountEnterprise(
   });
   const props = () => ({
     ...creationProps(),
-    hooks: { enterpriseState: controller, enterpriseLabels: labels, locale, designAvailable },
+    hooks: { enterpriseState: controller, enterpriseLabels: labels, locale, designAvailable, notificationCenterAvailable },
     controller,
     actions,
     openAccountSettings: account.openAccountSettings,

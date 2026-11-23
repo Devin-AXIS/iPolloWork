@@ -4,9 +4,11 @@
 
 独立 DSH 插件 `@ipollo/dsh-data-annotation`，迁移自智慧未来学校数据标注实训云 0.3.0。保留图片、视频、音频、文字标注、带文字层 PDF 导入、十二个实训项目、标签编辑和保存记录。使用 DSH 0.2.2-rc.3 官方插件生命周期、侧栏、工作区、认证、工具及 Skill，不修改上游，不增加第二套 Agent。
 
+安装包导出清单与本地化显示元数据，供原生插件管理器显示图标。工作区标题栏和打开按钮使用 DSH 原生控件，窄容器下自动换行。
+
 ## 构建与安装
 
-在本目录运行 `npm ci --legacy-peer-deps`、`npm run check`、`npm run pack:check`、`npm pack`。仓库开发在安装依赖后运行 `npm run link:workspace`，前提是根目录的官方运行时已构建。使用官方命令 `dsh plugin --profile <profile> add /绝对路径/ipollo-dsh-data-annotation-0.1.0.tgz` 安装。DSH 如提示重启，请重启对应配置。核对 profile，避免误装进其他或正在工作的配置。
+在本目录运行 `npm ci --legacy-peer-deps`、`npm run check`、`npm run pack:check`、`npm pack`。仓库开发在安装依赖后运行 `npm run link:workspace`，前提是根目录的官方运行时已构建。使用官方命令 `dsh plugin --profile <profile> add /绝对路径/ipollo-dsh-data-annotation-0.1.1.tgz` 安装。DSH 如提示重启，请重启对应配置。核对 profile，避免误装进其他或正在工作的配置。
 
 侧栏打开“数据标注实训云”，选择已有 DSH 工作区，再打开工作台。记录继续保存在 `<工作区>/.ipollowork/plugins/labelu-data-annotation`；旧 schema-1 任务可直接读取，不自动重写。不自动搬移其他工作区数据，卸载保留用户文件。
 

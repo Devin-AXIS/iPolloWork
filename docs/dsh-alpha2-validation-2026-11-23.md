@@ -1,0 +1,33 @@
+# DSH 0.2.3-alpha.2 upgrade verification
+
+English | [中文](dsh-alpha2-validation-2026-11-23.zh.md)
+
+The candidate is product 1.0.16, Suite 0.1.51 and account service 0.1.19, using immutable official DSH source `4b399c39a6d1479cd84ca591b4d7c88e24d38a96`. This record follows the risk categories in the supplied November 23 upgrade analysis. Potential impacts in that document are not evidence that every listed failure occurred.
+
+Actual adaptations cover Node 24.22.3 and SDK/Cordis/Schemastery versions, account project paths, model image parameters, MCP probing, client settings type registration, Include return values and entry validation, and native desktop settings ownership. Nested Includes made tutorial and notification preferences uneditable. The private Bundle now mounts existing IDs in the native profile tree, retaining preferences. The runtime root explicitly declares Suite for native resolution. An older online market catalog cannot displace a newer compatible bundled version.
+
+| Risk category | Verification and limits |
+| --- | --- |
+| Login, accounts, organizations | Account and organization service integration passed. Real Electron first configuration and local fixture-key handoff passed. The daily development app retained its signed-in account after restarting alpha.2 with its original profile; credentials are omitted from test output. |
+| Chat, models, tools, streaming, cancellation, billing | Native model/board/MCP contracts and Suite recovery, account-switch cancellation and unknown-outcome safeguards passed with fixture providers. Commercial model billing was not triggered. |
+| Sessions and workspaces | Profile upgrade regressions preserve credentials, sessions, unrelated plugins and preferences. The native desktop loaded its workspace. |
+| Project and organization files | Service folder/resource permissions, moves and deletion recovery passed integration checks. The native project-files plugin loaded. |
+| Design and Video | Both original editors were rebuilt from pinned external source and passed their complete checks. Independent and combined actual-archive installation passed native DSH smoke. Paid generation and every media export format are outside this automated regression. |
+| Plugins and market | All 25 local archives have verified identity, digest, engines and SDK metadata, alongside the official session-title plugin. Native management enables the installed packages and checks versions and runtime state. |
+| Organization permissions, sharing, publishing | Organization, board, audience and publication service integration passed. Production OSS permissions and account grants remain deployment-owned. |
+| MCP and IM | Native connection, revocation, probing and fixture connectors passed. No real enterprise group messages are sent for verification. |
+| Board and scheduling | Existing task migration, archive recovery, pagination, authorization, reminders and schedule safeguards passed. No real business schedules are created. |
+| Notifications | Organization notifications share the native center. Native settings discovers notification preferences after the composition fix. Components and service regressions cover long lists, detail scrolling and identity isolation. |
+| Themes, windows, beginner tutorial | Real Electron completed all nine steps, locating only focused a control, and refresh retained progress. Dark 390×400 layout passed. The production tutorial also covers both languages/themes and 390×240 constrained windows. |
+| Installation, old dependencies, user data | Complete official portable-runtime smoke passed, including Python/Office. A short Windows junction avoids MAX_PATH false negatives. Old core dependencies are retained in a journaled backup with failure rollback; user data is preserved. |
+| Backend and database | All 108 service checks passed. Schema 22 belongs to existing product changes. Build copies migrations through the schema constant and rollout reads the candidate image's target schema. Application writes stop before backing up both databases, files, secret and configuration. |
+
+Candidate Suite checks passed 244 tests with 11 environment-dependent native tests skipped; desktop passed 303 with four platform-conditional skips; root tooling passed 30 with one npm-CLI-dependent case skipped and separately run using the complete Node distribution. Independent native installation and real desktop verification are additional checks, and skipped tests are not counted as passed. External accounts, real third-party messages and paid generation retain the stated limits.
+
+The daily profile also contained a historical Design `link:` dependency pointing at an old development directory. Native installation rejected the old version and rolled back; removing that dependency through the native manager allowed the new archive to install. Future upgrades must inventory link and archive sources and use native removal and installation separately, preserving the development directory and granting no version exemption.
+
+The release audit identified published MCP server 2.2.0 vulnerabilities in the official dependency graph: [cross-client messages](https://github.com/advisories/GHSA-jm63-cq47-j5jp), [memory exhaustion](https://github.com/advisories/GHSA-46jr-4wx8-v453), and [token audience validation](https://github.com/advisories/GHSA-rvq5-wwqv-78pq). Owned runtime manifests, desktop packaging and cloud runtime constraints pin patched 2.4.0, and the Suite test dependency follows it. All four owned lockfile audits report zero vulnerabilities. This constraint leaves official source and its pinned lockfile unchanged.
+
+Clean-checkout checks read tracked business manifests and inspect resources inside the actual shipping archives, independent of locally generated JavaScript. The XHS process test creates its own packaged runtime fixture to verify Electron Node mode and process cleanup without dependency downloads.
+
+Each future upgrade must change the pin, rebuild and inspect actual archives, run runtime/source contracts, and verify writable settings, first configuration, tutorial, plugin opening and process survival in real Electron. `integrations/runtime/studios.json` records the Studio source and adaptation patch, reproducible through `npm run prepare:studios -- <clean source checkout>`. Official `.upstream/dsh` source carries no product modifications.

@@ -1,0 +1,175 @@
+{
+  "format": 1,
+  "sourceBranch": "ipollowork-multi-engine",
+  "sourceRevision": "05f917145cd320a93e514dbd01178133891bc4c6",
+  "plugins": [
+    {
+      "id": "acme-research",
+      "name": "@ipollo/dsh-acme-research",
+      "sourceVersion": "1.0.1",
+      "kind": "ported",
+      "source": "examples/plugin-packages/acme-research"
+    },
+    {
+      "id": "context7",
+      "name": "@ipollo/dsh-context7",
+      "sourceVersion": "1.0.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/context7"
+    },
+    {
+      "id": "deepseek-harness",
+      "name": "@ipollo/dsh-deepseek-harness",
+      "sourceVersion": "0.3.7",
+      "kind": "native-harness",
+      "source": "examples/plugin-packages/deepseek-harness"
+    },
+    {
+      "id": "design-agent",
+      "name": "deepseek-idesign",
+      "sourceVersion": "0.3.20",
+      "kind": "existing-native",
+      "source": "examples/plugin-packages/design-agent"
+    },
+    {
+      "id": "douyin-ops",
+      "name": "@ipollo/dsh-douyin-ops",
+      "sourceVersion": "0.2.22",
+      "kind": "ported",
+      "source": "examples/plugin-packages/douyin-ops"
+    },
+    {
+      "id": "figma",
+      "name": "@ipollo/dsh-figma",
+      "sourceVersion": "2.0.18",
+      "kind": "ported",
+      "source": "examples/plugin-packages/figma"
+    },
+    {
+      "id": "github",
+      "name": "@ipollo/dsh-github",
+      "sourceVersion": "0.1.4",
+      "kind": "ported",
+      "source": "examples/plugin-packages/github"
+    },
+    {
+      "id": "ipollo-onto",
+      "name": "@ipollo/dsh-ipollo-onto",
+      "sourceVersion": "0.1.7",
+      "kind": "ported",
+      "source": "examples/plugin-packages/ipollo-onto"
+    },
+    {
+      "id": "jev-decision-model",
+      "name": "@ipollo/dsh-jev-decision-model",
+      "sourceVersion": "0.1.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/jev-decision-model"
+    },
+    {
+      "id": "labelu-data-annotation",
+      "name": "@ipollo/dsh-data-annotation",
+      "sourceVersion": "0.4.20",
+      "kind": "existing-native",
+      "source": "examples/plugin-packages/labelu-data-annotation"
+    },
+    {
+      "id": "linear",
+      "name": "@ipollo/dsh-linear",
+      "sourceVersion": "1.0.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/linear"
+    },
+    {
+      "id": "media-studio",
+      "name": "@ipollo/dsh-media-studio",
+      "sourceVersion": "1.0.5",
+      "kind": "ported",
+      "source": "examples/plugin-packages/media-studio"
+    },
+    {
+      "id": "notion",
+      "name": "@ipollo/dsh-notion",
+      "sourceVersion": "1.0.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/notion"
+    },
+    {
+      "id": "operation-recorder",
+      "name": "@ipollo/dsh-operation-recorder",
+      "sourceVersion": "0.4.2",
+      "kind": "existing-native",
+      "source": "examples/plugin-packages/operation-recorder"
+    },
+    {
+      "id": "plugin-workshop",
+      "name": "@ipollo/dsh-plugin-workshop",
+      "sourceVersion": "0.1.1",
+      "kind": "ported",
+      "source": "examples/plugin-packages/plugin-workshop"
+    },
+    {
+      "id": "reference-context",
+      "name": "@ipollo/dsh-reference-context",
+      "sourceVersion": "0.1.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/reference-context"
+    },
+    {
+      "id": "sentry",
+      "name": "@ipollo/dsh-sentry",
+      "sourceVersion": "1.0.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/sentry"
+    },
+    {
+      "id": "short-video-studio",
+      "name": "@ipollo/dsh-short-video-studio",
+      "sourceVersion": "0.1.3",
+      "kind": "ported",
+      "source": "examples/plugin-packages/short-video-studio"
+    },
+    {
+      "id": "stripe",
+      "name": "@ipollo/dsh-stripe",
+      "sourceVersion": "1.0.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/stripe"
+    },
+    {
+      "id": "video-agent",
+      "name": "deepseek-ivideo",
+      "sourceVersion": "0.3.30",
+      "kind": "existing-native",
+      "source": "examples/plugin-packages/video-agent"
+    },
+    {
+      "id": "wechat-channels-ops",
+      "name": "@ipollo/dsh-wechat-channels-ops",
+      "sourceVersion": "0.1.16",
+      "kind": "ported",
+      "source": "examples/plugin-packages/wechat-channels-ops"
+    },
+    {
+      "id": "wechat-official",
+      "name": "@ipollo/dsh-wechat-official",
+      "sourceVersion": "0.3.2",
+      "kind": "ported",
+      "source": "examples/plugin-packages/wechat-official"
+    },
+    {
+      "id": "workspace-canvas",
+      "name": "@ipollo/dsh-workspace-canvas",
+      "sourceVersion": "1.0.0",
+      "kind": "ported",
+      "source": "examples/plugin-packages/workspace-canvas"
+    },
+    {
+      "id": "xiaohongshu-ops",
+      "name": "@ipollo/dsh-xiaohongshu-ops",
+      "sourceVersion": "0.4.21",
+      "kind": "ported",
+      "source": "examples/plugin-packages/xiaohongshu-ops"
+    }
+  ]
+}

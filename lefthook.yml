@@ -1,7 +1,0 @@
-pre-commit:
-
-  commands:
-    whitespace:
-      run: git diff --cached --check
-    upstream:
-      run: node integrations/tooling/verify.mjs

@@ -28,5 +28,6 @@ export const DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES: Readonly<Record<string, strin
   '@earendil-works/pi-ai@^1.3.0': '1.3.0',
   'undici@^8.0.0': '8.12.4',
   '@modelcontextprotocol/client': '2.4.0',
+  '@modelcontextprotocol/server': '2.4.0',
   'fflate': '0.8.3',
 }

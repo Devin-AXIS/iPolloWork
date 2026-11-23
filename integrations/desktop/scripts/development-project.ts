@@ -159,7 +159,14 @@ export function prepareDevelopmentProject(options: DevelopmentProjectOptions): s
   const hostLink = join(destinationModules, '@ipollo', 'desktop-host')
   removeOwnedPath(hostLink)
   linkDirectory(options.hostDir, hostLink)
-  if (options.suiteDir) linkDirectory(options.suiteDir, join(destinationModules, '@ipollo', 'dsh-suite'))
+  if (options.suiteDir) {
+    linkDirectory(options.suiteDir, join(destinationModules, '@ipollo', 'dsh-suite'))
+    const path = join(options.projectDir, 'package.json')
+    const current = readManifest(path)
+    const manifest = { ...current, dependencies: { ...current.dependencies,
+      '@ipollo/dsh-suite': readManifest(join(options.suiteDir, 'package.json')).version! } }
+    writeFileSync(path, JSON.stringify(manifest, undefined, 2) + '\n')
+  }
   const sharedPackages = [...new Set([...names, '@deepseek-ai/dsh', '@ipollo/desktop-host', ...options.suiteDir ? ['@ipollo/dsh-suite'] : []])].flatMap((name) => {
     const manifest = readManifest(join(destinationModules, name, 'package.json'))
     return typeof manifest.version === 'string' ? [{ name, version: manifest.version, path: `node_modules/${name}` }] : []

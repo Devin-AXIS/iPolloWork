@@ -1,13 +1,16 @@
 {
   "name": "@ipollo/work",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.5",
   "engines": {
-    "node": ">=24.9.0"
+    "node": "^24.22.3 || >=26.13.1"
   },
   "scripts": {
+    "prepare": "node integrations/tooling/git-workflow.mjs install",
+    "setup:git": "node integrations/tooling/git-workflow.mjs install",
+    "check:git": "node integrations/tooling/git-workflow.mjs check",
     "setup": "node integrations/tooling/setup.mjs",
     "setup:build": "node integrations/tooling/setup.mjs --build --plugins",
     "check:upstream": "node integrations/tooling/verify.mjs",
@@ -20,9 +23,12 @@
     "package:desktop:linux:x64": "node integrations/desktop/run.mjs package-target.ts linux-x64",
     "check:docs": "node integrations/tooling/check-docs.mjs",
     "package:plugin": "node integrations/tooling/package-plugin.mjs",
+    "build:ported-plugins": "node integrations/tooling/ported-plugins.mjs build",
+    "package:ported-market": "node integrations/tooling/ported-market.mjs",
     "check:desktop": "node integrations/desktop/run.mjs package-target.ts mac-arm64 --check --unsigned",
     "audit:dependencies": "node integrations/tooling/audit.mjs",
-    "start": "node integrations/tooling/start.mjs"
+    "start": "node integrations/tooling/start.mjs",
+    "prepare:studios": "node integrations/tooling/prepare-studios.mjs"
   },
   "license": "SEE LICENSE IN LICENSE"
 }

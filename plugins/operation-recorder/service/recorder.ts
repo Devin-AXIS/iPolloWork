@@ -7,6 +7,7 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
+import { setTimeout as delay } from "node:timers/promises";
 import { evidenceRevision, prepareEvidence } from "./evidence.ts";
 import { skillPackageFiles } from "./skill-package.ts";
 import { createArchive } from "./archive.ts";
@@ -78,16 +79,33 @@ async function atomicWrite(root: string, relativePath: string, value: string | B
   const temporary = `${path}.${randomUUID()}.partial`;
   try {
     await writeFile(temporary, value, { mode, flag: "wx" });
-    await rename(temporary, path);
+    for (let attempt = 0; ; attempt++) {
+      try { await rename(temporary, path); break; }
+      catch (error) {
+        if (process.platform !== 'win32' || !isRecord(error) || !['EPERM', 'EACCES', 'EBUSY'].includes(String(error.code)) || attempt >= 5) throw error;
+        await delay(10 * (attempt + 1));
+      }
+    }
   } finally {
     await rm(temporary, { force: true });
   }
   return path;
 }
 
+async function nativeCommand(path: string, args: string[]): Promise<{ command: string; args: string[] }> {
+  // Explicit Node helpers also run on Windows, where a POSIX shebang is not executable.
+  // Installed native binaries continue to execute directly.
+  const file = await open(path, 'r');
+  const prefix = Buffer.alloc(1024);
+  try { await file.read(prefix, 0, prefix.length, 0); } finally { await file.close(); }
+  return prefix.toString('utf8').startsWith(`#!${process.execPath}\n`)
+    ? { command: process.execPath, args: [path, ...args] }
+    : { command: path, args };
+}
 async function nativeResult(path: string, argument: string): Promise<unknown> {
+  const launch = await nativeCommand(path, [argument]);
   return new Promise((resolveResult, reject) => {
-    const child = spawn(path, [argument], { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const child = spawn(launch.command, launch.args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let output = "";
     const timer = setTimeout(() => { child.kill(); reject(new Error("Native permission check timed out")); }, 10_000);
     child.stdout.on("data", (chunk: Buffer) => {
@@ -312,7 +330,8 @@ export async function createRecorderService(runtime: ServiceRuntime, options: Op
   }
 
   async function startCapture(path: string): Promise<void> {
-    const processHandle = spawn(path, [], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+    const launch = await nativeCommand(path, []);
+    const processHandle = spawn(launch.command, launch.args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
     child = processHandle;
     processHandle.stdin.on("error", (error: Error) => { lastError = message(error); processHandle.kill(); });
     let pendingBytes = 0;

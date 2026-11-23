@@ -112,7 +112,7 @@ function Launcher({ center, locale, wide }: {
   function position() {
     const rect = trigger.current?.getBoundingClientRect();
     if (!rect || !panel.current) return;
-    const width = Math.min(336, window.innerWidth - 24);
+    const width = Math.min(400, window.innerWidth - 24);
     panel.current.style.setProperty('--inc-left', Math.max(12, Math.min(rect.right - width, innerWidth - width - 12)) + 'px');
     panel.current.style.setProperty('--inc-bottom', Math.max(12, innerHeight - rect.top + 10) + 'px');
   }
@@ -144,30 +144,39 @@ function Launcher({ center, locale, wide }: {
       {count > 0 && <span className="inc-dot" aria-hidden="true" />}
     </Button>
     <div id={id} ref={panel} className="inc-panel ipw-frosted" popover="auto" role="dialog" aria-labelledby={id + '-title'}
-      onToggle={event => { setOpen(event.newState === 'open'); setFailed(false); }}>
+      onToggle={event => {
+        const expanded = event.newState === 'open';
+        setOpen(expanded);
+        setFailed(false);
+        if (!expanded && (document.activeElement === document.body || panel.current?.contains(document.activeElement))) {
+          trigger.current?.focus();
+        }
+      }}>
       <header className="inc-header">
         <h2 id={id + '-title'}>{t.title}</h2>
         <Button size="sm" type="button" className="inc-icon" aria-label={t.close}
           onClick={() => { panel.current?.hidePopover(); trigger.current?.focus(); }}><X strokeWidth={lineStroke} size={17} aria-hidden="true" /></Button>
       </header>
-      <SegmentedControl label={t.title} value={unreadOnly ? 'unread' : 'all'} change={value => setUnreadOnly(value === 'unread')}
-        className="inc-filters" options={[
-          { id: 'all', label: t.all },
-          { id: 'unread', label: t.unread, ...(count > 0 ? { count } : {}) },
-        ]} />
-      {failed && <p className="inc-action-error" role="alert">{t.error}</p>}
-      <div className="inc-scroll">
+      <div className="inc-toolbar">
+        <SegmentedControl label={t.title} value={unreadOnly ? 'unread' : 'all'} change={value => setUnreadOnly(value === 'unread')}
+          className="inc-filters" options={[
+            { id: 'all', label: t.all },
+            { id: 'unread', label: t.unread, ...(count > 0 ? { count } : {}) },
+          ]} />
+        {failed && <p className="inc-action-error" role="alert">{t.error}</p>}
+      </div>
+      <div className="inc-scroll" tabIndex={0} role="region" aria-label={t.title}>
         {visible.length === 0 ? <div className="inc-empty">
           <Bell size={21} strokeWidth={1.4} aria-hidden="true" />
           <p>{unreadOnly ? t.caughtUp : t.empty}</p>
-        </div> : <ul className="inc-list">{visible.slice(0, feedLimit).map(row => {
-          const summary = [row.sourceLabel, row.summary].filter(Boolean).join(' · ');
+        </div> : <ul className="inc-list">{visible.map(row => {
           const description = <>
-            <span className="inc-headline">
-              <strong title={row.title}>{row.title}</strong>
+            <span className="inc-meta">
+              <span>{row.sourceLabel}</span>
               <time dateTime={new Date(row.createdAt).toISOString()}>{clock.format(row.createdAt)}</time>
             </span>
-            <span className="inc-summary" title={summary}>{summary}</span>
+            <strong className="inc-headline">{row.title}</strong>
+            {row.summary && <span className="inc-summary">{row.summary}</span>}
           </>;
           return <li className="inc-row" key={row.key} data-unread={!row.read} data-tone={row.tone ?? 'info'}>
             <span className="inc-state" aria-hidden="true" />

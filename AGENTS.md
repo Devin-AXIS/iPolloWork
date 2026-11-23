@@ -3,6 +3,16 @@
 This repository owns iPolloWork plugins, services, clients and packaging. DSH is an
 external, version-pinned dependency. Never edit `.upstream/dsh`, copy its Agent loop into this repository, or add product patches to the official runtime.
 
+## Git collaboration
+
+Before editing repository code or performing Git synchronization, commits, pushes,
+or PR work, read and follow [github-sync-pr-flow](.agents/skills/github-sync-pr-flow/SKILL.md).
+This applies automatically to every contributor's agent; do not wait for the user
+to name the skill. Respect the requested operation's scope and existing authorization.
+Stay on the current personal branch, preserve unrelated work, and use PRs for main.
+Run `npm run setup:git` in an existing checkout to install the shared checks;
+normal setup and root package installation also install them.
+
 Run `npm run setup:build` for a fresh checkout. It verifies the official archive, installs its locked dependencies and creates ignored local resolution links. The exact revision and SHA-256 live in `integrations/runtime/upstream.json`. Upgrades change that pin deliberately, then run the product checks and real-client smoke before adoption.
 
 Update the [DSH compatibility record](integrations/runtime/compatibility.md) in the same change whenever a product modification adds, replaces, or relies on DSH behavior. Record the product files, upstream API/event/slot or DOM dependency, and how to verify the behavior on the next pin. Prefer upstream extension points and types. When an upstream release replaces an adaptation, mark the entry as retired and record the first verified release.

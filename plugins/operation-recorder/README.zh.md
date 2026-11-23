@@ -4,9 +4,11 @@
 
 独立 DSH 插件 `@ipollo/dsh-operation-recorder`，迁移自多引擎 iPolloWork 录制器 0.3.0。保留语义桌面采集、暂停继续、历史记录、Chrome Recorder 导入、脱敏、步骤编辑、确定性 Skill 编译与导出。不需要模型 Key，不增加第二套 Agent。
 
+安装包导出清单与本地化显示元数据，供原生插件管理器显示图标。工作区标题栏和打开按钮使用 DSH 原生控件，窄容器下自动换行。
+
 ## 构建与安装
 
-运行 `npm ci --legacy-peer-deps`，仓库开发再运行 `npm run link:workspace`，随后运行 `npm run check`、`npm run pack:check`、`npm pack`。先构建根目录的官方运行时。完整原生构建需要 Go 1.26；macOS 通用采集器还需 Swift 6/Xcode 命令行工具。安装包自带采集器，用户无需编译器。使用 `dsh plugin --profile <profile> add /绝对路径/ipollo-dsh-operation-recorder-0.2.0.tgz` 安装，先核对目标 profile。
+运行 `npm ci --legacy-peer-deps`，仓库开发再运行 `npm run link:workspace`，随后运行 `npm run check`、`npm run pack:check`、`npm pack`。先构建根目录的官方运行时。完整原生构建需要 Go 1.26；macOS 通用采集器还需 Swift 6/Xcode 命令行工具。安装包自带采集器，用户无需编译器。使用 `dsh plugin --profile <profile> add /绝对路径/ipollo-dsh-operation-recorder-0.2.1.tgz` 安装，先核对目标 profile。
 
 打开侧栏“操作录制”，选择已有 DSH 工作区，再打开工作台。录制需要明确的系统权限。Windows 使用 UI Automation 和被动 hooks，Linux X11 使用 XRecord/AT-SPI，macOS 使用辅助功能/CGEventTap。Wayland 提供 Chrome Recorder 导入，不支持完整桌面采集。旧版真实采集验证的限制仍然存在，交叉编译和 mock 测试不能证明每个平台的真实输入采集。
 
