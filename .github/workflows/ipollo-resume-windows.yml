@@ -61,7 +61,8 @@ jobs:
           node integrations/desktop/run.mjs package-target.ts win-x64 --unsigned --build-version $version 2>&1 | Tee-Object -FilePath $log
           if ($LASTEXITCODE -ne 0) {
             $diagnostic = Get-Content -Raw $log
-            if ($diagnostic -notmatch 'E(NOTDIR|NOENT)' -or $diagnostic -notmatch 'app\.asar[\\/]+dsh[\\/]+desktop-runtime\.json') { throw 'Packaging failed for a reason other than the known Node ASAR harness boundary' }
+            $expectedAsarRead = 'E(NOTDIR|NOENT)[^\r\n]*app\.asar[\\/]+dsh[\\/]+(?:desktop-runtime\.json|node_modules[\\/]+@ipollo[\\/]+dsh-suite[\\/]+catalog[\\/]+bundled-releases\.json)'
+            if ($diagnostic -notmatch $expectedAsarRead) { throw 'Packaging failed outside the Node ASAR harness boundary' }
           }
           node --import tsx/esm ../driver/integrations/desktop/scripts/verify-sealed-windows.mjs
           if ($LASTEXITCODE -ne 0) { throw 'Sealed Windows runtime qualification failed' }

@@ -1,5 +1,6 @@
 /** Boot the materialized target runtime without access to a user's Harness profile. */
 
+import { createHash } from 'node:crypto'
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -12,7 +13,7 @@ import { load, dump } from 'js-yaml'
 import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
 import { repairProfileRuntime } from '../src/profile-runtime-repair.ts'
-import { runtimePath, type DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
+import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import type { MarketItem } from '../../../plugins/ipollowork-suite/src/shared/types.ts'
 
 const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
@@ -265,9 +266,13 @@ export function apply(ctx) {
       const market = await fetch(new URL('/ipollowork-suite/catalog', ready.url), { headers: { cookie } })
       if (!market.ok) throw new Error('desktop runtime: iPolloWork market did not start: HTTP ' + market.status)
       const catalog = await market.json() as StudioCatalog
-      const releases = JSON.parse(readFileSync(join(runtimePath(root, suitePackage.path), 'catalog', 'bundled-releases.json'), 'utf8')) as {
-        plugins: StudioRelease[]
-      }
+      // The packaging supervisor may run in plain Node while the runtime is in ASAR.
+      const path = 'catalog/bundled-releases.json'
+      const releaseManifest = readFileSync(new URL('../../../plugins/ipollowork-suite/' + path, import.meta.url))
+      const expectedHash = createHash('sha256').update(releaseManifest).digest('hex')
+      const packagedManifest = runtime.files.find(file => file.path === `${suitePackage.path}/${path}`)
+      if (packagedManifest?.sha256 !== expectedHash) throw new Error('desktop runtime: packaged Studio release manifest differs from the build source')
+      const releases = JSON.parse(releaseManifest.toString('utf8')) as { plugins: StudioRelease[] }
       assertStudioCatalog(catalog, runtime, suitePackage.path, releases.plugins)
       const anonymous = await fetch(new URL('/ipollowork-suite/account', ready.url))
       const foreignOrigin = await fetch(new URL('/ipollowork-suite/account', ready.url), {
