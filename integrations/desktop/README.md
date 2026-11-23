@@ -37,7 +37,7 @@ Signed iPollo releases set `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS
 
 Design and Video are optional market installs. The suite carries their checked catalog archives for installation on demand. Their source repositories own their builds, and the desktop release does not attach separate plugin archives.
 
-On macOS, run `node integrations/desktop/run.mjs prepare-cua-helper.ts` before packaging. It builds both official Computer Use helper architectures outside the pinned source tree and signs/notarizes them. Packaging rejects missing helpers. At launch, the desktop reuses SHA-256-verified SenseVoice models from the shared `~/.dsh` cache when its isolated cache has no file; existing desktop models remain unchanged.
+On macOS, run `node integrations/desktop/run.mjs prepare-cua-helper.ts` before packaging. It checks the official provider archive against the runtime lockfile's SHA-512, exact SDK version and complete helper source digest, then re-signs and notarizes both published helper architectures. The host architecture also runs the official protocol regression. Missing or mismatched helpers stop packaging. At launch, the desktop reuses SHA-256-verified SenseVoice models from the shared `~/.dsh` cache when its isolated cache has no file; existing desktop models remain unchanged.
 
 Windows packaging requires .NET SDK 10 to compile the pinned Computer Use helper; its complete self-contained output is staged in the provider and unpacked beside the app. The release workflow installs the SDK.
 

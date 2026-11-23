@@ -37,7 +37,7 @@ iPollo 签名发行设置 `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/
 
 Design 和 Video 由用户在插件市场按需安装。套件携带经过校验的插件市场归档，供安装时使用。各插件在自己的源码仓库构建，桌面发行无需单独附加这些归档。
 
-macOS 打包前执行 `node integrations/desktop/run.mjs prepare-cua-helper.ts`，在固定上游源码目录外编译两个架构的官方电脑操作辅助程序并签名、公证；缺失辅助程序时禁止打包。桌面启动时，仅当独立目录缺少模型文件，才从共享 `~/.dsh` 缓存复用 SHA-256 校验通过的 SenseVoice 模型；不会覆盖已有模型。
+macOS 打包前执行 `node integrations/desktop/run.mjs prepare-cua-helper.ts`，校验官方提供方归档与运行时锁文件的 SHA-512、准确 SDK 版本和完整辅助程序源码摘要，再对官方已发布的两个架构重新签名、公证，并在当前宿主架构运行官方协议回归。缺失或摘要不符时禁止打包。桌面启动时，仅当独立目录缺少模型文件，才从共享 `~/.dsh` 缓存复用 SHA-256 校验通过的 SenseVoice 模型；不会覆盖已有模型。
 
 Windows 打包需要 .NET SDK 10 编译固定版本的电脑操作辅助程序；完整独立运行输出随提供方打包，并放在应用归档外。发行工作流会安装该 SDK。
 

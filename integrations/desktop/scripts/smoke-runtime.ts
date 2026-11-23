@@ -20,6 +20,23 @@ const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
 const STUDIO_PACKAGES = ['deepseek-idesign', 'deepseek-ivideo']
 const MARKET_ARCHIVE_BASE = 'https://github.com/Devin-AXIS/iPolloWork/releases/download/'
 
+/** Product preferences require editable native entries; the private Bundle stays management-required. */
+export function assertDesktopProductComposition(plugins: readonly {
+  moduleName: string; fiberPhase: string | null; readOnlyReason?: string
+}[]): void {
+  const rows = plugins.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
+  const expected = new Set(['', '/onboarding', '/agents', '/im', '/app-data', '/aliyun-sandbox', '/cloud'].map(suffix => '@ipollo/dsh-suite' + suffix))
+  const optional = new Set(['@ipollo/dsh-suite/aliyun-sandbox', '@ipollo/dsh-suite/cloud'])
+  const subplugins = ['notification-center', 'collaboration-board', 'project-files', 'custom-appearance'].map(name =>
+    plugins.filter(row => row.moduleName.endsWith('/dsh-suite/lib/subplugins/' + name + '/host.js')))
+  if (rows.length !== expected.size || new Set(rows.map(row => row.moduleName)).size !== expected.size
+    || rows.some(row => !expected.has(row.moduleName) || row.readOnlyReason !== undefined
+    || (row.fiberPhase !== 'active' && !(optional.has(row.moduleName) && row.fiberPhase === null)))
+    || subplugins.some(matches => matches.length !== 1 || matches[0]?.fiberPhase !== 'active')) {
+    throw new Error('desktop runtime: product composition must be active with editable native settings: ' + JSON.stringify(rows))
+  }
+}
+
 interface StudioCatalog {
   runtimeVersion?: string
   items?: Pick<MarketItem, 'name' | 'compatible' | 'installed' | 'spec' | 'archiveSha256'>[]
@@ -289,20 +306,8 @@ export function apply(ctx) {
       const inventory = await inventoryResponse.json() as {
         result: { ok: boolean; value?: { moduleName: string; fiberPhase: string | null; readOnlyReason?: string }[] }
       }
-      const rows = inventory.result.value?.filter(row => row.moduleName === '@ipollo/dsh-suite' || row.moduleName.startsWith('@ipollo/dsh-suite/'))
-      const optionalModules = new Set(['@ipollo/dsh-suite/aliyun-sandbox', '@ipollo/dsh-suite/cloud'])
-      const subplugins = ['notification-center', 'collaboration-board', 'project-files', 'custom-appearance'].map(name => {
-        const suffix = '/dsh-suite/lib/subplugins/' + name + '/host.js'
-        return inventory.result.value?.filter(row => row.moduleName.endsWith(suffix)) ?? []
-      })
-      if (!inventory.result.ok || rows?.length !== 7
-        || rows.some(row => (row.fiberPhase !== 'active' && !(optionalModules.has(row.moduleName) && row.fiberPhase === null))
-          || row.readOnlyReason !== 'unaddressable')
-        || subplugins.some(matches => matches.length !== 1 || matches[0]?.fiberPhase !== 'active')) {
-        const inactiveRows = [...rows ?? [], ...subplugins.flat()].map(({ moduleName, fiberPhase, readOnlyReason }) =>
-          ({ moduleName, fiberPhase, readOnlyReason }))
-        throw new Error('desktop runtime: iPolloWork components are inactive: ' + JSON.stringify({ ok: inventory.result.ok, rows: inactiveRows }))
-      }
+      if (!inventory.result.ok || !inventory.result.value) throw new Error('desktop runtime: cannot inspect product composition')
+      assertDesktopProductComposition(inventory.result.value)
       for (const [operation, args, code] of [
         ['setBundleEnabled', { name: '@ipollo/desktop-host', enabled: false }, 'management-required'],
         ['removeBundle', { name: '@ipollo/desktop-host' }, 'not-removable'],

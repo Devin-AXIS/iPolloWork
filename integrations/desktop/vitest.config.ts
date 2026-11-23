@@ -9,6 +9,7 @@ export default defineConfig({
     include: ['integrations/desktop/tests/{project-manager,profile-runtime-repair,fatal-recovery,core-package-set,windows-asar-unpack,prepare-package-set,application-overlay,packaged-runtime-verification,desktop-package-environment,speech-cache,cua-helper-stage,cua-helper-live,welcome-host}.spec.ts',
       'integrations/desktop/tests/web-document.spec.ts',
       'integrations/desktop/tests/prepare-runtime-patches.spec.ts',
+      'integrations/desktop/tests/published-cua-helper.spec.ts',
       'integrations/desktop/tests/account-origin.spec.ts',
       'integrations/desktop/tests/smoke-runtime.spec.ts',
       'integrations/desktop/tests/welcome-renderer.client.spec.tsx'],
