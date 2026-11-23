@@ -72,7 +72,5 @@ export interface ClientContext {
   };
 }
 type ContextMenuTarget = { workspaceId?: string; sessionId?: Parameters<IWorkspaces['archiveSession']>[0]; displayTitle?: string };
-export interface MarketProps {
-  openPackage(name: string): void;
-}
+export type MarketProps = Pick<import('@deepseek-ai/dsh-client-ui-plugin-manager/client').PluginTabProps, 'openPackage' | 'update'>;
 export interface LauncherProps { wide: boolean; openSettings(section?: string): void }

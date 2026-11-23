@@ -10,6 +10,8 @@ export interface MarketItem {
   compatible: boolean; requirement: string | null; installed: boolean; enabled: boolean;
   providedByDsh: boolean;
   installedVersion: string | null; resources: readonly string[];
+  archiveSha256?: string;
+  update?: 'archive' | 'git';
 }
 export interface MarketState { title: string; items: MarketItem[]; categories: { id: string; title: string }[]; runtimeVersion: string; canManage?: boolean }
 export interface SuiteInfo { name: 'iPolloWork'; version: string }

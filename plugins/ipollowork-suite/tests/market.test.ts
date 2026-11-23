@@ -101,7 +101,7 @@ test('shipped Studio bundles select their host authentication API for editor ass
   }
 })
 
-// npm delivery keeps the verified archives in pinned resource dependencies.
+// Slim distributions resolve the same checked archives on their actual publication tag.
 test('npm delivery downloads optional Studio archives only when installed', async () => {
   const { rename } = await import('node:fs/promises')
   const directory = await mkdtemp(join(tmpdir(), 'ipw-npm-market-'))
@@ -112,7 +112,10 @@ test('npm delivery downloads optional Studio archives only when installed', asyn
     const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, directory)
     assert.equal(state.items[0]?.version, '1.0.0-beta.38')
     assert.equal(state.items[1]?.version, '1.0.0-beta.24')
-    for (const item of state.items.slice(0, 2)) assert(item.spec.startsWith('https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/'))
+    for (const item of state.items.slice(0, 2)) {
+      assert(item.spec.startsWith('https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0.12/'))
+      assert.match(item.archiveSha256!, /^[a-f0-9]{64}$/)
+    }
   } finally { await rename(hidden, original); await rm(directory, { recursive: true, force: true }) }
 })
 
@@ -133,4 +136,45 @@ test('service-curated entries merge with bundled plugins and use the official pi
   assert.equal(state.items.at(-1)?.spec, 'git+https://github.com/publisher/plugin.git#' + 'a'.repeat(40) + '&path:/packages/plugin')
   assert.equal(state.items.at(-1)?.categoryTitle, 'Productivity')
   await assert.rejects(readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, undefined, false, [{ ...entry, versions: [] }]), { code: 'IPW_INVALID_CATALOG' })
+})
+
+test('the default market offers a compatible newer archive for an existing archive install', async () => {
+  const name = 'deepseek-ivideo'
+  const installed = {
+    name, installed: true, enabled: false, version: '1.0.0-beta.22', source: 'file:/fixtures/previous.tgz',
+    availability: 'profile' as const, rows: [],
+  }
+  const range = '>=0.2.2-rc.3 <0.2.3-0'
+  const publication = (version: string, dsh: string) => ({
+    name, version, dsh, tag: 'video-test', sha256: 'a'.repeat(64), file: `${name}-${version}-aaaaaaaaaaaa.tgz`,
+  })
+  const published = [publication('1.0.0-beta.26', '>=0.3.0'), publication('1.0.0-beta.25', range)]
+  const item = async (current = installed, releases = published) => (await readMarket(
+    'catalog/index.json', { listBundles: async () => [current] }, '0.2.2-rc.3', 'en', 1048576,
+    undefined, false, [], releases,
+  )).items.find(item => item.name === name)!
+  const remote = await item()
+  assert.equal(remote.update, 'archive')
+  assert.equal(remote.version, '1.0.0-beta.25')
+  assert.equal(remote.installedVersion, installed.version)
+  assert.equal(remote.enabled, false)
+  assert.equal(remote.spec, 'https://github.com/Devin-AXIS/iPolloWork/releases/download/video-test/deepseek-ivideo-1.0.0-beta.25-aaaaaaaaaaaa.tgz')
+  assert.equal((await item(installed, [])).version, '1.0.0-beta.24')
+  assert.equal((await item({ ...installed, version: '1.0.0-beta.25' })).update, undefined)
+  assert.equal((await item({ ...installed, version: '1.0.0' })).update, undefined)
+  assert.equal((await item({ ...installed, source: '1.0.0-beta.22' })).update, undefined)
+})
+
+test('market Git updates use the native same-repository pin contract', async () => {
+  const name = 'git-plugin'
+  const url = 'https://github.com/publisher/plugin'
+  const entry = { name, title: 'Git', versions: [{ version: '2.0.0', publishTimestamp: 1, source: { type: 'git', url, commit: 'b'.repeat(40), path: 'plugin' } }] }
+  const from = `git+${url}.git#${'a'.repeat(40)}&path:/`
+  const item = async (path: string) => (await readMarket('catalog/index.json', {
+    listBundles: async () => [{
+      name, installed: true, enabled: true, availability: 'profile', version: '1.0.0', update: 'git', source: from + path, rows: [],
+    }],
+  }, '0.2.2-rc.3', 'en', 1048576, undefined, false, [entry])).items.find(item => item.name === name)
+  assert.equal((await item('plugin'))?.update, 'git')
+  assert.equal((await item('other'))?.update, undefined)
 })
