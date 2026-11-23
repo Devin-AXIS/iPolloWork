@@ -6,6 +6,8 @@ DSH 基准由[运行时固定记录](upstream.json)指定：`dsh-v0.2.3-alpha.2`
 
 ## 升级前复核的功能
 
+alpha.2 的 `skill-office` 提供方仅发布一个覆盖 Word、PowerPoint 和 Excel 的 `office` 技能，原有 `office-docx`、`office-pptx`、`office-xlsx` 条目已移除。桌面打包须通过原生注册表列出并加载合并后的技能；冒烟仍执行三类真实文档转 PDF、图片渲染、OpenDocument 转换及 XLSX 重算。后续升级同时复核提供方当前目录和这些真实操作。
+
 Mac 打包先核对官方已发布 `dsh-cua-macos` 归档的锁定 SHA-512、准确 SDK 包版本、`cuaHelperSourceDigest` 和 `verifyCuaHelperPayload` 的双架构应用代次，再通过固定版本 `build_app.py` 的发布函数应用产品 Developer ID，公证、封存并重新读取选中的应用路径，运行宿主架构的官方 `protocol_e2e.py`。官方实现字节保持不变。后续升级复核这些构建工具接口和真实 Mac 签名、协议。
 
 桌面产品设置保留在可编辑的 profile 根配置树，同时插入一个启用的原生 Include 作为私有应用的管理边界。其 profile 相对路径 `./ipollowork-desktop-management.yml` 使用公开的 `initial: []` 选项，由原生加载器创建空配置，不把产品偏好移入其他配置树。因此原生管理器以 `management-required` 拒绝停用 Bundle，以 `not-removable` 拒绝卸载。真实安装运行时冒烟同时验证这两项拒绝和产品设置可编辑。以后每次更换 pin 均复核这些公开保护规则，不修改 SDK 的受保护插件集合或放宽冒烟断言。
