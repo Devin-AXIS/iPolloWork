@@ -9,7 +9,7 @@ import WebServer from '@deepseek-ai/dsh-host-webserver'
 import * as Connection from '@deepseek-ai/dsh-client-connection'
 import * as DesktopAuthentication from '@deepseek-ai/dsh-host-authentication-desktop'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { assertOfficeSkillsLoadable, assertStudioCatalog, smokeDesktopRuntime } from '../scripts/smoke-runtime.ts'
+import { assertDesktopProductComposition, assertOfficeSkillsLoadable, assertStudioCatalog, smokeDesktopRuntime } from '../scripts/smoke-runtime.ts'
 import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import { runtimeFixture } from './runtime-fixture.ts'
 
@@ -42,6 +42,30 @@ const loadedSkills = [
   { name: 'office-pptx', bytes: 5167 },
   { name: 'office-xlsx', bytes: 5611 },
 ]
+
+describe('native product settings ownership', () => {
+  const rows = [
+    ...['', '/onboarding', '/agents', '/im', '/app-data', '/aliyun-sandbox', '/cloud'].map(suffix => ({
+      moduleName: '@ipollo/dsh-suite' + suffix,
+      fiberPhase: ['/aliyun-sandbox', '/cloud'].includes(suffix) ? null : 'active',
+    })),
+    ...['notification-center', 'collaboration-board', 'project-files', 'custom-appearance'].map(name => ({
+      moduleName: 'file:///runtime/node_modules/@ipollo/dsh-suite/lib/subplugins/' + name + '/host.js', fiberPhase: 'active',
+    })),
+  ]
+  it('accepts addressable settings with explicitly optional services disabled', () => {
+    expect(() => assertDesktopProductComposition(rows)).not.toThrow()
+  })
+  it('rejects the obsolete unaddressable settings composition', () => {
+    expect(() => assertDesktopProductComposition(rows.map(row => ({ ...row, readOnlyReason: 'unaddressable' })))).toThrow('editable native settings')
+  })
+  it('still rejects missing or inactive required product components', () => {
+    expect(() => assertDesktopProductComposition(rows.slice(1))).toThrow('product composition')
+    expect(() => assertDesktopProductComposition(rows.map(row => ({ ...row, fiberPhase: null })))).toThrow('product composition')
+    expect(() => assertDesktopProductComposition(rows.map((row, index) => index === 1 ? rows[0]! : row))).toThrow('product composition')
+    expect(() => assertDesktopProductComposition(rows.map((row, index) => index === 1 ? { ...row, moduleName: '@ipollo/dsh-suite/other' } : row))).toThrow('product composition')
+  })
+})
 
 it('uses the private readiness Cookie for every packaged runtime HTTP probe', async () => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-smoke-auth-'))

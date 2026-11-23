@@ -6,6 +6,10 @@ DSH 基准由[运行时固定记录](upstream.json)指定：`dsh-v0.2.3-alpha.2`
 
 ## 升级前复核的功能
 
+Mac 打包先核对官方已发布 `dsh-cua-macos` 归档的锁定 SHA-512、准确 SDK 包版本、`cuaHelperSourceDigest` 和 `verifyCuaHelperPayload` 的双架构应用代次，再通过固定版本 `build_app.py` 的发布函数应用产品 Developer ID，公证、封存并重新读取选中的应用路径，运行宿主架构的官方 `protocol_e2e.py`。官方实现字节保持不变。后续升级复核这些构建工具接口和真实 Mac 签名、协议。
+
+桌面产品设置保留在可编辑的 profile 根配置树，同时插入一个启用的原生 Include 作为私有应用的管理边界。其 profile 相对路径 `./ipollowork-desktop-management.yml` 使用公开的 `initial: []` 选项，由原生加载器创建空配置，不把产品偏好移入其他配置树。因此原生管理器以 `management-required` 拒绝停用 Bundle，以 `not-removable` 拒绝卸载。真实安装运行时冒烟同时验证这两项拒绝和产品设置可编辑。以后每次更换 pin 均复核这些公开保护规则，不修改 SDK 的受保护插件集合或放宽冒烟断言。
+
 alpha.2 迁移对齐 Node.js（`^24.22.3 || >=26.13.1`）、Cordis（`4.2.0-alpha.1`）、Schemastery（`3.20.0-alpha.1`）、自有 SDK peer 依赖和私有桌面 Host 版本。DeepSeek 账号工程引用由 `credentials` 移至 `account`。模型配置改用 `maxImageBytes` 并提供 `requestImageBudgetCount`；MCP 探测改用公开的 `McpClientHost.probe`。隔离候选版已通过产品源码检查、桌面类型检查、原生源码暂存构建、模型/看板/MCP 契约测试和官方便携运行时检查。最终归档安装、外部账号验证及发布部署仍是独立验收项。
 
 Windows 安装核验准确的 Git commit 和 tree，无需文件符号链接权限；配置副本由哈希管理。显式 `--upgrade-upstream` 会保留旧的已核验缓存，拒绝修改过的官方源码和静默替换 pin。临时短路径目录联接让完整的官方 Python wheel/Office 检查避开 MAX_PATH。`npm test` 覆盖 Node 拒绝、不变源码检出和目录联接清理；`check:upstream` 在打包前拒绝混用 SDK 版本。
