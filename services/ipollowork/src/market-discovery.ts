@@ -16,9 +16,9 @@ function label(input: unknown): string | undefined {
     if (typeof v === 'string' && v.trim()) return v.trim();
   }
 }
-async function readRemote(url: string, fetcher: typeof fetch, optional = false): Promise<string> {
+async function readRemote(url: string, fetcher: typeof fetch, optional = false, accept = 'application/json'): Promise<string> {
   try {
-    const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(9000), headers: { 'User-Agent': 'iPolloWork-plugin-catalog' } });
+    const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(9000), headers: { 'User-Agent': 'iPolloWork-plugin-catalog', Accept: accept } });
     if (!response.ok || !response.body) {
       await response.body?.cancel();
       if (optional && response.status === 404) return '';
@@ -53,9 +53,10 @@ export async function discoverMarket(source: string, fetcher: typeof fetch = fet
   if (git && git.slice(1).every(s => s === undefined || s.split('/').every(p => p && p !== '.' && p !== '..'))) {
     const [, org, repo, ref, path] = git;
     const commit = z.object({ sha: z.string().regex(/^[0-9a-f]{40}$/), commit: z.object({ committer: z.object({ date: z.string().datetime() }) }) }).parse(json(await readRemote('https://api.github.com/repos/' + org + '/' + repo + '/commits/' + (ref || 'HEAD'), fetcher)));
-    const base = 'https://raw.githubusercontent.com/' + org + '/' + repo + '/' + commit.sha + '/' + (path ? path + '/' : '');
-    raw = json(await readRemote(base + 'package.json', fetcher));
-    readme = await readRemote(base + 'README.md', fetcher, true).catch(() => '');
+    const base = 'https://api.github.com/repos/' + org + '/' + repo + '/contents/' + (path ? path + '/' : '');
+    const readFile = (file: string, optional = false) => readRemote(base + file + '?ref=' + commit.sha, fetcher, optional, 'application/vnd.github.raw+json');
+    raw = json(await readFile('package.json'));
+    readme = await readFile('README.md', true).catch(() => '');
     owner = org; homepage = 'https://github.com/' + org + '/' + repo;
     timestamp = Math.floor(Date.parse(commit.commit.committer.date) / 1000);
     install = { type: 'git', url: homepage, commit: commit.sha, ...(path && { path }) };
