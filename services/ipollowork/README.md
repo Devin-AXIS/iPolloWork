@@ -99,6 +99,8 @@ Optional member-change notifications are configured on the same page and disable
 
 ## Curated plugin market
 
+Platform administrators can add entries in the web console under **Plugin market**. For an existing entry, choose **发布新版**, read its npm or GitHub source, review the package name and version change, and confirm publication. The public catalog then serves the pinned release. The operator's display name, description and category carry forward.
+
 `GET /api/market/catalog` publishes up to 200 curated native DSH references. Authenticated `GET /api/v1/market/manage` reports platform administration permission; `POST /api/v1/market/plugins` requires the platform `admin` role. Only HTTPS npm/Git sources and pinned SemVer releases are accepted, with full Git commit hashes for Git sources. References are stored in the existing `settings` table under `market.catalog`; PostgreSQL advisory transaction locks serialize additions, and the existing `audit` table records the actor. No third-party code is fetched or executed. Deploy alongside the updated suite to expose its administrator-only add form.
 
 ## Configuration files
