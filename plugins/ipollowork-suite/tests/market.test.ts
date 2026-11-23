@@ -178,3 +178,15 @@ test('market Git updates use the native same-repository pin contract', async () 
   assert.equal((await item('plugin'))?.update, 'git')
   assert.equal((await item('other'))?.update, undefined)
 })
+
+test('live catalog can replace a bundled listing in place and use its pinned installation source', async () => {
+  const manager = { listBundles: async () => [] };
+  const read = (entries: unknown[] = []) => readMarket('catalog/index.json', manager, '0.2.2-rc.3', 'en', 1048576, undefined, false, entries);
+  const baseline = await read();
+  const first = baseline.items[0]!;
+  const entry = { name: first.name, title: 'Online introduction', metadata: { category: 'creative' }, versions: [{ version: first.version, publishTimestamp: 2, source: { type: 'git', url: 'https://github.com/example/bundle', commit: 'b'.repeat(40) } }] };
+  const state = await read([entry]);
+  assert.equal(state.items.length, baseline.items.length);
+  assert.equal(state.items[0]?.title, entry.title);
+  assert.match(state.items[0]!.spec, /github\.com\/example\/bundle/);
+});
