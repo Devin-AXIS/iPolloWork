@@ -14,6 +14,11 @@ on:
         type: choice
         options: [both, mac-arm64, mac-x64]
         default: both
+      macos_arm_runner:
+        description: ARM build image; use macOS 26 when the default pool lacks capacity
+        type: choice
+        options: [macos-15, macos-26]
+        default: macos-15
       windows:
         description: Build the Windows x64 installer and its update files
         type: boolean
@@ -174,7 +179,7 @@ jobs:
       fail-fast: false
       matrix:
         target: ${{ fromJSON(inputs.macos_target == 'both' && '["mac-arm64","mac-x64"]' || inputs.macos_target == 'mac-arm64' && '["mac-arm64"]' || '["mac-x64"]') }}
-    runs-on: ${{ matrix.target == 'mac-arm64' && 'macos-15' || 'macos-15-intel' }}
+    runs-on: ${{ matrix.target == 'mac-arm64' && (inputs.macos_arm_runner || 'macos-15') || 'macos-15-intel' }}
     timeout-minutes: 120
     env:
       RELEASE_TAG: ${{ inputs.release_tag }}
@@ -190,6 +195,9 @@ jobs:
           node-version: '24.22.3'
       - name: Verify the selected macOS SDK and Swift compiler
         run: |
+          expected_arch=x86_64
+          if [[ "$PACKAGE_TARGET" == mac-arm64 ]]; then expected_arch=arm64; fi
+          test "$(uname -m)" = "$expected_arch"
           xcodebuild -version
           xcrun swift --version
       - name: Restore notarized helpers for the identical pinned DSH release
