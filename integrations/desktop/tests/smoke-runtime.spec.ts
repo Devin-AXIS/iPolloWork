@@ -38,9 +38,6 @@ afterEach(() => {
 
 const loadedSkills = [
   { name: 'office', bytes: 772 },
-  { name: 'office-docx', bytes: 4543 },
-  { name: 'office-pptx', bytes: 5167 },
-  { name: 'office-xlsx', bytes: 5611 },
 ]
 
 describe('native product settings ownership', () => {
@@ -145,19 +142,19 @@ it('uses the private readiness Cookie for every packaged runtime HTTP probe', as
 })
 
 describe('assertOfficeSkillsLoadable', () => {
-  it('accepts all four Office skills with nonempty bodies and no path', () => {
+  it('accepts the consolidated Office skill with a nonempty body and no path', () => {
     expect(() => { assertOfficeSkillsLoadable(loadedSkills) }).not.toThrow()
   })
 
   it('rejects an unlisted or empty Office skill and reports every result', () => {
-    const results = loadedSkills.map(skill => skill.name === 'office-docx' ? { ...skill, bytes: 0 } : skill)
+    const results = loadedSkills.map(skill => ({ ...skill, bytes: 0 }))
     expect(() => { assertOfficeSkillsLoadable(results) }).toThrow(
       `desktop runtime: packaged Office skills are not loadable: ${JSON.stringify(results)}`,
     )
   })
 
   it('rejects results missing a bundled Office skill', () => {
-    const results = loadedSkills.filter(skill => skill.name !== 'office-xlsx')
+    const results = loadedSkills.filter(skill => skill.name !== 'office')
     expect(() => { assertOfficeSkillsLoadable(results) }).toThrow(
       `desktop runtime: packaged Office skills are not loadable: ${JSON.stringify(results)}`,
     )
@@ -165,6 +162,10 @@ describe('assertOfficeSkillsLoadable', () => {
 
   it('ignores empty results for skills outside the bundled Office set', () => {
     expect(() => { assertOfficeSkillsLoadable([...loadedSkills, { name: 'other', bytes: 0 }]) }).not.toThrow()
+  })
+
+  it('rejects legacy format skills without the current Office entry', () => {
+    expect(() => assertOfficeSkillsLoadable(['office-docx', 'office-pptx', 'office-xlsx'].map(name => ({ name, bytes: 100 })))).toThrow('packaged Office skills are not loadable')
   })
 })
 

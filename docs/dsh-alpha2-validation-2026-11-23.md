@@ -2,6 +2,8 @@
 
 English | [中文](dsh-alpha2-validation-2026-11-23.zh.md)
 
+Installed-runtime packaging passed application protection and reached Office discovery. Alpha.2 intentionally combines the three format-specific tutorials into the single `office` skill; the smoke now loads that native entry. Real DOCX/XLSX/PPTX conversion, image rendering and spreadsheet recalculation checks remain required.
+
 The candidate is product 1.0.16, Suite 0.1.51 and account service 0.1.19, using immutable official DSH source `4b399c39a6d1479cd84ca591b4d7c88e24d38a96`. This record follows the risk categories in the supplied November 23 upgrade analysis. Potential impacts in that document are not evidence that every listed failure occurred.
 
 Actual adaptations cover Node 24.22.3 and SDK/Cordis/Schemastery versions, account project paths, model image parameters, MCP probing, client settings type registration, Include return values and entry validation, and native desktop settings ownership. Nested Includes made tutorial and notification preferences uneditable. The private Bundle now mounts existing IDs in the native profile tree, retaining preferences. The runtime root explicitly declares Suite for native resolution. An older online market catalog cannot displace a newer compatible bundled version.
@@ -22,7 +24,7 @@ Actual adaptations cover Node 24.22.3 and SDK/Cordis/Schemastery versions, accou
 | Installation, old dependencies, user data | Complete official portable-runtime smoke passed, including Python/Office. A short Windows junction avoids MAX_PATH false negatives. Old core dependencies are retained in a journaled backup with failure rollback; user data is preserved. |
 | Backend and database | All 108 service checks passed. Schema 22 belongs to existing product changes. Build copies migrations through the schema constant and rollout reads the candidate image's target schema. Application writes stop before backing up both databases, files, secret and configuration. |
 
-Candidate Suite checks passed 244 tests with 11 environment-dependent native tests skipped; Windows desktop passed 309 with five platform/native-environment skips; all 31 root tooling tests passed with a complete npm environment. Independent native installation and real desktop verification are additional checks, and skipped tests are not counted as passed. External accounts, real third-party messages and paid generation retain the stated limits.
+Candidate Suite checks passed 244 tests with 11 environment-dependent native tests skipped; Windows desktop passed 310 with five platform/native-environment skips; all 31 root tooling tests passed with a complete npm environment. Independent native installation and real desktop verification are additional checks, and skipped tests are not counted as passed. External accounts, real third-party messages and paid generation retain the stated limits.
 
 Release packaging found that Xcode 26.3 / Swift 6.2.4 cannot compile the new native Computer Use helper. The official same-version published helper matches the current pin's complete source digest, so packaging now verifies that artifact before re-signing, notarizing and running protocol regression. Linux installed-runtime smoke also replaces the obsolete unaddressable-entry assertion with checks for editable native settings and the required Bundle's management protection. Actual platform packages, signatures and notarization remain separate release gates.
 

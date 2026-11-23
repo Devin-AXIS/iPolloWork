@@ -16,7 +16,8 @@ import { repairProfileRuntime } from '../src/profile-runtime-repair.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
 import type { MarketItem } from '../../../plugins/ipollowork-suite/src/shared/types.ts'
 
-const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
+// Alpha.2 exposes one Office skill for Word, presentations and spreadsheets.
+const OFFICE_SKILLS = ['office']
 const STUDIO_PACKAGES = ['deepseek-idesign', 'deepseek-ivideo']
 const MARKET_ARCHIVE_BASE = 'https://github.com/Devin-AXIS/iPolloWork/releases/download/'
 
