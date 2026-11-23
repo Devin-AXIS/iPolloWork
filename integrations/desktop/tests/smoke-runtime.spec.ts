@@ -9,7 +9,8 @@ import WebServer from '@deepseek-ai/dsh-host-webserver'
 import * as Connection from '@deepseek-ai/dsh-client-connection'
 import * as DesktopAuthentication from '@deepseek-ai/dsh-host-authentication-desktop'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { assertOfficeSkillsLoadable, smokeDesktopRuntime } from '../scripts/smoke-runtime.ts'
+import { assertOfficeSkillsLoadable, assertStudioCatalog, smokeDesktopRuntime } from '../scripts/smoke-runtime.ts'
+import { DESKTOP_HOST_PROTOCOL_VERSION } from '../src/host-protocol.ts'
 import { runtimeFixture } from './runtime-fixture.ts'
 
 const boundary = vi.hoisted(() => ({
@@ -140,5 +141,44 @@ describe('assertOfficeSkillsLoadable', () => {
 
   it('ignores empty results for skills outside the bundled Office set', () => {
     expect(() => { assertOfficeSkillsLoadable([...loadedSkills, { name: 'other', bytes: 0 }]) }).not.toThrow()
+  })
+})
+
+describe('assertStudioCatalog', () => {
+  const suite = 'node_modules/@ipollo/dsh-suite'
+  const releases = [
+    { name: 'deepseek-idesign', file: 'design.tgz', sha256: 'a'.repeat(64) },
+    { name: 'deepseek-ivideo', file: 'video.tgz', sha256: 'b'.repeat(64) },
+  ]
+  const runtime = {
+    release: {
+      schemaVersion: 1 as const, version: '0.2.2-rc.3', hostProtocolVersion: DESKTOP_HOST_PROTOCOL_VERSION,
+      nodeVersion: '24.15.0', pnpmVersion: '11.28.5',
+    },
+    files: releases.map(({ file, sha256 }) => ({
+      path: `${suite}/catalog/packages/${file}`, sha256, bytes: 10, executable: false,
+    })),
+  }
+  const catalog = {
+    runtimeVersion: runtime.release.version,
+    items: [
+      { name: 'deepseek-idesign', compatible: true, installed: false, spec: 'file:/cache/design.tgz' },
+      {
+        name: 'deepseek-ivideo', compatible: true, installed: false,
+        spec: 'https://github.com/Devin-AXIS/iPolloWork/releases/download/video-beta.25/video-new.tgz',
+        archiveSha256: 'c'.repeat(64),
+      },
+    ],
+  }
+
+  it('accepts a newer online target alongside intact packaged archives', () => {
+    expect(() => assertStudioCatalog(catalog, runtime, suite, releases)).not.toThrow()
+  })
+
+  it('requires the declared archive hash even when an online target is active', () => {
+    const corrupted = { ...runtime, files: runtime.files.map(file => ({ ...file, sha256: 'a'.repeat(64) })) }
+    expect(() => assertStudioCatalog(catalog, corrupted, suite, releases)).toThrow(
+      'desktop runtime: Studio fallback archive is missing or corrupt for deepseek-ivideo',
+    )
   })
 })
