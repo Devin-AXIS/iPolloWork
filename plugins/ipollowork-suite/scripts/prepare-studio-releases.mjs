@@ -4,8 +4,10 @@ import { createHash } from 'node:crypto';
 import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import yaml from 'js-yaml';
-const [source, version, videoVersion = version] = process.argv.slice(2);
+const product = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
+const [source, version, videoVersion = version, tag = `v${product.version}`] = process.argv.slice(2);
 if (!source || !version) throw new Error('Pass the archive directory and exact Studio version');
+if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(tag)) throw new Error('Pass a valid GitHub Release tag');
 const catalog = resolve('catalog');
 const index = JSON.parse(await readFile(join(catalog, 'index.json'), 'utf8'));
 const releases = [];
@@ -26,7 +28,7 @@ for (const name of ['deepseek-idesign', 'deepseek-ivideo']) {
   const file = `${name}-${pluginVersion}-${sha256.slice(0, 12)}.tgz`;
   const item = index.plugins.find(item => item.name === name);
   if (!item) throw new Error('Studio is missing from the curated catalog');
-  releases.push({ name, version: pluginVersion, file, sha256, archive });
+  releases.push({ name, version: pluginVersion, file, sha256, tag, archive });
   item.versions = [{ version: pluginVersion, publishTimestamp: Math.floor(Date.now() / 1000), source: { type: 'npm' }, engines: { dsh: manifest.engines.dsh } }];
 }
 for (const release of releases) await copyFile(release.archive, join(catalog, 'packages', release.file));

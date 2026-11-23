@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import semver from 'semver'
 
 // DSH writes the owner URL only into this disposable profile's private log.
 const log = await readFile(process.argv[2] ?? '.runtime/server.log', 'utf8')
@@ -25,7 +26,11 @@ for (const path of ['/info', '/catalog?language=zh', '/account', '/assets/client
     assert.deepEqual(value.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
     for (const release of releases.plugins) {
       const item = value.items.find(candidate => candidate.name === release.name)
-      assert(item?.spec.startsWith('file:') && item.version === release.version, release.name)
+      assert(item?.compatible && semver.gte(item.version, release.version), release.name)
+      if (item.archiveSha256) {
+        assert.match(item.spec, /^https:\/\/github\.com\/Devin-AXIS\/iPolloWork\/releases\/download\//)
+        assert.match(item.archiveSha256, /^[a-f0-9]{64}$/)
+      } else assert(item.spec.startsWith('file:'), release.name)
     }
     assert.equal(value.categories[0].title, '效率')
   }

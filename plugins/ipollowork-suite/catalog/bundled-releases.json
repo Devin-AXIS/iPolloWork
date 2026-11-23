@@ -5,12 +5,14 @@
       "name": "deepseek-idesign",
       "version": "1.0.0-beta.38",
       "file": "deepseek-idesign-1.0.0-beta.38-a5f8ad80cd45.tgz",
+      "tag": "v1.0.12",
       "sha256": "a5f8ad80cd45737074bac6118d362a64c6acdc04e342d64aa01825a2930c7cd2"
     },
     {
       "name": "deepseek-ivideo",
       "version": "1.0.0-beta.24",
       "file": "deepseek-ivideo-1.0.0-beta.24-52dc02ecc384.tgz",
+      "tag": "v1.0.12",
       "sha256": "52dc02ecc38466e111140c11d557a9f8a01112f11123e4dc708ee6a294cb49d0"
     }
   ]

@@ -47,7 +47,12 @@ export async function apply(ctx: ClientContext): Promise<void> {
     const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
     const marketLifetime = new AbortController()
     scope.effect(() => () => marketLifetime.abort(), 'ipollowork-market: client requests')
-    const installation = new MarketInstallation(scope.remote.pluginManager, marketLifetime.signal)
+    const installation = new MarketInstallation(scope.remote.pluginManager, marketLifetime.signal, async target => {
+      const { spec } = await request<{ spec: string }>('/catalog/archive', {
+        method: 'POST', body: JSON.stringify(target), signal: marketLifetime.signal,
+      })
+      return spec
+    })
     enterpriseInstaller = installation
     scope.effect(() => () => { if (enterpriseInstaller === installation) enterpriseInstaller = undefined }, 'ipollowork: enterprise plugin installer')
     mountAddPlugin(scope, installation.openManual)

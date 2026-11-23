@@ -17,7 +17,7 @@ export interface MarketPanelProps extends MarketProps {
   add?(entry: MarketEntry): Promise<void>
 }
 
-export function MarketPanel({ useLabels, load, installation, openPackage, add, discover }: MarketPanelProps) {
+export function MarketPanel({ useLabels, load, installation, openPackage, update: nativeUpdate, add, discover }: MarketPanelProps) {
   const t = useLabels(value => value)
   const { task, revision } = useSyncExternalStore(installation.subscribe, installation.getSnapshot)
   const [catalog, setCatalog] = useState<{ data: MarketState; revision: number } | null>(null)
@@ -65,11 +65,19 @@ export function MarketPanel({ useLabels, load, installation, openPackage, add, d
     const unconfirmed = currentTask?.phase === 'unconfirmed'
     const completed = currentTask?.phase === 'done' && (catalog?.revision ?? 0) < (currentTask.completedRevision ?? 0)
     const installed = available(item)
+    const update = item.update !== undefined
     const otherInstallPending = task && task !== currentTask && (installPending(task.phase) || task.phase === 'unconfirmed')
     return {
-      label: pending ? t.installing : unconfirmed ? t.installView : installed ? t.manage : completed ? t.installed : item.compatible ? t.install : t.incompatible,
-      disabled: !pending && !unconfirmed && !installed && (completed || !item.compatible || Boolean(otherInstallPending)),
-      onClick: () => pending || unconfirmed ? installation.show() : installed ? openPackage(item.name) : installation.start(item),
+      label: pending ? (update ? t.marketUpdating : t.installing) : unconfirmed ? t.installView
+        : completed ? (update ? t.marketUpdated : t.installed) : update ? t.marketUpdate
+          : installed ? t.manage : item.compatible ? t.install : t.incompatible,
+      disabled: !pending && !unconfirmed && (completed || ((!installed || update) && (!item.compatible || Boolean(otherInstallPending)))),
+      onClick: () => {
+        if (pending || unconfirmed) installation.show()
+        else if (item.update === 'git') nativeUpdate({ packageName: item.name, version: item.version, spec: item.spec })
+        else if (item.update === 'archive' || !installed) installation.start(item)
+        else openPackage(item.name)
+      },
     }
   }
 

@@ -31,7 +31,7 @@
     "@deepseek-ai/dsh-deepseek-account": "0.2.2-rc.3",
     "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
     "@deepseek-ai/dsh-plugin-manager": "0.2.2-rc.3",
-    "@ipollo/dsh-suite": "0.1.45"
+    "@ipollo/dsh-suite": "0.1.46"
   },
   "devDependencies": {
     "ws": "^8.21.3",

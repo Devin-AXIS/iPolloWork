@@ -55,7 +55,8 @@ import {
 import { Config, resolveConfig, type Config as ConfigInput } from "./config.ts";
 import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from "./app-data.ts";
 import type { IpolloData } from "../shared/app-data.ts";
-import { readMarket, type NativePluginManager } from "./market.ts";
+import { isDefaultMarket, readMarket, updateKind, type NativePluginManager } from "./market.ts";
+import { cacheGithubArchive, createReleaseFeed } from "./market-releases.ts";
 import { BRAND_PATH, brandIndex, serveBrand } from "./brand.ts";
 import { AppDataRejection, InvitationRosterRejection, SuiteError } from "./errors.ts";
 import {
@@ -392,6 +393,12 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   if (typeof runtime.version !== "string" || !semver.valid(runtime.version))
     throw new SuiteError("IPW_INVALID_RUNTIME_VERSION", 500);
   const runtimeVersion = runtime.version;
+  const marketCache = join(ctx.profileContext.home, "cache", "ipollowork-market");
+  const listReleases = createReleaseFeed(lifetime.signal);
+  const marketState = async (language: string, curated: unknown[] = []) => readMarket(
+    config.catalogPath, ctx.pluginManager, runtimeVersion, language, config.maxResponseBytes, marketCache,
+    config.dedicatedDesktop, curated, isDefaultMarket(config.catalogPath) ? await listReleases() : [],
+  );
   if (config.theme) {
     ctx.effect(
       () => ctx.webServer.register({ kind: "prefix", path: BRAND_PATH, auth: "anonymous", handler: serveBrand }),
@@ -516,17 +523,32 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               ]);
               const curated = cloudSchema.object({ plugins: cloudSchema.array(cloudSchema.unknown()).max(200) }).parse(catalog);
               const canManage = cloudSchema.object({ canManage: cloudSchema.boolean() }).parse(permission).canManage;
-              const state = await readMarket(
-                  config.catalogPath,
-                  ctx.pluginManager,
-                  runtimeVersion,
-                  url.searchParams.get("language") === "zh" ? "zh" : "en",
-                  config.maxResponseBytes,
-                  join(ctx.profileContext.home, "cache", "ipollowork-market"),
-                  config.dedicatedDesktop,
-                  curated.plugins,
-                );
+              const state = await marketState(url.searchParams.get("language") === "zh" ? "zh" : "en", curated.plugins);
               json(response, 200, { ...state, canManage });
+              return;
+            }
+            if (request.method === "POST" && path === "/catalog/archive" && config.market) {
+              const target = cloudSchema.object({
+                name: cloudSchema.string().min(1).max(214),
+                version: cloudSchema.string().min(1).max(100),
+                fromVersion: cloudSchema.string().max(100).optional(),
+              }).strict().parse(await body(request));
+              const { items } = await marketState("en");
+              const item = items.find(item => item.name === target.name && item.version === target.version && item.compatible);
+              const eligible = item && (target.fromVersion === undefined
+                ? !item.installed && !item.providedByDsh && item.archiveSha256
+                : item.update === 'archive' && item.installedVersion === target.fromVersion);
+              if (!item || !eligible) throw new SuiteError("IPW_MARKET_VERSION_CHANGED", 409);
+              const spec = item.archiveSha256
+                ? await cacheGithubArchive({ spec: item.spec, archiveSha256: item.archiveSha256 }, marketCache, lifetime.signal)
+                : item.spec;
+              if (item.archiveSha256) {
+                const current = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === item.name);
+                if (target.fromVersion === undefined ? current?.installed || current?.availability === "installation"
+                  : current?.version !== target.fromVersion || updateKind(current, item, item.version, true) !== "archive")
+                  throw new SuiteError("IPW_MARKET_VERSION_CHANGED", 409);
+              }
+              json(response, 200, { spec });
               return;
             }
             if (request.method === "GET" && path === "/services") {
