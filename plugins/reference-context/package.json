@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-reference-context",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "为视频、演示文稿、网页和其他模板提供共用的参考资料 Skill。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./lib/host.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -21,7 +23,8 @@
     "LICENSE",
     "NOTICE.md",
     "icon.svg",
-    "NOTICE.dependencies.txt"
+    "NOTICE.dependencies.txt",
+    "locale"
   ],
   "dsh": {
     "bundle": {

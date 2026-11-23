@@ -1,8 +1,10 @@
 import { FormButton, FormSelect, SegmentedControl, TextInput } from '../../../_shared/ui/controls.tsx'
 import { MarketAdd } from './market-add.tsx'
+import { OrganizationMarket } from './organization-market.tsx'
+import type { request } from './api.ts'
 /** Native plugin-page tab. Installation and component management stay with DSH. */
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
-import { PluginArtworkDefault } from '@deepseek-ai/dsh-client-ui-primitives'
+import { pluginGlyph } from '../ported/icons.ts'
 import type { MarketEntry, MarketItem, MarketState } from '../shared/types.ts'
 import type { Labels } from './locale.ts'
 import type { MarketProps } from './native.ts'
@@ -15,9 +17,10 @@ export interface MarketPanelProps extends MarketProps {
   installation: MarketInstallation
   discover?(source: string): Promise<MarketEntry[]>
   add?(entry: MarketEntry): Promise<void>
+  organizationCall?: typeof request | undefined
 }
 
-export function MarketPanel({ useLabels, load, installation, openPackage, add, discover }: MarketPanelProps) {
+export function MarketPanel({ useLabels, load, installation, openPackage, add, discover, organizationCall }: MarketPanelProps) {
   const t = useLabels(value => value)
   const { task, revision } = useSyncExternalStore(installation.subscribe, installation.getSnapshot)
   const [catalog, setCatalog] = useState<{ data: MarketState; revision: number } | null>(null)
@@ -74,7 +77,7 @@ export function MarketPanel({ useLabels, load, installation, openPackage, add, d
   }
 
   return <section className={css.page} aria-busy={loading} {...selected ? { 'data-ipw-market-detail': '' } : {}}>
-    {error && <p role="alert" className={css.error}>{t.error} <button className={css.back} onClick={installation.invalidate}>{t.retry}</button></p>}
+    {error && !enterprise && <p role="alert" className={css.error}>{t.error} <button className={css.back} onClick={installation.invalidate}>{t.retry}</button></p>}
     {selected ? <PluginDetailPage item={selected} t={t} titleRef={detailTitle}
       onBack={() => setSelectedName(null)} action={action(selected)} onOpenComponents={() => openPackage(selected.name)}/>
       : <>
@@ -94,7 +97,7 @@ export function MarketPanel({ useLabels, load, installation, openPackage, add, d
           <FormSelect aria-label={t.all} value={category} onChange={event => setCategory(event.target.value)}><option value="">{t.all}</option>{data?.categories.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</FormSelect>
         </div>}
       </div>
-      {enterprise ? <p className={css.empty}>{t.enterpriseEmpty}</p> : loading && !data ? <div role="status" className={css.skeletonList}>
+      {enterprise ? <OrganizationMarket call={organizationCall} installation={installation} revision={revision} t={t}/> : loading && !data ? <div role="status" className={css.skeletonList}>
         <span className={css.srOnly}>{t.loading}</span>
         {[0, 1, 2].map(key => <div className={css.skeletonRow} key={key} aria-hidden="true"><span/><div><span/><span/></div></div>)}
       </div> : <div className={css.pluginList}>
@@ -167,5 +170,6 @@ function PluginDetailPage({ item, t, titleRef, onBack, action, onOpenComponents 
 
 function Icon({ item, large = false }: { item: MarketItem; large?: boolean }) {
   const [failed, setFailed] = useState<string>()
-  return <span className={`${css.icon}${large ? ` ${css.largeIcon}` : ''}`}>{item.icon && item.icon !== failed ? <img src={item.icon} alt="" loading="lazy" onError={() => setFailed(item.icon!)}/> : <PluginArtworkDefault size={36}/>}</span>
+  const Glyph = pluginGlyph(item.name)
+  return <span className={`${css.icon}${large ? ` ${css.largeIcon}` : ''}`}>{item.icon && item.icon !== failed ? <img src={item.icon} alt="" loading="lazy" onError={() => setFailed(item.icon!)}/> : <Glyph size={large ? 36 : 28} strokeWidth={1.6} aria-hidden="true"/>}</span>
 }

@@ -2,6 +2,8 @@
 
 [English](README.md) | 中文
 
+本地批量维护插件时可运行 `start-local-hot.ps1 -Restart -NoNativeHmr`，临时停用自动生成的原生 HMR 条目，插件仍由原生管理器安装并提示重启生效。完成后运行 `start-local-hot.ps1 -Restart` 应用变更并恢复 HMR，保留原配置、账号和插件数据。
+
 本包维护 iPolloWork 的 Electron 外壳、邮箱登录、品牌界面与发行打包，通过[桌面宿主](../desktop-host/README.zh.md)启动官方 DSH profile。Agent 循环、工具、会话和凭据仍由官方 DSH 服务管理。产品账户、首次引导、分享及必需插件策略位于[套件](../../plugins/ipollowork-suite/README.zh.md)。
 
 用户看到的都是 iPolloWork：菜单、关于面板、托盘、对话框、应用和托盘图标（白底黑色标志）、版权、链接协议名和 Windows 快捷方式。宿主启动期间，外壳送出的 DSH 启动页和网页以 iPolloWork 的标题、标志和名称替换 DSH 字标。打包后的应用包、可执行文件、辅助进程和 Windows 安装目录都以 iPolloWork 命名（`iPollo.app`、`iPollo.exe`），macOS 菜单栏和活动监视器也显示 iPolloWork。安装包和更新文件沿用 `iPollo-<版本>-<系统>-<架构>` 文件名，因为固定版本的 DSH 发布工具按这个名字查找文件。
@@ -12,7 +14,7 @@ DSH 依赖从[运行时固定记录](../runtime/upstream.json)指定的官方源
 
 不提供旧版 iPolloWork profile 转换或降级层。文件和账户凭据仍由配置的 DSH home 管理。`LICENSE` 保留原 DeepSeek Harness MIT 许可证；产品修改独立维护于本目录，不进入官方应用源码树。
 
-Windows 本机已准备好的 Jovan 开发版，可用 `powershell -NoProfile -File integrations/desktop/scripts/start-local-hot.ps1` 启动。第一次请让开发版保持运行，以便启动器记录原有配置。启动器默认使用开发版自带的 Node.js，也可以通过 `-NodeExecutable` 指定。它沿用原 DSH home 和 Electron 用户目录，每次启动构建 Work 套件，运行时保存源码则自动重建，由 DSH 原生热重载接手。传入 `-Restart` 会重启当前开发版，否则会激活已有的热更新窗口。Electron 外壳及 DSH 运行时有改动时仍走原有构建和重启流程。
+Windows 本机已准备好的 Jovan 开发版，可用 `powershell -NoProfile -File integrations/desktop/scripts/start-local-hot.ps1` 启动。第一次请让开发版保持运行，以便启动器记录原有配置。启动器默认使用开发版自带的 Node.js，也可以通过 `-NodeExecutable` 指定。复用窗口前会验证固定 DSH 源码，并核对当前外壳、Host 和账号组合的源码指纹；有变化时先在忽略目录构建新产物，成功后才替换旧进程，保留旧目录、原 DSH home 和 Electron 用户目录。每次启动构建 Work 套件，运行时保存源码则自动重建，由 DSH 原生热重载接手。传入 `-Restart` 也会重启源码未变的开发版，否则会激活已确认产物为最新的热更新窗口。外壳或 Host 源码有变化后，重新运行启动器即可。
 
 在对应平台的构建机上，从仓库根目录执行 `node integrations/tooling/setup.mjs --plugins`，再运行下表命令。打包命令负责构建和验证固定版本的运行时及产品。
 

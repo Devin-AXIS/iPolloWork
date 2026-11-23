@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-short-video-studio",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "节点画布、分镜、剧本、角色与素材管理，连接已授权生成能力并交给原生 Video 编辑；部分旧版生成模式待适配。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./lib/host.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -21,7 +23,8 @@
     "LICENSE",
     "NOTICE.md",
     "icon.svg",
-    "NOTICE.dependencies.txt"
+    "NOTICE.dependencies.txt",
+    "locale"
   ],
   "dsh": {
     "bundle": {

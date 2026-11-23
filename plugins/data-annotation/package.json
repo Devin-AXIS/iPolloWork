@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-data-annotation",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "private": false,
   "type": "module",
   "scripts": {
@@ -36,7 +36,9 @@
   },
   "exports": {
     ".": "./dist/host.js",
-    "./client": "./dist/client.js"
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "dist/host.js",
@@ -50,7 +52,8 @@
     "app/dist",
     "service/dist",
     "LICENSE-THIRD-PARTY.txt",
-    "icon.svg"
+    "icon.svg",
+    "locale"
   ],
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
@@ -58,7 +61,8 @@
     "@deepseek-ai/dsh-workspace": "0.2.2-rc.3",
     "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3",
     "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-client-ui-theme": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-client-ui-theme": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.3"
   },
   "dsh": {
     "bundle": {
@@ -70,7 +74,8 @@
         "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-theme"
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
   },

@@ -79,6 +79,9 @@ For ongoing development, see the [development guide](integrations/runtime/README
 
 Use [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues) for iPolloWork bugs and requests. Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting changes and [SECURITY.md](SECURITY.md) before running agent tasks. The upstream runtime is maintained by [DeepSeek](https://github.com/deepseek-ai/deepseek-harness).
 
+Repository edits and Git submissions follow the shared [Git workflow skill](.agents/skills/github-sync-pr-flow/SKILL.md).
+Normal setup installs its Git checks; existing checkouts can run `npm run setup:git`.
+
 ## Star History
 
 <p align="center">

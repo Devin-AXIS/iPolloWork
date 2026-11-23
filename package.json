@@ -8,6 +8,9 @@
     "node": ">=24.9.0"
   },
   "scripts": {
+    "prepare": "node integrations/tooling/git-workflow.mjs install",
+    "setup:git": "node integrations/tooling/git-workflow.mjs install",
+    "check:git": "node integrations/tooling/git-workflow.mjs check",
     "setup": "node integrations/tooling/setup.mjs",
     "setup:build": "node integrations/tooling/setup.mjs --build --plugins",
     "check:upstream": "node integrations/tooling/verify.mjs",

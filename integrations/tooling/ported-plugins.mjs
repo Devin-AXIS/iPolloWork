@@ -7,6 +7,7 @@ import { mkdir, readFile, writeFile, cp, readdir, access, rename } from 'node:fs
 import { createHash } from 'node:crypto'
 import { buildBusiness } from './ported-business.mjs'
 import { dependencyNotices } from './ported-licenses.mjs'
+import { featureArtwork } from './ported-artwork.mjs'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const suite = join(root, 'plugins/ipollowork-suite')
@@ -18,6 +19,7 @@ const recordFile = join(root, 'integrations/runtime/ported-plugins.json')
 const command = process.argv[2] ?? 'build'
 const only = process.argv[3]
 const exists = path => access(path).then(() => true, () => false)
+const iconTile = svg => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="10" fill="#fff"/>${svg.replace(/<svg\b([^>]*)>/, (_match, attributes) => '<svg x="8" y="8" width="32" height="32"' + attributes.replace(/\s(?:width|height)="[^"]*"/g, '') + '>')}</svg>\n`
 
 if (command === 'import') {
   const source = resolve(process.argv[3] ?? join(root, 'outputs/multi-engine-source-20261123/examples/plugin-packages'))
@@ -54,15 +56,20 @@ if (command === 'import') {
     await writeFile(join(destination, 'package.json'), JSON.stringify({
       name, version: '0.1.0', description: manifest.description, type: 'module', license: 'SEE LICENSE IN LICENSE', icon: './icon.svg',
       engines: { node: '>=24.9.0', dsh: '>=0.2.2-rc.3 <0.2.3-0' },
-      exports: { '.': './lib/host.js', './client': './lib/client.js' },
-      files: ['lib', 'business', 'cordis.patch.yml', 'README.md', 'README.zh.md', 'LICENSE', 'NOTICE.md', 'icon.svg'],
+      exports: { '.': './lib/host.js', './client': './lib/client.js', './package.json': './package.json', './locale/*.json': './locale/*.json' },
+      files: ['lib', 'business', 'cordis.patch.yml', 'README.md', 'README.zh.md', 'LICENSE', 'NOTICE.md', 'icon.svg', 'locale'],
       peerDependencies: { '@deepseek-ai/cordis': '^4.1.0', '@deepseek-ai/dsh-tools': '0.2.2-rc.3', '@deepseek-ai/dsh-credentials': '0.2.2-rc.3' },
       dsh: { bundle: { patch: './cordis.patch.yml' }, client: { platform: 'web', inject: ['@deepseek-ai/dsh-client-ui-layout', '@deepseek-ai/dsh-client-ui-sidebar', '@deepseek-ai/dsh-client-ui-workspace', '@deepseek-ai/dsh-client-ui-theme', '@deepseek-ai/dsh-client-locale', '@deepseek-ai/dsh-client-ui-primitives'] } },
       scripts: { build: `node ../../integrations/tooling/ported-plugins.mjs build ${slug}`, check: `node ../../integrations/tooling/ported-plugins.mjs check ${slug}`, 'pack:check': 'npm pack --dry-run' },
     }, null, 2) + '\n')
     await writeFile(join(destination, 'cordis.patch.yml'), `- insert:\n    - id: ipollo-${slug}\n      name: ${JSON.stringify(name)}\n`)
     await cp(join(root, 'LICENSE'), join(destination, 'LICENSE'))
-    await cp(join(suite, 'assets/mark.svg'), join(destination, 'icon.svg'))
+    await writeFile(join(destination, 'icon.svg'), featureArtwork(slug) ?? iconTile(await readFile(join(suite, 'assets/mark.svg'), 'utf8')))
+    await mkdir(join(destination, 'locale'), { recursive: true })
+    for (const language of ['en', 'zh']) {
+      const text = language === 'en' ? manifest.localization?.translations?.en : manifest
+      await writeFile(join(destination, 'locale', language + '.json'), JSON.stringify({ meta: { title: text?.name ?? manifest.name, description: text?.description ?? manifest.description } }, null, 2) + '\n')
+    }
     await writeFile(join(destination, 'NOTICE.md'), `Business sources: iPolloWork ${sourceRevision}, examples/plugin-packages/${slug} (${manifest.package.version}). Original license and third-party notices are retained in business/. Native DSH integration is owned by iPolloWork. No old host runtime is included.\n`)
     await writeFile(join(destination, 'README.md'), `# ${manifest.localization?.translations?.en?.name ?? manifest.name}\n\nNative DSH bundle migrated from \`${slug}\` ${manifest.package.version}. Install its .tgz through iPolloWork Market or the native DSH Plugin Manager. Choose a registered workspace before opening the workbench. Credentials use the native Host credential store; existing local business data is retained. Disable/uninstall releases tools, Skills, routes and child services while retaining data.\n\nBuild with \`npm run build\`; run \`npm run check\` and \`npm run pack:check\` before packaging. See the repository migration inventory for capability-specific verification and limitations.\n`)
     await writeFile(join(destination, 'README.zh.md'), `# ${manifest.name}\n\n从多引擎分支 \`${slug}\` ${manifest.package.version} 移植的 DSH 原生插件。通过 iPolloWork 市场或原生插件管理器安装 .tgz，选择已有工作区后打开工作台。凭据由原生 Host 凭据提供方保存，保留旧版本地业务数据。停用或卸载释放工具、Skill、路由和子服务，保留用户文件。\n\n运行 \`npm run build\`、\`npm run check\`、\`npm run pack:check\`。各能力的验收与限制见仓库迁移清单。\n`)
@@ -71,8 +78,10 @@ if (command === 'import') {
   console.log(`Imported ${records.length} plugin identities from ${sourceRevision}`)
 } else {
   const inventory = JSON.parse(await readFile(recordFile, 'utf8'))
+  console.log('Checking native package dependencies')
   const licenses = await dependencyNotices(require, ['ajv', 'zod', 'react-dom', 'lucide-react'])
   for (const entry of inventory.plugins.filter(item => item.kind !== 'existing-native' && (!only || only === item.id))) {
+    console.log('Building native bridge: ' + entry.id)
     const directory = join(root, 'plugins', entry.id)
     const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
     if (!manifest.files.includes('NOTICE.dependencies.txt')) {

@@ -102,7 +102,7 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       const current = installed.get(plugin.name)
       return {
         name: plugin.name, title: localized(plugin.title, language, plugin.name), description: localized(plugin.description, language),
-        author: plugin.author ?? '', icon: current?.meta?.icon ?? plugin.icon ?? null, homepage: plugin.homepage ?? null,
+        author: plugin.author ?? '', icon: (current?.version && current.version !== version.version ? plugin.icon : undefined) ?? current?.meta?.icon ?? plugin.icon ?? null, homepage: plugin.homepage ?? null,
         category: plugin.metadata.category ?? '', categoryTitle: localized(index.metadata.categories[plugin.metadata.category ?? '']?.title, language), version: version.version, ...target,
         compatible: compatible !== undefined, requirement: version.engines.dsh ?? null,
         installed: current?.installed === true, enabled: current?.enabled === true, installedVersion: current?.version ?? null,

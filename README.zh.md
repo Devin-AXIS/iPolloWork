@@ -79,6 +79,9 @@ Windows PowerShell 使用相同命令。`npm start` 使用编译后的固定版�
 
 通过 [GitHub Issues](https://github.com/Devin-AXIS/iPolloWork/issues)提交 iPolloWork 问题和需求。贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)，运行智能体任务前请阅读 [SECURITY.md](SECURITY.md)。上游运行时由 [DeepSeek](https://github.com/deepseek-ai/deepseek-harness)维护。
 
+仓库修改和 Git 提交统一遵循 [Git 协作 Skill](.agents/skills/github-sync-pr-flow/SKILL.md)。
+正常 setup 会安装配套 Git 检查；已有副本执行 `npm run setup:git` 即可启用。
+
 ## Star History
 
 <p align="center">

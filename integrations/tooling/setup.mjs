@@ -1,6 +1,8 @@
 /** Prepare the official dependency cache and the product's development links. */
 import { prepareSource, verifySource, linkWorkspace, pnpm, run, root, upstreamRoot } from './upstream.mjs'
 import { join } from 'node:path'
+import { installGitHooks } from './git-workflow.mjs'
+installGitHooks()
 await prepareSource()
 if (!process.argv.includes('--source-only')) await pnpm(['install', '--frozen-lockfile'], upstreamRoot, { ...process.env, LEFTHOOK: '0' })
 await linkWorkspace()

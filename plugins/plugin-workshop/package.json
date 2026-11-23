@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-plugin-workshop",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "在对话中制作插件，在右侧工坊预览、测试、导入和导出本地插件包。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./lib/host.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -21,7 +23,8 @@
     "LICENSE",
     "NOTICE.md",
     "icon.svg",
-    "NOTICE.dependencies.txt"
+    "NOTICE.dependencies.txt",
+    "locale"
   ],
   "dsh": {
     "bundle": {

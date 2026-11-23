@@ -1,0 +1,6 @@
+interface:
+  display_name: "GitHub Sync and PR Flow"
+  short_description: "Sync personal branches and validate scoped Git submissions"
+  default_prompt: "Use $github-sync-pr-flow to prepare this branch for the requested Git operation."
+policy:
+  allow_implicit_invocation: true

@@ -60,7 +60,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     }, MarketInstallDialog))
     if (info.market) scope.slots.inject('plugins.tab', () => scope.slots.register({ name: 'plugins.tab', id: 'ipollowork-market', order: -10, label: () => copy(ctx).market,
       inject: () => ({
-        load, installation, hooks: { labels },
+        load, installation, hooks: { labels }, organizationCall: info.account ? request : undefined,
         discover: async (source: string) => (await request<{ entries: MarketEntry[] }>('/catalog/discover', { method: 'POST', body: JSON.stringify({ source, language: language(ctx) }) })).entries,
         add: (entry: MarketEntry) => request<void>('/catalog/plugins', { method: 'POST', body: JSON.stringify(entry) }),
       }),

@@ -310,7 +310,7 @@
     @media (prefers-reduced-motion:reduce) { #empty .launch-card,#empty .launch-arrow { transition:none; } }
 
     :root { --logo-filter: none; }
-    :root[style*="dark"] { --logo-filter: invert(1); }
+    :root[data-theme="dark"] { --logo-filter: invert(1); }
     .busy-layer { background:color-mix(in srgb,var(--bg) 75%,transparent); }
     @media(max-width:760px) { .document-title { display:none; } .top-actions .top-action span { display:none; } }
 
@@ -618,7 +618,8 @@
       return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
     }
     async function callService(name, args = {}) {
-      const response = await request("tools/call", { name, arguments: args });
+      const action = window.ipolloPortedHost && name === "status" ? "image-status" : name;
+      const response = await request("tools/call", { name: action, arguments: args });
       if (response?.isError) throw new Error(response.content?.map((item) => item.text || "").join("\n") || tr("failed"));
       return response?.structuredContent || {};
     }

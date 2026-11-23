@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-jev-decision-model",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "Jev 为多种 Agent Harness 提供结构化决策能力，辅助选择工具、Skill 和 Agent，进行评分与判断；由当前 Agent 执行。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./lib/host.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -21,7 +23,8 @@
     "LICENSE",
     "NOTICE.md",
     "icon.svg",
-    "NOTICE.dependencies.txt"
+    "NOTICE.dependencies.txt",
+    "locale"
   ],
   "dsh": {
     "bundle": {

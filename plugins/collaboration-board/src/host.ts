@@ -1,11 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
 import { defineTool, type ToolDefinition, type ToolRunContext, type ToolsService } from '@deepseek-ai/dsh-tools';
-import { agentKey, assignmentAgents, taskStatusSchema, taskWriteSchema, type ProjectTask, type TaskWrite, type TaskStatusWrite } from '../../../services/ipollowork/src/project-board-contract.ts';
+import { agentKey, assignmentAgents, taskStatusSchema, taskWriteSchema,taskActionSchema,taskListSchema, type TaskActionWrite,type TaskListQuery,type TaskPage, type ProjectTask, type TaskWrite, type TaskStatusWrite } from '../../../services/ipollowork/src/project-board-contract.ts';
 import type { ProjectBoardGateway, ProjectRoster, ProjectRosterSource } from '../../ipollowork-suite/src/shared/enterprise.ts';
-import { BoardFailure, localCards, projectTask, storedTask, writeLocalTask, type TaskTable } from './tasks.ts';
+import { BoardFailure, localCards, projectTask, storedTask, writeLocalTask,actLocalTask,listLocalTasks, type TaskTable } from './tasks.ts';
 import { currentAgent, statuses, type AgentChoice, type AgentPlan, type BoardNote } from './model.ts';
-import { canStartScheduledTask, scheduledStart, scheduleKey, scheduleSignature, syncSchedule, type NativeSchedule, type ScheduleTable } from './schedule.ts';
+import { canStartScheduledTask,ownedSchedule, scheduledStart, scheduleKey, scheduleSignature, syncSchedule, type NativeSchedule, type ScheduleTable } from './schedule.ts';
+import {personalReminder,dueReminderActive,refreshPersonalReminders,type ReminderTable} from './reminders.ts';
 
 export const name = 'ipollo-collaboration-board';
 export const inject = ['webServer', 'connection', 'connection.authentication', 'workspaceRegistry', 'storageDomain'];
@@ -29,6 +30,7 @@ const nativeDelegates = [
   { provider: 'claude-code', id: '22001431-03e9-5f97-94f2-68a0744d9c2b', name: 'Claude Code', preset: null, nativeTool: 'subagent_claude_code' },
 ] as const satisfies readonly (AgentChoice & { provider: string })[];
 interface Host {
+  logger?:{warn(message:string):void};
   inject(names: ['tools', 'sandboxPolicy'], install: (scope: Host & NativeTools) => void): void;
   inject(names: ['ipolloAgents'], install: (scope: Host & { ipolloAgents: { boardAgents?(): Promise<AgentChoice[]> } }) => void): void;
   inject(names: ['subagents', 'tools'], install: (scope: Host & NativeAgents) => void): void;
@@ -37,7 +39,7 @@ interface Host {
   inject(names: ['schedule'], install: (scope: Host & { schedule: NativeSchedule }) => void): void;
   effect(install: () => void | (() => void | Promise<void>)): void;
   storageDomain: {
-    open(spec: typeof storage): Promise<{ table(name: 'notes'): Table; table(name:'tasks'): TaskTable; close(): Promise<void> }>;
+    open(spec: typeof storage): Promise<{ table(name: 'notes'): Table; table(name:'tasks'): TaskTable;table(name:'reminders'):ReminderTable; close(): Promise<void> }>;
     open(spec: typeof scheduleStorage): Promise<{ table(name: 'starts'): ScheduleTable; close(): Promise<void> }>;
   };
   connection: {
@@ -45,7 +47,7 @@ interface Host {
   };
   workspaceRegistry: {
     get(id: string): { sessionIds: readonly string[] } | undefined;
-    list(): readonly { id: string; path: string; sessionIds: readonly string[] }[];
+    list(): readonly { id: string; path: string;title?:string; sessionIds: readonly string[] }[];
     archivedSessionIds: readonly string[];
   };
   webServer: {
@@ -58,7 +60,7 @@ const revision = z.number().int().nonnegative();
 const scopeId = z.string().regex(/^[a-f0-9]{64}$/);
 const personId = z.string().min(1).max(200).regex(/^[A-Za-z0-9_-]+$/);
 const note = z.object({ ...fields, revision, assignee: z.object({ scope: scopeId, userId: personId }).optional() });
-const storage = { name: 'ipollo_project_board', version: 2, compatibleVersions: [1], tables: { notes: { valueSchema: note }, tasks: { valueSchema: storedTask } } } as const;
+const storage = { name: 'ipollo_project_board', version: 3, compatibleVersions: [1,2], tables: { notes: { valueSchema: note }, tasks: { valueSchema: storedTask },reminders:{valueSchema:personalReminder} } } as const;
 const scheduleStorage = { name: 'ipollo_project_board_schedule', version: 1, tables: { starts: { valueSchema: scheduledStart } } } as const;
 const id = z.string().min(1).max(128);
 const change = z.strictObject({
@@ -90,6 +92,7 @@ export async function apply(ctx: Host): Promise<void> {
     throw error;
   });
   const tasks = domain.table('tasks');
+  const reminders=domain.table('reminders');
   const starts = scheduleDomain.table('starts');
   let schedule: NativeSchedule | undefined;
   ctx.inject(['schedule'], scope => scope.effect(() => {
@@ -128,6 +131,7 @@ export async function apply(ctx: Host): Promise<void> {
   }));
   let pending: Promise<void> = Promise.resolve();
   let pendingStarts: Promise<void> = Promise.resolve();
+  let personalPending=Promise.resolve<import('../../../services/ipollowork/src/project-board-contract.ts').BoardNotice[]>([]);
   function writeWithSchedule<T>(write: () => Promise<T>) {
     const operation = pendingStarts.then(write);
     pendingStarts = operation.then(() => {}, () => {});
@@ -137,9 +141,10 @@ export async function apply(ctx: Host): Promise<void> {
     lifetime.abort();
     await pendingStarts;
     await pending;
+    await personalPending.catch(()=>{});
     await Promise.all([domain.close(), scheduleDomain.close()]);
   });
-  type Page = { tasks: ProjectTask[]; next: string | null };
+  type Page = TaskPage;
   async function readTask(workspaceId: string, taskId: string, signal: AbortSignal): Promise<{ task: ProjectTask; remote: boolean }> {
     const remote = await gateway?.({ operation: 'get', workspaceId, taskId }, signal);
     if (remote) return { ...remote as { task: ProjectTask }, remote: true };
@@ -148,16 +153,10 @@ export async function apply(ctx: Host): Promise<void> {
     if (!item) throw new BoardFailure('BOARD_TASK_NOT_FOUND', 404);
     return { task: projectTask(item, cards), remote: false };
   }
-  async function listTasks(workspaceId: string, after: string | undefined, signal: AbortSignal): Promise<Page & { remote: boolean }> {
-    const remote = await gateway?.({ operation: 'list', workspaceId, ...(after ? { after } : {}) }, signal);
+  async function listTasks(workspaceId: string, after: string | undefined, signal: AbortSignal,query:TaskListQuery=taskListSchema.parse({})): Promise<Page & { remote: boolean }> {
+    const remote = await gateway?.({ operation: 'list', workspaceId,...query, ...(after ? { after } : {}) }, signal);
     if (remote) return { ...remote as Page, remote: true };
-    const cards = localCards(tasks, workspaceId);
-    const ids = [...cards.keys()].sort().filter(id => id > (after ?? '')).slice(0, 101);
-    return {
-      tasks: ids.slice(0, 100).map(id => projectTask(cards.get(id)!, cards)),
-      next: ids.length > 100 ? ids[99]! : null,
-      remote: false,
-    };
+    return {...listLocalTasks(tasks,workspaceId,query,after),remote:false};
   }
   async function plan(workspaceId: string, task: ProjectTask, signal: AbortSignal, caller?: Agent): Promise<AgentPlan> {
     const refs = assignmentAgents(task);
@@ -188,7 +187,7 @@ export async function apply(ctx: Host): Promise<void> {
     if (unavailable.some(agent => retained.get(agentKey(agent)) !== agent.name))
       throw new BoardFailure('BOARD_AGENT_UNAVAILABLE', 403);
   }
-  async function updateTask(workspaceId: string, input: TaskWrite | TaskStatusWrite, signal: AbortSignal): Promise<{ task: ProjectTask; remote: boolean }> {
+  async function updateTask(workspaceId: string, input: TaskWrite | TaskStatusWrite | TaskActionWrite, signal: AbortSignal): Promise<{ task: ProjectTask; remote: boolean }> {
     if ('task' in input) await validateAssignments(workspaceId, input, signal);
     const remote = await gateway?.({ operation: 'write', workspaceId, payload: input }, signal);
     if (remote) return { ...remote as { task: ProjectTask }, remote: true };
@@ -198,7 +197,7 @@ export async function apply(ctx: Host): Promise<void> {
       if (!workspace) throw new BoardFailure('BOARD_WORKSPACE_NOT_FOUND', 404);
       if ('task' in input && input.task.sessionId && !workspace.sessionIds.includes(input.task.sessionId))
         throw new BoardFailure('BOARD_SESSION_NOT_FOUND', 404);
-      return writeLocalTask(tasks, workspaceId, input);
+      return 'action' in input?actLocalTask(tasks,workspaceId,input):writeLocalTask(tasks, workspaceId, input);
     });
     pending = operation.then(() => {}, () => {});
     return { task: await operation, remote: false };
@@ -209,7 +208,46 @@ export async function apply(ctx: Host): Promise<void> {
     if (!roster?.canAssign) throw new BoardFailure('BOARD_WRITE_FORBIDDEN', 403);
     return JSON.stringify([roster.scope, roster.viewerId]);
   }
-  async function saveTask(workspaceId: string, input: TaskWrite | TaskStatusWrite, sessionId: string | null) {
+  function personalInbox(){
+    const operation=personalPending.catch(()=>[]).then(async()=>{
+      lifetime.signal.throwIfAborted();
+      const local=new Map<string,string>();
+      for(const workspace of ctx.workspaceRegistry.list()){
+        if(!localCards(tasks,workspace.id).size)continue;
+        const remote=await gateway?.({operation:'list',workspaceId:workspace.id},lifetime.signal);
+        if(!remote)local.set(workspace.id,workspace.title??workspace.id);
+      }
+      return refreshPersonalReminders(reminders,tasks,local);
+    });
+    personalPending=operation;return operation;
+  }
+  async function resumeDeferred(){
+    if(!schedule)return;
+    await writeWithSchedule(async()=>{
+      for(const [key,link] of starts.entries()){
+        if(!link.deferred||!link.scheduleId)continue;
+        try{
+        lifetime.signal.throwIfAborted();
+        const split=key.lastIndexOf('/'),workspace=key.slice(0,split),taskId=key.slice(split+1);
+        if(!ctx.workspaceRegistry.get(workspace))continue;
+        const entry=await ownedSchedule(schedule!,link);
+        if(!entry||entry.status!=='ended')continue;
+        const {task,remote}=await readTask(workspace,taskId,lifetime.signal);
+        if(task.archived||task.deletedAt!=null||task.status!=='todo'){await starts.delete(key);continue;}
+        if(task.blocked||!task.assigneeAgent||task.startAt===null||task.startAt>Date.now()||scheduleSignature(task)!==link.signature)continue;
+        if(link.account!==await scheduleAccount(workspace,remote,lifetime.signal)||(await plan(workspace,task,lifetime.signal)).unavailable)continue;
+        await syncSchedule(starts,schedule,key,task,{sessionId:link.sessionId,account:link.account,startAt:task.startAt},lifetime.signal);
+        }catch(error){if(error instanceof BoardFailure&&error.status===404)await starts.delete(key);else if(!lifetime.signal.aborted)ctx.logger?.warn('Project board deferred start could not be reconciled; retrying on the next interval');}
+      }
+    });
+  }
+  ctx.effect(()=>{
+    let maintenance:Promise<unknown>|undefined;
+    const timer=setInterval(()=>maintenance??=(async()=>{try{await resumeDeferred();await personalInbox();}catch{if(!lifetime.signal.aborted)ctx.logger?.warn('Project board maintenance unavailable; retrying on the next interval');}})().finally(()=>{maintenance=undefined;}),15_000);
+    timer.unref();
+    return async()=>{clearInterval(timer);lifetime.abort();await maintenance;};
+  });
+  async function saveTask(workspaceId: string, input: TaskWrite | TaskStatusWrite | TaskActionWrite, sessionId: string | null) {
     const initialTime = Date.now();
     return writeWithSchedule(async () => {
       const signal = lifetime.signal;
@@ -219,7 +257,7 @@ export async function apply(ctx: Host): Promise<void> {
       const upcoming = 'task' in input && task.startAt !== null && task.startAt > initialTime;
       try {
         let target: Parameters<typeof syncSchedule>[4];
-        if (task.status === 'todo' && task.assigneeAgent && task.startAt !== null) {
+        if (!task.archived&&task.deletedAt==null&&task.status === 'todo' && task.assigneeAgent && task.startAt !== null) {
           if (!upcoming && previous?.signature === scheduleSignature(task)) return { task };
           if (upcoming) {
             const workspace = ctx.workspaceRegistry.get(workspaceId);
@@ -237,8 +275,8 @@ export async function apply(ctx: Host): Promise<void> {
     });
   }
   const summarize = ({
-    id, title, description, status, priority, startAt, dueAt, predecessorIds, blocked, revision,
-  }: ProjectTask) => ({ id, title, description, status, priority, startAt, dueAt, predecessorIds, blocked, revision });
+    id, title, description, status, priority, startAt, dueAt, predecessorIds, blocked, revision,archived,deletedAt,
+  }: ProjectTask) => ({ id, title, description, status, priority, startAt, dueAt, predecessorIds, blocked, revision,archived:archived??false,deletedAt:deletedAt??null });
   ctx.inject(['tools', 'sandboxPolicy'], scope => scope.effect(() => scope.tools.register(defineTool({
     name: 'ipollo_project_tasks',
     description: 'Read and update project board tasks in the current conversation’s workspace. Use for user-directed work and scheduled turns. Get the exact task before acting. If blocked is true, wait for its predecessors; if startAt is in the future, wait until then. Start or complete only after the user authorizes the work. Pass the latest revision and reread if a conflict occurs. Complete only after the actual work is done.',
@@ -279,11 +317,12 @@ export async function apply(ctx: Host): Promise<void> {
         if (!link || link.token !== args.token || link.sessionId !== session.id ||
             !await canStartScheduledTask(schedule, link)) return { started: false, reason: 'schedule_changed' };
         const { task, remote } = await readTask(workspace.id, taskId, signal);
+        if(task.archived||task.deletedAt!=null)return {started:false,reason:'task_inactive'};
         if (link.signature !== scheduleSignature(task) || !task.assigneeAgent ||
             link.account !== await scheduleAccount(workspace.id, remote, signal)) return { started: false, reason: 'schedule_changed' };
         if (task.status !== 'todo') return { started: false, reason: 'task_already_started' };
         if (task.startAt === null || task.startAt > Date.now()) return { started: false, reason: 'before_start' };
-        if (task.blocked) return { started: false, reason: 'waiting_for_predecessors' };
+        if (task.blocked) {await starts.put(key,{...link,deferred:true});return { started: false, reason: 'waiting_for_predecessors' };}
         const ai = await plan(workspace.id, task, signal, caller);
         if (ai.unavailable) return { started: false, reason: 'agent_unavailable' };
         const result = await updateTask(workspace.id, { id: task.id, revision: task.revision, status: 'doing' }, signal);
@@ -292,6 +331,7 @@ export async function apply(ctx: Host): Promise<void> {
       });
       const input = taskStatusSchema.parse({ id: taskId, revision: args.revision, status: args.action === 'start' ? 'doing' : 'done' });
       const current = (await readTask(workspace.id, taskId, signal)).task;
+      if(current.archived||current.deletedAt!=null)throw new BoardFailure('BOARD_TASK_INACTIVE',409);
       if (current.revision !== input.revision) throw new BoardFailure('BOARD_CONFLICT', 409);
       if ((await plan(workspace.id,current,signal,caller)).unavailable) throw new BoardFailure('BOARD_AGENT_UNAVAILABLE', 403);
       if (current.startAt !== null && current.startAt > Date.now()) throw new BoardFailure('BOARD_TASK_NOT_STARTED', 409);
@@ -312,10 +352,29 @@ export async function apply(ctx: Host): Promise<void> {
       const resource = url.searchParams.get('resource');
       if (resource === 'inbox') {
         try {
+          const selected=url.searchParams.get('notice'),local=selected&&reminders.get(selected);
+          if(local){
+            if(!(await personalInbox()).some(item=>item.id===selected))throw new BoardFailure('BOARD_NOTICE_NOT_FOUND',404);
+            const record=localCards(tasks,local.workspace).get(local.taskId);
+            if(!record)throw new BoardFailure('BOARD_NOTICE_NOT_FOUND',404);
+            let task=projectTask(record,localCards(tasks,local.workspace));
+            if(!dueReminderActive(task,local.dueAt))throw new BoardFailure('BOARD_NOTICE_NOT_FOUND',404);
+            if(req.method==='PATCH'){
+              if(url.searchParams.get('action')==='status'){
+                const input=taskStatusSchema.omit({id:true}).parse(await body(req));
+                task=(await saveTask(local.workspace,{...input,id:local.taskId},null)).task;
+              }else{await reminders.put(selected!,{...local,read:true});return send(res,200,{ok:true});}
+            }
+            if(req.method==='GET'||req.method==='PATCH')return send(res,200,{task:{...summarize(task),editable:true}});
+            return send(res,405,{error:'method_not_allowed'});
+          }
           if (req.method === 'GET') {
             const noticeId = z.uuid().optional().parse(url.searchParams.get('notice') ?? undefined);
             const result = await gateway?.(noticeId ? {operation:'notice',noticeId} : {operation:'inbox'}, lifetime.signal);
-            return send(res,200,result ?? {notices:[]});
+            if(noticeId)return send(res,200,result??{});
+            const remote=(result??{notices:[]}) as {notices:import('../../../services/ipollowork/src/project-board-contract.ts').BoardNotice[]};
+            const local=await personalInbox();
+            return send(res,200,{notices:[...local,...remote.notices].sort((a,b)=>b.createdAt-a.createdAt).slice(0,400)});
           }
           if (req.method === 'PATCH') {
             const noticeId = z.uuid().parse(url.searchParams.get('notice'));
@@ -327,7 +386,7 @@ export async function apply(ctx: Host): Promise<void> {
           }
         } catch (error) {
           if (error && typeof error === 'object' && 'status' in error) {
-            if (error.status === 401 && !url.searchParams.has('notice')) return send(res,200,{notices:[]});
+            if (error.status === 401 && !url.searchParams.has('notice')) return send(res,200,{notices:await personalInbox()});
             if (error.status === 404) return send(res,404,{error:'BOARD_NOTICE_NOT_FOUND'});
             if (typeof error.status === 'number' && 'code' in error) return send(res,error.status,{error:error.code});
           }
@@ -353,11 +412,11 @@ export async function apply(ctx: Host): Promise<void> {
             const after = z.uuid().optional().parse(url.searchParams.get('after') ?? undefined);
             const result = taskId
               ? await readTask(workspaceId, taskId, lifetime.signal)
-              : await listTasks(workspaceId, after, lifetime.signal);
+              : await listTasks(workspaceId, after, lifetime.signal,taskListSchema.parse({query:url.searchParams.get('query')??'',scope:url.searchParams.get('scope')??'active'}));
             return send(res, 200, result);
           }
           if (req.method !== 'PATCH') return send(res, 405, { error: 'method_not_allowed' });
-          const input = z.union([taskWriteSchema, taskStatusSchema]).parse(await body(req));
+          const input = z.union([taskWriteSchema, taskStatusSchema,taskActionSchema]).parse(await body(req));
           return send(res, 200, await saveTask(workspaceId, input, url.searchParams.get('session')));
         }
         if (req.method === 'GET') {

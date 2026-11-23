@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-figma",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "完整的 Figma 设计到代码、Code Connect、设计系统和画布写入工作流。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./lib/host.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -21,7 +23,8 @@
     "LICENSE",
     "NOTICE.md",
     "icon.svg",
-    "NOTICE.dependencies.txt"
+    "NOTICE.dependencies.txt",
+    "locale"
   ],
   "dsh": {
     "bundle": {

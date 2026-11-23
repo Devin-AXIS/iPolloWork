@@ -21,7 +21,14 @@ export function AnalyticsTab({ enterpriseId, canManage, call, revision, t, langu
     if (!canManage) return;
     let active = true;
     void call<EnterpriseAnalytics>("/organizations/" + enterpriseId + "/analytics", { days, groupBy, page, activityPage })
-      .then(data => { if (active) setResult({ key: queryKey, data }); },
+      .then(data => {
+        if (!active) return;
+        const lastPage = Math.max(1, Math.ceil(data.totalRows / data.pageSize));
+        const lastActivityPage = Math.max(1, Math.ceil(data.activityTotalRows / data.pageSize));
+        if (page > lastPage) setPage(lastPage);
+        if (activityPage > lastActivityPage) setActivityPage(lastActivityPage);
+        setResult({ key: queryKey, data });
+      },
         (error: unknown) => { if (active) setResult({ key: queryKey, error: error instanceof Error ? error.message : "IPW_ACCOUNT_UNAVAILABLE" }); });
     return () => { active = false; };
   }, [canManage, call, queryKey, enterpriseId, days, groupBy, page, activityPage]);

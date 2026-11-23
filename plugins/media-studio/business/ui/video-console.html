@@ -449,7 +449,8 @@ SOFTWARE.
       });
     }
     async function call(name, args={}) {
-      const response = await request("tools/call",{name,arguments:args});
+      const action = window.ipolloPortedHost ? `video-${name}` : name;
+      const response = await request("tools/call",{name:action,arguments:args});
       if(response?.isError) throw new Error(response.content?.map(item=>item.text||"").join("\n")||"视频操作失败。");
       return response?.structuredContent || {};
     }

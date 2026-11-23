@@ -10,5 +10,7 @@ export default defineConfig(['index', 'cli'].map(name => ({
   fixedExtension: false,
   dts: false,
   clean: false,
-  tsconfig: import.meta.dirname + '/tsconfig.json',
+  // tsc -b already resolves and checks the source. Bundle its emitted Node JS
+  // through package exports, without re-reading the project-reference graph.
+  tsconfig: false,
 })))

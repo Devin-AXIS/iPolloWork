@@ -61,7 +61,7 @@ export default function createWorkbench(runtime) {
     child = spawn(packaged && process.versions.bun ? process.execPath : node,
       [packaged ? resolve(packagedRoot, 'dist/server.mjs') : resolve(packageRoot, 'skills/xhs-ops-worker/scripts/start.mjs')], {
       cwd: packaged ? packagedRoot : appRoot, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
-      env: { ...process.env, ...(packaged && process.versions.bun ? { BUN_BE_BUN: '1' } : {}), XHS_OPS_APP_ROOT: packaged ? packagedRoot : appRoot,
+      env: { ...process.env, ...(process.versions.electron ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ...(packaged && process.versions.bun ? { BUN_BE_BUN: '1' } : {}), XHS_OPS_APP_ROOT: packaged ? packagedRoot : appRoot,
         XHS_OPS_DATA_DIR: dataDir,
         XHS_OPS_HOST: new URL(origin).hostname, XHS_OPS_PORT: new URL(origin).port || '4790', XHS_OPS_ORIGIN: origin,
         XHS_OPS_EMBED_ORIGINS: 'http://localhost:* http://127.0.0.1:* file:',

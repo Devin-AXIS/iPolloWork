@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-operation-recorder",
-  "version": "0.2.0",
+  "version": "0.2.2",
   "private": false,
   "type": "module",
   "description": "Independent semantic operation recorder and portable Agent Skill compiler for iPolloWork.",
@@ -24,7 +24,9 @@
   },
   "exports": {
     ".": "./dist/host.js",
-    "./client": "./dist/client.js"
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "dist/host.js",
@@ -37,7 +39,8 @@
     "NOTICE.txt",
     "dist/native",
     "dist/ui",
-    "icon.svg"
+    "icon.svg",
+    "locale"
   ],
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
@@ -46,7 +49,8 @@
     "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3",
     "@deepseek-ai/cordis": "^4.1.0",
     "@deepseek-ai/dsh-client-ui-theme": "0.2.2-rc.3",
-    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.3"
+    "@deepseek-ai/dsh-sandbox-policy": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.3"
   },
   "dsh": {
     "bundle": {
@@ -59,7 +63,8 @@
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-theme",
-        "@deepseek-ai/dsh-client-ui-workspace"
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
   },

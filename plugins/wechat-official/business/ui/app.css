@@ -108,9 +108,12 @@
   .follower code { min-width:0; overflow-wrap:anywhere; }
   .result-box { background:var(--muted); border-radius:8px; padding:12px; white-space:pre-wrap; overflow-wrap:anywhere; }
   .account-dialog form { display:grid; gap:16px; }
-  .account-dialog header { padding-right:32px; }
+  .account-dialog header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding-right:0; }
+  .account-dialog header h3 { font-size:16px; font-weight:500; }
   .account-dialog footer > div { display:flex; gap:8px; margin-left:auto; }
   .load-more { margin-top:12px; }
   @media(max-width:760px) { .studio-grid,.menu-grid,.audience-grid,.publish-check { grid-template-columns:1fr; } .connection { display:none; } .metric-grid { grid-template-columns:1fr 1fr; } }
   @media(max-width:420px) { .two-columns,.inline-form,.publish-check form { grid-template-columns:1fr; } .asset-upload { align-items:stretch; flex-direction:column; } .editor-footer > div { width:100%; } }
 }
+/* The native frame fallback is unlayered; keep this primary action above it. */
+.account-dialog button[type=submit] { color:var(--background); background:var(--foreground); border-color:var(--foreground); padding:8px 12px; }

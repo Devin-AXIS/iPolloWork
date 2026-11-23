@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { agentKey, assignmentAgents, assignmentPeople, taskStatusSchema, taskWriteSchema, type ProjectTask, type TaskDraft, type TaskWrite, type TaskStatusWrite } from "./project-board-contract.js";
+import { agentKey, assignmentAgents, assignmentPeople, taskStatusSchema, taskWriteSchema,taskActionSchema,taskListSchema, type TaskActionWrite, type ProjectTask, type TaskDraft, type TaskWrite, type TaskStatusWrite } from "./project-board-contract.js";
 import { isEnterpriseManager, projectAccess, projectRole, uid } from "./domain.js";
 import type { Store, Row } from "./database.js";
 import { ServiceError } from "./errors.js";
@@ -13,8 +13,8 @@ const inbox = "/api/v1/project-board/notices";
 const array = "ARRAY(SELECT jsonb_array_elements_text(?::jsonb))";
 const blocked = `EXISTS(SELECT 1 FROM unnest(t.predecessors) b(id)
   LEFT JOIN project_board_tasks x ON x.project_id=t.project_id AND x.id=b.id
-  WHERE x.status IS DISTINCT FROM 'done')`;
-const columns = `t.id,t.revision,t.title,t.description,t.status,t.priority,t.start_at,t.due_at,
+  WHERE x.status IS DISTINCT FROM 'done' OR x.deleted_at IS NOT NULL)`;
+const columns = `t.id,t.revision,t.title,t.description,t.status,t.priority,t.start_at,t.due_at,t.archived,t.deleted_at,
   CASE WHEN t.people_org_id=p.enterprise_id THEN t.assignee_id END AS assignee_id,
   CASE WHEN t.people_org_id=p.enterprise_id THEN to_json(t.participants)::text ELSE '[]' END AS participants,
   CASE WHEN t.people_org_id=p.enterprise_id THEN t.assignee_agent::text END AS assignee_agent,
@@ -30,6 +30,7 @@ function taskOf(row: Row): ProjectTask {
     participantAgents: JSON.parse(String(row.participant_agents)),
     participantIds: JSON.parse(String(row.participants)), predecessorIds: JSON.parse(String(row.predecessors)),
     sessionId: row.session_id as string | null, blocked: row.blocked === true,
+    archived:row.archived===true,deletedAt:row.deleted_at as number|null,
   };
 }
 async function task(store: Store, project: string, id: string) {
@@ -39,6 +40,7 @@ async function task(store: Store, project: string, id: string) {
 const eligible = `m.status='active' AND (p.access_mode='enterprise' OR p.owner_id=m.user_id OR m.role IN ('owner','admin') OR
  EXISTS(SELECT 1 FROM project_grants g WHERE g.project_id=p.id AND
  ((g.kind='member' AND g.subject_id=m.user_id) OR (g.kind='department' AND g.subject_id=m.department_id))))`;
+export {eligible as boardMemberEligibility};
 async function eligiblePeople(store: Store, project: string, people: Set<string>) {
   if (!people.size) return new Set<string>();
   const rows = await store.all(`SELECT m.user_id FROM projects p JOIN members m ON m.enterprise_id=p.enterprise_id
@@ -67,10 +69,10 @@ async function verifyGraph(store: Store, project: string, id: string, next: Task
     const references = JSON.stringify(next.predecessorIds);
     const graph = await store.one(`WITH RECURSIVE graph(id) AS (
       SELECT unnest(${array})
-      UNION SELECT unnest(t.predecessors) FROM project_board_tasks t JOIN graph g ON g.id=t.id WHERE t.project_id=?
+      UNION SELECT unnest(t.predecessors) FROM project_board_tasks t JOIN graph g ON g.id=t.id WHERE t.project_id=? AND t.deleted_at IS NULL
     )
     SELECT EXISTS(SELECT 1 FROM graph WHERE id=?) AS cycle,
-      (SELECT COUNT(*) FROM project_board_tasks WHERE project_id=? AND id=ANY(${array})) AS found,
+      (SELECT COUNT(*) FROM project_board_tasks WHERE project_id=? AND deleted_at IS NULL AND id=ANY(${array})) AS found,
       EXISTS(SELECT 1 FROM project_board_tasks WHERE project_id=? AND id=ANY(${array}) AND status<>'done') AS blocked`,
     references, project, id, project, references, project, references);
     if (graph?.cycle) throw new ServiceError("BOARD_DEPENDENCY_CYCLE", 409);
@@ -78,7 +80,7 @@ async function verifyGraph(store: Store, project: string, id: string, next: Task
     if (graph.blocked && next.status !== "todo") throw new ServiceError("BOARD_TASK_BLOCKED", 409);
   }
   if (previous?.status === "done" && next.status !== "done" && await store.one(
-    `SELECT 1 FROM project_board_tasks WHERE project_id=? AND predecessors @> ARRAY[?]::text[] AND status<>'todo' LIMIT 1`,
+    `SELECT 1 FROM project_board_tasks WHERE project_id=? AND deleted_at IS NULL AND predecessors @> ARRAY[?]::text[] AND status<>'todo' LIMIT 1`,
     project, id,
   )) throw new ServiceError("BOARD_DEPENDENT_STARTED", 409);
 }
@@ -120,15 +122,27 @@ export function mountProjectBoard(app: App, store: Store) {
       return c.json({ task: result });
     }
     const after = z.uuid().optional().parse(c.req.query("after"));
-    const rows = await store.all(select + " WHERE t.project_id=? AND t.id>? ORDER BY t.id LIMIT 101",project.id,after ?? "");
+    const query=taskListSchema.parse({query:c.req.query('query')??'',scope:c.req.query('scope')??'active'});
+    const pattern='%'+query.query.trim().replace(/[\\%_]/g,'\\$&')+'%';
+    const where=`t.project_id=? AND ${query.scope==='trash'?'t.deleted_at IS NOT NULL':`t.deleted_at IS NULL AND t.archived=${query.scope==='archived'?'true':'false'}`} AND
+      (t.title ILIKE ? OR t.description ILIKE ? OR (t.people_org_id=p.enterprise_id AND (a.name ILIKE ? OR t.assignee_agent->>'name' ILIKE ?)))`;
+    const params=[project.id,pattern,pattern,pattern,pattern];
+    const join=` FROM project_board_tasks t JOIN projects p ON p.id=t.project_id LEFT JOIN "user" a ON a.id=t.assignee_id`;
+    const [rows,counts,linked]=await Promise.all([
+      store.all('SELECT '+columns+join+' WHERE '+where+' AND t.id>? ORDER BY t.id LIMIT 101',...params,after??''),
+      store.one(`SELECT COUNT(*) AS total,COUNT(*) FILTER(WHERE t.status='done') AS done`+join+' WHERE '+where,...params),
+      store.all('SELECT session_id FROM project_board_tasks WHERE project_id=? AND session_id IS NOT NULL',project.id),
+    ]);
     const tasks = rows.slice(0,100).map(taskOf);
-    return c.json({ tasks, next:rows.length>100 ? tasks.at(-1)!.id : null });
+    return c.json({ tasks, next:rows.length>100 ? tasks.at(-1)!.id : null,version:2,
+      totals:{total:Number(counts?.total??0),done:Number(counts?.done??0)},linkedSessionIds:linked.map(row=>String(row.session_id)) });
   });
   async function update(actor: Actor, projectId: string, input: TaskWrite | TaskStatusWrite, noticeOrganization?: string) {
     return store.transaction(async () => {
       await store.run("SELECT id FROM projects WHERE id=? FOR UPDATE",projectId);
       const project = await projectAccess(store,actor,projectId);
       const previous = await task(store,projectId,input.id);
+      if(previous?.deletedAt!=null)throw new ServiceError('BOARD_TASK_NOT_FOUND',404);
       const role = await projectRole(store,actor,project);
       if (noticeOrganization && (noticeOrganization !== project.enterprise_id || !previous ||
           !assignmentPeople(previous).has(actor.id))) throw new ServiceError("BOARD_WRITE_FORBIDDEN",403);
@@ -188,9 +202,30 @@ export function mountProjectBoard(app: App, store: Store) {
       return saved;
     });
   }
+  async function lifecycle(actor:Actor,projectId:string,input:TaskActionWrite){
+    return store.transaction(async()=>{
+      await store.run('SELECT id FROM projects WHERE id=? FOR UPDATE',projectId);
+      const project=await projectAccess(store,actor,projectId),role=await projectRole(store,actor,project);
+      if(!project.enterprise_id||!role||role==='view')throw new ServiceError('BOARD_WRITE_FORBIDDEN',403);
+      const previous=await task(store,projectId,input.id);
+      if(!previous||(previous.deletedAt!=null&&input.action!=='restore'))throw new ServiceError('BOARD_TASK_NOT_FOUND',404);
+      if(previous.revision!==input.revision)throw new ServiceError('BOARD_CONFLICT',409);
+      if(input.action==='delete'&&await store.one(`SELECT id FROM project_board_tasks WHERE project_id=? AND deleted_at IS NULL AND ?=ANY(predecessors) LIMIT 1`,projectId,input.id))throw new ServiceError('BOARD_DEPENDENCY_IN_USE',409);
+      if(input.action==='restore'){
+        const missing=await store.one(`SELECT 1 FROM unnest(${array}) b(id) LEFT JOIN project_board_tasks t ON t.project_id=? AND t.id=b.id WHERE t.id IS NULL OR t.deleted_at IS NOT NULL LIMIT 1`,JSON.stringify(previous.predecessorIds),projectId);
+        if(missing)throw new ServiceError('BOARD_PREDECESSOR_NOT_FOUND',404);
+        if(previous.sessionId&&await store.one('SELECT id FROM project_board_tasks WHERE project_id=? AND session_id=? AND id<>? AND deleted_at IS NULL',projectId,previous.sessionId,input.id))throw new ServiceError('BOARD_CONFLICT',409);
+      }
+      await store.run(`UPDATE project_board_tasks SET archived=?,deleted_at=?,status=?,revision=revision+1 WHERE project_id=? AND id=?`,
+        input.action==='archive'?true:input.action==='unarchive'?false:previous.archived??false,
+        input.action==='delete'?Date.now():input.action==='restore'?null:previous.deletedAt??null,
+        input.action==='restore'&&previous.blocked?'todo':previous.status,projectId,input.id);
+      return (await task(store,projectId,input.id))!;
+    });
+  }
   app.patch(route, async c => {
-    const input = z.union([taskWriteSchema, taskStatusSchema]).parse(await c.req.json());
-    return c.json({ task: await update(c.get("actor"), c.req.param("id"), input) });
+    const input = z.union([taskWriteSchema, taskStatusSchema,taskActionSchema]).parse(await c.req.json());
+    return c.json({ task: 'action' in input?await lifecycle(c.get('actor'),c.req.param('id'),input):await update(c.get("actor"), c.req.param("id"), input) });
   });
   app.get(inbox, async c => {
     const actor=c.get("actor").id;
@@ -199,7 +234,7 @@ export function mountProjectBoard(app: App, store: Store) {
       JOIN projects p ON p.id=n.project_id AND p.enterprise_id=n.enterprise_id AND p.deleted_at IS NULL
       JOIN project_board_tasks t ON t.project_id=p.id AND t.id=n.task_id
       JOIN members m ON m.enterprise_id=n.enterprise_id AND m.user_id=n.recipient_id
-      WHERE n.recipient_id=? AND ${eligible} ORDER BY n.created_at DESC,n.id DESC LIMIT 50`,actor);
+      WHERE n.recipient_id=? AND NOT t.archived AND t.deleted_at IS NULL AND ${eligible} ORDER BY n.created_at DESC,n.id DESC LIMIT 200`,actor);
     return c.json({ notices });
   });
   async function receivedTask(id: string, actor: Actor) {
@@ -210,7 +245,7 @@ export function mountProjectBoard(app: App, store: Store) {
     if (!linked) throw new ServiceError("BOARD_NOTICE_NOT_FOUND", 404);
     const projectId = String(linked.project_id);
     const item = await task(store, projectId, String(linked.task_id));
-    if (!item) throw new ServiceError("BOARD_TASK_NOT_FOUND", 404);
+    if (!item||item.deletedAt!=null||item.archived) throw new ServiceError("BOARD_TASK_NOT_FOUND", 404);
     return { projectId, item, organization: String(linked.enterprise_id) };
   }
   function recipientTask(item: ProjectTask, actor: Actor) {

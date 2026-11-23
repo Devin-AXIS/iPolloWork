@@ -210,6 +210,25 @@ test("organization assets enforce member and department grants, and project owne
       403,
       "members cannot add files",
     );
+    assert.equal((await http(base + `/packages/${pack}`, design.token, {title:'Changed'}, 'PATCH')).status,403);
+    assert.equal((await http(base + `/packages/${pack}`, design.token, undefined, 'DELETE')).status,403);
+    assert.equal((await http(base + `/packages/${pack}`, owner.token,
+      {title:'品牌素材更新',description:'可下载的组织附件'}, 'PATCH')).status,200);
+    const detail = await http<{package:{title:string;description:string};files:{id:string;name:string;bytes:number}[]}>(base + `/packages/${pack}`,owner.token);
+    assert.equal(detail.data.package.title,'品牌素材更新');
+    assert.equal(detail.data.package.description,'可下载的组织附件');
+    assert.deepEqual(detail.data.files.map(item=>[item.id,item.name,item.bytes]),[[file,'logo.svg',10]]);
+    const oversized = new FormData();
+    oversized.set('file',new File([new Uint8Array(24*1024*1024+1)],'too-large.bin'));
+    assert.equal((await http(base + `/packages/${pack}/files`,owner.token,oversized)).status,413);
+    assert.equal((await http<{files:unknown[]}>(base + `/packages/${pack}`,owner.token)).data.files.length,1);
+    const temporary = new FormData();
+    temporary.set('file',new File(['remove-me'],'temporary.txt',{type:'text/plain'}));
+    const temporaryFile = await http<{id:string}>(base + `/packages/${pack}/files`,owner.token,temporary);
+    const temporaryPath = base + `/packages/${pack}/files/${temporaryFile.data.id}`;
+    assert.equal((await http(temporaryPath,design.token,undefined,'DELETE')).status,403);
+    assert.equal((await http(temporaryPath,owner.token,undefined,'DELETE')).status,200);
+    assert.equal((await http(temporaryPath+'/download',owner.token)).status,404);
 
     const listed = async (token: string) =>
       (
@@ -245,6 +264,13 @@ test("organization assets enforce member and department grants, and project owne
       (await http(base + `/packages/${pack}`, sales.token)).status,
       403,
     );
+
+    // A recipient's granted package must not disappear behind 200 newer private packages.
+    await service.store.run(`INSERT INTO file_packages(id,enterprise_id,title,description,created_by,created_at,updated_at)
+      SELECT 'hidden-package-'||i,?,'Private '||i,'',?,?,CAST(? AS BIGINT)+i FROM generate_series(1,200) i`,
+      enterprise, owner.id, Date.now(), Date.now() + 1000);
+    assert.deepEqual((await listed(design.token)).packages.map(item => item.id), [pack]);
+    assert.deepEqual((await listed(sales.token)).packages, []);
 
     const grant = await http<{ audience: { members: string[] } }>(
       base + "/grants",
@@ -629,6 +655,18 @@ test("enterprise models use the enterprise key, follow grants, never charge poin
     await response.text();
     const usage = await service.store.one("SELECT enterprise_id,department_id,model_id,input_tokens,output_tokens FROM service_calls WHERE id=?", request.requestId);
     assert.deepEqual(usage, { enterprise_id: enterprise, department_id: dep, model_id: "deepseek-chat", input_tokens: 12, output_tokens: 7 });
+    // The analytics screen must use the real gateway's persisted provider usage.
+    const { mountEnterpriseAnalytics } = await import('../src/enterprise-analytics.js');
+    const analytics = new Hono<{Variables:{actor:Actor}}>();
+    analytics.use('*',async(c,next)=>{c.set('actor',owner);await next();});
+    mountEnterpriseAnalytics(analytics,service.store);
+    const statistics = await analytics.request(`http://localhost/api/v1/enterprises/${enterprise}/analytics`,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days:30,groupBy:'department'}),
+    });
+    assert.equal(statistics.status,200);
+    const counts = await statistics.json();
+    assert.deepEqual(counts.totals,{tasks:1,succeeded:1,failed:0,measured:1,inputTokens:12,outputTokens:7,points:0});
+    assert.equal(counts.rows[0].id,dep);
     assert.equal(seen.at(-1)?.auth, "Bearer enterprise-secret");
     assert.equal(
       (

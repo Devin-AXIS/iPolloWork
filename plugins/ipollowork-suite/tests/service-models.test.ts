@@ -209,7 +209,7 @@ test("account model calls use their private token and report insufficient points
   } finally { await ctx.fiber.dispose(); }
 });
 
-test("the native model stream recovers a lost gateway response using one invocation id", async () => {
+test("the native model stream recovers lost, malformed and draining gateway responses using one invocation id", async () => {
   const {default:WebServer}=await import("@deepseek-ai/dsh-host-webserver");
   const ctx=new Context();
   await ctx.plugin(WebServer,{host:"127.0.0.1",port:0});
@@ -220,7 +220,9 @@ test("the native model stream recovers a lost gateway response using one invocat
     if(String(url).endsWith("/services"))return Response.json({items:[{id:"chat",title:"Chat",provider:"fixture",capabilities:["chat"],origin:"https://provider.test",basePath:"/v1",available:true,routes:[],models:[{id:"fixture",name:"Fixture",contextWindow:32768,maxTokens:2048}]}],points:10});
     ids.push(JSON.parse(String(init?.body)).requestId);
     if(ids.length===1)throw new TypeError("fetch failed");
-    if(ids.length===2)return Response.json({code:"SERVICE_CALL_RUNNING"},{status:409});
+    if(ids.length===2)return new Response('<html>Bad gateway</html>',{status:502});
+    if(ids.length===3)return Response.json({code:"SERVICE_DRAINING"},{status:503});
+    if(ids.length===4)return Response.json({code:"SERVICE_CALL_RUNNING"},{status:409});
     return new Response('data: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{role:"assistant",content:"Recovered"},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{},finish_reason:"stop"}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2}})+'\n\ndata: [DONE]\n\n',{headers:{"Content-Type":"text/event-stream"}});
   });
   let refresh=async()=>{};
@@ -231,7 +233,7 @@ test("the native model stream recovers a lost gateway response using one invocat
     for await(const chunk of ctx.llm.stream({provider:"ipollo-chat",model:"fixture",messages:[]}))chunks.push(chunk);
     const finish=chunks.find(chunk=>chunk.type==="finish");
     assert.equal(finish?.reason.kind,"stop");
-    assert.equal(ids.length,3);
+    assert.equal(ids.length,5);
     assert.equal(new Set(ids).size,1);
   } finally {await ctx.fiber.dispose();}
 });

@@ -27,7 +27,9 @@ if (action === 'configure') {
   if (Array.isArray(old) && old.some(item => item?.id === 'hmr')) throw new Error('The development profile already configures hmr; merge the Work lib directory into that entry.')
   // Keep the profile's existing text and comments. An empty inline list must become block YAML.
   const prefix = prior.replace(/^\s*\[\][ \t]*\r?$/m, '').trimEnd()
-  const next = `${prefix ? prefix + '\n\n' : ''}${begin}\n- id: hmr\n  disabled: false\n  config:\n    base: ${JSON.stringify(base)}\n    root: ["lib/host"]\n    debounce: 700\n    awaitWriteFinish: true\n${end}\n`
+  // Bulk package maintenance uses the native manager's restart-required path.
+  // A normal launch restores native HMR; account and plugin selections are untouched.
+  const next = `${prefix ? prefix + '\n\n' : ''}${begin}\n- id: hmr\n  disabled: ${pidFile === 'disabled'}\n  config:\n    base: ${JSON.stringify(base)}\n    root: ["lib/host"]\n    debounce: 700\n    awaitWriteFinish: true\n${end}\n`
   load(next)
   if (next !== content) writeFileSync(filename, next)
 } else if (action === 'build') {

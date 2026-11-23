@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import {deliverBoardReminders} from '../src/project-board-reminders.ts';
 import { createService } from "../src/app.js";
 import type { BoardNotice, ProjectTask, TaskDraft } from "../src/project-board-contract.js";
 import { testConfig } from "./database.js";
@@ -142,6 +143,40 @@ test("project tasks notify current recipients and serialize dependency transitio
     assert.equal((await send(board, owner.token, { id: first, revision: 2, status: "todo" })).status, 409);
     await service.store.run("UPDATE members SET status='suspended' WHERE enterprise_id=? AND user_id=?", enterprise, assignee.id);
     assert.deepEqual(await notices(assignee.token), []);
+    // Lifecycle operations keep recoverable records and authorize every revision.
+    const archivedId=randomUUID();
+    await getResult(await write(archivedId,draft('Archive target')));
+    assert.equal((await getResult(await send(board,owner.token,{id:archivedId,revision:1,action:'archive'}))).archived,true);
+    assert(!(await (await send(board)).json() as {tasks:ProjectTask[]}).tasks.some(task=>task.id===archivedId));
+    assert((await (await send(board+'?scope=archived')).json() as {tasks:ProjectTask[]}).tasks.some(task=>task.id===archivedId));
+    const recycled=await getResult(await send(board,owner.token,{id:archivedId,revision:2,action:'delete'}));
+    assert(recycled.deletedAt);
+    assert.equal((await send(board,outsider.token,{id:archivedId,revision:3,action:'restore'})).status,403);
+    assert((await (await send(board+'?scope=trash')).json() as {tasks:ProjectTask[]}).tasks.some(task=>task.id===archivedId));
+    await getResult(await send(board,owner.token,{id:archivedId,revision:3,action:'restore'}));
+    await getResult(await send(board,owner.token,{id:archivedId,revision:4,action:'unarchive'}));
+    assert.equal((await send(board,owner.token,{id:archivedId,revision:1,action:'delete'})).status,409);
+    assert.equal((await send(board,owner.token,{id:first,revision:2,action:'delete'})).status,409);
+
+    // Full-search/count queries do not depend on which 100 cards the client has loaded.
+    const many=Array.from({length:105},(_,index)=>({id:index===104?'ffffffff-ffff-4fff-8fff-ffffffffffff':randomUUID(),title:index===104?'Hidden needle':'Paged '+index,status:index%2?'done':'todo'}));
+    await service.store.run(`INSERT INTO project_board_tasks(project_id,id,title,description,status,priority,people_org_id)
+      SELECT ?,id,title,'',status,'normal',? FROM jsonb_to_recordset(?::jsonb) AS x(id text,title text,status text)`,project,enterprise,JSON.stringify(many));
+    const searched=await (await send(board+'?query=needle')).json() as {tasks:ProjectTask[];totals:{total:number;done:number};version:number};
+    assert.equal(searched.version,2);assert.deepEqual(searched.totals,{total:1,done:0});assert.equal(searched.tasks[0]!.title,'Hidden needle');
+    const all=await (await send(board)).json() as {tasks:ProjectTask[];totals:{total:number;done:number};next:string};
+    assert.equal(all.tasks.length,100);assert(all.totals.total>105);assert(all.next);
+    assert(!(await (await send(board+'?query='+encodeURIComponent('%'))).json() as {tasks:ProjectTask[]}).tasks.length);
+
+    // Deadline delivery is durable, permission-scoped and idempotent under concurrent workers.
+    const dueId=randomUUID();
+    await getResult(await write(dueId,draft('Due reminder',{startAt:null,dueAt:Date.now()-1000,assigneeId:owner.id,participantIds:[participant.id]})));
+    await Promise.all([deliverBoardReminders(service.store),deliverBoardReminders(service.store)]);
+    assert.equal((await notices(owner.token)).filter(item=>item.taskId===dueId&&item.kind==='due').length,1);
+    assert.equal((await notices(participant.token)).filter(item=>item.taskId===dueId&&item.kind==='due').length,1);
+    assert.equal((await notices(outsider.token)).length,0);
+    await getResult(await send(board,owner.token,{id:dueId,revision:1,action:'archive'}));
+    assert(!(await notices(owner.token)).some(item=>item.taskId===dueId));
     assert.equal((await send(receipt, assignee.token)).status, 404);
     assert.equal((await write(randomUUID(), { ...plan, predecessorIds: [] })).status, 403);
     const activeRoster = await (await send(board + "?members=1")).json() as typeof directory;

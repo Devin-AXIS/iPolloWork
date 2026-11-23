@@ -478,23 +478,16 @@
   }
 
   function installDialog(dialog) {
-    const h = ui.React.createElement, mount = document.createElement('div'); document.body.append(mount);
-    const root = ui.createRoot(mount); let opener;
-    function Body() {
-      const ref = ui.React.useRef(null);
-      ui.React.useLayoutEffect(() => { ref.current.append(dialog); return () => { document.body.append(dialog); }; }, []);
-      return h('div', { ref });
+    // Keep imperative forms and their document-bound handlers in the workbench.
+    // The native browser dialog supplies focus trapping, Escape and return focus.
+    dialog.classList.add('ipw-native-dialog');
+    if (!dialog.getAttribute('aria-label') && !dialog.getAttribute('aria-labelledby')) {
+      const heading = dialog.querySelector('h2,h3');
+      if (heading) dialog.setAttribute('aria-label', heading.textContent);
     }
-    function paint(open) {
-      root.render(h(ui.Dialog, { open, onOpenChange: value => { if (!value && !dialog.querySelector('button:disabled') && document.body.dataset.busy !== 'true') dialog.close(); } },
-        h(ui.DialogContent, { className: 'shared-dialog', closeLabel: '关闭' },
-          h(ui.DialogTitle, { className: 'sr-only' }, dialog.getAttribute('aria-label') || dialog.querySelector('h2,h3')?.textContent || '账号管理'), h(Body))));
-    }
-    dialog.showModal = () => { if (dialog.open) return; opener = document.activeElement; dialog.open = true; paint(true); };
-    dialog.close = () => { if (!dialog.open) return; dialog.open = false; paint(false); dialog.dispatchEvent(new Event('close')); queueMicrotask(() => opener?.focus()); };
-    dialog.addEventListener('submit', event => { if (event.submitter?.value === 'cancel') { event.preventDefault(); dialog.close(); } });
-    dialog.querySelectorAll('button[aria-label^="关闭"]').forEach(button => { button.hidden = true; });
-    if (dialog.open) paint(true);
+    dialog.addEventListener('cancel', event => {
+      if (dialog.querySelector('button:disabled') || document.body.dataset.busy === 'true') event.preventDefault();
+    });
   }
 
   try { await initializeUi(); } catch (error) { document.querySelector("main").prepend(Object.assign(document.createElement("p"), { className: "ui-error", textContent: error.message, role: "alert" })); }

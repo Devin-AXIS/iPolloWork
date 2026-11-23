@@ -5,6 +5,13 @@ const zh = {
   choosePredecessors:'关联前置任务', searchPeople:'搜索姓名或邮箱', searchAI:'搜索 AI',
   noPredecessors:'项目中暂无其他可关联的任务', removeChoice:'移除 {name}', viewMode:'任务视图', columnStatus:'按状态显示',
   taskTotals:'{total} 项任务 · {done} 项完成', addInStatus:'在「{status}」新增任务', changeStatus:'更改「{name}」的状态',
+  partialTasks:'仅显示已加载的任务；搜索、统计和各视图暂不包含未加载的任务。可继续加载更多。',
+  partialGlobal:'搜索和统计覆盖全部匹配任务；当前视图只展示已加载卡片，可继续加载更多。',
+  taskScope:'任务范围',activeTasks:'当前任务',archivedTasks:'已归档',trash:'回收站',archive:'归档',unarchive:'取消归档',deleteTask:'移至回收站',restore:'恢复任务',
+  batchSelect:'批量操作',selectLoaded:'选择已加载任务（最多100项）',selectedTasks:'已选 {count} 项',selectTask:'选择任务',selectNamed:'选择「{name}」',
+  batchPartial:'已处理 {done}/{total} 项；未成功的任务仍保留选中，可重试。',batchLimit:'每批最多处理100项任务。',dependencyInUse:'该任务仍被其他任务依赖，请先移除依赖或将后续任务移至回收站。',
+  taskInactive:'请先恢复任务或取消归档，再编辑和执行。',serverUpgradeRequired:'组织服务需要升级后才能使用全量搜索、归档和回收站。',dueNotice:'任务已到截止时间',
+  deferredStart:'到时若仍被前置任务阻塞，将在前置任务完成后补启动。需要当前应用和 AI 保持可用。',
   emptyLane:'暂无任务', close:'关闭', optionalDescription:'添加任务说明…', taskPlaceholder:'输入任务名称',
   datePart:'{label} · 日期', pickDate:'选择{label}', startTime:'开始时间', dueTime:'截止时间', timeFrom:'开始', timeTo:'截止', timeRange:'起止时间', clearSchedule:'清除起止时间', clearDateTime:'清除{label}和时间', customTime:'自定义时间', applyTime:'应用时间',
   editProperties:'任务属性', doneChoosing:'完成选择', unreadCount:'{count} 条未读',
@@ -47,6 +54,13 @@ const en: typeof zh = {
   choosePredecessors:'Link predecessors', searchPeople:'Search names or emails', searchAI:'Search AI',
   noPredecessors:'No other tasks to link in this project', removeChoice:'Remove {name}', viewMode:'Task views', columnStatus:'Show by status',
   taskTotals:'{total} tasks · {done} completed', addInStatus:'Add task in {status}', changeStatus:'Change status of {name}',
+  partialTasks:'Only loaded tasks appear in search, totals and views. Load more to include the remaining tasks.',
+  partialGlobal:'Search and totals cover all matching tasks. Load more to show the remaining cards in this view.',
+  taskScope:'Task scope',activeTasks:'Current tasks',archivedTasks:'Archived',trash:'Recycle bin',archive:'Archive',unarchive:'Unarchive',deleteTask:'Move to recycle bin',restore:'Restore task',
+  batchSelect:'Bulk actions',selectLoaded:'Select loaded tasks (up to 100)',selectedTasks:'{count} selected',selectTask:'Select task',selectNamed:'Select “{name}”',
+  batchPartial:'Processed {done}/{total}. Unsuccessful tasks remain selected and can be retried.',batchLimit:'Process up to 100 tasks per batch.',dependencyInUse:'Other tasks still depend on this task. Remove their links or move the dependent tasks to the recycle bin first.',
+  taskInactive:'Restore or unarchive this task before editing or running it.',serverUpgradeRequired:'Update the organization service to enable full search, archives and the recycle bin.',dueNotice:'The task has reached its deadline',
+  deferredStart:'If predecessors still block the scheduled start, it will resume after they finish. Keep this app and the selected AI available.',
   emptyLane:'No tasks', close:'Close', optionalDescription:'Add a description…', taskPlaceholder:'Enter task title',
   datePart:'{label} · Date', pickDate:'Choose {label}', startTime:'Start time', dueTime:'Due time', timeFrom:'Start', timeTo:'Due', timeRange:'Time range', clearSchedule:'Clear start and due time', clearDateTime:'Clear {label} and time', customTime:'Custom time', applyTime:'Apply time',
   editProperties:'Properties', doneChoosing:'Done choosing', unreadCount:'{count} unread',
@@ -85,6 +99,7 @@ const en: typeof zh = {
 export type Copy = typeof zh;
 export const copyFor = (locale: string) => locale.toLowerCase().startsWith('zh') ? zh : en;
 export function errorMessage(error: unknown, t: Copy): string {
+  if(error instanceof Error&&error.name==='BoardBatchError')return error.message;
   const code = error instanceof Error ? error.message : '';
   if (code === 'BOARD_SHARE_UNAVAILABLE') return t.grantFailed;
   if (code === 'BOARD_AGENT_UNAVAILABLE') return t.agentUnavailable;
@@ -93,6 +108,9 @@ export function errorMessage(error: unknown, t: Copy): string {
   if (code === 'BOARD_TASK_DONE') return t.taskDone;
   if (code === 'BOARD_TASK_BLOCKED') return t.taskBlocked;
   if (code === 'BOARD_DEPENDENCY_CYCLE') return t.cycle;
+  if(code==='BOARD_BATCH_LIMIT')return t.batchLimit;
+  if(code==='BOARD_DEPENDENCY_IN_USE')return t.dependencyInUse;
+  if(code==='BOARD_TASK_INACTIVE')return t.taskInactive;
   if (code === 'BOARD_DEPENDENT_STARTED') return t.dependentStarted;
   if (code === 'BOARD_PREDECESSOR_NOT_FOUND') return t.missingPredecessor;
   if (code === 'BOARD_WRITE_FORBIDDEN') return t.needsWrite;

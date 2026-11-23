@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-douyin-ops",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "管理抖音本地草稿、素材、作品及评论记录，通过平台 API 和原生会话继续运营；隔离网页账号自动接入暂不可用。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./lib/host.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -21,7 +23,8 @@
     "LICENSE",
     "NOTICE.md",
     "icon.svg",
-    "NOTICE.dependencies.txt"
+    "NOTICE.dependencies.txt",
+    "locale"
   ],
   "dsh": {
     "bundle": {

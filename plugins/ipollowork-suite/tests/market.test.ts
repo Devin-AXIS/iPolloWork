@@ -9,9 +9,9 @@ import { readMarket } from '../src/host/market.ts'
 
 test('catalog resolves pinned native installs and uses the live DSH inventory', async () => {
   const pkg = '@deepseek-ai/dsh-experimental-session-titles-bundle'
-  const state = await readMarket('catalog/index.json', { listBundles: async () => [{ name: pkg, installed: true, enabled: false, version: '0.2.2-rc.2', rows: [{ moduleName: pkg }] }] }, '0.2.2-rc.2', 'zh', 1048576)
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [{ name: pkg, installed: true, enabled: false, version: '0.2.2-rc.2', rows: [{ moduleName: pkg }] }] }, '0.2.2-rc.3', 'zh', 1048576)
   const titles = state.items.find(item => item.name === pkg)!
-  assert.equal(titles.spec, pkg + '@0.2.2-rc.2')
+  assert.equal(titles.spec, pkg + '@0.2.2-rc.3')
   assert.equal(titles.installed, true)
   assert.equal(titles.enabled, false)
   assert.deepEqual(titles.resources, [pkg])
@@ -25,6 +25,14 @@ test('market artwork uses the same package metadata as the native installed page
   const name = 'deepseek-idesign'
   const state = await readMarket('catalog/index.json', { listBundles: async () => [{ name, installed: true, enabled: true, meta: { icon }, rows: [] }] }, '0.2.2-rc.2', 'zh', 1048576)
   assert.equal(state.items.find(item => item.name === name)?.icon, icon)
+})
+test('an older installed version does not hide the current catalog artwork', async () => {
+  const name = '@ipollo/dsh-media-studio'
+  const oldIcon = 'data:image/svg+xml;base64,' + Buffer.from('<svg/>').toString('base64')
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [{ name, installed: true, enabled: true, version: '0.1.0', meta: { icon: oldIcon }, rows: [] }] }, '0.2.2-rc.3', 'zh', 1048576)
+  const current = state.items.find(item => item.name === name)!
+  assert(current.icon && current.icon !== oldIcon)
+  assert.equal(current.installedVersion, '0.1.0')
 })
 test('invalid operator catalog and duplicate identities fail instead of showing stale entries', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'ipw-catalog-'))

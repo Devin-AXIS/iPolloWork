@@ -4,9 +4,11 @@ English | [中文](README.zh.md)
 
 Independent DSH bundle `@ipollo/dsh-operation-recorder`, migrated from the multi-engine iPolloWork recorder 0.3.0. Retains semantic desktop capture, pause/resume, saved recordings, Chrome Recorder import, redaction, editable steps, deterministic Skill compilation and export. No model keys or second Agent runtime.
 
+The package exports its manifest and localized display metadata for native Plugin Manager icons. The workspace header and open actions use native DSH controls and wrap in narrow containers.
+
 ## Build and install
 
-Run `npm ci --legacy-peer-deps`, `npm run link:workspace` for monorepo development, `npm run check`, `npm run pack:check`, then `npm pack`. Build the root official runtime first. Full native builds require Go 1.26; macOS universal capture also requires Swift 6/Xcode command-line tools. The package includes prebuilt capture helpers; end users need no compiler. Install the resulting `.tgz` using `dsh plugin --profile <profile> add /absolute/path/ipollo-dsh-operation-recorder-0.2.0.tgz`. Check the target profile before installation.
+Run `npm ci --legacy-peer-deps`, `npm run link:workspace` for monorepo development, `npm run check`, `npm run pack:check`, then `npm pack`. Build the root official runtime first. Full native builds require Go 1.26; macOS universal capture also requires Swift 6/Xcode command-line tools. The package includes prebuilt capture helpers; end users need no compiler. Install the resulting `.tgz` using `dsh plugin --profile <profile> add /absolute/path/ipollo-dsh-operation-recorder-0.2.1.tgz`. Check the target profile before installation.
 
 Open **操作录制**, select an existing DSH workspace and open the workbench. Recording requires explicit system permissions. Windows uses UI Automation and passive hooks, Linux X11 uses XRecord/AT-SPI, macOS uses Accessibility/CGEventTap. Wayland supports Chrome Recorder import, not full desktop capture. Previous live capture limitations remain; cross-compilation and mock tests do not prove real desktop input capture on each platform.
 

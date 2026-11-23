@@ -5,21 +5,19 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Workspace Canvas</title>
   <style>
-    :root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
+    :root { color-scheme: light; font: 13px/1.5 system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; background: #f7f7f5; color: #191919; }
-    main { display: flex; min-height: 100vh; flex-direction: column; gap: 14px; padding: 18px; }
-    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    h1 { margin: 0; font-size: 16px; }
-    button { border: 1px solid #d9d9d6; border-radius: 8px; background: #fff; color: inherit; padding: 7px 10px; cursor: pointer; }
-    textarea { min-height: 320px; flex: 1; resize: none; border: 1px solid #dfdfdb; border-radius: 12px; background: #fff; color: inherit; padding: 16px; font: inherit; outline: none; box-shadow: 0 10px 30px rgb(0 0 0 / 5%); }
-    textarea:focus { border-color: #7c6df2; box-shadow: 0 0 0 3px rgb(124 109 242 / 14%); }
-    small { color: #777; }
-    @media (prefers-color-scheme: dark) {
-      body { background: #181818; color: #f0f0ee; }
-      textarea, button { border-color: #3a3a38; background: #232323; }
-      small { color: #aaa; }
-    }
+    body { margin: 0; background: var(--dsw-alias-bg-base, #fff); color: var(--dsw-alias-label-primary, #191919); }
+    main { display: flex; height: 100svh; min-height: 360px; max-width: 1120px; margin: auto; flex-direction: column; gap: 16px; padding: 24px; }
+    header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+    h1 { margin: 0 0 4px; font-size: 16px; font-weight: 500; }
+    button { min-height: 32px; border: 1px solid var(--dsw-alias-border-l1, #d9d9d9); border-radius: 8px; background: var(--dsw-alias-bg-base, #fff); color: inherit; padding: 6px 12px; font: inherit; cursor: pointer; }
+    button:hover { background: var(--dsw-alias-bg-module-platform, #f2f3f5); }
+    textarea { min-height: 200px; width: 100%; flex: 1; resize: none; border: 1px solid var(--dsw-alias-border-l1, #d9d9d9); border-radius: 10px; background: var(--dsw-alias-bg-base, #fff); color: inherit; padding: 16px; font: inherit; line-height: 1.8; }
+    textarea:focus-visible, button:focus-visible { outline: 2px solid var(--dsw-alias-label-primary, #191919); outline-offset: 2px; }
+    small, footer { color: var(--dsw-alias-label-secondary, #68707b); font-size: 12px; }
+    footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; }
+    @media(max-width:520px) { main { padding: 16px; gap: 12px; } }
   </style>
 </head>
 <body>
@@ -33,10 +31,25 @@
 • Add a clear objective
 • Break it into the next three actions
 • Let the agent update this canvas</textarea>
+    <footer><span id="draft-note">Temporary draft · Copy to a project file to keep your work</span><span id="count"></span></footer>
   </main>
   <script>
     const board = document.querySelector("#board");
     const status = document.querySelector("#status");
+    const initialBoard = board.value;
+    let zh = false;
+    const tr = (cn, en) => zh ? cn : en;
+    function updateCount() { document.querySelector("#count").textContent = tr(`${board.value.length} 字`, `${board.value.length} characters`); }
+    function hostAppearance(context) {
+      if (context?.theme) { document.documentElement.dataset.theme = context.theme; document.documentElement.style.colorScheme = context.theme; }
+      zh = String(context?.locale || document.documentElement.lang).startsWith("zh");
+      document.documentElement.lang = zh ? "zh-CN" : "en";
+      document.querySelector("h1").textContent = tr("画布草稿", "Canvas draft");
+      document.querySelector("#ask").textContent = tr("交给 AI 完善", "Ask AI to improve");
+      document.querySelector("#draft-note").textContent = tr("临时草稿 · 可复制到项目文件保存", "Temporary draft · Copy to a project file to keep your work");
+      board.setAttribute("aria-label", tr("画布内容", "Canvas content"));
+      updateCount();
+    }
     const pending = new Map();
     let requestId = 0;
     let contextTimer = 0;
@@ -88,16 +101,23 @@
       }
       if (message.method === "ui/resource-teardown") respond(message.id, {});
       if (message.method === "ui/notifications/host-context-changed") {
-        document.documentElement.style.colorScheme = message.params?.theme || "light dark";
+        hostAppearance(message.params);
       }
     });
 
-    board.addEventListener("input", publishContext);
-    document.querySelector("#ask").addEventListener("click", () => {
-      void request("ui/message", {
-        role: "user",
-        content: [{ type: "text", text: "Improve the active canvas while preserving its intent." }]
+    board.addEventListener("input", () => { updateCount(); publishContext(); });
+    document.querySelector("#ask").addEventListener("click", async () => {
+      clearTimeout(contextTimer);
+      try {
+        await request("ui/update-model-context", {
+        content: [{ type: "text", text: `Current canvas:\n${board.value}` }],
+        structuredContent: { canvas: board.value }
       });
+        await request("ui/message", {
+        role: "user",
+        content: [{ type: "text", text: tr("请完善当前画布，保留原本的目标与意图。", "Improve the active canvas while preserving its intent.") }]
+        });
+      } catch (error) { status.textContent = error.message; }
     });
 
     request("ui/initialize", {
@@ -107,8 +127,10 @@
     }).then((host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
       document.querySelector("#ask").hidden = !host.hostCapabilities?.message;
-      document.documentElement.style.colorScheme = host.hostContext?.theme || "light dark";
-      status.textContent = "Connected";
+      hostAppearance(host.hostContext);
+      if (zh && board.value === initialBoard) board.value = "目标\n\n• 写清楚这次要完成什么\n• 拆成接下来要做的三件事\n• 与 AI 一起完善计划";
+      status.textContent = tr("已连接 · 编辑内容可交给 AI 继续完善", "Connected · Share your draft with AI");
+      updateCount();
       publishContext();
     }).catch((error) => { status.textContent = error.message; });
   </script>

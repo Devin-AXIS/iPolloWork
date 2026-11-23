@@ -1,5 +1,6 @@
 import { mountOrganizationWebsites } from "./organization-websites.js";
 import { mountProjectBoard } from "./project-board.js";
+import {boardReminderWorker} from './project-board-reminders.js';
 import { mountMarket } from './market.js';
 import { Admission } from './admission.js';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
@@ -75,6 +76,7 @@ const secrets = new Set([
 
 /** Create the standalone HTTP service and its local persistence owner. */
 export async function createService(config: Config) {
+  let boardReminders:ReturnType<typeof boardReminderWorker>|undefined;
   const store = new Store(config);
   const dataStore = config.appData
     ? new Store({ ...config.appData })
@@ -478,6 +480,7 @@ export async function createService(config: Config) {
     mountPublications(app, store, storage, config);
     mountCollaboration(app, store);
     mountProjectBoard(app, store);
+    boardReminders=boardReminderWorker(store);boardReminders.start();
     mountPayments(app, store, settings, config);
     mountResources(app, store, storage, config);
     mountStorage(app, store, storage);
@@ -520,10 +523,12 @@ export async function createService(config: Config) {
         await storage.close();
         await relay.close();
         await appData?.close();
+        await boardReminders?.close();
         await store.close();
       })(),
     };
   } catch (error) {
+    await boardReminders?.close();
     await dataStore?.close();
     await store.close();
     throw error;

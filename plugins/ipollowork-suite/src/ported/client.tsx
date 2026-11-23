@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore, type ComponentType } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
-import { Puzzle } from 'lucide-react'
+import { pluginGlyph } from './icons.ts'
 import type { BundleState } from './contracts.ts'
 
 interface NativeClient {
@@ -21,6 +21,7 @@ const styles = `
 .ipw-ported iframe{border:0;width:100%;flex:1;min-height:0;background:var(--dsw-alias-bg-base)}.ipw-ported-content{overflow:auto;padding:24px;max-width:720px;width:100%;box-sizing:border-box;align-self:center}
 .ipw-ported-content h2{font-size:14px;font-weight:500;margin:24px 0 12px}.ipw-ported-content p{color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}.ipw-ported form{display:grid;gap:12px;margin-block:16px}
 .ipw-ported-notice{margin:0;padding:8px 16px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}
+.ipw-ported form>button{justify-self:start}
 .ipw-ported form label{display:grid;gap:6px}.ipw-ported [role=alert]{color:var(--dsw-alias-label-danger,var(--dsw-alias-label-primary));margin:12px 16px;overflow-wrap:anywhere}.ipw-ported ul{padding-left:20px;line-height:1.9}
 @media(max-width:520px){.ipw-ported header{gap:8px;padding:12px;padding-top:max(12px,var(--dsh-frame-top-clearance,0px))}.ipw-ported h1{width:100%}.ipw-ported select{max-width:170px}.ipw-ported-content{padding:16px}}
 `
@@ -140,7 +141,7 @@ function Panel({ ctx, manifest }: { ctx: NativeClient; manifest: DisplayManifest
     <header><h1>{title}</h1><label>{t('工作区', 'Workspace')}<select aria-label={t('工作区', 'Workspace')} value={workspace} disabled={busy} onChange={event => { generation.current++; setWorkspace(event.target.value); setSrc(''); setBusy(false) }}>
       {state?.workspaces.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
     </select></label>{Boolean(state?.views.length && state.views.length > 1) && <select aria-label={t('工作台', 'Workbench')} value={view} disabled={busy} onChange={event => { setView(event.target.value); setSrc('') }}>{state?.views.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</select>}
-    <Button disabled={busy || !workspace} onClick={() => void open()}>{busy ? t('正在打开…', 'Opening…') : t('打开', 'Open')}</Button></header>
+    <Button variant="primary" size="sm" disabled={busy || !workspace} onClick={() => void open()}>{busy ? t('正在打开…', 'Opening…') : t('打开', 'Open')}</Button></header>
     {['douyin-ops', 'xiaohongshu-ops', 'wechat-channels-ops', 'wechat-official'].includes(manifest.id) && <p className="ipw-ported-notice">{t('旧版隔离网页账号暂不可用；平台 API 授权及已有本地内容仍按各插件支持范围使用。', 'The former isolated browser accounts are unavailable. Platform API authorization and local content remain available where supported by each plugin.')}</p>}
     {error && <p role="alert">{error} <Button variant="ghost" onClick={() => { setError(''); void load().catch(cause => setError(String(cause.message))) }}>{t('重试', 'Retry')}</Button></p>}
     {src ? <iframe ref={frame} key={src} src={src} title={title} onLoad={syncTheme} sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups"/> : <div className="ipw-ported-content">
@@ -151,7 +152,7 @@ function Panel({ ctx, manifest }: { ctx: NativeClient; manifest: DisplayManifest
           {state.methods.length > 1 && <label>{t('连接方式', 'Connection')}<select value={method} disabled={busy} onChange={event => { setMethod(event.target.value); setValues({}) }}>{state.methods.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</select></label>}
           <label>{t('账号名称', 'Account name')}<Input value={account} onChange={event => setAccount(event.target.value)} required disabled={busy}/></label>
           {state.methods.find(item => item.id === method)?.fields.map(field => <label key={field.id}>{field.label}<Input type={field.secret ? 'password' : 'text'} value={values[field.id] ?? ''} onChange={event => setValues(current => ({ ...current, [field.id]: event.target.value }))} required={field.required} autoComplete="off" disabled={busy}/></label>)}
-          <Button type="submit" disabled={busy}>{t('保存连接', 'Save connection')}</Button>
+          <Button variant="primary" type="submit" disabled={busy}>{t('保存连接', 'Save connection')}</Button>
         </form>{Boolean(state.connections.length) && <p>{t('已连接', 'Connected')}: {state.connections.map(item => item.accountId).join(', ')}</p>}</>}
         {Boolean(state.skills.length) && <><h2>{t('可用技能', 'Available Skills')}</h2><ul>{state.skills.map(item => <li key={item.id}>{item.title}</li>)}</ul></>}
         {!state.views.length && !state.actions.some(item => /^(open-workbench|open-studio)$/.test(item.id)) && <p>{t('点击“打开”在原生会话中使用此插件', 'Select Open to use this plugin in a native conversation')}</p>}
@@ -161,8 +162,9 @@ function Panel({ ctx, manifest }: { ctx: NativeClient; manifest: DisplayManifest
 }
 export function mountBundle(ctx: NativeClient, manifest: DisplayManifest, packageName: string): void {
   const panel = 'ipollo-ported-' + manifest.id
+  const Icon = pluginGlyph(manifest.id)
   ctx.effect(() => { const element = document.createElement('style'); element.textContent = styles; document.head.append(element); return () => element.remove() }, 'ported plugin: reversible styles')
   ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: panel, inject: () => ({ ctx, manifest }) }, Panel))
-  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: panel, order: 20, label: () => ctx.locale.getSnapshot().active.startsWith('zh') ? manifest.name : manifest.localization?.translations?.en?.name ?? manifest.name }, () => <Puzzle size={16}/>))
+  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({ name: 'sidebar.panellist', id: panel, order: 20, label: () => ctx.locale.getSnapshot().active.startsWith('zh') ? manifest.name : manifest.localization?.translations?.en?.name ?? manifest.name }, () => <Icon size={16} strokeWidth={1.6} aria-hidden="true"/>))
   ctx.slots.inject('plugins.bundle.config', () => ctx.slots.register({ name: 'plugins.bundle.config', key: packageName }, () => <Button onClick={() => ctx.layout.selectPanel(panel)}>{manifest.name}</Button>))
 }

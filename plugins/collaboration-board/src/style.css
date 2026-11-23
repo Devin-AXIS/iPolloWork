@@ -22,6 +22,10 @@
   box-sizing: border-box;
 }
 .cb-panel *, .cb-dialog * { box-sizing: border-box; }
+.cb-lifecycle-toolbar { display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 14px;color:var(--cb-muted);font-size:12px; }
+.cb-lifecycle-toolbar select { width:auto;max-width:100%; }
+.cb-card-selection { position:relative;z-index:2;display:flex;align-items:center;gap:6px;margin-bottom:8px;color:var(--cb-muted);font-size:11px; }
+.cb-panel input[type="checkbox"] { accent-color:var(--cb-ink);width:14px;height:14px;margin:0; }
 .cb-panel {
   --cb-gutter: clamp(12px, 2.6vw, 32px);
   container: board / inline-size;

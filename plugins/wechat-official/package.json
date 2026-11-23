@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-wechat-official",
-  "version": "0.1.0",
+  "version": "0.1.6",
   "description": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流；隔离网页账号接入暂不可用。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -10,7 +10,9 @@
   },
   "exports": {
     ".": "./lib/host.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "files": [
     "lib",
@@ -21,7 +23,8 @@
     "LICENSE",
     "NOTICE.md",
     "icon.svg",
-    "NOTICE.dependencies.txt"
+    "NOTICE.dependencies.txt",
+    "locale"
   ],
   "dsh": {
     "bundle": {

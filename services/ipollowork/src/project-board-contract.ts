@@ -40,11 +40,18 @@ export const taskWriteSchema = z.strictObject({
 export const taskStatusSchema = z.strictObject({
   id: z.uuid(), revision: z.number().int().min(1).max(2147483646), status: z.enum(taskStatuses),
 });
+export const taskActionSchema = z.strictObject({
+  id:z.uuid(),revision:z.number().int().min(1).max(2147483646),action:z.enum(['archive','unarchive','delete','restore']),
+});
+export const taskListSchema=z.object({query:z.string().max(200).default(''),scope:z.enum(['active','archived','trash']).default('active')});
+export type TaskListQuery=z.infer<typeof taskListSchema>;
+export type TaskActionWrite=z.infer<typeof taskActionSchema>;
 export type TaskDraft = z.infer<typeof taskDraftSchema>;
 export type TaskWrite = z.infer<typeof taskWriteSchema>;
 export type TaskStatusWrite = z.infer<typeof taskStatusSchema>;
-export type ProjectTask = TaskDraft & { id: string; revision: number; blocked: boolean };
-export type BoardNotice = { id: string; projectId: string; projectTitle: string; taskId: string; title: string; kind: "assigned" | "participating" | "ready"; createdAt: number; read: boolean };
+export type ProjectTask = TaskDraft & { id: string; revision: number; blocked: boolean; archived?:boolean; deletedAt?:number|null };
+export type TaskPage={tasks:ProjectTask[];next:string|null;totals?:{total:number;done:number};linkedSessionIds?:string[];version?:2};
+export type BoardNotice = { id: string; projectId: string; projectTitle: string; taskId: string; title: string; kind: "assigned" | "participating" | "ready" | "due"; createdAt: number; read: boolean };
 
 export function assignmentPeople(task: Pick<TaskDraft, "assigneeId" | "participantIds">) {
   return new Set([...(task.assigneeId ? [task.assigneeId] : []), ...task.participantIds]);

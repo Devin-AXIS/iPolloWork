@@ -65,6 +65,8 @@ Stripe, Alipay and WeChat checkout settle only after signed provider notificatio
 
 ## Verification
 
+Project Board schema 22 adds task archive/recycle metadata, deadline-notice deduplication and active-session uniqueness while preserving existing tasks and read receipts. Deploy this service together with the updated Suite bridge for global board search/totals, lifecycle actions and deadline reminders; older services cause the new client to display an upgrade hint. The migration runs through the existing PostgreSQL migrator. Back up the database before production rollout. The service checks due tasks every 30 seconds against current project access; concurrent workers deduplicate deliveries by task, recipient and deadline.
+
 ~~~sh
 TEST_DATABASE_URL=postgresql://127.0.0.1:5432/ipollowork_test npm run check
 npm run build
