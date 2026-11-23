@@ -8,7 +8,8 @@ const [source, version, videoVersion = version] = process.argv.slice(2);
 if (!source || !version) throw new Error('Pass the archive directory and exact Studio version');
 const catalog = resolve('catalog');
 const index = JSON.parse(await readFile(join(catalog, 'index.json'), 'utf8'));
-const releases = [];
+const prior = JSON.parse(await readFile(join(catalog, 'bundled-releases.json'), 'utf8'));
+const releases = prior.plugins.filter(item => !['deepseek-idesign', 'deepseek-ivideo'].includes(item.name));
 for (const name of ['deepseek-idesign', 'deepseek-ivideo']) {
   const pluginVersion = name === "deepseek-ivideo" ? videoVersion : version;
   const archive = join(resolve(source), `${name}-${pluginVersion}.tgz`);
@@ -29,7 +30,7 @@ for (const name of ['deepseek-idesign', 'deepseek-ivideo']) {
   releases.push({ name, version: pluginVersion, file, sha256, archive });
   item.versions = [{ version: pluginVersion, publishTimestamp: Math.floor(Date.now() / 1000), source: { type: 'npm' }, engines: { dsh: manifest.engines.dsh } }];
 }
-for (const release of releases) await copyFile(release.archive, join(catalog, 'packages', release.file));
+for (const release of releases) if (release.archive) await copyFile(release.archive, join(catalog, 'packages', release.file));
 await writeFile(join(catalog, 'index.json'), JSON.stringify(index, null, 2) + '\n');
 await writeFile(join(catalog, 'bundled-releases.json'), JSON.stringify({ format: 1, plugins: releases.map(({ archive, ...release }) => release) }, null, 2) + '\n');
 const path = resolve('package.json');

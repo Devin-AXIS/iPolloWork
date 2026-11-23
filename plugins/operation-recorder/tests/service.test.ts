@@ -55,7 +55,7 @@ test("import-review-export is workspace isolated, portable, redacted and a real 
     const workflow = await readFile(compiled.workflowPath, "utf8");
     assert.ok(!workflow.includes("private-input") && !workflow.includes("private-query"));
     assert.match(skill, /current engine's available/);
-    assert.equal((await stat(compiled.skillPath)).mode & 0o777, 0o600);
+    if (process.platform !== 'win32') assert.equal((await stat(compiled.skillPath)).mode & 0o777, 0o600);
     const manifest = object(compiled.manifest);
     assert.ok(!("engineBindings" in manifest));
     const otherWorkspace = join(context.root, "other-workspace");
@@ -99,7 +99,7 @@ test("symlinks under owned storage cannot redirect exports", async () => {
     if (typeof first.directory !== "string") throw new Error("Missing export directory");
     const exports = join(first.directory, "..");
     await rm(exports, { recursive: true });
-    await symlink(context.runtime.workspace.root, exports);
+    await symlink(context.runtime.workspace.root, exports, process.platform === 'win32' ? 'junction' : 'dir');
     await assert.rejects(service.actions.compile({ sessionId: id, skillName: "safe-item" }), /symlink/);
   } finally { await service.dispose(); await context.remove(); }
 });

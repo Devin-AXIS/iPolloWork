@@ -1,0 +1,151 @@
+{
+  "schemaVersion": 2,
+  "id": "sentry",
+  "name": "Sentry",
+  "description": "把生产问题调查、回归监控、发布健康和修复验证组合成有证据的 Sentry 工作流。",
+  "category": "开发与运维",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://docs.sentry.io/product/sentry-mcp/"
+  },
+  "icon": {
+    "simpleIconSlug": "sentry"
+  },
+  "composer": {
+    "prompt": "使用 Sentry 插件读取生产证据，先确认组织、项目、环境和时间范围，再调查问题或验证修复。"
+  },
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "description": "Combine production issue investigation, regression monitoring, release health, and fix verification into evidence-backed Sentry workflows.",
+        "category": "Development & Operations",
+        "composer": {
+          "prompt": "Use the Sentry plugin to read production evidence, confirming the organization, project, environment, and time range before investigating an issue or verifying a fix."
+        },
+        "resources": {
+          "sentry-mcp": {
+            "label": "Official Sentry Remote MCP",
+            "description": "Read authorized Sentry organizations, projects, issues, and release data through persistent OAuth."
+          },
+          "sentry-issue-investigation": {
+            "label": "Production Issue Investigation",
+            "description": "Identify the most likely root cause using events, stacks, tags, and timelines."
+          },
+          "sentry-regression-monitoring": {
+            "label": "Regression Monitoring",
+            "description": "Compare releases and time windows to identify new issues, regressions, and impact changes."
+          },
+          "sentry-release-health": {
+            "label": "Release Health",
+            "description": "Evaluate release quality using errors, user impact, and version evidence."
+          },
+          "sentry-fix-verification": {
+            "label": "Fix Verification",
+            "description": "Connect code fixes, release versions, and production event trends into closed-loop evidence."
+          }
+        },
+        "permissions": {
+          "network": {
+            "reason": "Connect to the official Sentry remote MCP and read error and release data authorized through OAuth."
+          },
+          "workspace-read": {
+            "reason": "Compare Sentry stacks, versions, and commit evidence with the current code."
+          }
+        }
+      }
+    }
+  },
+  "package": {
+    "version": "1.0.2",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.18.0"
+    },
+    "updateId": "ipollowork/sentry"
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "连接 Sentry 官方远程 MCP，并读取用户通过 OAuth 授权的错误与发布数据。"
+    },
+    {
+      "id": "workspace-read",
+      "reason": "将 Sentry 堆栈、版本和提交证据与当前代码进行核对。",
+      "optional": true
+    }
+  ],
+  "resources": [
+    {
+      "type": "mcp",
+      "id": "sentry-mcp",
+      "label": "Sentry 官方远程 MCP",
+      "description": "通过持久化 OAuth 读取用户授权的 Sentry 组织、项目、Issue 和发布数据。",
+      "path": "mcp/sentry.json",
+      "mcpServerName": "sentry",
+      "oauth": true,
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "sentry-issue-investigation",
+      "label": "生产问题调查",
+      "description": "从事件、堆栈、标签和时间线定位最可能的根因。",
+      "path": "skills/sentry-issue-investigation/SKILL.md",
+      "requires": [
+        "resource:sentry-mcp"
+      ],
+      "provides": [
+        "workflow:sentry-issue-investigation"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "sentry-regression-monitoring",
+      "label": "回归监控",
+      "description": "比较版本和时间窗口，识别新问题、回归与影响变化。",
+      "path": "skills/sentry-regression-monitoring/SKILL.md",
+      "requires": [
+        "resource:sentry-mcp"
+      ],
+      "provides": [
+        "workflow:sentry-regression-monitoring"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "sentry-release-health",
+      "label": "发布健康",
+      "description": "用错误、用户影响和版本证据评估发布质量。",
+      "path": "skills/sentry-release-health/SKILL.md",
+      "requires": [
+        "resource:sentry-mcp"
+      ],
+      "provides": [
+        "workflow:sentry-release-health"
+      ],
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "sentry-fix-verification",
+      "label": "修复验证",
+      "description": "把代码修复、发布版本和生产事件趋势连接成闭环证据。",
+      "path": "skills/sentry-fix-verification/SKILL.md",
+      "requires": [
+        "resource:sentry-mcp"
+      ],
+      "provides": [
+        "workflow:sentry-fix-verification"
+      ],
+      "required": true
+    }
+  ]
+}

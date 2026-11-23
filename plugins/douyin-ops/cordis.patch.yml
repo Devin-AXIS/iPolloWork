@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-douyin-ops
+      name: "@ipollo/dsh-douyin-ops"

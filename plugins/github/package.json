@@ -1,0 +1,53 @@
+{
+  "name": "@ipollo/dsh-github",
+  "version": "0.1.0",
+  "description": "检查仓库、处理 PR 与 Issue、诊断 Actions，并把本地修改安全发布为 Draft PR。",
+  "type": "module",
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+  },
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js"
+  },
+  "files": [
+    "lib",
+    "business",
+    "cordis.patch.yml",
+    "README.md",
+    "README.zh.md",
+    "LICENSE",
+    "NOTICE.md",
+    "icon.svg",
+    "NOTICE.dependencies.txt"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-theme",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node ../../integrations/tooling/ported-plugins.mjs build github",
+    "check": "node ../../integrations/tooling/ported-plugins.mjs check github",
+    "pack:check": "npm pack --dry-run"
+  },
+  "icon": "./icon.svg",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-credentials": "0.2.2-rc.3"
+  }
+}

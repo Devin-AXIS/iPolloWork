@@ -1,0 +1,6 @@
+{
+  "type": "remote",
+  "url": "https://mcp.stripe.com",
+  "enabled": true,
+  "oauth": {}
+}

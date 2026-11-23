@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-plugin-workshop
+      name: "@ipollo/dsh-plugin-workshop"

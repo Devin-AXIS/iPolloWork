@@ -127,6 +127,754 @@
           }
         }
       ]
+    },
+    {
+      "name": "@ipollo/dsh-acme-research",
+      "title": {
+        "zh": "Acme Research",
+        "en": "Acme Research"
+      },
+      "author": "Acme",
+      "description": {
+        "zh": "Minimal independent plugin package for local development.",
+        "en": "Minimal independent plugin package for local development."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "acme-research",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-context7",
+      "title": {
+        "zh": "Context7",
+        "en": "Context7"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "通过版本感知的官方文档检索，为实现、升级和技术决策提供可追溯的上下文。",
+        "en": "Retrieve version-aware official documentation for traceable implementation, upgrade, and technical decisions."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "context7",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHZpZXdCb3g9IjAgMCAyOCAyOCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiByb2xlPSJpbWciPgogIDx0aXRsZT5Db250ZXh0NzwvdGl0bGU+CiAgPHJlY3Qgd2lkdGg9IjI4IiBoZWlnaHQ9IjI4IiByeD0iNCIgZmlsbD0iIzA1OTY2OSIvPgogIDxwYXRoIGQ9Ik0xMC41NzIgMTUuMjU3YzAgMi4yNDYtLjkxMSA0LjEyMS0yLjM5NCA1Ljg0OGgzLjQ1NHYxLjY3NEg2LjMzNVYyMS4xOWMxLjYyMS0xLjgzMyAyLjI0Ni0zLjMyNyAyLjI0Ni01LjkzM2gxLjk5MVpNMTcuNDI4IDE1LjI1N2MwIDIuMjQ2LjkxMSA0LjEyMSAyLjM5NCA1Ljg0OGgtMy40NTR2MS42NzRoNS4yOTdWMjEuMTljLTEuNjIxLTEuODMzLTIuMjQ2LTMuMzI3LTIuMjQ2LTUuOTMzaC0xLjk5MVpNMTAuNTcyIDEyLjc0NGMwLTIuMjQ2LS45MTEtNC4xMjItMi4zOTQtNS44NDloMy40NTRWNS4yMjFINi4zMzV2MS41OWMxLjYyMSAxLjgzMiAyLjI0NiAzLjMyNiAyLjI0NiA1LjkzM2gxLjk5MVpNMTcuNDI4IDEyLjc0NGMwLTIuMjQ2LjkxMS00LjEyMiAyLjM5NC01Ljg0OWgtMy40NTRWNS4yMjFoNS4yOTd2MS41OWMtMS42MjEgMS44MzItMi4yNDYgMy4zMjYtMi4yNDYgNS45MzNoLTEuOTkxWiIgZmlsbD0iI2ZmZiIvPgo8L3N2Zz4K"
+    },
+    {
+      "name": "@ipollo/dsh-deepseek-harness",
+      "title": {
+        "zh": "DeepSeek Harness",
+        "en": "DeepSeek Harness"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "使用当前 DSH 原生 Agent、子任务和会话完成开发、审查与研究，无需第二套运行时。",
+        "en": "Use the current native DSH Agent, subagent tools and sessions for development, review and research."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "deepseek-harness",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-douyin-ops",
+      "title": {
+        "zh": "抖音运营台",
+        "en": "Douyin Operations"
+      },
+      "author": "zjy-web222",
+      "description": {
+        "zh": "管理抖音本地草稿、素材、作品及评论记录，通过平台 API 和原生会话继续运营；隔离网页账号自动接入暂不可用。",
+        "en": "Manage local Douyin drafts, assets, posts and comment records through platform APIs and native conversation. Isolated browser account onboarding is unavailable."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "communication",
+        "keywords": [
+          "douyin-ops",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-figma",
+      "title": {
+        "zh": "Figma",
+        "en": "Figma"
+      },
+      "author": "Figma",
+      "description": {
+        "zh": "完整的 Figma 设计到代码、Code Connect、设计系统和画布写入工作流。",
+        "en": "Complete Figma design-to-code, Code Connect, design system, and canvas authoring workflows."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "figma",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjcwIDIwIDI2MCAzNjAiIGZpbGw9Im5vbmUiIHJvbGU9ImltZyI+CiAgPHRpdGxlPkZpZ21hPC90aXRsZT4KICA8cGF0aCBkPSJNOTcuNSAzMDIuNWMwLTI4LjMwNSAyMi45NDUtNTEuMjUgNTEuMjUtNTEuMjVIMjAwdjUxLjI1YzAgMjguMzA1LTIyLjk0NSA1MS4yNS01MS4yNSA1MS4yNVM5Ny41IDMzMC44MDUgOTcuNSAzMDIuNVoiIGZpbGw9IiMwQUNGODMiLz4KICA8cGF0aCBkPSJNMjAwIDIwMGMwLTI4LjMwNCAyMi45NDUtNTEuMjUgNTEuMjUtNTEuMjVzNTEuMjUgMjIuOTQ1IDUxLjI1IDUxLjI1LTIyLjk0NiA1MS4yNS01MS4yNSA1MS4yNVMyMDAgMjI4LjMwNCAyMDAgMjAwWiIgZmlsbD0iIzFBQkNGRSIvPgogIDxwYXRoIGQ9Ik05Ny41IDIwMGMwIDI4LjMwNSAyMi45NDUgNTEuMjUgNTEuMjUgNTEuMjVIMjAwdi0xMDIuNWgtNTEuMjVjLTI4LjMwNSAwLTUxLjI1IDIyLjk0NS01MS4yNSA1MS4yNVoiIGZpbGw9IiNBMjU5RkYiLz4KICA8cGF0aCBkPSJNMjAwIDQ2LjI1djEwMi41aDUxLjI1YzI4LjMwNSAwIDUxLjI1LTIyLjk0NSA1MS4yNS01MS4yNXMtMjIuOTQ1LTUxLjI1LTUxLjI1LTUxLjI1SDIwMFoiIGZpbGw9IiNGRjcyNjIiLz4KICA8cGF0aCBkPSJNOTcuNSA5Ny41YzAgMjguMzA1IDIyLjk0NSA1MS4yNSA1MS4yNSA1MS4yNUgyMDBWNDYuMjVoLTUxLjI1Yy0yOC4zMDUgMC01MS4yNSAyMi45NDUtNTEuMjUgNTEuMjVaIiBmaWxsPSIjRjI0RTFFIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-github",
+      "title": {
+        "zh": "GitHub",
+        "en": "GitHub"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "检查仓库、处理 PR 与 Issue、诊断 Actions，并把本地修改安全发布为 Draft PR。",
+        "en": "Inspect repositories, handle pull requests and issues, diagnose Actions, and safely publish local changes as a draft pull request."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "github",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjMTgxNzE3IiByb2xlPSJpbWciIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8dGl0bGU+R2l0SHViPC90aXRsZT4KICA8cGF0aCBkPSJNMTIgLjI5N2MtNi42MyAwLTEyIDUuMzczLTEyIDEyIDAgNS4zMDMgMy40MzggOS44IDguMjA1IDExLjM4NS42LjExMy44Mi0uMjU4LjgyLS41NzcgMC0uMjg1LS4wMS0xLjA0LS4wMTUtMi4wNC0zLjMzOC43MjQtNC4wNDItMS42MS00LjA0Mi0xLjYxLS41NDYtMS4zODUtMS4zMzUtMS43NTUtMS4zMzUtMS43NTUtMS4wODctLjc0NC4wODQtLjcyOS4wODQtLjcyOSAxLjIwNS4wODQgMS44MzggMS4yMzYgMS44MzggMS4yMzYgMS4wNyAxLjgzNSAyLjgwOSAxLjMwNSAzLjQ5NS45OTguMTA4LS43NzYuNDE3LTEuMzA1Ljc2LTEuNjA1LTIuNjY1LS4zLTUuNDY2LTEuMzMyLTUuNDY2LTUuOTMgMC0xLjMxLjQ2NS0yLjM4IDEuMjM1LTMuMjItLjEzNS0uMzAzLS41NC0xLjUyMy4xMDUtMy4xNzYgMCAwIDEuMDA1LS4zMjIgMy4zIDEuMjMuOTYtLjI2NyAxLjk4LS4zOTkgMy0uNDA1IDEuMDIuMDA2IDIuMDQuMTM4IDMgLjQwNSAyLjI4LTEuNTUyIDMuMjg1LTEuMjMgMy4yODUtMS4yMy42NDUgMS42NTMuMjQgMi44NzMuMTIgMy4xNzYuNzY1Ljg0IDEuMjMgMS45MSAxLjIzIDMuMjIgMCA0LjYxLTIuODA1IDUuNjI1LTUuNDc1IDUuOTIuNDIuMzYuODEgMS4wOTYuODEgMi4yMiAwIDEuNjA2LS4wMTUgMi44OTYtLjAxNSAzLjI4NiAwIC4zMTUuMjEuNjkuODI1LjU3QzIwLjU2NSAyMi4wOTIgMjQgMTcuNTkyIDI0IDEyLjI5NyAyNCA1LjY3IDE4LjYyNy4yOTcgMTIgLjI5N1oiLz4KPC9zdmc+Cg=="
+    },
+    {
+      "name": "@ipollo/dsh-ipollo-onto",
+      "title": {
+        "zh": "iPollo Onto",
+        "en": "iPollo Onto"
+      },
+      "author": "智慧未来学校",
+      "description": {
+        "zh": "安装即用的业务数据工作台：内置 SQLite，管理项目、业务表、关系图和文档；项目 MCP 复用 iPolloWork AI。可选连接 PostgreSQL 独立项目。",
+        "en": "Ready-to-use business workspace with built-in SQLite: projects, tables, relationships, documents, and scoped project MCP. External PostgreSQL projects are optional."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "ipollo-onto",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-jev-decision-model",
+      "title": {
+        "zh": "Jev DSH 决策引擎",
+        "en": "Jev DSH Decision Engine"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "Jev 为多种 Agent Harness 提供结构化决策能力，辅助选择工具、Skill 和 Agent，进行评分与判断；由当前 Agent 执行。",
+        "en": "Jev provides structured decisions for agent harnesses, helping select tools, Skills, and agents, score results, and make judgments. The current agent executes the selected actions."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "jev-decision-model",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-data-annotation",
+      "title": {
+        "zh": "数据标注实训云",
+        "en": "Data Annotation Training Cloud"
+      },
+      "author": "zjy-web222",
+      "description": {
+        "zh": "多模态数据标注工作台：真实素材实训、文档导入、标注员/审核员切换、本地记录审核及通过后导出 JSON。",
+        "en": "A multimodal annotation workbench with real training media, document import, local annotator/reviewer modes, saved-record review, and approved JSON exports."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "labelu-data-annotation",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-linear",
+      "title": {
+        "zh": "Linear",
+        "en": "Linear"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "把问题分流、Sprint 规划、交付跟进和项目更新组合成一致的 Linear 工作流。",
+        "en": "Combine issue triage, sprint planning, delivery follow-up, and project updates into a consistent Linear workflow."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "linear",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjNUU2QUQyIiByb2xlPSJpbWciIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48dGl0bGU+TGluZWFyPC90aXRsZT48cGF0aCBkPSJNMi44ODYgNC4xOEExMS45ODIgMTEuOTgyIDAgMCAxIDExLjk5IDBDMTguNjI0IDAgMjQgNS4zNzYgMjQgMTIuMDA5YzAgMy42NC0xLjYyIDYuOTAzLTQuMTggOS4xMDVMMi44ODcgNC4xOFpNMS44MTcgNS42MjZsMTYuNTU2IDE2LjU1NmMtLjUyNC4zMy0xLjA3NS42Mi0xLjY1Ljg2NkwuOTUxIDcuMjc3Yy4yNDctLjU3NS41MzctMS4xMjYuODY2LTEuNjVaTS4zMjIgOS4xNjNsMTQuNTE1IDE0LjUxNWMtLjcxLjE3Mi0xLjQ0My4yODItMi4xOTUuMzIyTDAgMTEuMzU4YTEyIDEyIDAgMCAxIC4zMjItMi4xOTVabS0uMTcgNC44NjIgOS44MjMgOS44MjRhMTIuMDIgMTIuMDIgMCAwIDEtOS44MjQtOS44MjRaIi8+PC9zdmc+Cg=="
+    },
+    {
+      "name": "@ipollo/dsh-media-studio",
+      "title": {
+        "zh": "素材工作台",
+        "en": "Media Studio"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "本地素材创作与管理，使用账号已授权模型生成图片、视频和语音；部分旧版高级编辑模式待适配。",
+        "en": "Create and manage local assets with authorized image, video and speech models. Some former advanced editing modes need further adaptation."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "creative",
+        "keywords": [
+          "media-studio",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-notion",
+      "title": {
+        "zh": "Notion",
+        "en": "Notion"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "将 Notion 页面、数据库、项目文档和会议记录组合成可靠的知识工作流。",
+        "en": "Combine Notion pages, databases, project documents, and meeting notes into reliable knowledge workflows."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "notion",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjMDAwMDAwIiByb2xlPSJpbWciIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48dGl0bGU+Tm90aW9uPC90aXRsZT48cGF0aCBkPSJNNC40NTkgNC4yMDhjLjc0Ni42MDYgMS4wMjYuNTYgMi40MjguNDY2bDEzLjIxNS0uNzkzYy4yOCAwIC4wNDctLjI4LS4wNDYtLjMyNkwxNy44NiAxLjk2OGMtLjQyLS4zMjYtLjk4MS0uNy0yLjA1NS0uNjA3TDMuMDEgMi4yOTVjLS40NjYuMDQ2LS41Ni4yOC0uMzc0LjQ2NnptLjc5MyAzLjA4djEzLjkwNGMwIC43NDcuMzczIDEuMDI3IDEuMjE0Ljk4bDE0LjUyMy0uODRjLjg0MS0uMDQ2LjkzNS0uNTYuOTM1LTEuMTY3VjYuMzU0YzAtLjYwNi0uMjMzLS45MzMtLjc0OC0uODg3bC0xNS4xNzcuODg3Yy0uNTYuMDQ3LS43NDcuMzI3LS43NDcuOTMzem0xNC4zMzcuNzQ1Yy4wOTMuNDIgMCAuODQtLjQyLjg4OGwtLjcuMTR2MTAuMjY0Yy0uNjA4LjMyNy0xLjE2OC41MTQtMS42MzUuNTE0LS43NDggMC0uOTM1LS4yMzQtMS40OTUtLjkzM2wtNC41NzctNy4xODZ2Ni45NTJMMTIuMjEgMTlzMCAuODQtMS4xNjguODRsLTMuMjIyLjE4NmMtLjA5My0uMTg2IDAtLjY1My4zMjctLjc0NmwuODQtLjIzM1Y5Ljg1NEw3LjgyMiA5Ljc2Yy0uMDk0LS40Mi4xNC0xLjAyNi43OTMtMS4wNzNsMy40NTYtLjIzMyA0Ljc2NCA3LjI3OXYtNi40NGwtMS4yMTUtLjEzOWMtLjA5My0uNTE0LjI4LS44ODcuNzQ3LS45MzN6TTEuOTM2IDEuMDM1bDEzLjMxLS45OGMxLjYzNC0uMTQgMi4wNTUtLjA0NyAzLjA4Mi43bDQuMjQ5IDIuOTg2Yy43LjUxMy45MzQuNjUzLjkzNCAxLjIxM3YxNi4zNzhjMCAxLjAyNi0uMzczIDEuNjM0LTEuNjggMS43MjZsLTE1LjQ1OC45MzRjLS45OC4wNDctMS40NDgtLjA5My0xLjk2Mi0uNzQ3bC0zLjEyOS00LjA2Yy0uNTYtLjc0Ny0uNzkzLTEuMzA2LS43OTMtMS45NlYyLjY2N2MwLS44MzkuMzc0LTEuNTQgMS40NDctMS42MzJ6Ii8+PC9zdmc+"
+    },
+    {
+      "name": "@ipollo/dsh-operation-recorder",
+      "title": {
+        "zh": "操作录制",
+        "en": "Operation Recorder"
+      },
+      "author": "Smart Future School",
+      "description": {
+        "zh": "统一 Node.js 录制器，记录页面、区域和控件，将详细操作步骤编译成可复用 Skill。",
+        "en": "Turn a demonstration into an editable, parameterized, portable Skill."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "operation-recorder",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.2.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-plugin-workshop",
+      "title": {
+        "zh": "插件工坊",
+        "en": "Plugin Workshop"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "在原生会话中制作、检查和打包 DSH 插件，通过原生插件管理器安装与验证。",
+        "en": "Author, check and package native DSH plugins in conversation, then install and verify them with the native Plugin Manager."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "plugin-workshop",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PCEtLQpMdWNpZGUgVG9vbENhc2UsIElTQyBMaWNlbnNlLgpDb3B5cmlnaHQgKGMpIGZvciBwb3J0aW9ucyBvZiBMdWNpZGUgYXJlIGhlbGQgYnkgQ29sZSBCZW1pcyAyMDEzLTIwMjIgYXMgcGFydCBvZiBGZWF0aGVyIChNSVQpLgpBbGwgb3RoZXIgY29weXJpZ2h0IChjKSBmb3IgTHVjaWRlIGFyZSBoZWxkIGJ5IEx1Y2lkZSBDb250cmlidXRvcnMgMjAyMi4KClBlcm1pc3Npb24gdG8gdXNlLCBjb3B5LCBtb2RpZnksIGFuZC9vciBkaXN0cmlidXRlIHRoaXMgc29mdHdhcmUgZm9yIGFueSBwdXJwb3NlCndpdGggb3Igd2l0aG91dCBmZWUgaXMgaGVyZWJ5IGdyYW50ZWQsIHByb3ZpZGVkIHRoYXQgdGhlIGFib3ZlIGNvcHlyaWdodCBub3RpY2UKYW5kIHRoaXMgcGVybWlzc2lvbiBub3RpY2UgYXBwZWFyIGluIGFsbCBjb3BpZXMuCgpUSEUgU09GVFdBUkUgSVMgUFJPVklERUQgIkFTIElTIiBBTkQgVEhFIEFVVEhPUiBESVNDTEFJTVMgQUxMIFdBUlJBTlRJRVMgV0lUSApSRUdBUkQgVE8gVEhJUyBTT0ZUV0FSRSBJTkNMVURJTkcgQUxMIElNUExJRUQgV0FSUkFOVElFUyBPRiBNRVJDSEFOVEFCSUxJVFkKQU5EIEZJVE5FU1MuIElOIE5PIEVWRU5UIFNIQUxMIFRIRSBBVVRIT1IgQkUgTElBQkxFIEZPUiBBTlkgU1BFQ0lBTCwgRElSRUNULApJTkRJUkVDVCwgT1IgQ09OU0VRVUVOVElBTCBEQU1BR0VTIE9SIEFOWSBEQU1BR0VTIFdIQVRTT0VWRVIgUkVTVUxUSU5HIEZST00KTE9TUyBPRiBVU0UsIERBVEEgT1IgUFJPRklUUywgV0hFVEhFUiBJTiBBTiBBQ1RJT04gT0YgQ09OVFJBQ1QsIE5FR0xJR0VOQ0UKT1IgT1RIRVIgVE9SVElPVVMgQUNUSU9OLCBBUklTSU5HIE9VVCBPRiBPUiBJTiBDT05ORUNUSU9OIFdJVEggVEhFIFVTRSBPUgpQRVJGT1JNQU5DRSBPRiBUSElTIFNPRlRXQVJFLgotLT4KPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMSAxIDIyIDIyIiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPgogIDxwYXRoIGQ9Ik0xMCAxNWg0Ii8+CiAgPHBhdGggZD0ibTE0LjgxNyAxMC45OTUtLjk3MS0xLjQ1IDEuMDM0LTEuMjMyYTIgMiAwIDAgMC0yLjAyNS0zLjIzOGwtMS44Mi4zNjRMOS45MSAzLjg4NWEyIDIgMCAwIDAtMy42MjUuNzQ4TDYuMTQxIDYuNTVsLTEuNzI1LjQyNmEyIDIgMCAwIDAtLjE5IDMuNzU2bC42NTcuMjciLz4KICA8cGF0aCBkPSJtMTguODIyIDEwLjk5NSAyLjI2LTUuMzhhMSAxIDAgMCAwLS41NTctMS4zMThMMTYuOTU0IDIuOWExIDEgMCAwIDAtMS4yODEuNTMzbC0uOTI0IDIuMTIyIi8+CiAgPHBhdGggZD0iTTQgMTIuMDA2QTEgMSAwIDAgMSA0Ljk5NCAxMUgxOWExIDEgMCAwIDEgMSAxdjdhMiAyIDAgMCAxLTIgMkg2YTIgMiAwIDAgMS0yLTJ6Ii8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-reference-context",
+      "title": {
+        "zh": "参考资料",
+        "en": "Reference Context"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "为视频、演示文稿、网页和其他模板提供共用的参考资料 Skill。",
+        "en": "Shared reference evidence Skill for video, slides, websites and other templates."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "reference-context",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-sentry",
+      "title": {
+        "zh": "Sentry",
+        "en": "Sentry"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "把生产问题调查、回归监控、发布健康和修复验证组合成有证据的 Sentry 工作流。",
+        "en": "Combine production issue investigation, regression monitoring, release health, and fix verification into evidence-backed Sentry workflows."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "sentry",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjMzYyRDU5IiByb2xlPSJpbWciIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48dGl0bGU+U2VudHJ5PC90aXRsZT48cGF0aCBkPSJNMTMuOTEgMi41MDVjLS44NzMtMS40NDgtMi45NzItMS40NDgtMy44NDQgMEw2LjkwNCA3LjkyYTE1LjQ3OCAxNS40NzggMCAwIDEgOC41MyAxMi44MTFoLTIuMjIxQTEzLjMwMSAxMy4zMDEgMCAwIDAgNS43ODQgOS44MTRsLTIuOTI2IDUuMDZhNy42NSA3LjY1IDAgMCAxIDQuNDM1IDUuODQ4SDIuMTk0YS4zNjUuMzY1IDAgMCAxLS4yOTgtLjUzNGwxLjQxMy0yLjQwMmE1LjE2IDUuMTYgMCAwIDAtMS42MTQtLjkxM0wuMjk2IDE5LjI3NWEyLjE4MiAyLjE4MiAwIDAgMCAuODEyIDIuOTk5IDIuMjQgMi4yNCAwIDAgMCAxLjA4Ni4yODhoNi45ODNhOS4zMjIgOS4zMjIgMCAwIDAtMy44NDUtOC4zMThsMS4xMS0xLjkyMmExMS40NyAxMS40NyAwIDAgMSA0Ljk1IDEwLjI0aDUuOTE1YTE3LjI0MiAxNy4yNDIgMCAwIDAtNy44ODUtMTUuMjhsMi4yNDQtMy44NDVhLjM3LjM3IDAgMCAxIC41MDQtLjEzYy4yNTUuMTQgOS43NSAxNi43MDggOS45MjggMTYuOWEuMzY1LjM2NSAwIDAgMS0uMzI3LjU0M2gtMi4yODdjLjAyOS42MTIuMDI5IDEuMjIzIDAgMS44MzFoMi4yOTdhMi4yMDYgMi4yMDYgMCAwIDAgMS45MjItMy4zMXoiLz48L3N2Zz4K"
+    },
+    {
+      "name": "@ipollo/dsh-short-video-studio",
+      "title": {
+        "zh": "短片创作工作台",
+        "en": "Short Video Studio"
+      },
+      "author": "智慧未来学校",
+      "description": {
+        "zh": "节点画布、分镜、剧本、角色与素材管理，连接已授权生成能力并交给原生 Video 编辑；部分旧版生成模式待适配。",
+        "en": "Manage a node canvas, storyboards, scripts, characters and assets with authorized generation and native Video editing. Some former generation modes need further adaptation."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "creative",
+        "keywords": [
+          "short-video-studio",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-stripe",
+      "title": {
+        "zh": "Stripe",
+        "en": "Stripe"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "把支付调查、订阅与账单、对账和高风险操作审查组合成安全的 Stripe 工作流。",
+        "en": "Combine payment investigation, subscriptions and billing, reconciliation, and high-risk operation review into safe Stripe workflows."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "stripe",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyBmaWxsPSIjNjM1QkZGIiByb2xlPSJpbWciIHZpZXdCb3g9IjAgMCAyNCAyNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48dGl0bGU+U3RyaXBlPC90aXRsZT48cGF0aCBkPSJNMTMuOTc2IDkuMTVjLTIuMTcyLS44MDYtMy4zNTYtMS40MjYtMy4zNTYtMi40MDkgMC0uODMxLjY4My0xLjMwNSAxLjkwMS0xLjMwNSAyLjIyNyAwIDQuNTE1Ljg1OCA2LjA5IDEuNjMxbC44OS01LjQ5NEMxOC4yNTIuOTc1IDE1LjY5NyAwIDEyLjE2NSAwIDkuNjY3IDAgNy41ODkuNjU0IDYuMTA0IDEuODcyIDQuNTYgMy4xNDcgMy43NTcgNC45OTIgMy43NTcgNy4yMThjMCA0LjAzOSAyLjQ2NyA1Ljc2IDYuNDc2IDcuMjE5IDIuNTg1LjkyIDMuNDQ1IDEuNTc0IDMuNDQ1IDIuNTgzIDAgLjk4LS44NCAxLjU0NS0yLjM1NCAxLjU0NS0xLjg3NSAwLTQuOTY1LS45MjEtNi45OS0yLjEwOWwtLjkgNS41NTVDNS4xNzUgMjIuOTkgOC4zODUgMjQgMTEuNzE0IDI0YzIuNjQxIDAgNC44NDMtLjYyNCA2LjMyOC0xLjgxMyAxLjY2NC0xLjMwNSAyLjUyNS0zLjIzNiAyLjUyNS01LjczMiAwLTQuMTI4LTIuNTI0LTUuODUxLTYuNTk0LTcuMzA1aC4wMDN6Ii8+PC9zdmc+Cg=="
+    },
+    {
+      "name": "@ipollo/dsh-wechat-channels-ops",
+      "title": {
+        "zh": "视频号运营台",
+        "en": "WeChat Channels Operations"
+      },
+      "author": "zjy-web222",
+      "description": {
+        "zh": "管理视频号本地草稿、视频封面素材与运营任务，在原生会话中继续工作；隔离网页账号自动接入暂不可用。",
+        "en": "Manage local WeChat Channels drafts, video covers and operation tasks in native conversation. Isolated browser account onboarding is unavailable."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "communication",
+        "keywords": [
+          "wechat-channels-ops",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-wechat-official",
+      "title": {
+        "zh": "微信公众号",
+        "en": "WeChat Official Account"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流；隔离网页账号接入暂不可用。",
+        "en": "Manage WeChat Official Accounts, articles, drafts, messages and operations through platform APIs. Isolated browser accounts are unavailable."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "communication",
+        "keywords": [
+          "wechat-official",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-workspace-canvas",
+      "title": {
+        "zh": "Workspace Canvas",
+        "en": "Workspace Canvas"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "A minimal MCP App canvas that can be edited by people and agents.",
+        "en": "A minimal MCP App canvas that can be edited by people and agents."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "creative",
+        "keywords": [
+          "workspace-canvas",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-xiaohongshu-ops",
+      "title": {
+        "zh": "小红书运营台",
+        "en": "Xiaohongshu Operations"
+      },
+      "author": "zjy-web222",
+      "description": {
+        "zh": "管理小红书本地账号记录、草稿、素材与运营任务；隔离网页账号和自动验证暂不可用。",
+        "en": "Manage local Xiaohongshu account records, drafts, assets and operation tasks. Isolated browser accounts and automatic verification are unavailable."
+      },
+      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
+      "metadata": {
+        "category": "communication",
+        "keywords": [
+          "xiaohongshu-ops",
+          "dsh",
+          "ipollowork"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "publishTimestamp": 1795382400,
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjgxIiBoZWlnaHQ9IjI5OCIgdmlld0JveD0iMCAwIDI4MSAyOTgiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTE0OS40IDBIMTMwLjUyQzEyMC4xNyAwIDExMS43OCA4LjM5MDE4IDExMS43OCAxOC43NFY0My4zNUMxMTEuNzggNTMuNjk5OCAxMjAuMTcgNjIuMDkgMTMwLjUyIDYyLjA5SDE0OS40QzE1OS43NSA2Mi4wOSAxNjguMTQgNTMuNjk5OCAxNjguMTQgNDMuMzVWMTguNzRDMTY4LjE0IDguMzkwMTggMTU5Ljc1IDAgMTQ5LjQgMFoiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3OC4wNiA4OS44MUwyNTkuNjYgNTcuOTNDMjU2Ljg2IDUzLjA4IDI1MC42NiA1MS40MiAyNDUuODEgNTQuMjJMMTM5LjggMTE1LjQzTDM0LjE1IDU0LjQ0QzI5LjMgNTEuNjQgMjMuMSA1My4zIDIwLjMgNTguMTVMMi4zMDAwMiA4OS4zMUMtMC40OTk5ODQgOTQuMTYgMS4xNjAwMiAxMDAuMzYgNi4wMTAwMiAxMDMuMTZMMTE2LjkgMTY3LjE4QzEyMS43NSAxNjkuOTggMTI3Ljk1IDE2OC4zMiAxMzAuNzUgMTYzLjQ3TDE0MC4wMyAxNDcuNEwxNDkuNiAxNjMuOTdDMTUyLjQgMTY4LjgyIDE1OC42IDE3MC40OCAxNjMuNDUgMTY3LjY4TDI3NC4zNCAxMDMuNjZDMjc5LjE5IDEwMC44NiAyODAuODUgOTQuNjYgMjc4LjA1IDg5LjgxSDI3OC4wNloiIGZpbGw9ImJsYWNrIi8+CiAgPHBhdGggZD0iTTI3My41NSAxOTIuMTRMMTQ2Ljc3IDExOC45NEMxNDQuOTcgMTE3LjkgMTQyLjk5IDExNy40OCAxNDEuMDYgMTE3LjZDMTM4Ljc2IDExNy4xNiAxMzYuMjkgMTE3LjUxIDEzNC4xIDExOC43N0w2LjU3MDA4IDE5Mi40MUMxLjcyMDA4IDE5NS4yMSAwLjA2MDA3NDggMjAxLjQxIDIuODYwMDcgMjA2LjI2TDIwLjg2MDEgMjM3LjQ0QzIzLjY2MDEgMjQyLjI5IDI5Ljg2MDEgMjQzLjk1IDM0LjcxMDEgMjQxLjE1TDExMi4wMyAxOTYuNTFWMjg1LjU4QzExMi4wMyAyOTEuMTggMTE2LjU3IDI5NS43MiAxMjIuMTcgMjk1LjcySDE1OC4xOEMxNjMuNzggMjk1LjcyIDE2OC4zMiAyOTEuMTggMTY4LjMyIDI4NS41OFYxOTYuNjRMMjQ1LjI4IDI0MS4wN0MyNTAuMTMgMjQzLjg3IDI1Ni4zMyAyNDIuMjEgMjU5LjEzIDIzNy4zNkwyNzcuMjQgMjA1Ljk5QzI4MC4wNCAyMDEuMTQgMjc4LjM4IDE5NC45NCAyNzMuNTMgMTkyLjE0SDI3My41NVoiIGZpbGw9ImJsYWNrIi8+Cjwvc3ZnPgo="
     }
   ]
 }

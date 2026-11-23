@@ -88,7 +88,7 @@ test('bundled installation specs use a retained content-addressed cache when the
 
 test('shipped Studio bundles select their host authentication API for editor assets', async () => {
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as { plugins: { name: string; file: string }[] }
-  for (const release of releases.plugins) {
+  for (const release of releases.plugins.filter(item => ['deepseek-idesign', 'deepseek-ivideo'].includes(item.name))) {
     const document = execFileSync('tar', ['-xOzf', join('catalog/packages', release.file), 'package/cordis.patch.yml'], { encoding: 'utf8' })
     const patch = yaml.load(document) as { insert: { name: string; inject?: string[] }[] }[]
     const row = patch.flatMap(item => item.insert).find(item => item.name === release.name)
@@ -105,15 +105,15 @@ test('shipped Studio bundles select their host authentication API for editor ass
 test('npm delivery downloads optional Studio archives only when installed', async () => {
   const { rename } = await import('node:fs/promises')
   const directory = await mkdtemp(join(tmpdir(), 'ipw-npm-market-'))
-  const original = resolve('catalog/packages')
-  const hidden = resolve('catalog/packages.resource-test')
-  await rename(original, hidden)
+  const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as { plugins: { name: string; file: string }[] }
+  const moved = releases.plugins.filter(item => ['deepseek-idesign', 'deepseek-ivideo'].includes(item.name)).map(item => resolve('catalog/packages', item.file))
+  for (const file of moved) await rename(file, file + '.resource-test')
   try {
     const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, '0.2.2-rc.3', 'en', 1048576, directory)
     assert.equal(state.items[0]?.version, '1.0.0-beta.38')
     assert.equal(state.items[1]?.version, '1.0.0-beta.24')
     for (const item of state.items.slice(0, 2)) assert(item.spec.startsWith('https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/'))
-  } finally { await rename(hidden, original); await rm(directory, { recursive: true, force: true }) }
+  } finally { for (const file of moved) await rename(file + '.resource-test', file); await rm(directory, { recursive: true, force: true }) }
 })
 
 

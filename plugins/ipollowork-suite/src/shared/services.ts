@@ -53,6 +53,8 @@ export interface PublicationInput {
   files: { path: string; bytes: number; open(): ReadableStream<Uint8Array> }[];
 }
 export interface ServiceCenter {
+  /** Account-authorized capability transport for native product plugins. No vendor keys cross this seam. */
+  capability?(path: string, body: unknown | undefined, signal: AbortSignal): Promise<unknown>;
   /** Resolve a native workspace against current account-owned organization projects. */
   organizationProject?(workspaceId: string, enterpriseId: string): Promise<string | null>;
   bind(signal?: AbortSignal): Promise<ServiceBinding>;

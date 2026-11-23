@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Workspace Canvas</title>
+  <style>
+    :root { color-scheme: light dark; font: 14px/1.5 system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #f7f7f5; color: #191919; }
+    main { display: flex; min-height: 100vh; flex-direction: column; gap: 14px; padding: 18px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    h1 { margin: 0; font-size: 16px; }
+    button { border: 1px solid #d9d9d6; border-radius: 8px; background: #fff; color: inherit; padding: 7px 10px; cursor: pointer; }
+    textarea { min-height: 320px; flex: 1; resize: none; border: 1px solid #dfdfdb; border-radius: 12px; background: #fff; color: inherit; padding: 16px; font: inherit; outline: none; box-shadow: 0 10px 30px rgb(0 0 0 / 5%); }
+    textarea:focus { border-color: #7c6df2; box-shadow: 0 0 0 3px rgb(124 109 242 / 14%); }
+    small { color: #777; }
+    @media (prefers-color-scheme: dark) {
+      body { background: #181818; color: #f0f0ee; }
+      textarea, button { border-color: #3a3a38; background: #232323; }
+      small { color: #aaa; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><h1>Workspace Canvas</h1><small id="status">Connecting…</small></div>
+      <button id="ask" type="button">Ask AI to improve</button>
+    </header>
+    <textarea id="board" aria-label="Canvas content">Goal
+
+• Add a clear objective
+• Break it into the next three actions
+• Let the agent update this canvas</textarea>
+  </main>
+  <script>
+    const board = document.querySelector("#board");
+    const status = document.querySelector("#status");
+    const pending = new Map();
+    let requestId = 0;
+    let contextTimer = 0;
+
+    function post(message) { parent.postMessage(message, "*"); }
+    function respond(id, result) { post({ jsonrpc: "2.0", id, result }); }
+    function request(method, params) {
+      const id = ++requestId;
+      post({ jsonrpc: "2.0", id, method, params });
+      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    }
+    function publishContext() {
+      clearTimeout(contextTimer);
+      contextTimer = setTimeout(() => {
+        void request("ui/update-model-context", {
+          content: [{ type: "text", text: `Current canvas:\n${board.value}` }],
+          structuredContent: { canvas: board.value }
+        });
+      }, 120);
+    }
+    function toolResult(text) {
+      publishContext();
+      return { content: [{ type: "text", text }], structuredContent: { canvas: board.value } };
+    }
+
+    addEventListener("message", (event) => {
+      if (event.source !== parent || !event.data || event.data.jsonrpc !== "2.0") return;
+      const message = event.data;
+      if (message.id !== undefined && !message.method) {
+        const handler = pending.get(message.id);
+        if (!handler) return;
+        pending.delete(message.id);
+        message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result);
+        return;
+      }
+      if (message.method === "tools/list") {
+        respond(message.id, { tools: [
+          { name: "replace_board", description: "Replace all canvas text.", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } },
+          { name: "append_note", description: "Append one note to the canvas.", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } }
+        ] });
+        return;
+      }
+      if (message.method === "tools/call") {
+        const args = message.params?.arguments || {};
+        if (message.params?.name === "replace_board") board.value = String(args.text || "");
+        if (message.params?.name === "append_note") board.value += `${board.value ? "\n" : ""}${String(args.text || "")}`;
+        respond(message.id, toolResult("Canvas updated."));
+        return;
+      }
+      if (message.method === "ui/resource-teardown") respond(message.id, {});
+      if (message.method === "ui/notifications/host-context-changed") {
+        document.documentElement.style.colorScheme = message.params?.theme || "light dark";
+      }
+    });
+
+    board.addEventListener("input", publishContext);
+    document.querySelector("#ask").addEventListener("click", () => {
+      void request("ui/message", {
+        role: "user",
+        content: [{ type: "text", text: "Improve the active canvas while preserving its intent." }]
+      });
+    });
+
+    request("ui/initialize", {
+      protocolVersion: "2025-11-21",
+      appInfo: { name: "Workspace Canvas", version: "1.0.0" },
+      appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] }
+    }).then((host) => {
+      post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+      document.querySelector("#ask").hidden = !host.hostCapabilities?.message;
+      document.documentElement.style.colorScheme = host.hostContext?.theme || "light dark";
+      status.textContent = "Connected";
+      publishContext();
+    }).catch((error) => { status.textContent = error.message; });
+  </script>
+</body>
+</html>

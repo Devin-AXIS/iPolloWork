@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process'
 const output = resolve(process.argv[2] ?? '../../dist/resources')
 const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8'))
 for (const release of releases.plugins) {
-  const kind = release.name === 'deepseek-idesign' ? 'design' : release.name === 'deepseek-ivideo' ? 'video' : undefined
+  const kind = release.name === 'deepseek-idesign' ? 'design' : release.name === 'deepseek-ivideo' ? 'video' : release.name.startsWith('@ipollo/dsh-') ? release.name.slice('@ipollo/dsh-'.length) : undefined
   if (!kind) throw Error('Unsupported bundled resource')
   const source = join('catalog/packages', release.file)
   if (createHash('sha256').update(await readFile(source)).digest('hex') !== release.sha256) throw Error('Resource checksum mismatch')

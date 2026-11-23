@@ -1,0 +1,31 @@
+{
+  "name": "@ipollo-data/relations",
+  "version": "1.0.0",
+  "type": "module",
+  "files": [
+    "client.js",
+    "layout.js",
+    "style.css"
+  ],
+  "ipolloData": {
+    "id": "relations",
+    "name": "业务关系图",
+    "description": "沿真实记录与关联探索公司、客户及业务链路",
+    "protocol": 1,
+    "categories": [
+      "views"
+    ],
+    "defaultInstalled": true,
+    "dependencies": [
+      "core"
+    ],
+    "contributes": {
+      "views": [
+        "relations"
+      ]
+    },
+    "entrypoints": {
+      "client": "client.js"
+    }
+  }
+}

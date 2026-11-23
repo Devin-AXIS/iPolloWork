@@ -1,0 +1,1 @@
+Business sources: iPolloWork 05f917145cd320a93e514dbd01178133891bc4c6, examples/plugin-packages/deepseek-harness (0.3.7). Original license and third-party notices are retained in business/. Native DSH integration is owned by iPolloWork. No old host runtime is included.

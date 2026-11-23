@@ -6,6 +6,10 @@ DSH 基准由[运行时固定记录](upstream.json)指定。本次盘点基于 `
 
 ## 升级前复核的功能
 
+Suite `0.1.46` 将多引擎分支 24 个身份的对应清单和经校验的独立原生包加入既有 format-1 市场。`src/ported/host.ts` 使用 `ctx.tools.register`、`ctx.skills.register`、`workspaceRegistry`、所有者准入、沙箱策略、原生凭据记录和生命周期内的 `mcpManager.register`；`src/ported/client.tsx` 使用 `main`、`sidebar.panellist`、`plugins.bundle.config`、`uiWorkspace.connectWorkspace` 及未发送的会话草稿。自有 iframe 桥接复用原生组件，不包含旧宿主或 Agent 运行时。`ServiceCenter.capability` 通过既有账号授权能力接口接通模型，不向插件传递供应商密钥。下次升级复测实际安装包、schema 方言、启停卸载、凭据脱敏、只读和工作区拒绝、MCP 授权、iframe 操作、明暗主题与窄布局。没有对应服务契约的旧版高级媒体操作明确不可用；见[迁移清单](../../docs/multi-engine-plugin-migration.zh.md)。
+
+工作台主题桥接从原生 body 读取 --dsw-/--dsh- 计算 token，只复制 style[data-plugin="@deepseek-ai/dsh-client-ui-primitives"] 样式；升级时复核这些 DOM 约定。本地重定向、Onto 动态扩展导入和 EventSource 地址保留所有者代理前缀。当前 pin 没有旧宿主按账号浏览器资料、自动观察和 ui/open-link 桥接的对应接口，这些流程明确不可用。
+
 Desktop `1.0.10` 沿用 `initProfile`/`readProfileManifest` 和原生 `dsh.profile.bundles`，补齐已初始化配置缺失的私有 Host；备份原清单后移除重复的公开产品 Bundle 和产品直接依赖。`desktop-runtime.json.sharedPackages` 限定安装包拥有的 Suite/Stage/Host 副本，即使版本相同也恢复为安装包提供。最终原生 Include overlay 仅启用产品入口；Suite 根据 install-anchor 包身份固定该发行版的账号、主题及服务地址，保留其他插件配置和凭据。升级时复测旧 web-only profile、旧及相同版本 Suite、停用条目、已安装 Mac 的真实云端登录、错误密码分类和保持登录后再次进入。欢迎页进入工作区前核验 `/ipollowork-suite/info`，区分凭据错误、会话拒绝、服务异常、超时和限流。详见[升级诊断](../../docs/diagnostics/2026-11-20-mac-login-and-upgrade.md)。
 
 官方模型代理只在响应头返回前连接失败，或网关报告同一调用仍在执行时，复用原请求 ID 恢复连接。恢复有次数上限、支持取消并绑定账号代次；原生 pi-ai 自动重试仍关闭。已开始输出的流和上游结果不明的调用不重放。账号服务另行在同一计费调用内重试明确返回 HTTP 429 的聊天请求。下次升级 DSH 时复验原生流、预备调用、取消、切换账号及只结算一次。Design 编辑器在拖拽与缩放前将 CSS 单位解析为布局像素，按父容器缩放换算指针位移，并在实际移动后才启用吸附；复验 PPT 百分比、样式表定位、内容盒尺寸、右下角锚定和固定画布缩放。

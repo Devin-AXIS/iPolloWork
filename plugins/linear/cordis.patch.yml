@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-linear
+      name: "@ipollo/dsh-linear"

@@ -4,6 +4,8 @@ English | [中文](README.zh.md)
 
 One installable DSH Bundle supplies the iPolloWork skin, a curated native-plugin market, optional iPollo Account sign-in, reusable project agents, and integrated IM channels. DSH owns execution, installed bundles, configuration layers, credentials, and the application launcher. No alternate agent runtime or installer is included.
 
+Suite 0.1.46 carries independent native bundles for the former multi-engine collection. All 24 identities have a migration target; the curated market has 25 entries including the existing session-title plugin. Installable archives use SHA-256 verification and the native manager. See the [migration inventory and capability limits](../../docs/multi-engine-plugin-migration.zh.md).
+
 Organization Space includes a manager-only analytics tab grouped by department, member or service/model (SKU), over 7, 30 or 90 days. Calls are enterprise-owned service requests, excluding polling and personal services; departments are captured at dispatch. Token coverage is explicit. Project creation and current skill/plugin inventory counts are separate; skill loads and tool calls are reported for linked enterprise projects. `enterpriseUsageReporting` (default true) controls metadata reporting; `enterpriseUsageQueueLimit` (default 200) bounds pending reports. Failed or overflowed reports are not retried and never delay tools, so counts may be incomplete. Arguments, results and credentials are excluded.
 
 In Organization Space → Settings → Websites, managers can add links for all active members or limit them by department and role. The account service rechecks permission when a member opens a link in their browser.

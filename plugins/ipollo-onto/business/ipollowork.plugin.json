@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 2,
+  "id": "ipollo-onto",
+  "name": "iPollo Onto",
+  "description": "安装即用的业务数据工作台：内置 SQLite，管理项目、业务表、关系图和文档；项目 MCP 复用 iPolloWork AI。可选连接 PostgreSQL 独立项目。",
+  "category": "数据与分析",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false,
+    "reference": "https://github.com/Devin-AXIS/iPollo-Onto/tree/c209c8b8ebdb36773232632e83a02de52360882f"
+  },
+  "package": {
+    "version": "0.1.7",
+    "publisher": {
+      "id": "smart-future-school",
+      "name": "智慧未来学校"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.50.18"
+    },
+    "updateId": "devin-axis/ipollo-onto"
+  },
+  "permissions": [
+    {
+      "id": "network",
+      "reason": "在工作台显示本机 Onto 页面，仅连接 127.0.0.1 的 5710、5711 端口。"
+    },
+    {
+      "id": "process",
+      "reason": "通过主软件已有运行时启动随插件打包的本地数据服务，仅监听 127.0.0.1。"
+    }
+  ],
+  "resources": [
+    {
+      "type": "local-service",
+      "id": "onto-service",
+      "label": "Onto 本地数据服务",
+      "path": "service/workbench.mjs",
+      "required": true,
+      "provides": [
+        "action:open-workbench"
+      ],
+      "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开 Onto 工作台",
+          "description": "启动内置 SQLite 工作台，保留已有项目和文档。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "ui",
+      "id": "workbench",
+      "label": "iPollo Onto",
+      "path": "ui/workbench.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://ipollo-onto/workbench",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false,
+        "csp": {
+          "frameDomains": [
+            "http://127.0.0.1:5710",
+            "http://127.0.0.1:5711"
+          ]
+        },
+        "sandbox": {
+          "forms": true,
+          "downloads": true,
+          "modals": true
+        }
+      }
+    },
+    {
+      "type": "skill",
+      "id": "onto-workflow",
+      "label": "iPollo Onto 业务工作流",
+      "path": "skills/ipollo-onto",
+      "required": true,
+      "provides": [
+        "workflow:business-data"
+      ]
+    },
+    {
+      "id": "onto-runtime",
+      "type": "file",
+      "path": "runtime",
+      "required": true
+    },
+    {
+      "id": "onto-license",
+      "type": "file",
+      "path": "LICENSE",
+      "required": true
+    },
+    {
+      "id": "onto-notice",
+      "type": "file",
+      "path": "NOTICE",
+      "required": true
+    },
+    {
+      "id": "onto-dependency-licenses",
+      "type": "file",
+      "path": "THIRD-PARTY-LICENSES.txt",
+      "required": true
+    }
+  ],
+  "contributions": [
+    {
+      "type": "workspace-app",
+      "ref": "workbench",
+      "label": "iPollo Onto",
+      "description": "项目、业务表、关系图和文档"
+    },
+    {
+      "type": "conversation-template",
+      "label": "iPollo Onto · 业务数据",
+      "description": "使用已连接项目的表、关系和文档开展工作。首次使用需连接项目 MCP。",
+      "prompt": "本任务使用 iPollo Onto 工作流。先读取选定项目的真实结构；创建系统时先建立可用的表和关联并在工作台打开，随后将有依据的结果逐批写入和补全，不必先生成完整清单再导入。业务分析先沿已有关系查证，缺失信息再使用现有搜索工具补充；只读问题保持只读。复用本任务已明确的项目，仅在范围不明确时询问；没有连接时说明如何连接项目 MCP。此规则仅适用于本次 Onto 任务，不改变其他任务、Agent 或插件。",
+      "mode": "work"
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "iPollo Onto",
+        "description": "Ready-to-use business workspace with built-in SQLite: projects, tables, relationships, documents, and scoped project MCP. External PostgreSQL projects are optional.",
+        "category": "Data & Analytics",
+        "resources": {
+          "onto-service": {
+            "label": "Onto Local Data Service"
+          },
+          "workbench": {
+            "label": "iPollo Onto"
+          },
+          "onto-workflow": {
+            "label": "iPollo Onto Business Workflow"
+          }
+        },
+        "permissions": {
+          "network": {
+            "reason": "Show the local Onto workbench, connecting only to ports 5710 and 5711 on 127.0.0.1."
+          },
+          "process": {
+            "reason": "Start the bundled local data service using the host runtime, listening only on 127.0.0.1."
+          }
+        },
+        "setup": {
+          "instructions": "Open the installed workbench to create its own local SQLite database. No PostgreSQL server, Node.js or pnpm installation is required. Updates preserve projects, documents and settings. Connect project MCP separately for AI access; external PostgreSQL projects are optional."
+        }
+      }
+    }
+  },
+  "setup": {
+    "instructions": "安装后直接打开工作台，插件自动创建独立的本地 SQLite 数据文件，无需 PostgreSQL、Node.js 或 pnpm。更新保留项目、文档和设置。需要 AI 读写时，在项目连接页添加该项目的 MCP。独立 PostgreSQL 连接为可选高级功能。",
+    "testActionRef": "open-workbench"
+  }
+}

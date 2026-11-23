@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-jev-decision-model
+      name: "@ipollo/dsh-jev-decision-model"

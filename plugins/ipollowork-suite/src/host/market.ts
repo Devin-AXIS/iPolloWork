@@ -49,6 +49,7 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
       try { bytes = await readFile(file) }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        if (release.name.startsWith('@ipollo/dsh-')) throw new Error('A bundled product plugin is missing from this installation')
         targets.set(key, `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0/${release.file}`)
         continue
       }

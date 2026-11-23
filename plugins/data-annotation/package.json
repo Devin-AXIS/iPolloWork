@@ -49,7 +49,8 @@
     "NOTICE.txt",
     "app/dist",
     "service/dist",
-    "LICENSE-THIRD-PARTY.txt"
+    "LICENSE-THIRD-PARTY.txt",
+    "icon.svg"
   ],
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
@@ -73,5 +74,6 @@
       ]
     }
   },
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "SEE LICENSE IN LICENSE",
+  "icon": "./icon.svg"
 }

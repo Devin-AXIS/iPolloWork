@@ -36,7 +36,8 @@
     "LICENSE",
     "NOTICE.txt",
     "dist/native",
-    "dist/ui"
+    "dist/ui",
+    "icon.svg"
   ],
   "peerDependencies": {
     "@deepseek-ai/dsh-tools": "0.2.2-rc.3",
@@ -62,5 +63,6 @@
       ]
     }
   },
-  "license": "SEE LICENSE IN LICENSE"
+  "license": "SEE LICENSE IN LICENSE",
+  "icon": "./icon.svg"
 }

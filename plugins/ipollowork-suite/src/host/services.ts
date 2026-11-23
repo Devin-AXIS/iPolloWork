@@ -64,6 +64,11 @@ const catalogSchema = z.object({
   points: z.number(),
 });
 export class Services implements ServiceCenter {
+  async capability(path: string, body: unknown | undefined, signal: AbortSignal): Promise<unknown> {
+    if (!/^\/api\/v1\/(?:capabilities(?:\?kind=(?:image|video|speech))?|capabilities\/[^/?]+(?:\/invoke)?|capability-tasks\/[a-f0-9-]{36})$/.test(path))
+      throw new SuiteError('IPW_INVALID_INPUT', 400);
+    return this.account.capability(path, body, AbortSignal.any([signal, this.signal]));
+  }
   get generation() {
     return this.account.generation;
   }
