@@ -34,22 +34,26 @@ function PluginEditor({ existing, close, saved }: { existing?: MarketEntry; clos
   </Modal>;
 }
 
-export function PluginMarket() {
+export function PluginMarket({ canManage }: { canManage: boolean }) {
   const catalog = useData<{ plugins: MarketEntry[] }>(catalogPath);
   const [editor, setEditor] = useState<MarketEntry | 'new'>();
   const [notice, setNotice] = useState('');
   const plugins = catalog.data?.plugins ?? [];
-  return <section className="panel">
-    <div className="modal-head"><h2>在线插件目录</h2><button className="primary" onClick={() => { setNotice(''); setEditor('new'); }}><Plus size={16}/>添加插件</button></div>
-    <p>上架后，用户刷新 iPolloWork 插件市场即可看到。预置插件也可以通过同名包加入在线目录管理。</p>
-    {notice && <p role="status">{notice}</p>}
+  return <section className="panel market-directory">
+    <div className="market-heading">
+      <div><h2>在线插件目录</h2>
+        <p>{canManage ? '粘贴 npm 包名或 GitHub 地址，核对插件介绍后即可上架。' : '可浏览已上架插件。添加插件和编辑介绍需要平台管理员账号。'}</p>
+      </div>
+      {canManage && <button className="primary" onClick={() => { setNotice(''); setEditor('new'); }}><Plus size={16}/>添加插件</button>}
+    </div>
+    {notice && <p className="market-notice" role="status">{notice}</p>}
     <Status error={catalog.error} loading={!catalog.data && !catalog.error} />
-    {catalog.data && <Table rows={plugins.map(p => ({ id: p.name, title: p.title, version: p.versions[0].version, category: categories[p.metadata.category] }))} columns={[
-      { label: '插件', cell: row => <><strong>{row.title}</strong><br/><small>{row.id}</small></> },
+    {catalog.data && (plugins.length ? <Table rows={plugins.map(p => ({ id: p.name, title: p.title, description: p.description ?? p.name, version: p.versions[0].version, category: categories[p.metadata.category] }))} columns={[
+      { label: '插件', cell: row => <><strong>{row.title}</strong><small>{row.description}</small></> },
       { label: '版本', cell: row => row.version }, { label: '分类', cell: row => row.category },
-      { label: '操作', cell: row => <button onClick={() => { setNotice(''); setEditor(plugins.find(p => p.name === row.id)); }}>编辑</button> },
-    ]}/>}
-    {editor && <PluginEditor existing={editor === 'new' ? undefined : editor} close={() => setEditor(undefined)} saved={() => {
+      ...(canManage ? [{ label: '操作', cell: (row: { id?: unknown }) => <button onClick={() => { setNotice(''); setEditor(plugins.find(p => p.name === row.id)); }}>编辑</button> }] : []),
+    ]}/> : <div className="empty">在线目录暂未上架插件</div>)}
+    {canManage && editor && <PluginEditor existing={editor === 'new' ? undefined : editor} close={() => setEditor(undefined)} saved={() => {
       setNotice(editor === 'new' ? '插件已上架。' : '插件资料已更新。'); setEditor(undefined); catalog.reload();
     }}/>}
   </section>;
