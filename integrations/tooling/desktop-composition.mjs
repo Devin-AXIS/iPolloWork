@@ -18,7 +18,10 @@ export function desktopApplicationEntries(patches, accountOrigin) {
 
 /** Editable product entries belong to the native profile tree, preserving Settings ownership. */
 export function desktopApplicationPatches(entries) {
-  return [{ id: 'ui-settings-account', disabled: true }, { id: 'ui-account-notifications', disabled: true }, { insert: entries }]
+  // A native Include boundary makes the application Bundle management-required.
+  // Its empty tree keeps product preferences in the editable profile root.
+  const management = { id: 'ipollowork-desktop-management', name: '@deepseek-ai/cordis-plugin-include', config: { path: './ipollowork-desktop-management.yml', initial: [] } }
+  return [{ id: 'ui-settings-account', disabled: true }, { id: 'ui-account-notifications', disabled: true }, { insert: [management, ...entries] }]
 }
 
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {

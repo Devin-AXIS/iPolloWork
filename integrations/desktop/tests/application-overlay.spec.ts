@@ -15,7 +15,9 @@ it('ships valid profile-owned entries so native settings can address onboarding 
   expect(entries.filter(entry => entry.id === 'ipollowork-suite')).toHaveLength(1)
   expect(entries.some(entry => entry.id === 'ipollo-notification-center')).toBe(true)
   for (const entry of entries) expect(validateOptions(entry, ':', true)).toEqual([])
-  expect(entries.some(entry => entry.name === '@deepseek-ai/cordis-plugin-include')).toBe(false)
+  expect(entries.filter(entry => entry.name === '@deepseek-ai/cordis-plugin-include')).toEqual([
+    { id: 'ipollowork-desktop-management', name: '@deepseek-ai/cordis-plugin-include', config: { path: './ipollowork-desktop-management.yml', initial: [] } },
+  ])
 })
 
 it('keeps the Suite enabled while preserving saved account, onboarding and unrelated preferences', () => {

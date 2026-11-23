@@ -3,6 +3,11 @@
 - id: ui-account-notifications
   disabled: true
 - insert:
+    - id: ipollowork-desktop-management
+      name: '@deepseek-ai/cordis-plugin-include'
+      config:
+        path: ./ipollowork-desktop-management.yml
+        initial: []
     - id: ipollowork-onboarding
       name: '@ipollo/dsh-suite/onboarding'
     - id: liveshare-share-host

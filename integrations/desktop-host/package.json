@@ -20,6 +20,7 @@
   "dependencies": {
     "koffi": "3.1.1",
     "@deepseek-ai/cordis": "4.2.0-alpha.1",
+    "@deepseek-ai/cordis-plugin-include": "1.2.0-alpha.1",
     "@deepseek-ai/dsh": "0.2.3-alpha.2",
     "@deepseek-ai/dsh-agent": "0.2.3-alpha.2",
     "@deepseek-ai/dsh-app-boot": "0.2.3-alpha.2",
