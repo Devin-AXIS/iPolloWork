@@ -42,5 +42,6 @@ export const operation = (v: unknown) => ({
   "package.create":"创建文件包", "package.update":"编辑文件包", "package.remove":"移除文件包",
   "package.file.add":"上传文件包文件", "package.file.remove":"移除文件包文件",
   "organization.notification.configure": "更新成员变更通知",
+  "market.add": "上架插件", "market.update": "编辑插件",
   "plan.create": "添加套餐", "plan.update": "更新套餐", "points.adjust": "调整积分", "user.update": "更新账号", "user.bootstrap-admin": "运维设置管理员", "settings.update": "更新配置", "share.create": "分享会话",
 } as Record<string, string>)[text(v)] ?? "更新记录";

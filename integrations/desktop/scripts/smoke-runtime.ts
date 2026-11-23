@@ -1,5 +1,6 @@
 /** Boot the materialized target runtime without access to a user's Harness profile. */
 
+import { createHash } from 'node:crypto'
 import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -13,8 +14,44 @@ import { DesktopHostProcess } from '../src/host-process.ts'
 import { createPluginProfile } from '../src/project-manager.ts'
 import { repairProfileRuntime } from '../src/profile-runtime-repair.ts'
 import type { DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
+import type { MarketItem } from '../../../plugins/ipollowork-suite/src/shared/types.ts'
 
 const OFFICE_SKILLS = ['office', 'office-docx', 'office-pptx', 'office-xlsx']
+const STUDIO_PACKAGES = ['deepseek-idesign', 'deepseek-ivideo']
+const MARKET_ARCHIVE_BASE = 'https://github.com/Devin-AXIS/iPolloWork/releases/download/'
+
+interface StudioCatalog {
+  runtimeVersion?: string
+  items?: Pick<MarketItem, 'name' | 'compatible' | 'installed' | 'spec' | 'archiveSha256'>[]
+}
+
+interface StudioRelease {
+  name: string
+  file: string
+  sha256: string
+}
+
+/** Verify each offered target and the separately sealed fallback available offline. */
+export function assertStudioCatalog(
+  catalog: StudioCatalog, runtime: Pick<DesktopRuntimeDescriptor, 'release' | 'files'>,
+  suitePath: string, releases: readonly StudioRelease[],
+): void {
+  if (catalog.runtimeVersion !== runtime.release.version) {
+    throw new Error('desktop runtime: Studio catalog reports a different DSH version')
+  }
+  for (const name of STUDIO_PACKAGES) {
+    const item = catalog.items?.find(entry => entry.name === name)
+    const remote = item?.spec.startsWith(MARKET_ARCHIVE_BASE) && /^[a-f0-9]{64}$/.test(item.archiveSha256 ?? '')
+    if (!item?.compatible || item.installed || !(item.spec.startsWith('file:') || remote)) {
+      throw new Error(`desktop runtime: Studio market target is unavailable or incompatible for ${name}`)
+    }
+    const release = releases.find(entry => entry.name === name)
+    if (!release || !runtime.files.some(file =>
+      file.path === `${suitePath}/catalog/packages/${release.file}` && file.sha256 === release.sha256)) {
+      throw new Error(`desktop runtime: Studio fallback archive is missing or corrupt for ${name}`)
+    }
+  }
+}
 
 /**
  * Require each bundled Office skill to be listed and loaded with a nonempty body.
@@ -58,8 +95,8 @@ export async function smokeDesktopRuntime(
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
     writeFileSync(join(home, 'npmrc'), '')
-    const dedicatedSuite = runtime.sharedPackages.some(pkg => pkg.name === '@ipollo/dsh-suite')
-    await createPluginProfile(profile, dedicatedSuite ? ['@ipollo/desktop-host'] : [])
+    const suitePackage = runtime.sharedPackages.find(pkg => pkg.name === '@ipollo/dsh-suite')
+    await createPluginProfile(profile, suitePackage ? ['@ipollo/desktop-host'] : [])
     const pluginName = 'desktop-runtime-smoke-plugin'
     const plugin = join(home, pluginName)
     mkdirSync(plugin, { recursive: true })
@@ -217,7 +254,7 @@ export function apply(ctx) {
     if (response.status !== 200 || !(await response.text()).includes('<html')) {
       throw new Error('desktop runtime: packaged frontend smoke failed')
     }
-    if (dedicatedSuite) {
+    if (suitePackage) {
       const suite = await fetch(new URL('/ipollowork-suite/info', ready.url), { headers: { cookie } })
       if (!suite.ok || (await suite.json() as { name?: string }).name !== 'iPolloWork') {
         throw new Error('desktop runtime: embedded iPolloWork suite did not start: HTTP ' + suite.status)
@@ -227,15 +264,16 @@ export function apply(ctx) {
         throw new Error('desktop runtime: embedded account route did not start signed out')
       }
       const market = await fetch(new URL('/ipollowork-suite/catalog', ready.url), { headers: { cookie } })
-      const catalog = await market.json() as {
-        runtimeVersion?: string
-        items?: { name: string; compatible: boolean; installed: boolean; spec: string }[]
-      }
-      const studios = catalog.items?.filter(item => item.name === 'deepseek-idesign' || item.name === 'deepseek-ivideo')
-      if (!market.ok || catalog.runtimeVersion !== runtime.release.version || studios?.length !== 2
-        || studios.some(item => !item.compatible || item.installed || !item.spec.startsWith('file:'))) {
-        throw new Error('desktop runtime: Studio plugins must be compatible with the bundled DSH and have checked local installation archives')
-      }
+      if (!market.ok) throw new Error('desktop runtime: iPolloWork market did not start: HTTP ' + market.status)
+      const catalog = await market.json() as StudioCatalog
+      // The packaging supervisor may run in plain Node while the runtime is in ASAR.
+      const path = 'catalog/bundled-releases.json'
+      const releaseManifest = readFileSync(new URL('../../../plugins/ipollowork-suite/' + path, import.meta.url))
+      const expectedHash = createHash('sha256').update(releaseManifest).digest('hex')
+      const packagedManifest = runtime.files.find(file => file.path === `${suitePackage.path}/${path}`)
+      if (packagedManifest?.sha256 !== expectedHash) throw new Error('desktop runtime: packaged Studio release manifest differs from the build source')
+      const releases = JSON.parse(releaseManifest.toString('utf8')) as { plugins: StudioRelease[] }
+      assertStudioCatalog(catalog, runtime, suitePackage.path, releases.plugins)
       const anonymous = await fetch(new URL('/ipollowork-suite/account', ready.url))
       const foreignOrigin = await fetch(new URL('/ipollowork-suite/account', ready.url), {
         headers: { cookie, origin: 'https://untrusted.example' },

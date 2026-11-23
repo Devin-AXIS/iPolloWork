@@ -47,7 +47,10 @@ jobs:
           set -euo pipefail
           directory="$RUNNER_TEMP/retained"
           mkdir "$directory"
-          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$RETAINED_RUN --jq .head_sha)" = "$EXPECTED_COMMIT"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RETAINED_RUN" |
+            jq -e --arg repo "$GITHUB_REPOSITORY" '.path == ".github/workflows/ipollo-release-packages.yml" and .event == "workflow_dispatch" and .head_repository.full_name == $repo' > /dev/null
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RETAINED_RUN/jobs" |
+            jq -e --arg job "macos ($PACKAGE_TARGET)" 'any(.jobs[]; .name == $job and .status == "completed" and .conclusion == "failure")' > /dev/null
           artifact="retained-$PACKAGE_TARGET-$RETAINED_RUN"
           id="$(gh api repos/$GITHUB_REPOSITORY/actions/runs/$RETAINED_RUN/artifacts --jq ".artifacts[] | select(.name == \"$artifact\") | .id")"
           test -n "$id"

@@ -1,9 +1,11 @@
 import type { ChangeResult, ClientRemote, PluginInstallProgress, PluginInstallRequestId } from '@deepseek-ai/dsh-api-remotes/client'
 import type { MarketItem } from '../shared/types.ts'
 
-type MarketTarget = Pick<MarketItem, 'name' | 'title' | 'spec' | 'version' | 'registry'>
-type Target = Pick<MarketTarget, 'title' | 'spec'> & { name?: string; version?: string; registry?: string | null }
-type Phase = 'checking' | 'starting' | PluginInstallProgress['phase'] | 'reconciling' | 'unconfirmed' | 'done' | 'failed' | 'cancelled' | 'unknown'
+type MarketTarget = Pick<MarketItem, 'name' | 'title' | 'spec' | 'version' | 'registry' | 'archiveSha256' | 'update'>
+  & Partial<Pick<MarketItem, 'installedVersion'>>
+type ArchiveRequest = { name: string; version: string; fromVersion?: string }
+type Target = Pick<MarketTarget, 'title' | 'spec'> & { name?: string; version?: string; registry?: string | null; archive?: ArchiveRequest }
+type Phase = 'confirm-update' | 'checking' | 'starting' | PluginInstallProgress['phase'] | 'reconciling' | 'unconfirmed' | 'done' | 'failed' | 'cancelled' | 'unknown'
 interface Task {
   target: Target
   requestId: PluginInstallRequestId
@@ -13,6 +15,7 @@ interface Task {
   enabling?: boolean
   enableFailed?: boolean
   inspectionError?: string
+  archiveFailed?: boolean
 }
 interface Snapshot {
   task: Task | null
@@ -34,6 +37,7 @@ export class MarketInstallation {
   constructor(
     private readonly manager: Pick<ClientRemote['pluginManager'], 'inspect' | 'installBundle' | 'waitForInstall' | 'cancelInstall' | 'setBundleEnabled'>,
     private readonly signal: AbortSignal,
+    private readonly prepareArchive?: (target: ArchiveRequest) => Promise<string>,
   ) {}
 
   getSnapshot = () => this.snapshot
@@ -50,12 +54,12 @@ export class MarketInstallation {
 
   invalidate = () => this.publish({ revision: this.snapshot.revision + 1 })
   show = () => this.publish({ open: true, manual: false, notice: false })
-  hide = () => this.publish({ open: false })
+  hide = () => this.publish({ open: false, ...(this.snapshot.task?.phase === 'confirm-update' && { task: null }) })
   dismissNotice = () => this.publish({ notice: false })
 
   private hasActiveTask(): boolean {
     const task = this.snapshot.task
-    return Boolean(task && (installPending(task.phase) || task.phase === 'unconfirmed' || task.enabling))
+    return Boolean(task && (installPending(task.phase) || task.phase === 'confirm-update' || task.phase === 'unconfirmed' || task.enabling))
   }
 
   openManual = () => {
@@ -90,11 +94,26 @@ export class MarketInstallation {
 
   start = (target: MarketTarget) => {
     const { task } = this.snapshot
-    if (this.hasActiveTask() || (task?.target.name === target.name && task.phase === 'failed')) {
+    if (this.hasActiveTask() || (task?.target.name === target.name && task.target.version === target.version && task.phase === 'failed')) {
       this.show()
       return
     }
-    this.begin(target)
+    const fromVersion = target.update === 'archive' ? target.installedVersion ?? undefined : undefined
+    const archive = (target.archiveSha256 || fromVersion)
+      ? { name: target.name, version: target.version, ...(fromVersion !== undefined && { fromVersion }) }
+      : undefined
+    const installTarget = { ...target, ...(archive && { archive }) }
+    if (fromVersion !== undefined) {
+      this.publish({
+        task: { target: installTarget, requestId: crypto.randomUUID() as PluginInstallRequestId, phase: 'confirm-update' },
+        open: true, manual: false, notice: false,
+      })
+    } else this.begin(installTarget)
+  }
+
+  confirmUpdate = () => {
+    const task = this.snapshot.task
+    if (task?.phase === 'confirm-update') this.begin(task.target)
   }
 
   retry = (approveScripts: boolean) => {
@@ -132,7 +151,7 @@ export class MarketInstallation {
 
   enable = async () => {
     const task = this.snapshot.task
-    if (task?.phase !== 'done' || task.enabling || task.result?.enabled) return
+    if (task?.phase !== 'done' || task.target.archive?.fromVersion || task.enabling || task.result?.enabled) return
     this.publish({ task: { ...task, enabling: true, enableFailed: false } })
     const name = task.result?.bundle
     if (!name) return
@@ -148,7 +167,7 @@ export class MarketInstallation {
 
   private begin(target: Target, approvedBuilds?: string[]) {
     const requestId = crypto.randomUUID() as PluginInstallRequestId
-    const task: Task = { target, requestId, phase: 'starting' }
+    const task: Task = { target, requestId, phase: target.archive ? 'checking' : 'starting' }
     this.publish({ task, open: true, manual: false, notice: false })
     void this.run(task, approvedBuilds)
   }
@@ -156,7 +175,20 @@ export class MarketInstallation {
   private async run(task: Task, approvedBuilds?: string[]) {
     if (this.signal.aborted) return
     const { target, requestId } = task
-    const answer = await this.manager.installBundle(target.spec, {
+    let spec = target.spec
+    if (target.archive) {
+      const prepared = await this.prepareArchive?.(target.archive).catch(() => undefined)
+      if (this.signal.aborted || this.snapshot.task?.requestId !== requestId) return
+      if (!prepared) {
+        this.publish({ task: { ...task, archiveFailed: true } })
+        this.finish(requestId, 'failed')
+        return
+      }
+      spec = prepared
+      this.publish({ task: { ...task, phase: 'starting' } })
+    }
+    // On archive replacement enabled:false leaves the existing DSH bundle selection intact.
+    const answer = await this.manager.installBundle(spec, {
       requestId,
       enabled: false,
       ...(target.name && target.version ? { expected: { name: target.name, version: target.version } } : {}),

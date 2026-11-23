@@ -101,6 +101,8 @@ Design 发布按用户、工作区和文件复用公开地址，完整的新版�
 
 ## 精选插件市场
 
+平台管理员可以在网页后台的「插件市场」添加插件。给已上架插件发布新版时，点击该行的「发布新版」，读取 npm 或 GitHub 来源，核对包名和前后版本号，确认后在线目录即提供新版。管理员填写的展示名称、介绍和分类会带入新版。
+
 `GET /api/market/catalog` 公开最多 200 条 DSH 原生插件引用。登录后的 `GET /api/v1/market/manage` 返回平台管理权限；`POST /api/v1/market/plugins` 要求平台 `admin` 角色。仅接受 HTTPS npm/Git 来源和固定 SemVer 版本，Git 来源还须提供完整提交哈希。引用保存在现有 `settings` 表的 `market.catalog` 项中，以 PostgreSQL 事务咨询锁串行化添加，现有 `audit` 表记录操作者。不下载或执行第三方代码。与更新后的套件一起部署，才能启用仅管理员可见的添加表单。
 
 ## 配置文件

@@ -54,9 +54,13 @@ Suite 0.1.46 携带原多引擎插件集合的独立原生包。24 个旧身份�
 
 在 profile 补丁中覆盖 `ipollowork-suite` 行的 `config`。字段包括 `accountOrigin`（默认使用 iPolloWork 云服务）、`catalogPath`（默认使用内置目录）、`requestTimeoutMs`（20000）、`maxResponseBytes`（1048576），以及 `theme`、`market`、`account`（均为 true）。账号服务必须使用 HTTPS 来源；HTTP 仅供回环地址开发使用。切换账号服务来源时，不会复用其他来源已保存的凭据。
 
-编辑 `catalog/index.json` 维护市场，其格式保持为 DSH format 1。默认目录的 Creative 分类首先显示 Design（包含 PPT）和 Video。套件和桌面构建在 `catalog/packages/` 中携带经过校验的安装包，`catalog/bundled-releases.json` 固定其版本与 SHA-256 哈希。仅对该默认目录，Host 会校验文件，将其原子复制到 DSH home 中按内容寻址的持久缓存，并向 DSH 现有安装器提供本地 `file:` 规格。保存的安装来源因此能够在套件升级或移除后继续使用，不需要未发布的 npm 版本；显示卡片不会安装或启用插件。更新版本时同时替换压缩包与校验记录。自定义 `catalogPath` 索引保留声明的原生 npm/Git 来源。
+编辑 `catalog/index.json` 维护 DSH format 1 市场。默认目录的创作分类首先显示 Design（包含 PPT）和 Video。`catalog/bundled-releases.json` 锁定内置归档，以及本地缺少归档时对应的 GitHub Release。自定义 `catalogPath` 索引沿用声明的原生 npm/Git 来源。
 
-安装状态始终来自 DSH。市场打开 DSH 现有的安装对话框和已安装 Bundle 详情页，不自行下载或执行软件包。企业标签页会说明当前没有连接企业目录。
+默认市场还会读取 iPolloWork 仓库的 `plugin-market` Release 中的 `ipollowork-plugin-releases.json`，为每个内置插件选择兼容的最新版本。清单不可用时仍使用内置目录。选中远程版本安装或更新时，Host 按需下载锁定的归档，校验 SHA-256 后写入 DSH home 的持久缓存，再把本地 `file:` 交给 DSH 安装。
+
+市场以 DSH 的已安装清单比较版本。旧版归档安装在确认两个版本号后可点「更新」。DSH 按预期包名和版本安装，并保留此前的启用状态。固定在同一仓库目录的 Git 安装复用 DSH 原生 Git 更新窗口。npm 安装可在插件原生详情管理。企业标签页会显示组织目录的连接状态。
+
+独立发布插件时，先把现有 `ipollowork-plugin-releases.json` 放入输出目录，再从套件目录执行 `node scripts/prepare-market-release.mjs <归档发布标签> <输出目录> <插件.tgz>`。脚本读取包版本与 DSH 范围，加入已校验的归档并保留其他固定版本。先把归档上传到它对应的 Release，再替换 `plugin-market` Release 的清单。修改已上架版本的内容时使用新版本号。
 
 启用 `theme` 后，DSH 使用 iPolloWork 的标题、图标、启动标志、侧栏标志和首页字标。可撤销的调色板为明暗主题提供黑白操作及中性的选中、焦点和表面颜色。侧栏、对话、原生设置、组织空间及随包的设计与视频工作台使用同一调色板。将套件配置中的 `theme` 设为 `false`，即可在启用套件的同时恢复 DSH 原生外观。项目与智能体创建、账号与组织设置、连接和插件市场复用[共用表单组件](../_shared/ui/controls.tsx)。警示使用 DSH 的语义警示色。Studio 的作品预览有独立样式。
 

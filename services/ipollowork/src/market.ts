@@ -1,4 +1,6 @@
 /** Platform-curated references; code stays in its publisher's registry or repository. */
+import { isDeepStrictEqual } from 'node:util';
+import { discoverMarket } from './market-discovery.js';
 import { z } from 'zod';
 import semver from 'semver';
 import type { App } from './http.js';
@@ -30,6 +32,7 @@ export const marketEntry = z.object({
     engines: z.object({ dsh: z.string().trim().min(1).max(120).refine(value => !value.startsWith('workspace:') && semver.validRange(value) !== null) }).strict().optional(),
   }).strict()]),
 }).strict();
+export type MarketEntry = z.infer<typeof marketEntry>;
 const key = 'market.catalog';
 const maxEntries = 200;
 
@@ -44,22 +47,37 @@ export function mountMarket(app: App, store: Store, settings: Settings) {
     return c.json({ plugins: await entries() });
   });
   app.get('/api/v1/market/manage', c => c.json({ canManage: c.get('actor').role === 'admin' }));
-  app.post('/api/v1/market/plugins', async c => {
+  app.post('/api/v1/market/discover', async c => {
+    requireAdmin(c.get('actor'));
+    const { source } = z.object({ source: z.string().trim().min(1).max(2048) }).parse(await c.req.json());
+    return c.json(marketEntry.parse(await discoverMarket(source)));
+  });
+  app.on(['POST', 'PATCH'], '/api/v1/market/plugins', async c => {
     const actor = c.get('actor');
     requireAdmin(actor);
-    const entry = marketEntry.parse(await c.req.json());
+    const body = await c.req.json();
+    const update = c.req.method === 'PATCH' ? z.object({ expected: marketEntry, entry: marketEntry }).parse(body) : undefined;
+    const entry = update?.entry ?? marketEntry.parse(body);
+    if (update && update.expected.name !== entry.name) throw new ServiceError('MARKET_RENAME', 400, '插件包名不可更改。');
     await store.transaction(async () => {
       // One global, bounded catalog uses the existing operator settings lifecycle and audit log.
       await store.run("SELECT pg_advisory_xact_lock(hashtext('ipollowork.market.catalog'))");
       const plugins = await entries();
-      if (plugins.some(item => item.name === entry.name)) throw new ServiceError('MARKET_DUPLICATE', 409);
-      if (plugins.length >= maxEntries) throw new ServiceError('MARKET_FULL', 409);
-      plugins.push(entry);
+      const idx = plugins.findIndex(item => item.name === entry.name);
+      if (update) {
+        if (idx < 0) throw new ServiceError('MARKET_MISSING', 404, '插件已不存在，请刷新目录。');
+        if (!isDeepStrictEqual(plugins[idx], update.expected)) throw new ServiceError('MARKET_CONFLICT', 409, '另一位管理员已修改此插件，请关闭并刷新目录后再编辑。');
+        plugins[idx] = entry;
+      } else {
+        if (idx >= 0) throw new ServiceError('MARKET_DUPLICATE', 409, '该插件已上架，请从目录中选择编辑。');
+        if (plugins.length >= maxEntries) throw new ServiceError('MARKET_FULL', 409);
+        plugins.push(entry);
+      }
       const data = JSON.stringify(plugins);
       if (Buffer.byteLength(data) > 524288) throw new ServiceError('MARKET_FULL', 413);
       await settings.set(key, { entries: data });
-      await audit(store, actor, 'market.add', entry.name);
+      await audit(store, actor, update ? 'market.update' : 'market.add', entry.name);
     });
-    return c.json({ ok: true }, 201);
+    return c.json({ ok: true }, update ? 200 : 201);
   });
 }

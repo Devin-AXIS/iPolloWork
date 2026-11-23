@@ -166,6 +166,7 @@
     "@deepseek-ai/dsh-api-workspace-controller": "0.2.2-rc.3",
     "@deepseek-ai/dsh-attachment-local": "0.2.2-rc.3",
     "@deepseek-ai/dsh-client-ui-chat": "0.2.2-rc.3",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "0.2.2-rc.3",
     "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-rc.3",
     "@deepseek-ai/dsh-client-ui-settings": "0.2.2-rc.3",
     "@deepseek-ai/dsh-host-webserver": "0.2.2-rc.3",

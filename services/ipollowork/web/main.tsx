@@ -1,7 +1,9 @@
+import { PluginMarket } from "./plugin-market.js";
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   LayoutDashboard,
+  Puzzle,
   Users,
   Building2,
   Folder,
@@ -226,6 +228,7 @@ const navigation = [
   { id: "resources", title: "资源", icon: Library },
   { id: "plans", title: "套餐", icon: CreditCard },
   { id: "orders", title: "订单", icon: Receipt },
+  { id: "plugin-market", title: "插件市场", icon: Puzzle },
   { id: "data-apps", title: "应用数据", icon: Database, admin: true },
   { id: "settings", title: "设置", icon: Settings, admin: true },
 ];
@@ -417,14 +420,28 @@ function Orders({ user }: { user: User }) {
     </section>
   );
 }
+function pageFromAddress() {
+  const id = location.hash.slice(1);
+  return navigation.some(item => item.id === id) ? id : "overview";
+}
+
 function App() {
   const session = useData<{ user: User } | null>("/api/auth/get-session"),
-    [page, setPage] = useState("overview"),
+    [page, selectPage] = useState(pageFromAddress),
     [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark");
   React.useEffect(() => {
     document.documentElement.dataset.theme = dark ? "dark" : "light";
     localStorage.setItem("theme", dark ? "dark" : "light");
   }, [dark]);
+  React.useEffect(() => {
+    const syncPage = () => { if (location.hash !== "#content") selectPage(pageFromAddress()); };
+    window.addEventListener("hashchange", syncPage);
+    return () => window.removeEventListener("hashchange", syncPage);
+  }, []);
+  function setPage(next: string) {
+    selectPage(next);
+    if (location.hash !== "#" + next) location.hash = next;
+  }
   if (session.error) return <Status error={session.error} />;
   if (session.data === undefined)
     return (
@@ -515,6 +532,7 @@ function App() {
                     orders: "查看交易与支付状态",
                     settings: "支付和私有存储配置",
                     services: "模型连接、价格与调用能力",
+                    'plugin-market': "iPolloWork 官方在线插件目录",
                     'data-apps': "应用归属、记录和存储用量",
                   }[selected.id]
                 }
@@ -540,6 +558,8 @@ function App() {
             <Orders user={user} />
           ) : selected.id === "services" ? (
             <Services user={user} />
+          ) : selected.id === "plugin-market" ? (
+            <PluginMarket canManage={user.role === "admin"} />
           ) : selected.id === "data-apps" ? (
             <DataApps />
           ) : (
