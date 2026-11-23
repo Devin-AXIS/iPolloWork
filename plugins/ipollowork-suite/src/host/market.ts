@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util'
 /** Read a curated DSH format-1 index and join it with the native installation inventory. */
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { createHash, randomUUID } from 'node:crypto'
@@ -96,11 +97,19 @@ export async function readMarket(path: string, manager: NativePluginManager, run
   let index
   try { index = parseMarketIndex(JSON.parse(content.toString('utf8')), 'https://catalog.ipollowork.invalid/index.json') }
   catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 500, { cause }) }
+  const remoteInstall = new Set<string>()
   if (curated.length) {
     try {
-      const names = new Set(index.plugins.map(plugin => plugin.name))
+      const merged = new Map(index.plugins.map(plugin => [plugin.name, plugin]))
       const additional = parseMarketIndex({ format: 1, title: 'Curated', metadata: { categories: index.metadata.categories }, plugins: curated }, 'https://catalog.ipollowork.invalid/index.json')
-      index = { ...index, plugins: [...index.plugins, ...additional.plugins.filter(plugin => !names.has(plugin.name))] }
+      for (const plugin of additional.plugins) {
+        const previous = merged.get(plugin.name)
+        // Preserve archive upgrades only when the curated entry points at the same artifact.
+        if (!previous?.versions.some(v => v.version === plugin.versions[0]?.version
+          && isDeepStrictEqual(v.source, plugin.versions[0]?.source))) remoteInstall.add(plugin.name)
+        merged.set(plugin.name, plugin)
+      }
+      index = { ...index, plugins: [...merged.values()] }
     } catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 502, { cause }) }
   }
   const bundled = await bundledInstallTargets(path, cacheDirectory)
@@ -112,9 +121,9 @@ export async function readMarket(path: string, manager: NativePluginManager, run
     items: index.plugins.map(plugin => {
       const compatible = plugin.versions.find(version => supportsRuntime(version.engines.dsh))
       const version = compatible ?? plugin.versions[0]!
-      const release = bundled.names.has(plugin.name) ? published.find(candidate => candidate.name === plugin.name
+      const release = !remoteInstall.has(plugin.name) && bundled.names.has(plugin.name) ? published.find(candidate => candidate.name === plugin.name
         && supportsRuntime(candidate.dsh) && (!compatible || semver.gt(candidate.version, compatible.version))) : undefined
-      const archive = release ? githubArchive(release) : bundled.targets.get(`${plugin.name}@${version.version}`)
+      const archive = release ? githubArchive(release) : remoteInstall.has(plugin.name) ? undefined : bundled.targets.get(`${plugin.name}@${version.version}`)
       const target = archive ?? marketInstallTarget(plugin.name, version)
       const selectedVersion = release?.version ?? version.version
       const acceptable = release !== undefined || compatible !== undefined
