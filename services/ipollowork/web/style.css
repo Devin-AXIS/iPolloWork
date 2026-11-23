@@ -61,42 +61,15 @@ button.primary{background:var(--action);border-color:var(--action);color:var(--a
   .organization-profile-fields { grid-template-columns:minmax(0,1fr); gap:0; }
 }
 
-/* Keep navigation labels visible and preserve space for account actions on short screens. */
-@media (min-width:761px){
-  .rail{width:148px;align-items:stretch;padding:20px 12px;gap:16px;border-right:1px solid var(--line)}
-  .rail .brand{margin-left:8px;flex-shrink:0}
-  .rail nav{gap:3px;min-height:0;overflow-y:auto;margin:0;padding:0}
-  .rail nav button{display:flex;align-items:center;gap:10px;flex:none;width:100%;height:38px;padding:0 12px;border-radius:9px;background:transparent}
-  .rail nav button[aria-current=page]{background:var(--selected);color:var(--on-selected)}
-  .rail nav button span{display:block;position:static;background:none;box-shadow:none;padding:0;color:inherit;font-size:12px}
-  .rail-bottom{margin-top:auto;flex-direction:row;justify-content:center;gap:4px}
-  .rail-bottom button{width:32px;height:32px}
-  .shell{margin-left:148px}
-  .shell>main,.shell>header,.shell>footer{padding-left:24px}
-  .dashboard>.recent:last-child{grid-column:1/-1}
-}
 .quota-card{padding:22px 24px;display:flex;flex-direction:column;gap:14px}
 .quota-amount{display:flex;align-items:baseline;flex-wrap:wrap;gap:9px}
 .quota-amount strong{font-size:clamp(24px,3vw,34px);font-weight:500;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
-.quota-amount span,.quota-summary,.quota-card>p,.market-heading p{font-size:12px;color:var(--muted)}
+.quota-amount span,.quota-summary,.quota-card>p{font-size:12px;color:var(--muted)}
 .quota-card progress{appearance:none;width:100%;height:6px;border:0;border-radius:8px;background:var(--track);color:var(--brand);overflow:hidden}
 .quota-card progress::-webkit-progress-bar{background:var(--track)}
 .quota-card progress::-webkit-progress-value{background:var(--brand);border-radius:8px}
 .quota-card progress::-moz-progress-bar{background:var(--brand);border-radius:8px}
-.quota-summary,.market-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.quota-summary{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .quota-summary b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
 .quota-card>p{margin-top:auto;padding-top:12px;border-top:1px solid var(--line);line-height:1.65}
-.market-heading{padding:20px 24px;gap:14px;border-bottom:1px solid var(--line)}
-.market-heading h2{font-size:16px}
-.market-heading p{margin-top:6px;line-height:1.65}
-.market-heading button{flex-shrink:0}
-.market-notice{padding:12px 24px}
-.market-directory td small{max-width:58ch;white-space:normal;overflow-wrap:anywhere}
-@media(max-width:760px){
-  .rail nav button,.rail nav button:hover{display:flex;flex-direction:column;justify-content:center;gap:2px;width:auto;min-width:46px;height:44px;border-radius:9px;padding:3px}
-  .rail nav button span{display:block!important;position:static;background:none;color:inherit;box-shadow:none;padding:0;font-size:10px;line-height:1.2}
-  .quota-card,.market-heading{padding:18px}
-  .dashboard .recent .table-scroll{margin-inline:-18px}
-  .dashboard .recent{padding-inline:18px}
-  .dashboard .recent table{min-width:100%}
-}
+@media(max-width:760px){.quota-card{padding:18px}}

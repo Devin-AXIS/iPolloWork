@@ -39,14 +39,10 @@ export function PluginMarket({ canManage }: { canManage: boolean }) {
   const [editor, setEditor] = useState<MarketEntry | 'new'>();
   const [notice, setNotice] = useState('');
   const plugins = catalog.data?.plugins ?? [];
-  return <section className="panel market-directory">
-    <div className="market-heading">
-      <div><h2>在线插件目录</h2>
-        <p>{canManage ? '粘贴 npm 包名或 GitHub 地址，核对插件介绍后即可上架。' : '可浏览已上架插件。添加插件和编辑介绍需要平台管理员账号。'}</p>
-      </div>
-      {canManage && <button className="primary" onClick={() => { setNotice(''); setEditor('new'); }}><Plus size={16}/>添加插件</button>}
-    </div>
-    {notice && <p className="market-notice" role="status">{notice}</p>}
+  return <section className="panel">
+    <div className="modal-head"><h2>在线插件目录</h2>{canManage && <button className="primary" onClick={() => { setNotice(''); setEditor('new'); }}><Plus size={16}/>添加插件</button>}</div>
+    <p>{canManage ? '粘贴 npm 包名或 GitHub 地址，核对插件介绍后即可上架。' : '可浏览已上架插件。添加插件和编辑介绍需要平台管理员账号。'}</p>
+    {notice && <p role="status">{notice}</p>}
     <Status error={catalog.error} loading={!catalog.data && !catalog.error} />
     {catalog.data && (plugins.length ? <Table rows={plugins.map(p => ({ id: p.name, title: p.title, description: p.description ?? p.name, version: p.versions[0].version, category: categories[p.metadata.category] }))} columns={[
       { label: '插件', cell: row => <><strong>{row.title}</strong><small>{row.description}</small></> },
