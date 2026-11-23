@@ -1,6 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
+import { execFileSync } from 'node:child_process'
 import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -42,6 +43,8 @@ test('native credential records retain multi-account selection and isolate plugi
 test('all former plugin identities map to native packages with complete port metadata', async () => {
   const repository = fileURLToPath(new URL('../../..', import.meta.url))
   const inventory = JSON.parse(await readFile(join(repository, 'integrations/runtime/ported-plugins.json'), 'utf8')) as { plugins: { id: string; name: string; kind: string }[] }
+  const archives = join(repository, 'plugins/ipollowork-suite/catalog/packages')
+  const releases = JSON.parse(await readFile(join(archives, '../bundled-releases.json'), 'utf8')) as { plugins: { name: string; file: string }[] }
   assert.equal(inventory.plugins.length, 24)
   assert.equal(new Set(inventory.plugins.map(item => item.id)).size, 24)
   for (const item of inventory.plugins.filter(item => item.kind !== 'existing-native')) {
@@ -50,14 +53,18 @@ test('all former plugin identities map to native packages with complete port met
     assert.equal(manifest.id, item.id)
     const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
     assert.equal(pkg.name, item.name)
+    const release = releases.plugins.find(release => release.name === item.name)
+    assert(release, `Missing shipping archive: ${item.name}`)
+    const shipped = new Set(execFileSync('tar', ['-tzf', release.file], { cwd: archives, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }).trim().split(/\r?\n/))
     assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')
     assert.deepEqual(yaml.load(await readFile(join(directory, 'cordis.patch.yml'), 'utf8')), [{ insert: [{ id: 'ipollo-' + item.id, name: item.name }] }])
     const validator = new Ajv2020({ strict: false, validateFormats: false })
     for (const resource of manifest.resources) for (const action of resource.actions ?? []) assert.doesNotThrow(() => validator.compile(action.inputSchema), `${item.id}/${action.id}`)
     for (const resource of manifest.resources) {
       if (!['skill', 'ui', 'mcp', 'local-service', 'file', 'command', 'agent'].includes(resource.type)) continue
-      const path = resource.type === 'skill' && !resource.path.endsWith('.md') ? resource.path + '/SKILL.md' : resource.path.replace(/\.ts$/, '.js')
-      await packageFile(join(directory, 'business'), path)
+      const path = resource.type === 'skill' && !resource.path.endsWith('.md') ? resource.path + '/SKILL.md' : resource.path
+      const member = 'package/business/' + path.replace(/\.ts$/, '.js').replaceAll('\\', '/')
+      assert(shipped.has(member) || [...shipped].some(file => file.startsWith(member + '/')), `${item.id}: resource missing from shipping archive: ${path}`)
     }
   }
 })

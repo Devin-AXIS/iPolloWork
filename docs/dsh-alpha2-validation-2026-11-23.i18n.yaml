@@ -3,5 +3,5 @@
 # After editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write docs/dsh-alpha2-validation-2026-11-23.md
 /dsh-0-2-3-alpha-2-upgrade-verification:
-  en: 9824f77f8578ff02
-  zh: cb72e48b99e7dd06
+  en: f96cf390faa5dbb6
+  zh: ac8372c983f04ac6
