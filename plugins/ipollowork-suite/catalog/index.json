@@ -127,6 +127,30 @@
           }
         }
       ]
+    },
+    {
+      "name": "@ipollo/dsh-decision-intelligence",
+      "title": "iPollo 决策情报",
+      "author": "iPolloWork",
+      "homepage": "https://github.com/Devin-AXIS/ipollo-decision-intelligence",
+      "description": "输入主题或导入 PPTX，生成包含驱动因素、关键指标和来源的可交互决策图谱，支持工作区保存与访客分享。",
+      "metadata": {
+        "category": "productivity"
+      },
+      "versions": [
+        {
+          "version": "1.0.0",
+          "publishTimestamp": 1795418820,
+          "source": {
+            "type": "git",
+            "url": "https://github.com/Devin-AXIS/ipollo-decision-intelligence.git",
+            "commit": "c34abe667201bddb21de9f38e758e3421c2a624f"
+          },
+          "engines": {
+            "dsh": ">=0.2.2-rc.3 <0.2.3-0"
+          }
+        }
+      ]
     }
   ]
 }
