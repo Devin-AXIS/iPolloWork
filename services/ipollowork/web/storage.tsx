@@ -29,7 +29,7 @@ export function StorageQuota({
     limit = Number(record.data?.limit_bytes ?? 0),
     gib = 1024 ** 3;
   return (
-    <section className="panel quota-card">
+    <section className={scope === "personal" ? "panel quota-card" : "panel"}>
       <div className="section-title">
         {scope === "personal" ? "个人容量" : "组织容量"}
         {editable && (
@@ -41,9 +41,9 @@ export function StorageQuota({
       <Status error={record.error} loading={!record.data} />
       {record.data && (
         <>
-          <div className="quota-amount"><strong>{formatCapacity(used)}</strong><span>已用</span></div>
+          {scope === "personal" ? <div className="quota-amount"><strong>{formatCapacity(used)}</strong><span>已用</span></div> : <p>{(used / gib).toFixed(2)} / {limit / gib} GiB</p>}
           <progress aria-label="已用容量" max={Math.max(limit, 1)} value={Math.min(used, limit)} />
-          <div className="quota-summary"><span>总容量 <b>{formatCapacity(limit)}</b></span><span>可用 <b>{formatCapacity(Math.max(0, limit - used))}</b></span></div>
+          {scope === "personal" && <div className="quota-summary"><span>总容量 <b>{formatCapacity(limit)}</b></span><span>可用 <b>{formatCapacity(Math.max(0, limit - used))}</b></span></div>}
           <p>
             {scope === "personal"
               ? "未发布输出保留 7 天，发布后长期保留"
