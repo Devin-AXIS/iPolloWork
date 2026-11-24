@@ -14,6 +14,10 @@ export async function catalogArtwork(indexFile, releaseFile, update = false) {
     const bytes = execFileSync('tar', ['-xOf', archive, 'package/icon.svg'], { maxBuffer: 32_768 })
     const image = 'data:image/svg+xml;base64,' + bytes.toString('base64')
     const entry = index.plugins.find(item => item.name === release.name)
+    if (release.upgradeOnly === true) {
+      if (entry) throw Error('An upgrade-only archive cannot appear in the default market: ' + release.name)
+      continue
+    }
     if (!entry) throw Error('Bundled plugin is missing from the market')
     if (update) entry.icon = image
     else if (entry.icon !== image) throw Error('Market icon differs from the packaged plugin: ' + release.name)

@@ -100,13 +100,6 @@
       "tag": "v1.0.16"
     },
     {
-      "name": "@ipollo/dsh-short-video-studio",
-      "version": "0.1.5",
-      "file": "ipollo-dsh-short-video-studio-0.1.5-40115bdb0f2f.tgz",
-      "sha256": "40115bdb0f2f287c35b68875625fd58b5cf1daba7441276410c7ba53e889e9c6",
-      "tag": "v1.0.16"
-    },
-    {
       "name": "@ipollo/dsh-stripe",
       "version": "0.1.5",
       "file": "ipollo-dsh-stripe-0.1.5-0b0bbafcf97b.tgz",
@@ -152,6 +145,37 @@
       "version": "1.0.0-beta.27-ipollo.2",
       "file": "deepseek-ivideo-1.0.0-beta.27-ipollo.2-40cb8e22e10f.tgz",
       "sha256": "40cb8e22e10f4a3fb0cd041c5cf1d3ed4be5d14c0d084d823d6682e0fec7023f"
+    },
+    {
+      "name": "@ipollo/dsh-deepseek-harness",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-deepseek-harness-0.1.5-257534eb36ca.tgz",
+      "sha256": "257534eb36ca21d257ab51a5b765c7f2c15610c1f27d56deea707d9a9bd57da1",
+      "tag": "v1.0.16",
+      "upgradeOnly": true
+    },
+    {
+      "name": "@ipollo/dsh-plugin-workshop",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-plugin-workshop-0.1.5-c50d16c047e2.tgz",
+      "sha256": "c50d16c047e259701daf703233a1fd13883259b8c3f20502fef0698c8382879b",
+      "tag": "v1.0.16",
+      "upgradeOnly": true
+    },
+    {
+      "name": "@ipollo/dsh-reference-context",
+      "version": "0.1.5",
+      "file": "ipollo-dsh-reference-context-0.1.5-c6c1ed7972ea.tgz",
+      "sha256": "c6c1ed7972ea33be9d16dbc545b9472fabd72e8e8df7fec4c026630f90beef9f",
+      "tag": "v1.0.16",
+      "upgradeOnly": true
+    },
+    {
+      "name": "@ipollo/dsh-short-video-studio",
+      "version": "0.1.6",
+      "file": "ipollo-dsh-short-video-studio-0.1.6-33fbbf1cf68a.tgz",
+      "sha256": "33fbbf1cf68a0e525ac9eba222b2ad17f73818c7f44f778c70be5de092be0ab0",
+      "tag": "v1.0.18"
     },
     {
       "name": "@ipollo/dsh-markdown-editor",

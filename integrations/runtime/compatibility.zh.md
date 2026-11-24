@@ -6,7 +6,7 @@ DSH 基准由[运行时固定记录](upstream.json)指定：`dsh-v0.2.3-alpha.2`
 
 ## 升级前复核的功能
 
-Design 和 Video 各自携带相同的参考资料 Skill。[Studio 兼容补丁](studio-alpha2.patch)通过 `ctx.skills.registerProvider` 为两个插件分别注册提供方，并沿用 `ipollowork-reference-analyzer` 名称。升级时分别验证单装、同时启用和停用任意一个 Studio 后都能读取完整 Skill。iPolloWork 默认市场移除了独立的参考资料、DeepSeek Harness 和插件工坊条目，同时过滤服务端旧目录中的同名条目。
+Design 和 Video 各自携带相同的参考资料 Skill。[Studio 兼容补丁](studio-alpha2.patch)通过 `ctx.skills.registerProvider` 为两个插件分别注册提供方，并沿用 `ipollowork-reference-analyzer` 名称。升级时分别验证单装、同时启用和停用任意一个 Studio 后都能读取完整 Skill。iPolloWork 默认市场移除了独立的参考资料、DeepSeek Harness 和插件工坊条目，同时过滤服务端旧目录中的同名条目。安装包保留这三个已核验的归档，用于迁移已有安装。
 
 桌面更新源附带打包时的目标 DSH 和已验收归档身份。桌面外壳在确认安装前通过 DSH 原生清单检查预检，并在锁定 Host 新请求后复查。仍启用且不兼容的第三方插件或本地链接阻止安装，已停用的不兼容项在确认时列出。从没有预检交接的旧客户端覆盖升级时，新版以实际随包清单重建交接，只替换已启用且确实不兼容的市场受管归档，并保留本地链接和较新版本。新版 Host 校验归档，在加载原有 profile 前运行带锁的原生包管理命令并保持启停状态。单个归档校验或安装失败时保留交接供重试，其余迁移和原生工作区启动继续执行。下次更换 pin 时复验从无交接旧版迁移、缓存来源、版本与哈希一致性、损坏归档后的启动和重试，以及用户配置和数据文件哈希。
 

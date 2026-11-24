@@ -45,6 +45,7 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
   try {
     const releases = bundledReleases.parse(JSON.parse(await readFile(new URL('../../catalog/bundled-releases.json', import.meta.url), 'utf8')))
     for (const release of releases.plugins) {
+      if (release.upgradeOnly) continue
       const key = `${release.name}@${release.version}`
       if (targets.has(key)) throw new Error('Duplicate bundled release')
       names.add(release.name)

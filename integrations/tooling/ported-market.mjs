@@ -13,7 +13,10 @@ const inventory = JSON.parse(await readFile(join(root, 'integrations/runtime/por
 const retired = new Set(JSON.parse(await readFile(join(suite, 'catalog/retired-plugins.json'), 'utf8')))
 const ports = inventory.plugins.filter(item => !retired.has(item.name) && !['design-agent', 'video-agent'].includes(item.id))
 index.plugins = index.plugins.filter(item => !retired.has(item.name))
-releases.plugins = releases.plugins.filter(item => !retired.has(item.name))
+// Keep reviewed archives for existing installations that must migrate to the current DSH.
+for (const release of releases.plugins) {
+  if (retired.has(release.name)) release.upgradeOnly = true
+}
 const selected = new Set(process.argv.slice(2))
 for (const id of selected) if (!ports.some(item => item.id === id)) throw Error('Unknown or retired packaged plugin: ' + id)
 const npm = process.env.npm_execpath
