@@ -10,14 +10,20 @@ const product=JSON.parse(await readFile(join(root,'package.json'),'utf8'))
 const indexPath = join(suite, 'catalog/index.json'), releasePath = join(suite, 'catalog/bundled-releases.json')
 const index = JSON.parse(await readFile(indexPath, 'utf8')), releases = JSON.parse(await readFile(releasePath, 'utf8'))
 const inventory = JSON.parse(await readFile(join(root, 'integrations/runtime/ported-plugins.json'), 'utf8'))
+const retired = new Set(JSON.parse(await readFile(join(suite, 'catalog/retired-plugins.json'), 'utf8')))
+const ports = inventory.plugins.filter(item => !retired.has(item.name) && !['design-agent', 'video-agent'].includes(item.id))
+index.plugins = index.plugins.filter(item => !retired.has(item.name))
+// Keep reviewed archives for existing installations that must migrate to the current DSH.
+for (const release of releases.plugins) {
+  if (retired.has(release.name)) release.upgradeOnly = true
+}
 const selected = new Set(process.argv.slice(2))
-for (const id of selected) if (!inventory.plugins.some(item => item.id === id && !['design-agent', 'video-agent'].includes(id))) throw Error('Unknown packaged plugin: ' + id)
+for (const id of selected) if (!ports.some(item => item.id === id)) throw Error('Unknown or retired packaged plugin: ' + id)
 const npm = process.env.npm_execpath
 if (!npm) throw Error('Run this command through npm run package:ported-market so the current npm CLI is used')
 const output = join(root, 'dist/ported-plugins'); await mkdir(output, { recursive: true })
 const directoryFor = item => item.id === 'labelu-data-annotation' ? 'data-annotation' : item.id
-for (const item of inventory.plugins) {
-  if (['design-agent', 'video-agent'].includes(item.id)) continue
+for (const item of ports) {
   if (selected.size && !selected.has(item.id)) continue
   const directory = join(root, 'plugins', directoryFor(item))
   const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))

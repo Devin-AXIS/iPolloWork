@@ -172,7 +172,7 @@ Agent 模块注册发现、原生委派和项目记忆工具。账号密钥与�
 
 账户与支付布局在原生设置面板内管理盒模型尺寸。套件通过 peer dependencies 使用宿主提供的 DSH 服务；安装套件不会替换宿主运行时包。
 
-内置 IM 使用 Cordis 的公开根上下文标识。Design 和 Video 从其已验证的原生源码构建原样导入。运行 `node scripts/prepare-studio-releases.mjs <archive-directory> <version>` 同步更新两个压缩包及目录；各插件自行声明 rc.3 鉴权依赖。
+内置 IM 使用 Cordis 的公开根上下文标识。Design 和 Video 从已验证的原生源码构建原样导入。两个发布包都内置参考资料分析 Skill，并各自声明 DSH 鉴权依赖。运行 `node scripts/prepare-studio-releases.mjs <archive-directory> <design-version> <video-version>` 同步更新两个发布包及市场目录。只有在该版本的归档也发布为独立附件时，才在命令末尾传入发布标签。
 
 ## HTTP 能力
 

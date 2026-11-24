@@ -1,5 +1,6 @@
 import { createBridge } from './bridge.mjs';
 import { addNode, uuid } from './project.mjs';
+import { createPreviews } from './previews.mjs';
 import './ui.css';
 import './responsive.css';
 import { requireRuntime } from '@ipollowork/ui/runtime-contract';
@@ -11,7 +12,15 @@ const tabs = { canvas: '创作画布', shots: '分镜', script: '剧本', roles:
 const presets = { '自由创作': '', '电影分镜四宫格': '将以下内容制作成 2×2 电影分镜，保持角色一致：', '角色三视图': '同一角色的正面、侧面、背面三视图，纯色背景：', '角色设定': '角色设定表，包含全身、面部、表情，保持一致性：', '产品展示': '商业产品摄影，干净背景、柔和布光、材质细节：', '多角度场景': '同一场景不同机位的视觉设定，空间布局一致：', '时间演变': '同一场景在不同时段的四格时间演变：', '电影布光': '电影级布光，精确的光影与景深：' };
 const cameraOptions = ['自动', '固定镜头', '缓慢推进', '拉远', '水平摇镜', '垂直摇镜', '环绕拍摄', '跟随镜头', '俯拍', '仰拍', '微距', '航拍', '手持纪实', '慢动作', '变焦'];
 const state = { project: null, projects: [], tab: 'canvas', selection: null, capabilities: null, context: {}, zoom: 1, pan: { x: 0, y: 0 }, busy: false, undo: [], redo: [] };
-const previews = new Map(); let previewEpoch = 0, queue = Promise.resolve(), drag;
+const previews = createPreviews(
+  (params, signal) => bridge.call('asset-read', params, signal),
+  assetId => {
+    for (const element of document.querySelectorAll('[data-asset-preview]')) {
+      if (element.dataset.assetPreview === assetId) element.outerHTML = preview(assetId);
+    }
+  },
+);
+let previewEpoch = 0, previewTab, hiddenPreviewTimer, queue = Promise.resolve(), drag;
 let ui, presetFocusPending; const selectRoots = [], selectSpecs = [];
 const drafts = new Map(); let draftTimer, saveError = '';
 async function flushDrafts() {
@@ -20,7 +29,11 @@ async function flushDrafts() {
   try { await mutate(p => [...pending.values()].forEach(edit => edit(p))); saveError = ''; showSaveStatus(); }
   catch (error) { for (const [key, edit] of pending) if (!drafts.has(key)) drafts.set(key, edit); saveError = error.message || '保存失败'; showSaveStatus(); throw error; }
 }
-function notify(message) { ui?.toast(message, { duration: 5500 }); }
+function notify(message) {
+  const toast = ui?.toast;
+  if (typeof toast === 'function') toast(message, { duration: 5500 });
+  else toast?.message?.(message);
+}
 function fail(error) { ui?.toast.error(error?.message || String(error), { duration: 5500 }); }
 function select(options, value, attrs = '') {
   const index = selectSpecs.push({ options: options.map(o => ({ value: String(typeof o === 'object' ? o.id : o), label: String(typeof o === 'object' ? o.label : o) })), value: String(value ?? '') }) - 1;
@@ -58,7 +71,7 @@ const bridge = createBridge(context => { state.context = { ...state.context, ...
   }
   if (result.project) { state.project = result.project; render(); }
   return { content: [{ type: 'text', text: JSON.stringify(result) }], structuredContent: result };
-});
+}, releasePreviews);
 async function dialog(title, description, initial, submit) {
   const trigger = document.activeElement, root = ui.createRoot($('#dialog-root')), h = ui.React.createElement;
   return new Promise(resolve => {
@@ -205,7 +218,14 @@ async function mutate(fn, history = true) {
 async function operation(name, args = {}) {
   await queue.catch(() => {});
   state.busy = true;
-  try { const result = await bridge.call(name, { projectId: state.project.id, revision: state.project.revision, ...args }); if (result.project) state.project = result.project; render(); return result; }
+  try {
+    const input = { projectId: state.project.id, ...(name === 'asset-upload' ? {} : { revision: state.project.revision }), ...args };
+    const result = await bridge.call(name, input);
+    if (state.project.id !== input.projectId) return result;
+    if (result.project) state.project = result.project;
+    if (name !== 'asset-upload' || result.project) render();
+    return result;
+  }
   finally { state.busy = false; }
 }
 function preview(assetId, controls = false) {
@@ -214,22 +234,13 @@ function preview(assetId, controls = false) {
   const url = previews.get(assetId);
   if (!url) return `<span data-preview="${assetId}">点击后载入 ${esc(asset.kind === 'image' ? '图片' : asset.kind === 'video' ? '视频' : '音频')}</span>`;
   const tag = asset.kind === 'image' ? 'img' : asset.kind;
-  return `<${tag} src="${esc(url)}" ${tag === 'img' ? `alt="${esc(asset.name)}"` : `${controls ? 'controls' : 'muted'} preload="metadata" playsinline`}></${tag}>`;
+  return `<${tag} data-asset-preview="${esc(assetId)}" src="${esc(url)}" ${tag === 'img' ? `alt="${esc(asset.name)}"` : `${controls ? 'controls' : 'muted'} preload="metadata" playsinline`}></${tag}>`;
 }
-async function loadPreview(assetId) {
-  if (previews.has(assetId)) return;
-  const projectId = state.project.id, chunks = []; let offset = 0, result;
-  do {
-    result = await bridge.call('asset-read', { projectId, assetId, offset });
-    chunks.push(Uint8Array.from(atob(result.data), c => c.charCodeAt(0)));
-    if (result.nextOffset <= offset && offset < result.size) throw new Error('素材读取未前进');
-    offset = result.nextOffset;
-  } while (offset < result.size);
-  if (state.project.id !== projectId) return;
-  if (previews.size >= 24) { const [key, url] = previews.entries().next().value; URL.revokeObjectURL(url); previews.delete(key); }
-  previews.set(assetId, URL.createObjectURL(new Blob(chunks, { type: result.mime })));
+function releasePreviews() {
+  clearTimeout(hiddenPreviewTimer);
+  previewEpoch++;
+  previews.clear();
 }
-function releasePreviews() { for (const url of previews.values()) URL.revokeObjectURL(url); previews.clear(); }
 function nodeMarkup(node) {
   const job = [...state.project.jobs].reverse().find(j => j.nodeId === node.id);
   return `<section class="node ${state.selection === node.id ? 'selected' : ''}" data-node="${node.id}" style="left:${node.x}px;top:${node.y}px" tabindex="0" role="button" aria-label="编辑 ${esc(node.title)}"><div class="node-head"><span class="dot"></span><b>${esc(node.title)}</b><span class="spacer"></span><small>${names[node.kind]}</small></div><div class="node-body ${node.assetId ? 'media' : ''}">${node.assetId ? preview(node.assetId) : esc(node.prompt || '选中节点，编辑创意与参数')}</div><div class="node-foot"><span class="badge">${job ? esc(statuses[job.status] || job.status) : node.assetId ? '素材已就绪' : '草稿'}</span><span>···</span></div></section>`;
@@ -272,6 +283,11 @@ function tracks() {
 function jobs() { return `<div class="page">${heading('生成记录','任务状态来自 Work 渠道。关闭工作台后视频任务由 Work 继续查询。',button('refresh-jobs','刷新状态'))}${state.project.jobs.slice().reverse().map(j=>`<div class="job"><span class="job-status ${['submitting','running','saving'].includes(j.status)?'pulse':''}">${esc(statuses[j.status]||j.status)}</span><div><h3>${esc(j.title)}</h3><small>${esc(j.message||j.kind)} · ${new Date(j.createdAt).toLocaleString()}</small></div><span class="spacer"></span>${j.assetId?button('preview-asset','查看素材',`data-id="${j.assetId}"`):''}</div>${['failed','uncertain','save_failed'].includes(j.status)?`<p class="notice" data-feedback-variant="${j.status==='uncertain'?'warning':'destructive'}">${esc(j.message||'任务未完成，请查看渠道状态；不会自动重复付费提交。')}</p>`:''}`).join('')||empty('尚无生成任务','在画布选中图片或视频节点，填写描述后生成。')}</div>`; }
 function render() {
   if (!state.project) return;
+  if (previewTab !== state.tab) {
+    releasePreviews();
+    previewTab = state.tab;
+    if (document.hidden) hiddenPreviewTimer = setTimeout(releasePreviews, 60_000);
+  }
   const focused = document.activeElement;
   const focusState = (focused?.id || focused?.dataset.focusKey) && focused.closest('#app')
     ? { id: focused.id, key: focused.dataset.focusKey, start: focused.selectionStart, end: focused.selectionEnd } : null;
@@ -294,18 +310,31 @@ function render() {
   if (focusState) { const next=document.getElementById(focusState.id); next?.focus({preventScroll:true}); if (next && typeof focusState.start==='number' && ['text','textarea'].includes(next.type)) next.setSelectionRange(focusState.start,focusState.end); }
   mountPresetSelect();
   state.project = savedProject;
-  bridge.context(p,state.selection); const epoch = ++previewEpoch;
+  bridge.context(p,state.selection);
+  preloadPreviews(p);
+}
+
+function preloadPreviews(p) {
+  if (document.hidden || !p) return;
+  const epoch = ++previewEpoch;
   // Load visible thumbnails without replacing focused form elements.
   void (async () => {
     const pending = [...document.querySelectorAll('[data-preview]')].filter(el => p.assets.find(a => a.id === el.dataset.preview)?.kind === 'image').slice(0, 12);
     for (const element of pending) {
-      if (epoch !== previewEpoch) break;
-      try { await loadPreview(element.dataset.preview); if (element.isConnected) element.outerHTML = preview(element.dataset.preview); } catch { if (element.isConnected) element.textContent = '点击重试预览'; }
+      if (epoch !== previewEpoch || document.hidden) break;
+      const { preview: assetId } = element.dataset;
+      try {
+        const url = await previews.load(p.id, assetId, true);
+        if (url && element.isConnected) element.outerHTML = preview(assetId);
+      } catch {
+        if (element.isConnected) element.textContent = '点击重试预览';
+      }
     }
   })();
 }
 
 async function importFiles(files) {
+  const projectId = state.project.id;
   for (const file of files) {
     if (!file.size || file.size > 256*1024*1024) throw new Error(`${file.name} 为空或超过 256 MB`);
     let durationSeconds;
@@ -319,10 +348,11 @@ async function importFiles(files) {
     for(let offset=0;offset<file.size;offset+=1024*1024){
       notify(`正在导入 ${file.name} · ${Math.round(offset/file.size*100)}%`);
       const blob=file.slice(offset,offset+1024*1024), dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob)});
-      await operation('asset-upload',{uploadId,filename:file.name,total:file.size,offset,data:dataUrl.split(',')[1],durationSeconds});
+      await operation('asset-upload',{projectId,uploadId,filename:file.name,total:file.size,offset,data:dataUrl.split(',')[1],durationSeconds});
     }
   }
-  state.tab='assets';render();notify('素材已导入');
+  if (state.project.id === projectId) { state.tab='assets';render(); }
+  notify('素材已导入');
 }
 function shotFromAsset(p,assetId){const a=p.assets.find(a=>a.id===assetId);if(!a||a.kind==='audio')throw new Error('请选择图片或视频');p.shots.push({id:uuid('s'),title:a.name.slice(0,96),prompt:'',narration:'',duration:Math.min(a.durationSeconds||4,6),assetId});}
 async function action(name, target) {
@@ -378,7 +408,7 @@ async function action(name, target) {
     const response=await bridge.request('ui/message',{role:'user',content:[{type:'text',text:`短片工作台已生成原生多轨工程：${path}。请直接给我这个 index.html 文件的可点击本地链接，在现有视频工具打开继续剪辑。不要重新生成、不要扁平化、不要覆盖它。`}]});
     if(response?.isError)notify(`工程已保存，请让左侧 AI 打开：${result.path}`);return;
   }
-  if(key.startsWith('preview')){const assetId=key==='preview-node'?node.assetId:key==='preview-shot'?p.shots.find(s=>s.id===target.dataset.id)?.assetId:target.dataset.id;if(!assetId)throw new Error('还没有素材');notify('正在读取素材…');await loadPreview(assetId);render();return;}
+  if(key.startsWith('preview')){const assetId=key==='preview-node'?node.assetId:key==='preview-shot'?p.shots.find(s=>s.id===target.dataset.id)?.assetId:target.dataset.id;if(!assetId)throw new Error('还没有素材');notify('正在读取素材…');if(await previews.load(p.id,assetId))render();return;}
   if(key==='undo'||key==='redo'){const from=key==='undo'?state.undo:state.redo,to=key==='undo'?state.redo:state.undo,old=from.pop();if(!old)return;to.push(structuredClone(state.project));const result=await bridge.call('project-save',{project:{...old,revision:state.project.revision}});state.project=result.project;render();return;}
 }
 
@@ -409,6 +439,12 @@ async function handleField(e) {
   clearTimeout(draftTimer); draftTimer=setTimeout(()=>void flushDrafts().catch(fail),e.type==='change'?0:500);
 }
 document.addEventListener('change',e=>void handleField(e).catch(fail));
+document.addEventListener('visibilitychange', () => {
+  clearTimeout(hiddenPreviewTimer);
+  if (document.hidden) hiddenPreviewTimer = setTimeout(releasePreviews, 60_000);
+  else preloadPreviews(state.project);
+});
+window.addEventListener('pagehide', releasePreviews);
 document.addEventListener('input',e=>{if(e.target.type!=='file')void handleField(e).catch(fail)});
 document.addEventListener('pointerdown',e=>{
   if(e.button!==0||e.target.closest('button,input,textarea,select,video,audio'))return;

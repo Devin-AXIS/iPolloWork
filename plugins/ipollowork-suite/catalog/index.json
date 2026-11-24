@@ -54,8 +54,8 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.39-ipollo.1",
-          "publishTimestamp": 1795434302,
+          "version": "1.0.0-beta.39-ipollo.2",
+          "publishTimestamp": 1795499085,
           "source": {
             "type": "npm"
           },
@@ -89,8 +89,8 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.27-ipollo.1",
-          "publishTimestamp": 1795434303,
+          "version": "1.0.0-beta.27-ipollo.2",
+          "publishTimestamp": 1795499086,
           "source": {
             "type": "npm"
           },
@@ -196,40 +196,6 @@
         }
       ],
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTAiIGZpbGw9IiNmZmYiLz48c3ZnIHg9IjgiIHk9IjgiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI4IDI4IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHJvbGU9ImltZyI+CiAgPHRpdGxlPkNvbnRleHQ3PC90aXRsZT4KICA8cmVjdCB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHJ4PSI0IiBmaWxsPSIjMDU5NjY5Ii8+CiAgPHBhdGggZD0iTTEwLjU3MiAxNS4yNTdjMCAyLjI0Ni0uOTExIDQuMTIxLTIuMzk0IDUuODQ4aDMuNDU0djEuNjc0SDYuMzM1VjIxLjE5YzEuNjIxLTEuODMzIDIuMjQ2LTMuMzI3IDIuMjQ2LTUuOTMzaDEuOTkxWk0xNy40MjggMTUuMjU3YzAgMi4yNDYuOTExIDQuMTIxIDIuMzk0IDUuODQ4aC0zLjQ1NHYxLjY3NGg1LjI5N1YyMS4xOWMtMS42MjEtMS44MzMtMi4yNDYtMy4zMjctMi4yNDYtNS45MzNoLTEuOTkxWk0xMC41NzIgMTIuNzQ0YzAtMi4yNDYtLjkxMS00LjEyMi0yLjM5NC01Ljg0OWgzLjQ1NFY1LjIyMUg2LjMzNXYxLjU5YzEuNjIxIDEuODMyIDIuMjQ2IDMuMzI2IDIuMjQ2IDUuOTMzaDEuOTkxWk0xNy40MjggMTIuNzQ0YzAtMi4yNDYuOTExLTQuMTIyIDIuMzk0LTUuODQ5aC0zLjQ1NFY1LjIyMWg1LjI5N3YxLjU5Yy0xLjYyMSAxLjgzMi0yLjI0NiAzLjMyNi0yLjI0NiA1LjkzM2gtMS45OTFaIiBmaWxsPSIjZmZmIi8+Cjwvc3ZnPgo8L3N2Zz4K"
-    },
-    {
-      "name": "@ipollo/dsh-deepseek-harness",
-      "title": {
-        "zh": "DeepSeek Harness",
-        "en": "DeepSeek Harness"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "使用当前 DSH 原生 Agent、子任务和会话完成开发、审查与研究，无需第二套运行时。",
-        "en": "Use the current native DSH Agent, subagent tools and sessions for development, review and research."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "deepseek-harness",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.5",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlOWVkZmEiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNDI1YmMwIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgOFY0SDgiPjwvcGF0aD48cmVjdCB3aWR0aD0iMTYiIGhlaWdodD0iMTIiIHg9IjQiIHk9IjgiIHJ4PSIyIj48L3JlY3Q+PHBhdGggZD0iTTIgMTRoMiI+PC9wYXRoPjxwYXRoIGQ9Ik0yMCAxNGgyIj48L3BhdGg+PHBhdGggZD0iTTE1IDEzdjIiPjwvcGF0aD48cGF0aCBkPSJNOSAxM3YyIj48L3BhdGg+PC9zdmc+PC9zdmc+Cg=="
     },
     {
       "name": "@ipollo/dsh-douyin-ops",
@@ -572,74 +538,6 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmZmYwZTciLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYWY1ZDMwIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNC4wMzcgNC42ODhhLjQ5NS40OTUgMCAwIDEgLjY1MS0uNjUxbDE2IDYuNWEuNS41IDAgMCAxLS4wNjMuOTQ3bC02LjEyNCAxLjU4YTIgMiAwIDAgMC0xLjQzOCAxLjQzNWwtMS41NzkgNi4xMjZhLjUuNSAwIDAgMS0uOTQ3LjA2M3oiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
     },
     {
-      "name": "@ipollo/dsh-plugin-workshop",
-      "title": {
-        "zh": "插件工坊",
-        "en": "Plugin Workshop"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "在原生会话中制作、检查和打包 DSH 插件，通过原生插件管理器安装与验证。",
-        "en": "Author, check and package native DSH plugins in conversation, then install and verify them with the native Plugin Manager."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "plugin-workshop",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.5",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTAiIGZpbGw9IiNmZmYiLz48IS0tCkx1Y2lkZSBUb29sQ2FzZSwgSVNDIExpY2Vuc2UuCkNvcHlyaWdodCAoYykgZm9yIHBvcnRpb25zIG9mIEx1Y2lkZSBhcmUgaGVsZCBieSBDb2xlIEJlbWlzIDIwMTMtMjAyMiBhcyBwYXJ0IG9mIEZlYXRoZXIgKE1JVCkuCkFsbCBvdGhlciBjb3B5cmlnaHQgKGMpIGZvciBMdWNpZGUgYXJlIGhlbGQgYnkgTHVjaWRlIENvbnRyaWJ1dG9ycyAyMDIyLgoKUGVybWlzc2lvbiB0byB1c2UsIGNvcHksIG1vZGlmeSwgYW5kL29yIGRpc3RyaWJ1dGUgdGhpcyBzb2Z0d2FyZSBmb3IgYW55IHB1cnBvc2UKd2l0aCBvciB3aXRob3V0IGZlZSBpcyBoZXJlYnkgZ3JhbnRlZCwgcHJvdmlkZWQgdGhhdCB0aGUgYWJvdmUgY29weXJpZ2h0IG5vdGljZQphbmQgdGhpcyBwZXJtaXNzaW9uIG5vdGljZSBhcHBlYXIgaW4gYWxsIGNvcGllcy4KClRIRSBTT0ZUV0FSRSBJUyBQUk9WSURFRCAiQVMgSVMiIEFORCBUSEUgQVVUSE9SIERJU0NMQUlNUyBBTEwgV0FSUkFOVElFUyBXSVRIClJFR0FSRCBUTyBUSElTIFNPRlRXQVJFIElOQ0xVRElORyBBTEwgSU1QTElFRCBXQVJSQU5USUVTIE9GIE1FUkNIQU5UQUJJTElUWQpBTkQgRklUTkVTUy4gSU4gTk8gRVZFTlQgU0hBTEwgVEhFIEFVVEhPUiBCRSBMSUFCTEUgRk9SIEFOWSBTUEVDSUFMLCBESVJFQ1QsCklORElSRUNULCBPUiBDT05TRVFVRU5USUFMIERBTUFHRVMgT1IgQU5ZIERBTUFHRVMgV0hBVFNPRVZFUiBSRVNVTFRJTkcgRlJPTQpMT1NTIE9GIFVTRSwgREFUQSBPUiBQUk9GSVRTLCBXSEVUSEVSIElOIEFOIEFDVElPTiBPRiBDT05UUkFDVCwgTkVHTElHRU5DRQpPUiBPVEhFUiBUT1JUSU9VUyBBQ1RJT04sIEFSSVNJTkcgT1VUIE9GIE9SIElOIENPTk5FQ1RJT04gV0lUSCBUSEUgVVNFIE9SClBFUkZPUk1BTkNFIE9GIFRISVMgU09GVFdBUkUuCi0tPgo8c3ZnIHg9IjgiIHk9IjgiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIxIDEgMjIgMjIiIGZpbGw9Im5vbmUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+CiAgPHBhdGggZD0iTTEwIDE1aDQiLz4KICA8cGF0aCBkPSJtMTQuODE3IDEwLjk5NS0uOTcxLTEuNDUgMS4wMzQtMS4yMzJhMiAyIDAgMCAwLTIuMDI1LTMuMjM4bC0xLjgyLjM2NEw5LjkxIDMuODg1YTIgMiAwIDAgMC0zLjYyNS43NDhMNi4xNDEgNi41NWwtMS43MjUuNDI2YTIgMiAwIDAgMC0uMTkgMy43NTZsLjY1Ny4yNyIvPgogIDxwYXRoIGQ9Im0xOC44MjIgMTAuOTk1IDIuMjYtNS4zOGExIDEgMCAwIDAtLjU1Ny0xLjMxOEwxNi45NTQgMi45YTEgMSAwIDAgMC0xLjI4MS41MzNsLS45MjQgMi4xMjIiLz4KICA8cGF0aCBkPSJNNCAxMi4wMDZBMSAxIDAgMCAxIDQuOTk0IDExSDE5YTEgMSAwIDAgMSAxIDF2N2EyIDIgMCAwIDEtMiAySDZhMiAyIDAgMCAxLTItMnoiLz4KPC9zdmc+Cjwvc3ZnPgo="
-    },
-    {
-      "name": "@ipollo/dsh-reference-context",
-      "title": {
-        "zh": "参考资料",
-        "en": "Reference Context"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "为视频、演示文稿、网页和其他模板提供共用的参考资料 Skill。",
-        "en": "Shared reference evidence Skill for video, slides, websites and other templates."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "reference-context",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.5",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmZmYxZGYiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOTk2MTJkIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiPjwvcmVjdD48cGF0aCBkPSJNNyAzdjE4Ij48L3BhdGg+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
-    },
-    {
       "name": "@ipollo/dsh-sentry",
       "title": {
         "zh": "Sentry",
@@ -695,7 +593,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"

@@ -102,7 +102,11 @@ export function installFrameUi(): () => void {
     AlertDialog: ({ open, onOpenChange, children }: { open: boolean; onOpenChange: (open: boolean) => void; children: ReactNode }) => <DialogState.Provider value={{ open, close: () => onOpenChange(false) }}>{children}</DialogState.Provider>,
     AlertDialogContent: DialogContent, AlertDialogTitle: block('h2', 'dialog-title'), AlertDialogDescription: block('p', 'dialog-description'), AlertDialogFooter: block('div', 'dialog-footer'), AlertDialogAction: Button, AlertDialogCancel: React.forwardRef<HTMLButtonElement, React.ComponentProps<typeof Button>>((props, ref) => <Button variant="ghost" {...props} ref={ref}/>),
     Alert: block('div', 'alert'), AlertTitle: block('h2', 'alert-title'), AlertDescription: block('p', 'alert-description'), AlertAction: block('div', 'alert-action'), Badge: block('div', 'badge'), Skeleton: block('div', 'skeleton'),
-    Toaster, toast: { success: (text: string) => toast(text, true), error: (text: string) => toast(text, false) },
+    Toaster, toast: {
+      message: (text: string) => toast(text, false),
+      success: (text: string) => toast(text, true),
+      error: (text: string) => toast(text, false),
+    },
   }
   Reflect.set(window, '__ipolloPortedUi', runtime)
   const dispose = () => { style.remove(); for (const document of roots.keys()) disposeDocument(document); if (Reflect.get(window, '__ipolloPortedUi') === runtime) { if (previous === undefined) Reflect.deleteProperty(window, '__ipolloPortedUi'); else Reflect.set(window, '__ipolloPortedUi', previous) }; Reflect.deleteProperty(window, stateKey) }

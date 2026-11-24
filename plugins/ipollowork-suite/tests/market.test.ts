@@ -102,6 +102,8 @@ test('bundled installation specs use a retained content-addressed cache when the
 
 test('shipped Studio bundles select their host authentication API for editor assets', async () => {
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as { plugins: { name: string; file: string }[] }
+  const skill = 'skills/ipollowork-reference-analyzer/SKILL.md'
+  const expected = (await readFile('../reference-context/business/' + skill, 'utf8')).replaceAll('\r\n', '\n')
   for (const release of releases.plugins.filter(item => ['deepseek-idesign', 'deepseek-ivideo'].includes(item.name))) {
     const document = execFileSync('tar', ['-xOzf', join('catalog/packages', release.file), 'package/cordis.patch.yml'], { encoding: 'utf8' })
     const patch = yaml.load(document) as { insert: { name: string; inject?: string[] }[] }[]
@@ -112,6 +114,9 @@ test('shipped Studio bundles select their host authentication API for editor ass
     assert(host.includes('ConnectionAuthentication'))
     assert(host.includes('connection.authentication'))
     assert(host.includes('admit(req)'))
+    assert(host.includes('registerProvider'))
+    assert(host.includes('ipollowork-reference-analyzer'))
+    assert.equal(execFileSync('tar', ['-xOzf', join('catalog/packages', release.file), 'package/' + skill], { encoding: 'utf8' }), expected)
   }
 })
 
@@ -121,9 +126,11 @@ test('npm delivery downloads optional Studio archives only when installed', asyn
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as { plugins: {name:string;version:string;file:string;sha256:string;tag?:string}[] }
   try {
     for(const release of releases.plugins.filter(item=>['deepseek-idesign','deepseek-ivideo'].includes(item.name))){
-      const content=await readBundledArchive(release,join(directory,release.file))
+      const tag = release.tag ?? 'fixture-published'
+      if (!release.tag) await assert.rejects(readBundledArchive(release,join(directory,release.file)),/missing from this installation/)
+      const content=await readBundledArchive({...release,tag},join(directory,release.file))
       assert('target'in content)
-      assert.equal(content.target.spec,`https://github.com/Devin-AXIS/iPolloWork/releases/download/${release.tag}/${release.file}`)
+      assert.equal(content.target.spec,`https://github.com/Devin-AXIS/iPolloWork/releases/download/${tag}/${release.file}`)
       assert.equal(content.target.archiveSha256,release.sha256)
     }
     const local=releases.plugins.find(item=>item.name.startsWith('@ipollo/dsh-'))!
@@ -139,6 +146,19 @@ test('dedicated desktop prefers the checked bundled Studio archives', async () =
     assert(item.spec.startsWith('file:'))
     assert(item.spec.endsWith('.tgz'))
   }
+})
+
+test('the default market keeps retired entries hidden even if the service still advertises them', async () => {
+  const names = JSON.parse(await readFile('catalog/retired-plugins.json', 'utf8')) as string[]
+  const curated = names.map(name => ({
+    name, title: name, metadata: { category: 'productivity' },
+    versions: [{ version: '1.0.0', publishTimestamp: 1, source: { type: 'npm' }, engines: { dsh: runtimeVersion } }],
+  }))
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] },
+    runtimeVersion, 'en', 1048576, undefined, false, curated)
+  assert(state.items.some(item => item.name === 'deepseek-idesign'))
+  assert(state.items.some(item => item.name === 'deepseek-ivideo'))
+  assert(state.items.every(item => !names.includes(item.name)))
 })
 
 test('service-curated entries merge with bundled plugins and use the official pinned source resolver', async () => {

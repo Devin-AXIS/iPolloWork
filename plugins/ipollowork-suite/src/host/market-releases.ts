@@ -19,7 +19,10 @@ const archive = z.object({
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
   tag,
 }).strict()
-export const bundledReleases = z.object({ format: z.literal(1), plugins: z.array(archive.partial({tag:true})).max(100) }).strict()
+export const bundledReleases = z.object({
+  format: z.literal(1),
+  plugins: z.array(archive.partial({ tag: true }).extend({ upgradeOnly: z.literal(true).optional() })).max(100),
+}).strict()
 const publishedRelease = archive.extend({
   dsh: z.string().max(120).refine(range => Boolean(range.trim()) && semver.validRange(range) !== null),
 }).refine(release => release.file === `${release.name.replace(/^@/,'').replace('/','-')}-${release.version}-${release.sha256.slice(0, 12)}.tgz`)

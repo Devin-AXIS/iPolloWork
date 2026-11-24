@@ -23,7 +23,6 @@ import { mountOutputContinuationPresentation } from './output-continuation.tsx'
 import { mountChatErrors } from './chat-errors.tsx'
 import { apply as mountIm } from '../../vendor/dsh-im/plugin-src/client/index.js'
 import { callNativeSharing, prepareSharingConnection } from './native-sharing.ts'
-import { shareAudienceCopy } from './share-audience-copy.ts'
 export const inject = ['slots', 'theme', 'locale', 'remote', 'layout', 'uiWorkspace', 'connection', 'sessions', 'workspaces', 'contextMenus', 'conversation', 'configForms']
 export async function apply(ctx: ClientContext): Promise<void> {
   // Shared pages use their scoped native services; the owner's account UI must not be mounted there.
@@ -85,14 +84,15 @@ export async function apply(ctx: ClientContext): Promise<void> {
       }
     }, 'ipollowork-suite: refresh account on return')
     const prepareShare = async (signal: AbortSignal) => {
-      const t = shareAudienceCopy(language(ctx))
+      const chinese = language(ctx) === 'zh'
+      const connectionFailed = chinese ? '暂时无法连接分享服务，请重试' : 'Could not connect the sharing service. Try again.'
       await account.refresh()
       signal.throwIfAborted()
       const state = account.getSnapshot()
-      if (state.error) return { error: t.connectionFailed }
+      if (state.error) return { error: connectionFailed }
       if (state.account?.status !== 'signed-in') {
         account.openAccountSettings()
-        return { error: t.connectionSignIn }
+        return { error: chinese ? '登录 iPolloWork 后即可分享会话' : 'Sign in to iPolloWork to share this conversation' }
       }
       try {
         await prepareSharingConnection({
@@ -101,7 +101,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
         }, AbortSignal.any([signal, lifetime.signal]))
         return { connected: true }
       } catch (_error) {
-        return { error: t.connectionFailed }
+        return { error: connectionFailed }
       }
     }
     ctx.provide('ipolloProjectConversationShare', async (input, signal) => {
