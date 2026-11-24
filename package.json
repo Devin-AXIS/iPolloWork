@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/work",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.28.5",

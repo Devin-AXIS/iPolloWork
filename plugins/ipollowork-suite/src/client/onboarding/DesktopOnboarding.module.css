@@ -65,37 +65,24 @@
 }
 
 .welcome {
-  max-width: 2200px;
-  width: 100%;
-  height: 100%;
-}
-
-.welcome .copy {
-  position: absolute;
-  top: 50%;
-  left: clamp(64px, calc(41.667vw - 300px), 200px);
-  width: 520px;
-  transform: translateY(-50%);
-  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 440px) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(32px, 5vw, 84px);
 }
 
 .start {
   display: flex;
-  width: 240px;
+  width: min(100%, 240px);
   margin: 60px 0 0;
 }
 
-.welcomeIllustration {
-  position: absolute;
-  left: min(calc(41.667vw + 112.5px), 712.5px);
-  top: clamp(32px, calc(31.608vh - 157.65px), 133.145px);
-  width: 1247px;
-  height: 822px;
-  pointer-events: none;
+.illustration {
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  box-shadow: 0 12px 42px #0002;
 }
-
-.welcomeArtwork { position: absolute; left: -67px; top: -40px; width: 1331px; height: auto; }
-
 .illustration img { display: block; width: 100%; height: auto; }
 .illustration .darkIllustration { display: none; }
 :global(body[data-ds-dark-theme]) .lightIllustration { display: none; }
@@ -111,7 +98,6 @@
   transform: translate(-50%, calc(-50% - 5px));
 }
 
-.creditIllustration { width: 100%; height: auto; aspect-ratio: 594 / 509; object-fit: contain; }
 .credit .copy { max-width: 400px; }
 .creditActions { display: flex; gap: 24px; margin-top: 60px; }
 .creditActions > button { flex: 1; max-width: 160px; }
@@ -279,14 +265,6 @@
   .creditActions { margin-top: 32px; }
 }
 
-@media (max-width: 1200px) {
-  .welcomeIllustration { left: calc(73.333vw - 267.5px); }
-}
-
-@media (min-height: 920px) {
-  .welcomeIllustration { top: calc(50% - 326.855px); }
-}
-
 @media (max-width: 1100px) {
   .page { --page-padding: 40px; }
 
@@ -297,6 +275,30 @@
   .welcome .copy h1 { font-size: 28px; line-height: 48px; }
 
   .fileIcons { gap: 3px; }
+}
+
+@media (max-width: 760px), (max-height: 560px) {
+  .page:is([data-desktop-onboarding='welcome'], [data-desktop-onboarding='credit']) {
+    --page-padding: 24px;
+    min-height: 0;
+    height: auto;
+    padding-block: 32px 24px;
+    overflow: visible;
+  }
+  .welcome, .credit {
+    position: static;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+    margin-inline: auto;
+    transform: none;
+  }
+  .credit .illustration { grid-row: 2; }
+  .start, .creditActions { margin-top: 24px; }
+  .credit ~ .navigation {
+    position: static;
+    margin: 24px auto 0;
+    transform: none;
+  }
 }
 
 @media (max-height: 560px) {
