@@ -45,6 +45,7 @@ test('all former plugin identities map to native packages with complete port met
   const inventory = JSON.parse(await readFile(join(repository, 'integrations/runtime/ported-plugins.json'), 'utf8')) as { plugins: { id: string; name: string; kind: string }[] }
   const archives = join(repository, 'plugins/ipollowork-suite/catalog/packages')
   const releases = JSON.parse(await readFile(join(archives, '../bundled-releases.json'), 'utf8')) as { plugins: { name: string; file: string }[] }
+  const retired = new Set<string>(JSON.parse(await readFile(join(archives, '../retired-plugins.json'), 'utf8')))
   assert.equal(inventory.plugins.length, 24)
   assert.equal(new Set(inventory.plugins.map(item => item.id)).size, 24)
   for (const item of inventory.plugins.filter(item => item.kind !== 'existing-native')) {
@@ -54,6 +55,10 @@ test('all former plugin identities map to native packages with complete port met
     const pkg = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
     assert.equal(pkg.name, item.name)
     const release = releases.plugins.find(release => release.name === item.name)
+    if (retired.has(item.name)) {
+      assert.equal(release, undefined, item.name)
+      continue
+    }
     assert(release, `Missing shipping archive: ${item.name}`)
     const shipped = new Set(execFileSync('tar', ['-tzf', release.file], { cwd: archives, encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 }).trim().split(/\r?\n/))
     assert.equal(pkg.dsh.bundle.patch, './cordis.patch.yml')

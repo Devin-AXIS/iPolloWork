@@ -1,0 +1,4 @@
+/lib/
+/*.tgz
+/vendor/eigenpal/packages/*/dist/
+/vendor/eigenpal/packages/*/THIRD_PARTY_NOTICES.md

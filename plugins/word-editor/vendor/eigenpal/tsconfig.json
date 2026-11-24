@@ -1,0 +1,54 @@
+{
+  "compilerOptions": {
+    // ES2022 rather than ES2020 because `include` below pulls in `packages/react/src`,
+    // which reaches core's ES2022 sources. Same floor as the packages themselves.
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["bun", "vite/client"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "declaration": true,
+    "declarationMap": true,
+    // Core resolves to SOURCE here, the way `react` above already does. Without it this project
+    // held two copies of the engine: `dist` for anything importing the package name, and `src`
+    // for the harnesses that reach in by relative path. Identical classes from two copies are
+    // different types, so the store's private field made every call across the seam an error —
+    // 7 of them in `binding/tree-session.ts` alone, blamed on a file that is correct.
+    "paths": {
+      "@/*": ["./packages/react/src/*"],
+      "@docx-editor.dev/react": ["./packages/react/src/index.ts"],
+      "@docx-editor.dev/core": ["./packages/core/src/index.ts"],
+      "@docx-editor.dev/core/*": ["./packages/core/src/*"],
+      "@docx-editor.dev/pro": ["./packages/pro/src/index.ts"],
+      "@docx-editor.dev/pro/*": ["./packages/pro/src/*"],
+      "@docx-editor.dev/i18n": ["./packages/i18n/src/index.ts"],
+      "@docx-editor.dev/docx-to-markdown": ["./packages/docx-to-markdown/src/index.ts"],
+      "@docx-editor.dev/editor-api": ["./packages/editor-api/src/index.ts"],
+      "@docx-editor.dev/editor-api/*": ["./packages/editor-api/src/*"]
+    }
+  },
+  // `docs/site/data` holds the typed feature matrix that AGENTS.md makes the single source of
+  // feature-support claims. It sat outside every typecheck project, so an invalid `tier` value
+  // shipped: a matrix nothing typechecks is documentation with extra syntax.
+  "include": [
+    "src",
+    "api",
+    "packages/react/src",
+    "examples/shared",
+    "examples/vite",
+    "examples/plugins",
+    "docs/site/data"
+  ],
+  "exclude": ["node_modules", "dist", "examples/nextjs", "examples/remix", "examples/astro"]
+}

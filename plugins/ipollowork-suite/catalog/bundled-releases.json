@@ -23,13 +23,6 @@
       "tag": "v1.0.16"
     },
     {
-      "name": "@ipollo/dsh-deepseek-harness",
-      "version": "0.1.5",
-      "file": "ipollo-dsh-deepseek-harness-0.1.5-257534eb36ca.tgz",
-      "sha256": "257534eb36ca21d257ab51a5b765c7f2c15610c1f27d56deea707d9a9bd57da1",
-      "tag": "v1.0.16"
-    },
-    {
       "name": "@ipollo/dsh-douyin-ops",
       "version": "0.1.5",
       "file": "ipollo-dsh-douyin-ops-0.1.5-e89da67985a1.tgz",
@@ -100,20 +93,6 @@
       "tag": "v1.0.16"
     },
     {
-      "name": "@ipollo/dsh-plugin-workshop",
-      "version": "0.1.5",
-      "file": "ipollo-dsh-plugin-workshop-0.1.5-c50d16c047e2.tgz",
-      "sha256": "c50d16c047e259701daf703233a1fd13883259b8c3f20502fef0698c8382879b",
-      "tag": "v1.0.16"
-    },
-    {
-      "name": "@ipollo/dsh-reference-context",
-      "version": "0.1.5",
-      "file": "ipollo-dsh-reference-context-0.1.5-c6c1ed7972ea.tgz",
-      "sha256": "c6c1ed7972ea33be9d16dbc545b9472fabd72e8e8df7fec4c026630f90beef9f",
-      "tag": "v1.0.16"
-    },
-    {
       "name": "@ipollo/dsh-sentry",
       "version": "0.1.5",
       "file": "ipollo-dsh-sentry-0.1.5-ee9d5f03b1bf.tgz",
@@ -164,17 +143,51 @@
     },
     {
       "name": "deepseek-idesign",
-      "version": "1.0.0-beta.39-ipollo.1",
-      "file": "deepseek-idesign-1.0.0-beta.39-ipollo.1-fa33485da3b5.tgz",
-      "sha256": "fa33485da3b50689683146245b5359afab953b3ab411c1f0d54dd30cc6f82cd1",
-      "tag": "v1.0.16"
+      "version": "1.0.0-beta.39-ipollo.2",
+      "file": "deepseek-idesign-1.0.0-beta.39-ipollo.2-1a8618ac63de.tgz",
+      "sha256": "1a8618ac63de95e597f40777aa2c2888bda0f5d858dfe6cf24e67e8c65f51479"
     },
     {
       "name": "deepseek-ivideo",
-      "version": "1.0.0-beta.27-ipollo.1",
-      "file": "deepseek-ivideo-1.0.0-beta.27-ipollo.1-93192b57cdf2.tgz",
-      "sha256": "93192b57cdf2de34560fb1a933c73a075ff3204b7fe9d1a2b169fe3a45adfe1b",
-      "tag": "v1.0.16"
+      "version": "1.0.0-beta.27-ipollo.2",
+      "file": "deepseek-ivideo-1.0.0-beta.27-ipollo.2-40cb8e22e10f.tgz",
+      "sha256": "40cb8e22e10f4a3fb0cd041c5cf1d3ed4be5d14c0d084d823d6682e0fec7023f"
+    },
+    {
+      "name": "@ipollo/dsh-markdown-editor",
+      "version": "0.1.3",
+      "file": "ipollo-dsh-markdown-editor-0.1.3-e3d953960762.tgz",
+      "sha256": "e3d9539607627db4316545d464490d4a7a7d7158c85837239f66a9fad1a50c7d"
+    },
+    {
+      "name": "@ipollo/dsh-excel-editor",
+      "version": "0.2.3",
+      "file": "ipollo-dsh-excel-editor-0.2.3-1c81cb2e4af8.tgz",
+      "sha256": "1c81cb2e4af8989e1142eff8e29ca985dacd6f4539692885c824c21b2dab059d"
+    },
+    {
+      "name": "@ipollo/dsh-conversation-export",
+      "version": "0.1.0",
+      "file": "ipollo-dsh-conversation-export-0.1.0-7cd7940ab0a0.tgz",
+      "sha256": "7cd7940ab0a0fa085f50b3c08a67d77c0f69aca676fc9150385ca2e6fafc5923"
+    },
+    {
+      "name": "@ipollo/dsh-task-templates",
+      "version": "0.1.1",
+      "file": "ipollo-dsh-task-templates-0.1.1-0a441c722da5.tgz",
+      "sha256": "0a441c722da5baa80dd3c40a310d0c0527d30152729847a70d25750e089def5f"
+    },
+    {
+      "name": "@ipollo/dsh-reference-preparation",
+      "version": "0.1.1",
+      "file": "ipollo-dsh-reference-preparation-0.1.1-a4437fa3ef7f.tgz",
+      "sha256": "a4437fa3ef7f7bbfea2249d8c4785b48ecc7c720b66c0a56eb47df5e4af9d510"
+    },
+    {
+      "name": "@ipollo/dsh-legacy-workspace-import",
+      "version": "0.1.0",
+      "file": "ipollo-dsh-legacy-workspace-import-0.1.0-3ca0122d4ae4.tgz",
+      "sha256": "3ca0122d4ae427e22a5b84737355de86c2ded8ddad15952cb9b81d2daff6e6e0"
     }
   ]
 }

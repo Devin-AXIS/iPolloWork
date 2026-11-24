@@ -29,7 +29,7 @@ function render(view) {
   let detail = policy.detail ?? messages.mandatoryDetail
   let primary = '', action = '', status = ''
   if (downloadable) { primary = failed ? messages.updateRetry : messages.updateDownload; action = 'download' }
-  if (ready) { primary = view.deferred ? messages.mandatoryContinue : messages.updateRetry; action = 'install' }
+  if (ready) { primary = failed ? messages.updateRetry : messages.mandatoryContinue; action = 'install' }
   if (view.deferred) { title = messages.mandatoryReady; detail = messages.mandatoryDeferred }
   if (update.phase === 'downloading') status = format(messages.updateDownloading, { percent: String(Math.floor(update.percent ?? 0)) })
   if (update.phase === 'verifying') status = messages.updateVerifying
@@ -38,6 +38,7 @@ function render(view) {
   if (confirming) {
     title = confirmation.active ? messages.updateActiveTasks : messages.mandatoryReady
     detail = confirmation.active ? messages.updateActiveTasksDetail : messages.mandatoryReadyDetail
+    if (confirmation.pluginDetail) detail += '\n\n' + confirmation.pluginDetail
     primary = confirmation.active ? messages.updateStopTasks : messages.installAndRestart
     action = 'install'; status = ''
   }
@@ -54,17 +55,41 @@ function render(view) {
         : messages.mandatoryUnavailable
     : update.phase === 'idle' && !policy.checking ? messages.mandatoryNoRelease : undefined)
   const technicalDetails = failed && !configurationError ? update.technicalDetails ?? update.message ?? '' : ''
+  const pluginBlock = confirming || view.restart !== undefined ? undefined : view.pluginBlock
+  if (pluginBlock && primary) primary = messages.updateRetry
   document.documentElement.lang = id
   document.title = messages.mandatoryTitle
   element('title').textContent = title
   element('detail').textContent = detail
   element('status').textContent = status
   element('version').textContent = update.version === undefined ? '' : format(messages.mandatoryVersion, { version: update.version })
-  element('progress').hidden = update.phase !== 'downloading'
-  element('progress').value = update.percent ?? 0
-  element('progress').setAttribute('aria-label', status)
+  const progress = element('progress')
+  progress.hidden = confirming || (status === '' && view.restart === undefined)
+  if (update.phase === 'downloading') progress.value = update.percent ?? 0
+  else progress.removeAttribute('value')
+  progress.setAttribute('aria-label', status || title)
   element('error').textContent = error ?? ''
   element('error').hidden = error === undefined || confirming
+  element('plugin-block').hidden = pluginBlock === undefined
+  element('plugin-block-title').textContent = pluginBlock?.title ?? ''
+  element('plugin-block-detail').textContent = pluginBlock?.detail ?? ''
+  const folders = element('plugin-folders')
+  const localPlugins = pluginBlock?.localPlugins ?? []
+  if (folders.children.length !== localPlugins.length
+    || localPlugins.some((name, index) => folders.children[index]?.dataset.plugin !== name)) {
+    folders.replaceChildren(...localPlugins.map(name => {
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'secondary'
+      button.dataset.plugin = name
+      button.addEventListener('click', () => { void act('open-plugin', name) })
+      return button
+    }))
+  }
+  for (const button of folders.children) {
+    button.textContent = `${messages.updateOpenPluginFolder} · ${button.dataset.plugin}`
+    button.disabled = busy
+  }
   if (element('technical-details-content').textContent !== technicalDetails) element('technical-details').open = false
   element('technical-details').hidden = technicalDetails === '' || confirming
   element('technical-details-label').textContent = messages.updateTechnicalDetails
@@ -80,9 +105,9 @@ function render(view) {
   element('refresh').hidden = confirming || view.restart !== undefined || (!authenticationRequired && (!!primary || !fallback))
   element('refresh').disabled = busy || policy.checking
   element('page').textContent = navigation ? messages.mandatoryReopen : messages.mandatoryPage
-  element('page').hidden = !fallback || confirming || policy.page === undefined
+  element('page').hidden = !fallback || confirming || view.restart !== undefined || pluginBlock !== undefined || policy.page === undefined
   element('actions').hidden = [...element('actions').children].every(child => child.hidden)
-  element('fallback').hidden = !navigation || !fallback || confirming || policy.page === undefined
+  element('fallback').hidden = !navigation || !fallback || confirming || pluginBlock !== undefined || policy.page === undefined
   element('browser-message').textContent = navigation?.page === 'failed' ? messages.mandatoryPageFailed : messages.mandatoryOpenHelp
   element('copy').textContent = navigation?.copy === 'copied' ? messages.mandatoryCopied : messages.mandatoryCopy
   element('copy-message').textContent = navigation?.copy === 'failed' ? messages.mandatoryCopyFailed : ''
@@ -93,15 +118,16 @@ function render(view) {
   if (confirming && !wasConfirming && document.activeElement?.id === 'update') document.activeElement.blur()
 }
 
-async function act(action) {
+async function act(action, pluginName) {
   const navigation = ['page', 'copy'].includes(action)
   const confirmation = current?.confirmation !== undefined && ['install', 'later'].includes(action)
   if (current === undefined || (busy && !navigation && !confirmation)) return
   if (!navigation) busy = true
   localError = undefined
   render(current)
-  try { await api.action(action, current.confirmation?.version ?? current.update.version, current.confirmation?.revision) }
-  catch { localError = current.locale.messages.mandatoryActionFailed }
+  try { await api.action(action, current.confirmation?.version ?? current.update.version, current.confirmation?.revision, pluginName) }
+  catch { localError = action === 'open-plugin' ? current.locale.messages.updatePluginFolderUnavailable
+    : current.locale.messages.mandatoryActionFailed }
   finally { if (!navigation) busy = false; render(current) }
 }
 
@@ -111,6 +137,15 @@ element('update').addEventListener('click', event => {
 })
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' || (event.repeat && ['Enter', ' '].includes(event.key))) event.preventDefault()
+  if (event.key !== 'Tab') return
+  const controls = [...document.querySelectorAll('button:not(:disabled), summary, details[open] > pre, textarea')]
+    .filter(control => control.getClientRects().length > 0)
+  event.preventDefault()
+  if (controls.length === 0) return
+  const currentIndex = controls.indexOf(document.activeElement)
+  const next = currentIndex < 0 ? (event.shiftKey ? controls.length - 1 : 0)
+    : (currentIndex + (event.shiftKey ? -1 : 1) + controls.length) % controls.length
+  controls[next].focus()
 })
 let changed = false
 const unsubscribe = api.subscribe(view => { changed = true; render(view) })

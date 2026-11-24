@@ -11,6 +11,8 @@ import { DesktopUpdatePreparationError, downloadFailureDetails } from './update-
 import type { DesktopUpdateChannel } from './update-channel.ts'
 import { selectUpdateChannel } from './updates/electron-updater/channel.ts'
 import { discardDesktopUpdate } from './updates/electron-updater/discard.ts'
+import { retireWindowsUpdateDuplicate, saveWindowsUpdateReceipt, windowsUpdaterCache } from './updates/electron-updater/windows-cache.ts'
+import { recordUpdateCleanupFailure } from './update-cleanup-log.ts'
 
 const { autoUpdater } = electronUpdater
 
@@ -24,10 +26,13 @@ export class DesktopUpdateCoordinator {
   private downloadGeneration = 0
   private switchTail: Promise<void> = Promise.resolve()
   private cancellation: UpdateCheckResult['cancellationToken']
+  private pluginCompatibility: unknown
   private configurationError: 'startup' | 'cleanup' | undefined
   private checkOperation: Promise<DesktopUpdateState> | undefined
   private downloadOperation: Promise<DesktopUpdateState> | undefined
   private installOperation: Promise<DesktopUpdateState> | undefined
+  private readonly windowsCacheRoot: string | undefined
+  private windowsCachePrepared = false
 
   private readonly onProgress = (progress: ProgressInfo): void => {
     if (this.downloadGeneration !== this.generation || this.downloadOperation === undefined || this.downloaded) return
@@ -67,6 +72,9 @@ export class DesktopUpdateCoordinator {
     private channel: DesktopUpdateChannel = 'nightly',
     private readonly discard: (updater: AppUpdater) => Promise<void> = discardDesktopUpdate,
   ) {
+    if (process.platform === 'win32' && updater === autoUpdater && app.isPackaged) {
+      this.windowsCacheRoot = process.env.LOCALAPPDATA
+    }
     if (updater === autoUpdater) {
       // electron-updater omits this internal transport property from its public declarations.
       // Real-Electron qualification exercises the pinned dependency integration.
@@ -92,6 +100,8 @@ export class DesktopUpdateCoordinator {
 
   /** Selected runtime channel, including while a new feed is being checked. */
   get selectedChannel(): DesktopUpdateChannel { return this.channel }
+
+  get targetPluginCompatibility(): unknown { return this.pluginCompatibility }
 
   /** Revision captured by confirmations so channel changes invalidate old user actions. */
   get revision(): number { return this.generation }
@@ -130,6 +140,7 @@ export class DesktopUpdateCoordinator {
       await Promise.allSettled([this.checkOperation, this.downloadOperation])
       this.assertLive()
       this.release = { kind: 'none' }
+      this.pluginCompatibility = undefined
       this.cancellation = undefined
       try { await this.discard(this.updater) } catch (error) {
         this.suspendConfiguration('desktop update: could not retire the previous update', 'cleanup')
@@ -183,9 +194,13 @@ export class DesktopUpdateCoordinator {
       if (version !== this.candidate) throw new Error('desktop update: download confirmation is stale')
       this.setState({ phase: 'downloading', version, percent: 0 })
       try {
-        await this.updater.downloadUpdate(this.cancellation)
+        const files = await this.updater.downloadUpdate(this.cancellation)
         if (generation !== this.generation || this.disposed) return this.current
         if (!this.downloaded) throw new Error('desktop update: platform preparation did not report readiness')
+        if (this.windowsCacheRoot) {
+          await this.maintainWindowsCache(this.windowsCacheRoot, 'record', pending => saveWindowsUpdateReceipt(pending, version, files))
+        }
+        if (generation !== this.generation || this.disposed) return this.current
         this.downloadResult?.(true)
         return this.setState({ phase: 'ready', version })
       } catch (error) {
@@ -210,11 +225,12 @@ export class DesktopUpdateCoordinator {
     if (this.configurationError !== undefined || this.switching > 0) throw new Error('desktop update: channel selection is not ready')
     if (!this.downloaded || this.downloadOperation !== undefined || version !== this.candidate) throw new Error('desktop update: confirmed target is not ready')
     this.installOperation ??= Promise.resolve().then(async () => {
-      this.setState({ phase: 'installing', version })
       try {
-        if (!await this.beforeRestart()) return this.setState({ phase: 'ready', version })
+        if (this.current.phase !== 'ready') this.setState({ phase: 'ready', version })
+        if (!await this.beforeRestart()) return this.current
         this.assertLive()
         this.release = { kind: 'handed-off', version }
+        this.setState({ phase: 'installing', version })
         this.updater.quitAndInstall(true, true)
         return this.current
       } catch (error) {
@@ -265,11 +281,30 @@ export class DesktopUpdateCoordinator {
     return this.candidate === undefined ? {} : { version: this.candidate }
   }
 
+  private async maintainWindowsCache(root: string, operation: 'record' | 'remove', maintain: (pending: string) => Promise<void>): Promise<boolean> {
+    const config = join(process.resourcesPath, 'app-update.yml')
+    let pending: string | undefined
+    try {
+      pending = await windowsUpdaterCache(config, root)
+      if (pending !== undefined) await maintain(pending)
+      return true
+    } catch (error) {
+      recordUpdateCleanupFailure(app.getPath('logs'), { operation, path: pending ?? config, error })
+      return false
+    }
+  }
+
   private async doCheck(): Promise<DesktopUpdateState> {
     const generation = this.generation
     try {
       this.assertLive()
       if (!this.enabled()) throw new Error('desktop update: this application has no packaged update source')
+      if (this.windowsCacheRoot && !this.windowsCachePrepared) {
+        // The installer can still hold its executable open during the first check.
+        this.windowsCachePrepared = await this.maintainWindowsCache(this.windowsCacheRoot, 'remove',
+          pending => retireWindowsUpdateDuplicate(pending, this.currentVersion()))
+      }
+      if (generation !== this.generation || this.disposed) return this.current
       const result = await this.updater.checkForUpdates()
       if (generation !== this.generation || this.disposed) return this.current
       if (result === null) throw new Error('desktop update: no check result was returned')
@@ -278,6 +313,8 @@ export class DesktopUpdateCoordinator {
       if (valid(version) === null) throw new Error('desktop update: feed version is invalid')
       this.release = result.isUpdateAvailable && gt(version, this.currentVersion())
         ? { kind: 'checked', version } : { kind: 'none' }
+      this.pluginCompatibility = this.candidate !== undefined && 'ipolloPluginCompatibility' in result.updateInfo
+        ? result.updateInfo.ipolloPluginCompatibility : undefined
       return this.setState(this.candidate === undefined ? { phase: 'idle' } : { phase: 'available', version })
     } catch (error) {
       if (generation !== this.generation || this.disposed) return this.current

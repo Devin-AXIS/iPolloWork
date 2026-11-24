@@ -1,0 +1,19 @@
+{
+  // API Extractor's view of this package. `tsup` emits the declarations; this config only
+  // RESOLVES them.
+  //
+  // The `paths` block is the load-bearing part. Core's own modules import sibling subpaths by
+  // package name (`@docx-editor.dev/core/store`), which the exports map resolves back to `.ts`
+  // SOURCE. API Extractor cannot analyze a `.ts` entry and dies with an internal error, so the
+  // self-references are redirected at the built declarations instead.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@docx-editor.dev/core": ["./dist/index.d.ts"],
+      "@docx-editor.dev/core/contracts/types": ["./dist/contracts/types.d.ts"],
+      "@docx-editor.dev/core/contracts/*": ["./dist/contracts/*.d.ts"],
+      "@docx-editor.dev/core/*": ["./dist/*.d.ts"]
+    }
+  }
+}

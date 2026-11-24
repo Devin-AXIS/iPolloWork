@@ -1,0 +1,5 @@
+[
+  "@ipollo/dsh-deepseek-harness",
+  "@ipollo/dsh-plugin-workshop",
+  "@ipollo/dsh-reference-context"
+]

@@ -11,6 +11,7 @@ import { createDesktopUploadPlan, type DesktopUploadPlan } from './desktop-uploa
 import { desktopReleaseTag, tagDesktopRelease } from './desktop-release-tag.ts'
 import { uploadDesktopRelease } from './desktop-upload-run.ts'
 import { DesktopPurgeError, purgeDesktopInstaller, resolveDesktopPurgeConfig } from './desktop-edgeone.ts'
+import { requireProductionDesktopUpgrade } from './require-desktop-upgrade-qualification.ts'
 
 const SUPPORTED_TARGETS = new Set<DesktopAutoUpdateTarget>(['mac-arm64', 'mac-x64', 'win-x64'])
 
@@ -111,6 +112,9 @@ export async function uploadDesktopTarget(args: string[]): Promise<void> {
     return
   }
   const plan = await createDesktopUploadPlan(name, { environment, latest: values.latest === true })
+  await requireProductionDesktopUpgrade(plan).catch(() => {
+    throw new DesktopUploadUsageError('Production requires valid desktop-upgrade-qualification.json beside the original package')
+  })
   const purge = plan.environment === 'production' && values.latest ? purgeConfig(environment, name, plan.publicUrl) : undefined
   const cos = createDesktopCos({
     secretId: requiredEnvironmentValue(environment, plan.secretIdEnvName),

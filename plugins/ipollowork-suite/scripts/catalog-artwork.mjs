@@ -25,7 +25,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   await catalogArtwork('catalog/index.json', 'catalog/bundled-releases.json', update)
   const manifest = JSON.parse(await readFile('package.json', 'utf8'))
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8'))
-  const current = ['catalog/index.json', 'catalog/bundled-releases.json', ...releases.plugins.map(release => 'catalog/packages/' + release.file)]
+  const current = ['catalog/index.json', 'catalog/bundled-releases.json', 'catalog/retired-plugins.json', ...releases.plugins.map(release => 'catalog/packages/' + release.file)]
   for (const release of releases.plugins) {
     const resource = release.name === 'deepseek-idesign' ? '@ipollo/dsh-design-resources' : '@ipollo/dsh-video-resources'
     if (manifest.dependencies?.[resource]) throw Error('Optional Studio resources must not be installed with the suite')

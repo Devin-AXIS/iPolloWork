@@ -1,0 +1,354 @@
+[
+  {
+    "name": "move-range-pair",
+    "action": "accept",
+    "kind": "moveFrom",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["ins"]
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-pair",
+    "action": "accept",
+    "kind": "delete",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["ins"]
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-pair",
+    "action": "accept",
+    "kind": "moveTo",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["ins"]
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-pair",
+    "action": "accept",
+    "kind": "insert",
+    "remaining": 3,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["moveFromRangeStart", "del", "moveFromRangeEnd"]
+      },
+      {
+        "text": "Moved",
+        "markers": ["moveToRangeStart", "moveToRangeEnd"]
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-pair",
+    "action": "reject",
+    "kind": "moveFrom",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["ins"]
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-pair",
+    "action": "reject",
+    "kind": "delete",
+    "remaining": 3,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["moveFromRangeStart", "moveFromRangeEnd"]
+      },
+      {
+        "text": "Moved",
+        "markers": ["moveToRangeStart", "ins", "moveToRangeEnd"]
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-pair",
+    "action": "reject",
+    "kind": "moveTo",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["ins"]
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-pair",
+    "action": "reject",
+    "kind": "insert",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-pair",
+        "markers": []
+      },
+      {
+        "text": "Moved",
+        "markers": ["del"]
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "END move-range-pair",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-insertion",
+    "action": "accept",
+    "kind": "moveTo",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-insertion",
+        "markers": []
+      },
+      {
+        "text": "Destination",
+        "markers": ["ins"]
+      },
+      {
+        "text": "END move-range-insertion",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-insertion",
+    "action": "accept",
+    "kind": "insert",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-insertion",
+        "markers": []
+      },
+      {
+        "text": "Destination",
+        "markers": ["moveToRangeStart", "moveToRangeEnd"]
+      },
+      {
+        "text": "END move-range-insertion",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-insertion",
+    "action": "reject",
+    "kind": "moveTo",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-insertion",
+        "markers": []
+      },
+      {
+        "text": "Destination",
+        "markers": ["ins"]
+      },
+      {
+        "text": "END move-range-insertion",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-insertion",
+    "action": "reject",
+    "kind": "insert",
+    "remaining": 0,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-insertion",
+        "markers": []
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "END move-range-insertion",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-deletion",
+    "action": "accept",
+    "kind": "moveFrom",
+    "remaining": 0,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-deletion",
+        "markers": []
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "END move-range-deletion",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-deletion",
+    "action": "accept",
+    "kind": "delete",
+    "remaining": 0,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-deletion",
+        "markers": []
+      },
+      {
+        "text": "",
+        "markers": []
+      },
+      {
+        "text": "END move-range-deletion",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-deletion",
+    "action": "reject",
+    "kind": "moveFrom",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-deletion",
+        "markers": []
+      },
+      {
+        "text": "Source",
+        "markers": ["del"]
+      },
+      {
+        "text": "END move-range-deletion",
+        "markers": []
+      }
+    ]
+  },
+  {
+    "name": "move-range-deletion",
+    "action": "reject",
+    "kind": "delete",
+    "remaining": 1,
+    "paragraphs": [
+      {
+        "text": "CASE move-range-deletion",
+        "markers": []
+      },
+      {
+        "text": "Source",
+        "markers": ["moveFromRangeStart", "moveFromRangeEnd"]
+      },
+      {
+        "text": "END move-range-deletion",
+        "markers": []
+      }
+    ]
+  }
+]

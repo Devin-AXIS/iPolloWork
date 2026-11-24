@@ -14,6 +14,9 @@ import type { ClientContext } from './native.ts'
 import type { AccountController } from './account-controller.ts'
 import {mountBeginnerTour} from './onboarding/BeginnerTour.tsx'
 
+// Keep payment out of first-run setup while onboarding top-ups are on hold.
+const onboardingTopUpEnabled = false
+
 /** Keep the original introduction without sharing account credentials.
  * @param ctx - Native client services and slot registration.
  * @param account - iPolloWork account state owner.
@@ -22,7 +25,9 @@ export function mountDesktopOnboarding(ctx: ClientContext, account: AccountContr
   const tutorial=mountBeginnerTour(ctx)
   let tutorialTimer:ReturnType<typeof setTimeout>|undefined
   ctx.effect(()=>()=>clearTimeout(tutorialTimer),'ipollowork-suite: tutorial handoff')
-  const platform = (globalThis as typeof globalThis & { dshPlatform?: PlatformBridge }).dshPlatform
+  const platform = onboardingTopUpEnabled
+    ? (globalThis as typeof globalThis & { dshPlatform?: PlatformBridge }).dshPlatform
+    : undefined
   const pages = createPlatformPages()
   ctx.effect(() => () => pages.dispose(), 'ipollowork-suite: top-up page lifetime')
   if (platform) ctx.slots.inject('shell.overlay', () => ctx.slots.register({

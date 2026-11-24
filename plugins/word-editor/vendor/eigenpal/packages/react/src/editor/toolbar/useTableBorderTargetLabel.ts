@@ -1,0 +1,1 @@
+export { useTableBorderTargetLabel } from './TableControls';

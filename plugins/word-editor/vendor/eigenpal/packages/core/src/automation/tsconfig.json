@@ -1,0 +1,10 @@
+{
+  "//": "Environment boundary for the automation lane. This lane is the transport-neutral host port an automation object model programs against, and its whole purpose is that a server can run the same document operations a browser does. The `lib` here deliberately OMITS DOM: a `document`, `window` or `HTMLElement` reference anywhere in this lane — or in anything it imports — must fail to COMPILE, not merely trip a text scan. The lane may import only `store` and the provider-neutral `collaboration` capability. Pulling in binding, output, editor, or a provider would drag browser or network concerns into the headless host.",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "noEmit": true
+  },
+  "include": ["."],
+  "exclude": ["__tests__"]
+}

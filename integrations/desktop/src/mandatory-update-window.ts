@@ -9,7 +9,13 @@ import type { DesktopUpdateOverlay, DesktopUpdateOverlays } from './update-overl
 import { DesktopUpdateAttention } from './update-attention.ts'
 
 /** A renderer action never carries a URL or authorizes a different version. */
-export type MandatoryUpdateAction = 'refresh' | 'download' | 'install' | 'later' | 'page' | 'copy'
+export type MandatoryUpdateAction = 'refresh' | 'download' | 'install' | 'later' | 'page' | 'copy' | 'open-plugin'
+
+export interface MandatoryPluginBlock {
+  readonly title: string
+  readonly detail: string
+  readonly localPlugins: readonly string[]
+}
 
 /** Combined view rendered as text by the shell-owned page. */
 export interface MandatoryUpdateView {
@@ -17,7 +23,8 @@ export interface MandatoryUpdateView {
   readonly policy: DesktopPolicyState
   readonly update: DesktopUpdateState
   readonly error?: string
-  readonly confirmation?: { readonly version: string; readonly active: boolean; readonly revision: number }
+  readonly pluginBlock?: MandatoryPluginBlock
+  readonly confirmation?: { readonly version: string; readonly active: boolean; readonly revision: number; readonly pluginDetail?: string }
   readonly deferred: boolean
   readonly restart?: 'stopping-tasks' | 'preparing'
   readonly navigation?: { readonly page: 'requested' | 'failed'; readonly copy?: 'copied' | 'failed' }
@@ -26,7 +33,7 @@ export interface MandatoryUpdateView {
 /** Narrow isolated bridge, absent from product and plugin documents. */
 export interface MandatoryUpdateApi {
   status(): Promise<MandatoryUpdateView>
-  action(action: MandatoryUpdateAction, version?: string, confirmationRevision?: number): Promise<void>
+  action(action: MandatoryUpdateAction, version?: string, confirmationRevision?: number, pluginName?: string): Promise<void>
   subscribe(listener: (state: MandatoryUpdateView) => void): () => void
 }
 
@@ -42,6 +49,7 @@ export interface MandatoryUpdateWindowOptions {
   readonly refresh: () => Promise<void>
   readonly download: (version: string) => Promise<DesktopUpdateState>
   readonly install: (version: string) => Promise<DesktopUpdateState>
+  readonly openPluginFolder?: (name: string) => Promise<void>
 }
 
 // main.ts's protocol.handle shell route serves this document and its renderer assets; the modal requires that route.
@@ -59,8 +67,9 @@ export class DesktopMandatoryUpdateWindow {
   private closing: ReturnType<typeof setTimeout> | undefined
   private disposed = false
   private error: string | undefined
+  private pluginBlock: { version: string; notice: MandatoryPluginBlock } | undefined
   private action: Promise<void> | undefined
-  private confirmation: { version: string; active: boolean; revision: number; resolve: (approved: boolean) => void } | undefined
+  private confirmation: (NonNullable<MandatoryUpdateView['confirmation']> & { resolve: (approved: boolean) => void }) | undefined
   private confirmationRevision = 0
   private deferred = false
   private restart: MandatoryUpdateView['restart']
@@ -75,9 +84,16 @@ export class DesktopMandatoryUpdateWindow {
     this.embeddedParent = this.embedded ? options.parent() : undefined
     this.embeddedParent?.webContents.on('did-finish-load', this.publishEmbedded)
     ipcMain.handle(MANDATORY_IPC.status, (event) => { this.assertSender(event); return this.view() })
-    ipcMain.handle(MANDATORY_IPC.action, (event, action: unknown, version: unknown, confirmationRevision: unknown) => {
+    ipcMain.handle(MANDATORY_IPC.action, (event, action: unknown, version: unknown, confirmationRevision: unknown, pluginName: unknown) => {
       this.assertSender(event)
       if (!this.options.policy().blocking) throw new Error('desktop policy: no mandatory decision is active')
+      if (action === 'open-plugin') {
+        const block = this.pluginBlock
+        if (block === undefined || block.version !== version || version !== this.options.update().version
+          || typeof pluginName !== 'string' || !block.notice.localPlugins.includes(pluginName)
+          || this.options.openPluginFolder === undefined) throw new Error('desktop policy: plugin source is no longer available')
+        return this.options.openPluginFolder(pluginName)
+      }
       if (typeof action !== 'string' || !['refresh', 'download', 'install', 'later', 'page', 'copy'].includes(action)) throw new Error('desktop policy: invalid action')
       if (['download', 'install', 'later'].includes(action) && typeof version !== 'string') throw new Error('desktop policy: missing confirmed version')
       if (action === 'page' || action === 'copy') return this.navigate(action)
@@ -94,6 +110,7 @@ export class DesktopMandatoryUpdateWindow {
       if (action === 'later') throw new Error('desktop policy: no installation confirmation')
       this.action ??= Promise.resolve().then(async () => {
         this.error = undefined
+        this.pluginBlock = undefined
         this.restart = undefined
         this.deferred = false
         this.clearNavigation()
@@ -114,18 +131,25 @@ export class DesktopMandatoryUpdateWindow {
   /** Active modal used as the owner of shell installation-confirmation dialogs. */
   get confirmationWindow(): BrowserWindow | undefined { return this.embedded ? this.options.parent() : this.surfaceParent }
 
+  showPluginBlock(version: string, notice: MandatoryPluginBlock): void {
+    if (!this.options.policy().blocking || this.options.update().version !== version) return
+    this.pluginBlock = { version, notice }
+    this.sync()
+  }
+
   /**
    * @param version - Updater-owned target, already downloaded and verified.
    * @param active - Fresh Host task inspection; unknown state must fail before calling.
    * @returns Explicit approval from this same modal, or false on deferral, policy clearance, or disposal.
    */
-  confirm(version: string, active: boolean): Promise<boolean> {
+  confirm(version: string, active: boolean, pluginDetail?: string): Promise<boolean> {
     if (this.disposed || !this.options.policy().blocking) return Promise.resolve(false)
     this.finishConfirmation(false)
     this.deferred = false
     this.restart = undefined
     return new Promise((resolve) => {
-      this.confirmation = { version, active, revision: ++this.confirmationRevision, resolve }
+      this.confirmation = { version, active, revision: ++this.confirmationRevision,
+        ...(pluginDetail === undefined ? {} : { pluginDetail }), resolve }
       this.sync()
       const parent = this.options.parent()
       const owner = this.confirmationWindow
@@ -175,6 +199,7 @@ export class DesktopMandatoryUpdateWindow {
       this.clearNavigation()
       this.restart = undefined
       this.deferred = false
+      this.pluginBlock = undefined
       if (this.window !== undefined && this.closing === undefined) {
         const window = this.window
         window.webContents.send(MANDATORY_IPC.state, this.view())
@@ -194,6 +219,7 @@ export class DesktopMandatoryUpdateWindow {
     clearTimeout(this.closing)
     this.closing = undefined
     if (this.navigationUrl !== this.options.policy().page) this.clearNavigation()
+    if (this.pluginBlock?.version !== this.options.update().version) this.pluginBlock = undefined
     if (this.options.update().phase === 'error') this.restart = undefined
     if (this.embedded) {
       this.embeddedBlocking = true
@@ -346,12 +372,15 @@ export class DesktopMandatoryUpdateWindow {
       ? { ...this.options.locale, messages: { ...this.options.locale.messages,
         mandatoryReadyDetail: this.options.locale.messages.updateDownloadedDetailWindows } }
       : this.options.locale
+    const confirmation = this.confirmation
     return { locale, policy: this.options.policy(), update: this.options.update(),
       deferred: this.deferred,
-      ...(this.confirmation === undefined ? {}
-        : { confirmation: { version: this.confirmation.version, active: this.confirmation.active, revision: this.confirmation.revision } }),
+      ...(confirmation === undefined ? {} : { confirmation: { version: confirmation.version, active: confirmation.active,
+        revision: confirmation.revision,
+        ...(confirmation.pluginDetail === undefined ? {} : { pluginDetail: confirmation.pluginDetail }) } }),
       ...(this.restart === undefined ? {} : { restart: this.restart }),
       ...(this.navigation === undefined ? {} : { navigation: this.navigation }),
+      ...(this.pluginBlock === undefined ? {} : { pluginBlock: this.pluginBlock.notice }),
       ...(this.error === undefined ? {} : { error: this.error }) }
   }
 

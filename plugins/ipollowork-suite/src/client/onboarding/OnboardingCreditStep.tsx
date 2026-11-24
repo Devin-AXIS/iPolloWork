@@ -21,13 +21,16 @@ export function OnboardingCreditStep({ t, locale, heading, busy, funded, canRech
     onLater: () => void
   }) {
   return <div className={`${css.content} ${css.credit}`}>
-    <OnboardingIllustration className={css.creditIllustration} src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />
+    <OnboardingIllustration src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />
     <div className={css.copy}>
       <h1 id="desktop-onboarding-title" ref={heading} tabIndex={-1}>{t('onboardingCredit')}</h1>
       <p className={css.heroDescription}>{t('onboardingCreditDescription')}</p>
       <div className={css.creditActions}>
-        <Button className={css.action} variant="primary" disabled={busy || (!funded && !canRecharge)} onClick={funded ? onContinue : onRecharge}>{t(funded ? 'onboardingContinue' : 'onboardingTopUp')}</Button>
-        <Button variant="outline" className={`${css.action} ${css.laterAction}`} disabled={busy || (funded && !canRecharge)} onClick={funded ? onRecharge : onLater}>{t(funded ? 'onboardingFundedTopUp' : 'onboardingLater')}</Button>
+        <Button className={css.action} variant="primary" disabled={busy} onClick={canRecharge && !funded ? onRecharge : onContinue}>
+          {t(canRecharge && !funded ? 'onboardingTopUp' : 'onboardingContinue')}
+        </Button>
+        {canRecharge && <Button variant="outline" className={`${css.action} ${css.laterAction}`} disabled={busy}
+          onClick={funded ? onRecharge : onLater}>{t(funded ? 'onboardingFundedTopUp' : 'onboardingLater')}</Button>}
       </div>
     </div>
   </div>

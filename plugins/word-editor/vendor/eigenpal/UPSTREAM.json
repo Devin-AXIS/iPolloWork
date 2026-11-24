@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/eigenpal/docx-editor.git",
+  "tag": "v2.39.0",
+  "revision": "621ff044290fe48bc5e4e3d0325c99da203374d7",
+  "license": "Apache-2.0",
+  "packages": ["core", "i18n", "react"]
+}

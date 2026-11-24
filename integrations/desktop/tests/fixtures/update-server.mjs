@@ -15,6 +15,7 @@ export async function createUpdateServer() {
   const failures = []
   let mode = 'healthy'
   let version = '1.0.1-nightly.1'
+  let pluginCompatibility
   let policyMode = 'clear'
   let gate = Promise.withResolvers()
   let arrived = Promise.withResolvers()
@@ -44,7 +45,8 @@ export async function createUpdateServer() {
         if (selectedMode === 'hold-check') { arrived.resolve(); await selectedGate.promise }
         response.setHeader('Content-Type', 'application/yaml')
         response.end(dump({ version, files: [{ url: `${origin}/payload.exe`, size: payload.length, sha512 }],
-          path: 'payload.exe', sha512, releaseDate: '2026-09-10T00:00:00.000Z' }))
+          path: 'payload.exe', sha512, releaseDate: '2026-09-10T00:00:00.000Z',
+          ...(pluginCompatibility === undefined ? {} : { ipolloPluginCompatibility: pluginCompatibility }) }))
         return
       }
       if (path !== '/payload.exe' || selectedMode === 'download-404') { response.writeHead(404).end(); return }
@@ -72,12 +74,13 @@ export async function createUpdateServer() {
   return {
     url: `${origin}/`, payload, requests, failures,
     policy(next) { policyMode = next },
-    select(nextMode, nextVersion = '1.0.1-nightly.1') {
+    select(nextMode, nextVersion = '1.0.1-nightly.1', nextPluginCompatibility) {
       gate.resolve()
       gate = Promise.withResolvers()
       arrived = Promise.withResolvers()
       mode = nextMode
       version = nextVersion
+      pluginCompatibility = nextPluginCompatibility
     },
     arrived: () => arrived.promise,
     release: () => gate.resolve(),

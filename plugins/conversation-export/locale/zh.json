@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "对话导出",
+    "description": "从会话菜单把用户和助手的消息导出为 Markdown。"
+  }
+}

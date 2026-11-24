@@ -54,8 +54,8 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.39-ipollo.1",
-          "publishTimestamp": 1795434302,
+          "version": "1.0.0-beta.39-ipollo.2",
+          "publishTimestamp": 1795499085,
           "source": {
             "type": "npm"
           },
@@ -89,8 +89,8 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.27-ipollo.1",
-          "publishTimestamp": 1795434303,
+          "version": "1.0.0-beta.27-ipollo.2",
+          "publishTimestamp": 1795499086,
           "source": {
             "type": "npm"
           },
@@ -196,40 +196,6 @@
         }
       ],
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTAiIGZpbGw9IiNmZmYiLz48c3ZnIHg9IjgiIHk9IjgiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgdmlld0JveD0iMCAwIDI4IDI4IiBmaWxsPSJub25lIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHJvbGU9ImltZyI+CiAgPHRpdGxlPkNvbnRleHQ3PC90aXRsZT4KICA8cmVjdCB3aWR0aD0iMjgiIGhlaWdodD0iMjgiIHJ4PSI0IiBmaWxsPSIjMDU5NjY5Ii8+CiAgPHBhdGggZD0iTTEwLjU3MiAxNS4yNTdjMCAyLjI0Ni0uOTExIDQuMTIxLTIuMzk0IDUuODQ4aDMuNDU0djEuNjc0SDYuMzM1VjIxLjE5YzEuNjIxLTEuODMzIDIuMjQ2LTMuMzI3IDIuMjQ2LTUuOTMzaDEuOTkxWk0xNy40MjggMTUuMjU3YzAgMi4yNDYuOTExIDQuMTIxIDIuMzk0IDUuODQ4aC0zLjQ1NHYxLjY3NGg1LjI5N1YyMS4xOWMtMS42MjEtMS44MzMtMi4yNDYtMy4zMjctMi4yNDYtNS45MzNoLTEuOTkxWk0xMC41NzIgMTIuNzQ0YzAtMi4yNDYtLjkxMS00LjEyMi0yLjM5NC01Ljg0OWgzLjQ1NFY1LjIyMUg2LjMzNXYxLjU5YzEuNjIxIDEuODMyIDIuMjQ2IDMuMzI2IDIuMjQ2IDUuOTMzaDEuOTkxWk0xNy40MjggMTIuNzQ0YzAtMi4yNDYuOTExLTQuMTIyIDIuMzk0LTUuODQ5aC0zLjQ1NFY1LjIyMWg1LjI5N3YxLjU5Yy0xLjYyMSAxLjgzMi0yLjI0NiAzLjMyNi0yLjI0NiA1LjkzM2gtMS45OTFaIiBmaWxsPSIjZmZmIi8+Cjwvc3ZnPgo8L3N2Zz4K"
-    },
-    {
-      "name": "@ipollo/dsh-deepseek-harness",
-      "title": {
-        "zh": "DeepSeek Harness",
-        "en": "DeepSeek Harness"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "使用当前 DSH 原生 Agent、子任务和会话完成开发、审查与研究，无需第二套运行时。",
-        "en": "Use the current native DSH Agent, subagent tools and sessions for development, review and research."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "deepseek-harness",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.5",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlOWVkZmEiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNDI1YmMwIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgOFY0SDgiPjwvcGF0aD48cmVjdCB3aWR0aD0iMTYiIGhlaWdodD0iMTIiIHg9IjQiIHk9IjgiIHJ4PSIyIj48L3JlY3Q+PHBhdGggZD0iTTIgMTRoMiI+PC9wYXRoPjxwYXRoIGQ9Ik0yMCAxNGgyIj48L3BhdGg+PHBhdGggZD0iTTE1IDEzdjIiPjwvcGF0aD48cGF0aCBkPSJNOSAxM3YyIj48L3BhdGg+PC9zdmc+PC9zdmc+Cg=="
     },
     {
       "name": "@ipollo/dsh-douyin-ops",
@@ -572,74 +538,6 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmZmYwZTciLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYWY1ZDMwIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNNC4wMzcgNC42ODhhLjQ5NS40OTUgMCAwIDEgLjY1MS0uNjUxbDE2IDYuNWEuNS41IDAgMCAxLS4wNjMuOTQ3bC02LjEyNCAxLjU4YTIgMiAwIDAgMC0xLjQzOCAxLjQzNWwtMS41NzkgNi4xMjZhLjUuNSAwIDAgMS0uOTQ3LjA2M3oiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
     },
     {
-      "name": "@ipollo/dsh-plugin-workshop",
-      "title": {
-        "zh": "插件工坊",
-        "en": "Plugin Workshop"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "在原生会话中制作、检查和打包 DSH 插件，通过原生插件管理器安装与验证。",
-        "en": "Author, check and package native DSH plugins in conversation, then install and verify them with the native Plugin Manager."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "plugin-workshop",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.5",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTAiIGZpbGw9IiNmZmYiLz48IS0tCkx1Y2lkZSBUb29sQ2FzZSwgSVNDIExpY2Vuc2UuCkNvcHlyaWdodCAoYykgZm9yIHBvcnRpb25zIG9mIEx1Y2lkZSBhcmUgaGVsZCBieSBDb2xlIEJlbWlzIDIwMTMtMjAyMiBhcyBwYXJ0IG9mIEZlYXRoZXIgKE1JVCkuCkFsbCBvdGhlciBjb3B5cmlnaHQgKGMpIGZvciBMdWNpZGUgYXJlIGhlbGQgYnkgTHVjaWRlIENvbnRyaWJ1dG9ycyAyMDIyLgoKUGVybWlzc2lvbiB0byB1c2UsIGNvcHksIG1vZGlmeSwgYW5kL29yIGRpc3RyaWJ1dGUgdGhpcyBzb2Z0d2FyZSBmb3IgYW55IHB1cnBvc2UKd2l0aCBvciB3aXRob3V0IGZlZSBpcyBoZXJlYnkgZ3JhbnRlZCwgcHJvdmlkZWQgdGhhdCB0aGUgYWJvdmUgY29weXJpZ2h0IG5vdGljZQphbmQgdGhpcyBwZXJtaXNzaW9uIG5vdGljZSBhcHBlYXIgaW4gYWxsIGNvcGllcy4KClRIRSBTT0ZUV0FSRSBJUyBQUk9WSURFRCAiQVMgSVMiIEFORCBUSEUgQVVUSE9SIERJU0NMQUlNUyBBTEwgV0FSUkFOVElFUyBXSVRIClJFR0FSRCBUTyBUSElTIFNPRlRXQVJFIElOQ0xVRElORyBBTEwgSU1QTElFRCBXQVJSQU5USUVTIE9GIE1FUkNIQU5UQUJJTElUWQpBTkQgRklUTkVTUy4gSU4gTk8gRVZFTlQgU0hBTEwgVEhFIEFVVEhPUiBCRSBMSUFCTEUgRk9SIEFOWSBTUEVDSUFMLCBESVJFQ1QsCklORElSRUNULCBPUiBDT05TRVFVRU5USUFMIERBTUFHRVMgT1IgQU5ZIERBTUFHRVMgV0hBVFNPRVZFUiBSRVNVTFRJTkcgRlJPTQpMT1NTIE9GIFVTRSwgREFUQSBPUiBQUk9GSVRTLCBXSEVUSEVSIElOIEFOIEFDVElPTiBPRiBDT05UUkFDVCwgTkVHTElHRU5DRQpPUiBPVEhFUiBUT1JUSU9VUyBBQ1RJT04sIEFSSVNJTkcgT1VUIE9GIE9SIElOIENPTk5FQ1RJT04gV0lUSCBUSEUgVVNFIE9SClBFUkZPUk1BTkNFIE9GIFRISVMgU09GVFdBUkUuCi0tPgo8c3ZnIHg9IjgiIHk9IjgiIHdpZHRoPSIzMiIgaGVpZ2h0PSIzMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIxIDEgMjIgMjIiIGZpbGw9Im5vbmUiIHN0cm9rZT0iY3VycmVudENvbG9yIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+CiAgPHBhdGggZD0iTTEwIDE1aDQiLz4KICA8cGF0aCBkPSJtMTQuODE3IDEwLjk5NS0uOTcxLTEuNDUgMS4wMzQtMS4yMzJhMiAyIDAgMCAwLTIuMDI1LTMuMjM4bC0xLjgyLjM2NEw5LjkxIDMuODg1YTIgMiAwIDAgMC0zLjYyNS43NDhMNi4xNDEgNi41NWwtMS43MjUuNDI2YTIgMiAwIDAgMC0uMTkgMy43NTZsLjY1Ny4yNyIvPgogIDxwYXRoIGQ9Im0xOC44MjIgMTAuOTk1IDIuMjYtNS4zOGExIDEgMCAwIDAtLjU1Ny0xLjMxOEwxNi45NTQgMi45YTEgMSAwIDAgMC0xLjI4MS41MzNsLS45MjQgMi4xMjIiLz4KICA8cGF0aCBkPSJNNCAxMi4wMDZBMSAxIDAgMCAxIDQuOTk0IDExSDE5YTEgMSAwIDAgMSAxIDF2N2EyIDIgMCAwIDEtMiAySDZhMiAyIDAgMCAxLTItMnoiLz4KPC9zdmc+Cjwvc3ZnPgo="
-    },
-    {
-      "name": "@ipollo/dsh-reference-context",
-      "title": {
-        "zh": "参考资料",
-        "en": "Reference Context"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "为视频、演示文稿、网页和其他模板提供共用的参考资料 Skill。",
-        "en": "Shared reference evidence Skill for video, slides, websites and other templates."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "reference-context",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.5",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmZmYxZGYiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOTk2MTJkIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiPjwvcmVjdD48cGF0aCBkPSJNNyAzdjE4Ij48L3BhdGg+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
-    },
-    {
       "name": "@ipollo/dsh-sentry",
       "title": {
         "zh": "Sentry",
@@ -910,6 +808,192 @@
           }
         }
       ]
+    },
+    {
+      "name": "@ipollo/dsh-markdown-editor",
+      "title": {
+        "zh": "Markdown 编辑",
+        "en": "Markdown Editor"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "在右侧工作区直接编辑 Markdown，支持实时预览、斜杠菜单和自动保存。",
+        "en": "Edit Markdown in the right workspace with live preview, slash commands, and autosave."
+      },
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "markdown-editor"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.3",
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.3-alpha.2"
+          },
+          "publishTimestamp": 1795517986
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlMmVmZmYiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjM2M2MjllIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTUgMkg2YTIgMiAwIDAgMC0yIDJ2MTZhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0yVjdaIj48L3BhdGg+PHBhdGggZD0iTTE0IDJ2NGEyIDIgMCAwIDAgMiAyaDQiPjwvcGF0aD48cGF0aCBkPSJNMTAgOUg4Ij48L3BhdGg+PHBhdGggZD0iTTE2IDEzSDgiPjwvcGF0aD48cGF0aCBkPSJNMTYgMTdIOCI+PC9wYXRoPjwvc3ZnPjwvc3ZnPgo="
+    },
+    {
+      "name": "@ipollo/dsh-excel-editor",
+      "title": {
+        "zh": "Excel 编辑",
+        "en": "Excel Editor"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "在右侧工作区编辑表格，支持连续滚动、区域复制粘贴、查找和撤销，可打开 XLS 与 ODS。",
+        "en": "Edit spreadsheet ranges in the right workspace with continuous scrolling, find, and undo. Open legacy XLS and ODS files."
+      },
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "excel-editor"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.2.3",
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.3-alpha.2"
+          },
+          "publishTimestamp": 1795519396
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlNGY0ZTkiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMjc3NTU0IiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNOSAzSDVhMiAyIDAgMCAwLTIgMnY0bTYtNmgxMGEyIDIgMCAwIDEgMiAydjRNOSAzdjE4bTAgMGgxMGEyIDIgMCAwIDAgMi0yVjlNOSAyMUg1YTIgMiAwIDAgMS0yLTJWOW0wIDBoMTgiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
+    },
+    {
+      "name": "@ipollo/dsh-conversation-export",
+      "title": {
+        "zh": "对话导出",
+        "en": "Conversation Export"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "从会话菜单把用户和助手的消息导出为 Markdown。",
+        "en": "Export user and assistant messages as Markdown from the conversation menu."
+      },
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "conversation-export"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.3-alpha.2"
+          },
+          "publishTimestamp": 1795515875
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlZmVhZmEiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzI1OWE3IiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTUgMkg2YTIgMiAwIDAgMC0yIDJ2MTZhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0yVjdaIj48L3BhdGg+PHBhdGggZD0iTTE0IDJ2NGEyIDIgMCAwIDAgMiAyaDQiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTh2LTYiPjwvcGF0aD48cGF0aCBkPSJtOSAxNSAzIDMgMy0zIj48L3BhdGg+PC9zdmc+PC9zdmc+Cg=="
+    },
+    {
+      "name": "@ipollo/dsh-task-templates",
+      "title": {
+        "zh": "任务模板",
+        "en": "Task Templates"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "从对话保存常用任务，并在右侧面板用模板创建对话草稿。",
+        "en": "Save reusable tasks from conversations and use the sidebar panel to create conversation drafts."
+      },
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "task-templates"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.1",
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.3-alpha.2"
+          },
+          "publishTimestamp": 1795516135
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlOGVmZmEiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjM2E1OThkIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI0IiB4PSI4IiB5PSIyIiByeD0iMSIgcnk9IjEiPjwvcmVjdD48cGF0aCBkPSJNMTYgNGgyYTIgMiAwIDAgMSAyIDJ2MTRhMiAyIDAgMCAxLTIgMkg2YTIgMiAwIDAgMS0yLTJWNmEyIDIgMCAwIDEgMi0yaDIiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTFoNCI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAxNmg0Ij48L3BhdGg+PHBhdGggZD0iTTggMTFoLjAxIj48L3BhdGg+PHBhdGggZD0iTTggMTZoLjAxIj48L3BhdGg+PC9zdmc+PC9zdmc+Cg=="
+    },
+    {
+      "name": "@ipollo/dsh-reference-preparation",
+      "title": {
+        "zh": "参考资料整理",
+        "en": "Reference Preparation"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "在本地提取文档内容，把参考索引和素材整理到当前项目。",
+        "en": "Extract document contents locally and organize references and assets in the current project."
+      },
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "reference-preparation"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.1",
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.3-alpha.2"
+          },
+          "publishTimestamp": 1795515956
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmZmYxZGYiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOTk2MTJkIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiPjwvcmVjdD48cGF0aCBkPSJNNyAzdjE4Ij48L3BhdGg+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
+    },
+    {
+      "name": "@ipollo/dsh-legacy-workspace-import",
+      "title": {
+        "zh": "旧版工作区导入",
+        "en": "Legacy Workspace Import"
+      },
+      "author": "iPolloWork",
+      "description": {
+        "zh": "预览并选择导入旧版工作区 JSON 中的命令和 Skill。",
+        "en": "Review and selectively import commands and skills from legacy workspace JSON."
+      },
+      "metadata": {
+        "category": "productivity",
+        "keywords": [
+          "legacy-workspace-import"
+        ]
+      },
+      "versions": [
+        {
+          "version": "0.1.0",
+          "source": {
+            "type": "npm"
+          },
+          "engines": {
+            "dsh": "0.2.3-alpha.2"
+          },
+          "publishTimestamp": 1795515878
+        }
+      ],
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmOWVkZWIiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYTM0ZDQ2IiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMiA5VjVhMiAyIDAgMCAxIDItMmgzLjlhMiAyIDAgMCAxIDEuNjkuOWwuODEgMS4yYTIgMiAwIDAgMCAxLjY3LjlIMjBhMiAyIDAgMCAxIDIgMnYxMGEyIDIgMCAwIDEtMiAySDRhMiAyIDAgMCAxLTItMnYtMSI+PC9wYXRoPjxwYXRoIGQ9Ik0yIDEzaDEwIj48L3BhdGg+PHBhdGggZD0ibTkgMTYgMy0zLTMtMyI+PC9wYXRoPjwvc3ZnPjwvc3ZnPgo="
     }
   ]
 }

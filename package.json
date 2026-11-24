@@ -25,6 +25,7 @@
     "package:plugin": "node integrations/tooling/package-plugin.mjs",
     "build:ported-plugins": "node integrations/tooling/ported-plugins.mjs build",
     "package:ported-market": "node integrations/tooling/ported-market.mjs",
+    "package:workspace-market": "node integrations/tooling/package-workspace-market.mjs",
     "check:desktop": "node integrations/desktop/run.mjs package-target.ts mac-arm64 --check --unsigned",
     "audit:dependencies": "node integrations/tooling/audit.mjs",
     "start": "node integrations/tooling/start.mjs",

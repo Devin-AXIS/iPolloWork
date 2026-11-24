@@ -3,7 +3,7 @@ const api = window.dshUpdateDialog
 let view
 let responding = false
 function respond(index) {
-  if (responding || view === undefined || view.busyButton !== undefined) return
+  if (responding || view === undefined || view.busyButton !== undefined || view.dismissible === false) return
   responding = true
   void api.respond(view.revision, index).catch(() => { responding = false })
 }
@@ -11,7 +11,7 @@ document.getElementById('close').addEventListener('click', () => { respond(view.
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && view !== undefined) { event.preventDefault(); respond(view.cancelId) }
   if (event.key !== 'Tab') return
-  const controls = [...document.querySelectorAll('button:not(:disabled), details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
+  const controls = [...document.querySelectorAll('button:not(:disabled):not([hidden]), details:not([hidden]) > summary, details[open]:not([hidden]) > pre')]
   if (controls.length === 0) { event.preventDefault(); return }
   const current = controls.indexOf(document.activeElement)
   const next = current < 0 ? (event.shiftKey ? controls.length - 1 : 0)
@@ -19,13 +19,28 @@ document.addEventListener('keydown', event => {
   event.preventDefault()
   controls[next].focus()
 })
+function renderProgress(progress) {
+  const status = document.getElementById('status')
+  status.hidden = progress === undefined
+  if (status.textContent !== (progress?.label ?? '')) status.textContent = progress?.label ?? ''
+  const bar = document.getElementById('progress')
+  bar.hidden = progress === undefined
+  if (progress?.percent === undefined) bar.removeAttribute('value')
+  else bar.value = progress.percent
+  bar.setAttribute('aria-label', progress?.label ?? '')
+}
 function render(state) {
   if (state === null) {
     responding = true
     document.body.classList.remove('visible')
     return
   }
-  if (view !== undefined && state.revision <= view.revision) return
+  if (view !== undefined && state.revision < view.revision) return
+  if (view !== undefined && state.revision === view.revision) {
+    view = state
+    renderProgress(state.progress)
+    return
+  }
   responding = false
   view = state
   document.documentElement.lang = state.locale
@@ -34,12 +49,14 @@ function render(state) {
   document.getElementById('detail').textContent = state.detail
   document.getElementById('detail').hidden = state.detail === ''
   document.getElementById('close').disabled = state.busyButton !== undefined
+  document.getElementById('close').hidden = state.dismissible === false
   document.getElementById('close').setAttribute('aria-label', state.closeLabel)
   document.getElementById('technical-details').hidden = state.technicalDetails === ''
   document.getElementById('technical-details-label').textContent = state.technicalDetailsLabel
   document.getElementById('technical-details-content').textContent = state.technicalDetails
   document.getElementById('technical-details').open = false
   document.getElementById('actions').replaceChildren()
+  document.getElementById('actions').hidden = state.buttons.length === 0
   for (const [index, label] of state.buttons.entries()) {
     const button = document.createElement('button')
     button.type = 'button'
@@ -51,6 +68,7 @@ function render(state) {
     document.getElementById('actions').append(button)
   }
   document.querySelector('main').hidden = false
+  renderProgress(state.progress)
   document.getElementById('dialog').scrollTop = 0
   document.body.classList.add('visible')
   document.getElementById('dialog').focus()

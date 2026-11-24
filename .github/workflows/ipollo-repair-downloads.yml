@@ -29,7 +29,7 @@ jobs:
           node --input-type=module -e 'import fs from "node:fs"; import assert from "node:assert/strict"; const r=JSON.parse(fs.readFileSync("release.json")); assert.equal(r.tag_name,process.env.RELEASE_TAG); assert.equal(r.draft,false); assert.equal(r.prerelease,false)'
           mkdir release-assets
           gh release download "$RELEASE_TAG" --dir release-assets
-          node integrations/tooling/release-publication.mjs prepare release.json release-assets
+          node integrations/tooling/release-publication.mjs prepare release.json release-assets --existing-feeds
       - name: Publish aliases without replacing original installers or changing Latest
         run: |
           version="${RELEASE_TAG#v}"

@@ -1,0 +1,7 @@
+.ipw-word-surface { display: flex; flex-direction: column; height: 100%; min-height: 320px; min-width: 0; }
+.ipw-word-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 6px 8px; }
+.ipw-word-actions > span { font-size: 12px; opacity: .7; overflow-wrap: anywhere; }
+.ipw-word-document { flex: 1; min-height: 250px; min-width: 0; overflow: hidden; }
+.ipw-word-document > .docx-editor { height: 100%; min-height: 0; }
+.ipw-word-error { margin: 6px 10px; font-size: 13px; overflow-wrap: anywhere; }
+.ipw-word-error[role="alert"] { color: var(--dsw-alias-text-danger, #b7432a); }

@@ -3,6 +3,7 @@ import {
   ListTodo, Images, NotebookPen, Blocks, LibraryBig, Radar, Clapperboard,
   CreditCard, Video, MessageSquareText, PanelsTopLeft, BookHeart,
   Tags, MousePointer2, TextCursorInput, ChartNoAxesCombined,
+  FileText, Table2, FileDown, ClipboardList, FolderInput,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -17,6 +18,8 @@ export const portedIcons: Readonly<Record<string, LucideIcon>> = {
   'workspace-canvas': PanelsTopLeft, 'xiaohongshu-ops': BookHeart,
   'data-annotation': Tags, 'operation-recorder': MousePointer2,
   'experimental-session-titles-bundle': TextCursorInput, 'decision-intelligence': ChartNoAxesCombined,
+  'markdown-editor': FileText, 'excel-editor': Table2, 'conversation-export': FileDown,
+  'task-templates': ClipboardList, 'reference-preparation': LibraryBig, 'legacy-workspace-import': FolderInput,
 }
 
 export function pluginGlyph(id: string): LucideIcon {

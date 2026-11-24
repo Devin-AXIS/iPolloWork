@@ -1,0 +1,10 @@
+{
+  "//": "Environment boundary for the layout lane (task 10.1). This lane is declared neutral in the lane DAG, meaning it must run on a server as well as in a browser. The `lib` here deliberately OMITS DOM: a `document` or `window` reference in this lane must fail to COMPILE, not merely trip a text scan. Collapsing eight packages into one lost that guarantee, because the browser lanes need DOM in the shared config; this restores it per lane. `contracts` is excluded from this treatment on purpose - it is declaration-only and its public API names HTMLElement for host accessors, which is a type reference, not a runtime dependency.",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "noEmit": true
+  },
+  "include": ["."],
+  "exclude": ["__tests__"]
+}

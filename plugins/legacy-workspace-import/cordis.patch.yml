@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-legacy-workspace-import
+      name: '@ipollo/dsh-legacy-workspace-import'

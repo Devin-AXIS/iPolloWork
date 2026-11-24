@@ -7,14 +7,14 @@
 body { margin: 0; height: 100vh; display: grid; place-items: center; isolation: isolate; background: transparent; color: var(--dsw-alias-label-primary); color-scheme: light; }
 body[data-ds-dark-theme] { color-scheme: dark; }
 body::before { content: ""; position: fixed; inset: 0; z-index: -1; background: var(--dsw-alias-bg-mask-1); }
-main { width: min(380px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 22px 24px 24px; border-radius: 24px; background: var(--dsw-alias-bg-layer-1); box-shadow: none; }
-body[data-ds-dark-theme] main { box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2); }
-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+main { width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; overscroll-behavior: contain; padding: 24px; border: 1px solid var(--dsw-alias-border-l2); border-radius: 20px; background: var(--dsw-alias-bg-layer-1); }
+header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 main:focus { outline: none; }
-h1 { margin: 0; min-height: 28px; font-size: 16px; font-weight: 500; line-height: 24px; overflow-wrap: anywhere; }
+h1 { margin: 0; font-size: 18px; font-weight: 600; line-height: 26px; overflow-wrap: anywhere; }
 p { margin: 0; font-size: 14px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
-#actions { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; position: sticky; bottom: 0; background: var(--dsw-alias-bg-layer-1); }
-button { min-height: 44px; padding: 9px 16px; border: 0; border-radius: 12px; font-family: inherit; font-size: 14px; font-weight: 500; line-height: 22px; color: inherit; cursor: pointer; }
+#detail { color: var(--dsw-alias-label-secondary); }
+#actions { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+button { min-height: 42px; padding: 9px 14px; border: 0; border-radius: 10px; font-family: inherit; font-size: 14px; font-weight: 500; line-height: 20px; color: inherit; cursor: pointer; overflow-wrap: anywhere; }
 .primary { background: var(--dsw-alias-button-primary-fill); color: var(--dsw-alias-label-primary-inverted); }
 
 .secondary { background: var(--dsw-alias-button-primary-dimmed); color: inherit; }
@@ -40,3 +40,16 @@ button[aria-busy="true"] { opacity: 1; display: flex; align-items: center; justi
 button[aria-busy="true"]::before { content: ""; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: reload-spin 800ms linear infinite; }
 @keyframes reload-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { button[aria-busy="true"]::before { animation: none; } }
+
+#status { margin-top: 16px; font-size: 13px; color: var(--dsw-alias-label-secondary); font-variant-numeric: tabular-nums; }
+#status:empty { display: none; }
+#progress { display: block; width: 100%; height: 6px; margin-top: 8px; overflow: hidden; border: 0; border-radius: 4px; appearance: none; background: var(--dsw-alias-border-l2); }
+#progress::-webkit-progress-bar { background: var(--dsw-alias-border-l2); }
+#progress::-webkit-progress-value { border-radius: 4px; background: var(--dsw-alias-button-primary-fill); }
+#progress:indeterminate { position: relative; }
+#progress:indeterminate::before { content: ""; position: absolute; inset-block: 0; width: 35%; border-radius: 4px; background: var(--dsw-alias-button-primary-fill); animation: update-progress 1.4s ease-in-out infinite alternate; }
+@keyframes update-progress { from { left: 0; } to { left: 65%; } }
+@media (prefers-reduced-motion: reduce) { #progress:indeterminate::before { animation: none; } }
+@media (max-width: 420px), (max-height: 360px) {
+  main { width: min(420px, calc(100vw - 20px)); max-height: calc(100vh - 20px); padding: 16px; border-radius: 14px; }
+}

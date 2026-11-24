@@ -112,7 +112,7 @@ export function DesktopOnboarding({
         {state.error !== null && <div className={css.status} role="alert">{t('onboardingSaveFailed')}<Button disabled={busy} onClick={() => { void retry() }}>{t('onboardingRetry')}</Button></div>}
         {step !== 'welcome' && <footer className={css.navigation}>
           <button type="button" disabled={busy} onClick={() => { click('back'); go(step === 'credit' ? 'welcome' : step === 'purpose' ? 'credit' : 'purpose') }}><span className={css.backIcon} style={{ maskImage: `url(${backIcon})` }} aria-hidden="true" />{t('onboardingBack')}</button>
-          <button type="button" disabled={busy} onClick={() => { click('skip'); setDialog(step === 'credit' ? 'credit-skip' : 'skip') }}>{t('onboardingSkip')}</button>
+          <button type="button" disabled={busy} onClick={() => { click('skip'); setDialog(step === 'credit' && canRecharge ? 'credit-skip' : 'skip') }}>{t('onboardingSkip')}</button>
         </footer>}
       </section>
     </OnboardingSurface>

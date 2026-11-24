@@ -35,6 +35,8 @@ jobs:
       AWS_MAX_ATTEMPTS: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24.22.3'
@@ -56,6 +58,16 @@ jobs:
           gh api "$release_api" > release.json
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets
           node integrations/tooling/release-mirror.mjs manifest release.json release-assets
+      - name: Require upgrade qualification before publishing the mirror
+        env:
+          PUBLISH_DRAFT: ${{ inputs.publish_draft }}
+        run: |
+          previous=()
+          if [[ "$PUBLISH_DRAFT" == true ]] && node -e 'process.exit(require("./release.json").draft ? 0 : 1)'; then
+            gh api "repos/$GITHUB_REPOSITORY/releases/latest" > previous-release.json
+            previous+=(previous-release.json)
+          fi
+          node integrations/tooling/release-publication.mjs qualify release.json release-assets "${previous[@]}"
       - name: Configure OSS-compatible addressing
         run: aws configure set default.s3.addressing_style virtual
       - name: Copy exact bytes to mainland storage

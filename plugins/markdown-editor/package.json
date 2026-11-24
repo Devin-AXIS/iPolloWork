@@ -1,0 +1,45 @@
+{
+  "name": "@ipollo/dsh-markdown-editor",
+  "version": "0.1.3",
+  "description": "Edit, preview, and save project Markdown from the document preview.",
+  "type": "module",
+  "license": "SEE LICENSE IN lib/LICENSE",
+  "icon": "./icon.svg",
+  "engines": {
+    "node": "^24.22.3 || >=26.13.1",
+    "dsh": "0.2.3-alpha.2"
+  },
+  "exports": {
+    ".": "./lib/host.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale",
+    "README.md",
+    "README.zh.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-sidebar-documentpreview",
+        "@deepseek-ai/dsh-client-ui-workspace"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node ../workspace-tools/scripts/build.mjs markdown-editor",
+    "pack:check": "npm pack --dry-run"
+  }
+}
