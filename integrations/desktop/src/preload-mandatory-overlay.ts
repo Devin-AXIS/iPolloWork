@@ -54,7 +54,8 @@ export function installMandatoryUpdateOverlay(): void {
       || !('action' in value) || !('version' in value) || !('revision' in value)) return
     const target = port
     if (target === undefined) return
-    void ipcRenderer.invoke(MANDATORY_IPC.action, value.action, value.version, value.revision).then(
+    const plugin = 'pluginName' in value && typeof value.pluginName === 'string' ? [value.pluginName] : []
+    void ipcRenderer.invoke(MANDATORY_IPC.action, value.action, value.version, value.revision, ...plugin).then(
       () => { target.postMessage({ type: 'dsh-mandatory-result', id: value.id, ok: true }) },
       () => { target.postMessage({ type: 'dsh-mandatory-result', id: value.id, ok: false }) },
     )

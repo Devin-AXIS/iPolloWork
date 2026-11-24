@@ -80,6 +80,7 @@ jobs:
         with:
           persist-credentials: false
           clean: false
+          fetch-depth: 0
           path: desktop-publisher
       - uses: pnpm/action-setup@v5.0.0
         with:
@@ -125,6 +126,7 @@ jobs:
         with:
           persist-credentials: false
           clean: false
+          fetch-depth: 0
           path: desktop-publisher
       - uses: pnpm/action-setup@v5.0.0
         with:

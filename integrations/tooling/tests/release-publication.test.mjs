@@ -8,6 +8,7 @@ const assets = [
   ...['arm64', 'x64'].flatMap(arch => [`ipollowork-mac-${arch}-${version}.dmg`, `iPollo-${version}-mac-${arch}.zip`, `iPollo-${version}-mac-${arch}.zip.blockmap`, `mac-${arch}-release.json`]),
   `ipollowork-win-x64-${version}-unsigned.exe`, `ipollowork-win-x64-${version}-unsigned.exe.blockmap`,
   `ipollowork-linux-x86_64-${version}.AppImage`,
+  'desktop-upgrade-qualification.json',
 ].map(name => ({ name, size: 123, digest: 'sha256:' + 'a'.repeat(64), sha512: Buffer.alloc(64, 1).toString('base64') }))
 const release = { tag_name: `v${version}`, target_commitish: 'a'.repeat(40), draft: true, prerelease: false, assets }
 

@@ -23,7 +23,7 @@ it('ships valid profile-owned entries so native settings can address onboarding 
 it('keeps the Suite enabled while preserving saved account, onboarding and unrelated preferences', () => {
   const profile = mkdtempSync(join(tmpdir(), 'ipollo-application-'))
   try {
-    const overlay = JSON.parse(readFileSync(writeApplicationOverlay(join(profile, 'runtime with spaces'), profile), 'utf8'))
+    const overlay = JSON.parse(readFileSync(writeApplicationOverlay(profile), 'utf8'))
     const previous = [
       { id: 'ipollowork-suite', name: '@ipollo/dsh-suite', disabled: true, config: { market: false } },
       { id: 'ipollowork-onboarding', name: '@ipollo/dsh-suite/onboarding', config: { purpose: 'both', tutorialStep: 3 } },

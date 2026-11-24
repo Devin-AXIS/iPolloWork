@@ -21,11 +21,20 @@ export interface UpdateDialogView {
   readonly closeLabel: string
   readonly technicalDetails: string
   readonly technicalDetailsLabel: string
+  readonly progress?: UpdateDialogProgress
+  readonly dismissible?: boolean
+}
+
+export interface UpdateDialogProgress {
+  readonly label: string
+  readonly percent?: number
 }
 
 /** Electron message options with separately expandable, main-owned diagnostics. */
 export interface UpdateDialogOptions extends MessageBoxOptions {
   readonly technicalDetails?: string
+  readonly progress?: UpdateDialogProgress
+  readonly dismissible?: boolean
   /** Synchronous auxiliary action that leaves the current prompt and choices open. */
   readonly keepOpenAction?: { index: number; run: () => void }
   /** Main-owned action kept in this dialog; false keeps the prompt open for correction. */
@@ -53,6 +62,7 @@ export class DesktopUpdateDialog {
     view: UpdateDialogView
     finish: (index: number, retain?: boolean) => void
     respond: (index: number) => Promise<void>
+    setProgress: (progress: UpdateDialogProgress) => void
   } | undefined
 
   /** Focus the current explanation or confirmation without replacing it or granting permission. */
@@ -81,7 +91,7 @@ export class DesktopUpdateDialog {
         || (index !== active.view.cancelId && (index < 0 || index >= active.view.buttons.length))) {
         throw new Error('desktop update: invalid dialog response')
       }
-      if (active.view.busyButton !== undefined) return
+      if (active.view.busyButton !== undefined || active.view.dismissible === false) return
       return active.respond(index)
     })
   }
@@ -108,7 +118,9 @@ export class DesktopUpdateDialog {
     this.parent = parent
     let view: UpdateDialogView = { revision: ++this.revision, locale: locale.id, title: options.title ?? '', message: options.message,
       detail: options.detail ?? '', buttons, cancelId, closeLabel: locale.messages.updateClose,
-      technicalDetails: options.technicalDetails ?? '', technicalDetailsLabel: locale.messages.updateTechnicalDetails }
+      technicalDetails: options.technicalDetails ?? '', technicalDetailsLabel: locale.messages.updateTechnicalDetails,
+      ...(options.progress === undefined ? {} : { progress: options.progress }),
+      ...(options.dismissible === false ? { dismissible: false } : {}) }
     return new Promise((resolve) => {
       const abort = (): void => { finish(cancelId) }
       const finish = (response: number, retain = false): void => {
@@ -149,7 +161,13 @@ export class DesktopUpdateDialog {
           throw error
         }
       }
-      this.active = { view, finish, respond }
+      const setProgress = (progress: UpdateDialogProgress): void => {
+        if (this.active?.view !== view || view.progress === undefined) return
+        view = { ...view, progress }
+        this.active.view = view
+        surface.webContents.send(UPDATE_DIALOG_IPC.changed, view)
+      }
+      this.active = { view, finish, respond, setProgress }
       options.signal?.addEventListener('abort', abort, { once: true })
       if (existing !== undefined) { surface.webContents.send(UPDATE_DIALOG_IPC.changed, view); return }
       const failed = (): void => { if (this.view === surface) { this.cancel(); this.close() } }
@@ -165,6 +183,9 @@ export class DesktopUpdateDialog {
 
   /** Cancel the displayed prompt without authorizing any operation. */
   cancel(): void { this.active?.finish(this.active.view.cancelId) }
+
+  setProgress(progress: UpdateDialogProgress): void { this.active?.setProgress(progress) }
+  closeProgress(): void { if (this.active?.view.progress !== undefined) this.cancel() }
 
   /** Close the document and detach its private IPC handlers. */
   dispose(): void {
