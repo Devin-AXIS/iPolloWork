@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-task-templates
+      name: '@ipollo/dsh-task-templates'

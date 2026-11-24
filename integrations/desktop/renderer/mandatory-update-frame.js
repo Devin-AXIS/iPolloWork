@@ -31,11 +31,11 @@ if (window.parent !== window && window.dshMandatoryUpdate === undefined) {
   window.dshMandatoryUpdate = {
     status: () => state ? Promise.resolve(state) : initial.promise,
     subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener) },
-    action: (action, version, revision) => {
+    action: (action, version, revision, pluginName) => {
       const id = ++sequence
       const request = Promise.withResolvers()
       requests.set(id, request)
-      port.postMessage({ type: 'dsh-mandatory-action', id, action, version, revision })
+      port.postMessage({ type: 'dsh-mandatory-action', id, action, version, revision, pluginName })
       return request.promise
     },
   }

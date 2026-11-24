@@ -31,3 +31,7 @@ For every task that creates, changes, ports, reviews, packages or integrates a D
 Use ESM and strict TypeScript. Follow subtree instructions, especially `plugins/ipollowork-suite/AGENTS.md`. Run `npm test`, `npm run check:upstream`, the changed package's checks and the relevant built-client smoke. Test UI changes in both themes and at narrow width. Do not claim unrun checks or publish deployments without user authorization.
 
 Generated files, runtime caches, dependency folders and credentials are not committed. Keep English and Chinese READMEs consistent. Preserve upstream license notices for derived client code. Final changes must pass `git diff --check`.
+
+## Desktop upgrade qualification
+
+For a desktop release or DSH pin change, follow [desktop-upgrade-qualification](.agents/skills/desktop-upgrade-qualification/SKILL.md). Production update publication requires passing evidence for the exact packaged release.

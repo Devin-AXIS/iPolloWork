@@ -30,6 +30,10 @@ on:
       source_ref:
         description: Optional immutable commit for rebuilding an existing draft
         type: string
+      package_only:
+        description: Build and attach signed draft packages without installed-app acceptance
+        type: boolean
+        default: false
 permissions:
   contents: write
 concurrency:
@@ -345,6 +349,7 @@ jobs:
         # Keep the GUI session awake for native Office rendering and signing.
         run: caffeinate -dimsu node integrations/desktop/run.mjs package-target.ts "$PACKAGE_TARGET" --build-version "$RELEASE_VERSION"
       - name: Install the DMG and open the real application with an old plugin dependency
+        if: ${{ !inputs.package_only }}
         run: |
           set -euo pipefail
           dmg="integrations/desktop/.desktop-build/targets/$PACKAGE_TARGET/artifacts/website-installers/ipollowork-$PACKAGE_TARGET-$RELEASE_VERSION.dmg"
@@ -356,7 +361,7 @@ jobs:
           ditto "$mount/iPollo.app" "$installed"
           caffeinate -dimsu node integrations/desktop/scripts/smoke-installed-macos.mjs "$installed" installed-macos-evidence
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && !inputs.package_only
         with:
           name: installed-${{ matrix.target }}-${{ github.run_id }}
           path: installed-macos-evidence/

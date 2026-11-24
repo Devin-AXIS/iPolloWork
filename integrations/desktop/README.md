@@ -33,6 +33,8 @@ General Settings and About display the Electron package version. The release tag
 
 Create a numeric draft such as `v1.0.5` at the intended commit, then run `ipollo-release-packages.yml`. It validates each runtime and attaches one public installer per platform, the macOS update ZIPs, the blockmaps and the Mac build records. Run `ipollo-publish.yml` to verify those files, generate the stable update feeds and checksum list, and publish the draft. Enable its mirror input when mainland storage is configured.
 
+Follow the [desktop upgrade qualification skill](../../.agents/skills/desktop-upgrade-qualification/SKILL.md) before publishing. Attach `desktop-upgrade-qualification.json` to the GitHub draft or place it beside the original COS package. Production checks require all four test results and match the source commit, bundled DSH pin and package digests. Draft builds and the test channel remain available for qualification.
+
 Signed iPollo releases set `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` and `DSH_DESKTOP_UPDATE_CHANNEL=stable`. The packaged updater must never point to the upstream DSH download service. Both Mac architectures share a feed containing their separate ZIP entries.
 
 Design and Video are optional market installs. The suite carries their checked catalog archives for installation on demand. Their source repositories own their builds, and the desktop release does not attach separate plugin archives.

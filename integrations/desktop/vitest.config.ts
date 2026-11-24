@@ -11,6 +11,7 @@ export default defineConfig({
       'integrations/desktop/tests/prepare-runtime-patches.spec.ts',
       'integrations/desktop/tests/published-cua-helper.spec.ts',
       'integrations/desktop/tests/account-origin.spec.ts',
+      'integrations/desktop/tests/plugin-update.spec.ts',
       'integrations/desktop/tests/smoke-runtime.spec.ts',
       'integrations/desktop/tests/welcome-renderer.client.spec.tsx'],
     setupFiles: ['./scripts/test-proxy-environment.ts'],

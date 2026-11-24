@@ -548,17 +548,31 @@ function applyWorkspaceTheme(root, hostContext, systemDark = false) {
 }
 
 // plugins/short-video-studio/business/src/bridge.mjs
-function createBridge(onContext, onTool) {
+function createBridge(onContext, onTool, onTeardown) {
   let nextId = 0, initialized = false;
   const pending = /* @__PURE__ */ new Map();
-  function request(method, params = {}) {
+  function request(method, params = {}, signal) {
     const id = ++nextId;
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
+      function finish() {
         pending.delete(id);
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abort);
+      }
+      function abort() {
+        finish();
+        reject(signal.reason);
+      }
+      const timeout = setTimeout(() => {
+        finish();
         reject(new Error("Work \u54CD\u5E94\u8D85\u65F6\uFF0C\u8BF7\u68C0\u67E5\u5DE5\u4F5C\u53F0\u8FDE\u63A5"));
       }, 12e4);
-      pending.set(id, { resolve, reject, timeout });
+      if (signal?.aborted) {
+        abort();
+        return;
+      }
+      signal?.addEventListener("abort", abort, { once: true });
+      pending.set(id, { resolve, reject, finish });
       parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
     });
   }
@@ -572,8 +586,7 @@ function createBridge(onContext, onTool) {
     if (message.id !== void 0 && !message.method) {
       const handler = pending.get(message.id);
       if (!handler) return;
-      pending.delete(message.id);
-      clearTimeout(handler.timeout);
+      handler.finish();
       message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result);
       return;
     }
@@ -583,7 +596,11 @@ function createBridge(onContext, onTool) {
     }
     if (message.id === void 0) return;
     try {
-      const result = message.method === "ui/resource-teardown" ? {} : await onTool(message.method, message.params);
+      let result;
+      if (message.method === "ui/resource-teardown") {
+        onTeardown?.();
+        result = {};
+      } else result = await onTool(message.method, message.params);
       parent.postMessage({ jsonrpc: "2.0", id: message.id, result }, "*");
     } catch (error) {
       parent.postMessage({ jsonrpc: "2.0", id: message.id, error: { code: -32602, message: error.message } }, "*");
@@ -600,8 +617,8 @@ function createBridge(onContext, onTool) {
       parent.postMessage({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} }, "*");
       return result;
     },
-    async call(name, args = {}) {
-      const result = await request("tools/call", { name, arguments: args });
+    async call(name, args = {}, signal) {
+      const result = await request("tools/call", { name, arguments: args }, signal);
       if (result.isError) throw new Error(result.content?.find((c) => c.type === "text")?.text || "\u64CD\u4F5C\u672A\u5B8C\u6210");
       if (result.structuredContent) return result.structuredContent;
       const text = result.content?.find((c) => c.type === "text")?.text;
@@ -628,6 +645,76 @@ function addNode(project, kind, position = {}) {
   return node;
 }
 
+// plugins/short-video-studio/business/src/previews.mjs
+var cacheLimit = 48 * 1024 * 1024;
+var thumbnailLimit = 8 * 1024 * 1024;
+var mediaLimit = 256 * 1024 * 1024;
+function createPreviews(readChunk, evicted) {
+  const entries = /* @__PURE__ */ new Map();
+  const largeThumbnails = /* @__PURE__ */ new Set();
+  let bytes = 0, lifetime = new AbortController(), tail = Promise.resolve();
+  function release(id) {
+    const entry = entries.get(id);
+    if (!entry) return;
+    entries.delete(id);
+    bytes -= entry.size;
+    URL.revokeObjectURL(entry.url);
+    evicted(id);
+  }
+  async function load(projectId, assetId, automatic, signal) {
+    if (signal.aborted) return;
+    const cached = entries.get(assetId);
+    if (cached) {
+      entries.delete(assetId);
+      entries.set(assetId, cached);
+      return cached.url;
+    }
+    if (automatic && (bytes > cacheLimit || largeThumbnails.has(assetId))) return;
+    const chunks = [];
+    let offset = 0, size, mime;
+    while (size === void 0 || offset < size) {
+      const part = await readChunk({ projectId, assetId, offset }, signal);
+      if (signal.aborted) return;
+      if (size === void 0) {
+        ({ size, mime } = part);
+        if (!Number.isSafeInteger(size) || size < 1 || size > mediaLimit) throw new Error("\u7D20\u6750\u5927\u5C0F\u65E0\u6548");
+        if (automatic && size > thumbnailLimit) {
+          largeThumbnails.add(assetId);
+          return;
+        }
+        while (entries.size && (entries.size >= 24 || bytes + size > cacheLimit)) release(entries.keys().next().value);
+      }
+      if (part.size !== size || part.mime !== mime || !Number.isSafeInteger(part.nextOffset) || part.nextOffset <= offset || part.nextOffset > size) throw new Error("\u7D20\u6750\u8BFB\u53D6\u672A\u524D\u8FDB");
+      const chunk = Uint8Array.from(atob(part.data), (c) => c.charCodeAt(0));
+      if (chunk.byteLength !== part.nextOffset - offset) throw new Error("\u7D20\u6750\u8BFB\u53D6\u4E0D\u5B8C\u6574");
+      chunks.push(chunk);
+      offset = part.nextOffset;
+    }
+    const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
+    entries.set(assetId, { url, size });
+    bytes += size;
+    return url;
+  }
+  return {
+    get: (id) => entries.get(id)?.url,
+    load(projectId, assetId, automatic = false) {
+      const { signal } = lifetime;
+      const request = tail.then(() => load(projectId, assetId, automatic, signal)).catch((error) => {
+        if (!signal.aborted) throw error;
+      });
+      tail = request.catch(() => {
+      });
+      return request;
+    },
+    clear() {
+      lifetime.abort();
+      lifetime = new AbortController();
+      for (const id of entries.keys()) release(id);
+      largeThumbnails.clear();
+    }
+  };
+}
+
 // plugins/ipollowork-suite/src/ported/frame-runtime.ts
 function requireRuntime() {
   const runtime = Reflect.get(window.parent, "__ipolloPortedUi");
@@ -643,8 +730,17 @@ var tabs = { canvas: "\u521B\u4F5C\u753B\u5E03", shots: "\u5206\u955C", script: 
 var presets = { "\u81EA\u7531\u521B\u4F5C": "", "\u7535\u5F71\u5206\u955C\u56DB\u5BAB\u683C": "\u5C06\u4EE5\u4E0B\u5185\u5BB9\u5236\u4F5C\u6210 2\xD72 \u7535\u5F71\u5206\u955C\uFF0C\u4FDD\u6301\u89D2\u8272\u4E00\u81F4\uFF1A", "\u89D2\u8272\u4E09\u89C6\u56FE": "\u540C\u4E00\u89D2\u8272\u7684\u6B63\u9762\u3001\u4FA7\u9762\u3001\u80CC\u9762\u4E09\u89C6\u56FE\uFF0C\u7EAF\u8272\u80CC\u666F\uFF1A", "\u89D2\u8272\u8BBE\u5B9A": "\u89D2\u8272\u8BBE\u5B9A\u8868\uFF0C\u5305\u542B\u5168\u8EAB\u3001\u9762\u90E8\u3001\u8868\u60C5\uFF0C\u4FDD\u6301\u4E00\u81F4\u6027\uFF1A", "\u4EA7\u54C1\u5C55\u793A": "\u5546\u4E1A\u4EA7\u54C1\u6444\u5F71\uFF0C\u5E72\u51C0\u80CC\u666F\u3001\u67D4\u548C\u5E03\u5149\u3001\u6750\u8D28\u7EC6\u8282\uFF1A", "\u591A\u89D2\u5EA6\u573A\u666F": "\u540C\u4E00\u573A\u666F\u4E0D\u540C\u673A\u4F4D\u7684\u89C6\u89C9\u8BBE\u5B9A\uFF0C\u7A7A\u95F4\u5E03\u5C40\u4E00\u81F4\uFF1A", "\u65F6\u95F4\u6F14\u53D8": "\u540C\u4E00\u573A\u666F\u5728\u4E0D\u540C\u65F6\u6BB5\u7684\u56DB\u683C\u65F6\u95F4\u6F14\u53D8\uFF1A", "\u7535\u5F71\u5E03\u5149": "\u7535\u5F71\u7EA7\u5E03\u5149\uFF0C\u7CBE\u786E\u7684\u5149\u5F71\u4E0E\u666F\u6DF1\uFF1A" };
 var cameraOptions = ["\u81EA\u52A8", "\u56FA\u5B9A\u955C\u5934", "\u7F13\u6162\u63A8\u8FDB", "\u62C9\u8FDC", "\u6C34\u5E73\u6447\u955C", "\u5782\u76F4\u6447\u955C", "\u73AF\u7ED5\u62CD\u6444", "\u8DDF\u968F\u955C\u5934", "\u4FEF\u62CD", "\u4EF0\u62CD", "\u5FAE\u8DDD", "\u822A\u62CD", "\u624B\u6301\u7EAA\u5B9E", "\u6162\u52A8\u4F5C", "\u53D8\u7126"];
 var state = { project: null, projects: [], tab: "canvas", selection: null, capabilities: null, context: {}, zoom: 1, pan: { x: 0, y: 0 }, busy: false, undo: [], redo: [] };
-var previews = /* @__PURE__ */ new Map();
+var previews = createPreviews(
+  (params, signal) => bridge.call("asset-read", params, signal),
+  (assetId) => {
+    for (const element of document.querySelectorAll("[data-asset-preview]")) {
+      if (element.dataset.assetPreview === assetId) element.outerHTML = preview(assetId);
+    }
+  }
+);
 var previewEpoch = 0;
+var previewTab;
+var hiddenPreviewTimer;
 var queue = Promise.resolve();
 var drag;
 var ui;
@@ -671,7 +767,9 @@ async function flushDrafts() {
   }
 }
 function notify(message) {
-  ui?.toast(message, { duration: 5500 });
+  const toast = ui?.toast;
+  if (typeof toast === "function") toast(message, { duration: 5500 });
+  else toast?.message?.(message);
 }
 function fail(error) {
   ui?.toast.error(error?.message || String(error), { duration: 5500 });
@@ -724,7 +822,7 @@ var bridge = createBridge((context) => {
     render();
   }
   return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result };
-});
+}, releasePreviews);
 async function dialog(title, description, initial, submit) {
   const trigger = document.activeElement, root = ui.createRoot($("#dialog-root")), h = ui.React.createElement;
   return new Promise((resolve) => {
@@ -1005,9 +1103,11 @@ async function operation(name, args = {}) {
   });
   state.busy = true;
   try {
-    const result = await bridge.call(name, { projectId: state.project.id, revision: state.project.revision, ...args });
+    const input = { projectId: state.project.id, ...name === "asset-upload" ? {} : { revision: state.project.revision }, ...args };
+    const result = await bridge.call(name, input);
+    if (state.project.id !== input.projectId) return result;
     if (result.project) state.project = result.project;
-    render();
+    if (name !== "asset-upload" || result.project) render();
     return result;
   } finally {
     state.busy = false;
@@ -1019,28 +1119,11 @@ function preview(assetId, controls = false) {
   const url = previews.get(assetId);
   if (!url) return `<span data-preview="${assetId}">\u70B9\u51FB\u540E\u8F7D\u5165 ${esc(asset.kind === "image" ? "\u56FE\u7247" : asset.kind === "video" ? "\u89C6\u9891" : "\u97F3\u9891")}</span>`;
   const tag = asset.kind === "image" ? "img" : asset.kind;
-  return `<${tag} src="${esc(url)}" ${tag === "img" ? `alt="${esc(asset.name)}"` : `${controls ? "controls" : "muted"} preload="metadata" playsinline`}></${tag}>`;
-}
-async function loadPreview(assetId) {
-  if (previews.has(assetId)) return;
-  const projectId = state.project.id, chunks = [];
-  let offset = 0, result;
-  do {
-    result = await bridge.call("asset-read", { projectId, assetId, offset });
-    chunks.push(Uint8Array.from(atob(result.data), (c) => c.charCodeAt(0)));
-    if (result.nextOffset <= offset && offset < result.size) throw new Error("\u7D20\u6750\u8BFB\u53D6\u672A\u524D\u8FDB");
-    offset = result.nextOffset;
-  } while (offset < result.size);
-  if (state.project.id !== projectId) return;
-  if (previews.size >= 24) {
-    const [key, url] = previews.entries().next().value;
-    URL.revokeObjectURL(url);
-    previews.delete(key);
-  }
-  previews.set(assetId, URL.createObjectURL(new Blob(chunks, { type: result.mime })));
+  return `<${tag} data-asset-preview="${esc(assetId)}" src="${esc(url)}" ${tag === "img" ? `alt="${esc(asset.name)}"` : `${controls ? "controls" : "muted"} preload="metadata" playsinline`}></${tag}>`;
 }
 function releasePreviews() {
-  for (const url of previews.values()) URL.revokeObjectURL(url);
+  clearTimeout(hiddenPreviewTimer);
+  previewEpoch++;
   previews.clear();
 }
 function nodeMarkup(node) {
@@ -1095,6 +1178,11 @@ function jobs() {
 }
 function render() {
   if (!state.project) return;
+  if (previewTab !== state.tab) {
+    releasePreviews();
+    previewTab = state.tab;
+    if (document.hidden) hiddenPreviewTimer = setTimeout(releasePreviews, 6e4);
+  }
   const focused = document.activeElement;
   const focusState = (focused?.id || focused?.dataset.focusKey) && focused.closest("#app") ? { id: focused.id, key: focused.dataset.focusKey, start: focused.selectionStart, end: focused.selectionEnd } : null;
   fieldIndex = 0;
@@ -1126,14 +1214,19 @@ function render() {
   mountPresetSelect();
   state.project = savedProject;
   bridge.context(p, state.selection);
+  preloadPreviews(p);
+}
+function preloadPreviews(p) {
+  if (document.hidden || !p) return;
   const epoch = ++previewEpoch;
   void (async () => {
     const pending = [...document.querySelectorAll("[data-preview]")].filter((el) => p.assets.find((a) => a.id === el.dataset.preview)?.kind === "image").slice(0, 12);
     for (const element of pending) {
-      if (epoch !== previewEpoch) break;
+      if (epoch !== previewEpoch || document.hidden) break;
+      const { preview: assetId } = element.dataset;
       try {
-        await loadPreview(element.dataset.preview);
-        if (element.isConnected) element.outerHTML = preview(element.dataset.preview);
+        const url = await previews.load(p.id, assetId, true);
+        if (url && element.isConnected) element.outerHTML = preview(assetId);
       } catch {
         if (element.isConnected) element.textContent = "\u70B9\u51FB\u91CD\u8BD5\u9884\u89C8";
       }
@@ -1141,6 +1234,7 @@ function render() {
   })();
 }
 async function importFiles(files) {
+  const projectId = state.project.id;
   for (const file of files) {
     if (!file.size || file.size > 256 * 1024 * 1024) throw new Error(`${file.name} \u4E3A\u7A7A\u6216\u8D85\u8FC7 256 MB`);
     let durationSeconds;
@@ -1176,11 +1270,13 @@ async function importFiles(files) {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
       });
-      await operation("asset-upload", { uploadId, filename: file.name, total: file.size, offset, data: dataUrl.split(",")[1], durationSeconds });
+      await operation("asset-upload", { projectId, uploadId, filename: file.name, total: file.size, offset, data: dataUrl.split(",")[1], durationSeconds });
     }
   }
-  state.tab = "assets";
-  render();
+  if (state.project.id === projectId) {
+    state.tab = "assets";
+    render();
+  }
   notify("\u7D20\u6750\u5DF2\u5BFC\u5165");
 }
 function shotFromAsset(p, assetId) {
@@ -1427,8 +1523,7 @@ ${result.path}
     const assetId = key === "preview-node" ? node.assetId : key === "preview-shot" ? p.shots.find((s) => s.id === target.dataset.id)?.assetId : target.dataset.id;
     if (!assetId) throw new Error("\u8FD8\u6CA1\u6709\u7D20\u6750");
     notify("\u6B63\u5728\u8BFB\u53D6\u7D20\u6750\u2026");
-    await loadPreview(assetId);
-    render();
+    if (await previews.load(p.id, assetId)) render();
     return;
   }
   if (key === "undo" || key === "redo") {
@@ -1524,6 +1619,12 @@ ${n.prompt}`;
   draftTimer = setTimeout(() => void flushDrafts().catch(fail), e.type === "change" ? 0 : 500);
 }
 document.addEventListener("change", (e) => void handleField(e).catch(fail));
+document.addEventListener("visibilitychange", () => {
+  clearTimeout(hiddenPreviewTimer);
+  if (document.hidden) hiddenPreviewTimer = setTimeout(releasePreviews, 6e4);
+  else preloadPreviews(state.project);
+});
+window.addEventListener("pagehide", releasePreviews);
 document.addEventListener("input", (e) => {
   if (e.target.type !== "file") void handleField(e).catch(fail);
 });

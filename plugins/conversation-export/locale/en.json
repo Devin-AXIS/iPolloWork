@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Conversation Export",
+    "description": "Export user and assistant messages as Markdown from the conversation menu."
+  }
+}

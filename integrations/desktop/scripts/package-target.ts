@@ -6,6 +6,7 @@ import { parseArgs } from 'node:util'
 import { join, resolve } from 'node:path'
 import {
   desktopBuildRecordFilename,
+  desktopUpdateMetadataFilename,
   type DesktopAutoUpdateTarget,
   resolveDesktopAutoUpdateConfig,
 } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
@@ -27,6 +28,8 @@ import { desktopBuildCommitEnvironment, readDesktopBuildCommit, resolveDesktopBu
 import { requireDesktopToolchain } from './desktop-toolchain-preflight.ts'
 import { withMacOSNotarizationProxy } from './macos-notarization-proxy.ts'
 import { stageWebsiteInstaller } from './stage-website-installer.ts'
+import { parse } from 'yaml'
+import { pluginUpdateMetadata } from '../../tooling/plugin-update-metadata.mjs'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -164,6 +167,12 @@ function writeReleaseRecord(
   const buildVersion = resolveDesktopBuildVersion(environment, dshVersion)
   const packaged = resolveDesktopBuildCommit(environment)
   const update = resolveDesktopAutoUpdateConfig(environment, target.platform, target.arch)
+  const feedPath = join(artifactsRoot, desktopUpdateMetadataFilename(buildVersion, target.platform, update.channel))
+  const feed = parse(readFileSync(feedPath, 'utf8')) as { version?: string }
+  if (feed.version !== buildVersion) throw new Error('Desktop compatibility metadata must describe the packaged update')
+  const compatibility = pluginUpdateMetadata(path => JSON.parse(readFileSync(join(REPOSITORY_ROOT, path), 'utf8')))
+  writeFileSync(feedPath + '.tmp', JSON.stringify({ ...feed, ipolloPluginCompatibility: compatibility }, null, 2) + '\n')
+  renameSync(feedPath + '.tmp', feedPath)
   const recordPath = join(artifactsRoot, desktopBuildRecordFilename(target.name))
   const temporaryPath = `${recordPath}.tmp`
   writeFileSync(temporaryPath, `${JSON.stringify({

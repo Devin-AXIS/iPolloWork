@@ -1,13 +1,21 @@
 import { applyWorkspaceTheme } from './workspace-theme.mjs';
 
-export function createBridge(onContext, onTool) {
+export function createBridge(onContext, onTool, onTeardown) {
   let nextId = 0, initialized = false;
   const pending = new Map();
-  function request(method, params = {}) {
+  function request(method, params = {}, signal) {
     const id = ++nextId;
     return new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => { pending.delete(id); reject(new Error('Work 响应超时，请检查工作台连接')); }, 120000);
-      pending.set(id, { resolve, reject, timeout });
+      function finish() {
+        pending.delete(id);
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', abort);
+      }
+      function abort() { finish(); reject(signal.reason); }
+      const timeout = setTimeout(() => { finish(); reject(new Error('Work 响应超时，请检查工作台连接')); }, 120000);
+      if (signal?.aborted) { abort(); return; }
+      signal?.addEventListener('abort', abort, { once: true });
+      pending.set(id, { resolve, reject, finish });
       parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
     });
   }
@@ -17,13 +25,15 @@ export function createBridge(onContext, onTool) {
     const message = event.data;
     if (message.id !== undefined && !message.method) {
       const handler = pending.get(message.id); if (!handler) return;
-      pending.delete(message.id); clearTimeout(handler.timeout);
+      handler.finish();
       message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result); return;
     }
     if (message.method === 'ui/notifications/host-context-changed') { theme(message.params); return; }
     if (message.id === undefined) return;
     try {
-      const result = message.method === 'ui/resource-teardown' ? {} : await onTool(message.method, message.params);
+      let result;
+      if (message.method === 'ui/resource-teardown') { onTeardown?.(); result = {}; }
+      else result = await onTool(message.method, message.params);
       parent.postMessage({ jsonrpc: '2.0', id: message.id, result }, '*');
     } catch (error) { parent.postMessage({ jsonrpc: '2.0', id: message.id, error: { code: -32602, message: error.message } }, '*'); }
   });
@@ -37,8 +47,8 @@ export function createBridge(onContext, onTool) {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*');
       return result;
     },
-    async call(name, args = {}) {
-      const result = await request('tools/call', { name, arguments: args });
+    async call(name, args = {}, signal) {
+      const result = await request('tools/call', { name, arguments: args }, signal);
       if (result.isError) throw new Error(result.content?.find(c => c.type === 'text')?.text || '操作未完成');
       if (result.structuredContent) return result.structuredContent;
       const text = result.content?.find(c => c.type === 'text')?.text;

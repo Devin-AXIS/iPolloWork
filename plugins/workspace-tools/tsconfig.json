@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "types": ["node", "react"],
+    "paths": {
+      "@deepseek-ai/dsh-client-ui-file-actions/types": ["../../.upstream/dsh/packages/client/ui-file-actions/src/types.ts"],
+      "@deepseek-ai/dsh-client-ui-primitives": ["../../.upstream/dsh/packages/client/ui-primitives/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-util-workspace-path": ["../../.upstream/dsh/packages/util/workspace-path/src/index.ts"]
+    }
+  },
+  "include": ["src", "tests"]
+}

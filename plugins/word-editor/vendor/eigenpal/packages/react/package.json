@@ -1,0 +1,79 @@
+{
+  "name": "@docx-editor.dev/react",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "version": "2.39.0",
+  "description": "React DOCX editor adapter for the @docx-editor.dev editor contract.",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./styles.css": "./src/styles/editor.css"
+  },
+  "files": [
+    "dist",
+    "licenses",
+    "docs",
+    "src/styles",
+    "!dist/metafile-*.json",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/check-built-siblings.mjs && tsup",
+    "typecheck": "bun check",
+    "api:extract": "node ../../scripts/api-extractor.mjs --package @docx-editor.dev/react --local",
+    "api:check": "node ../../scripts/api-extractor.mjs --package @docx-editor.dev/react"
+  },
+  "peerDependencies": {
+    "@docx-editor.dev/core": "~2.39.0",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@docx-editor.dev/core": "workspace:*",
+    "fflate": "^0.8.2",
+    "typescript7": "npm:typescript@^7.0.2"
+  },
+  "keywords": [
+    "docx",
+    "editor",
+    "word",
+    "document",
+    "react"
+  ],
+  "author": {
+    "name": "Jedr Blaszyk",
+    "email": "jedr@eigenpal.com",
+    "url": "https://github.com/jedrazb"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://docx-editor.dev/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eigenpal/docx-editor.git",
+    "directory": "packages/react"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@docx-editor.dev/i18n": "^2.39.0",
+    "@radix-ui/react-select": "^2.3.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1"
+  }
+}

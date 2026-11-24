@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-workspace-tools
+      name: '@ipollo/dsh-workspace-tools'

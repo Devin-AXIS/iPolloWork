@@ -16,6 +16,7 @@ import { desktopPublicationSummary } from './desktop-publication-summary.ts'
 import { publishDesktopTag } from './desktop-publish-tag.ts'
 import { websiteApproval } from '@deepseek-ai/dsh-desktop-publisher/publish-website-ci.ts'
 import { desktopPublishQualificationError } from '@deepseek-ai/dsh-desktop-publisher/desktop-publish-qualification.mjs'
+import { requireProductionDesktopUpgrade } from './require-desktop-upgrade-qualification.ts'
 
 const routeSchema = z.object({ runId: z.string(), attempt: z.string(), commit: z.string(), runnerName: z.string(),
   sourceRef: z.string(), channel: z.enum(['nightly', 'stable']),
@@ -57,8 +58,13 @@ export async function prepareDesktopPublication(env: NodeJS.ProcessEnv, verifySi
     packagedProductVersion: source.productVersion, environment: { ...environment, DSH_DESKTOP_UPDATE_CHANNEL: source.channel } })
   if (plan.version !== source.version || plan.commit !== source.commit || plan.dirty !== false) throw new Error('desktop publish: completion record differs from retained source or has uncommitted changes')
   await verifySignatures(directory, manifest, config)
-  const approval = createHash('sha256').update(JSON.stringify({ manifest, plan })).digest('hex')
-  if (env.DESKTOP_APPROVED_PACKAGE && env.DESKTOP_APPROVED_PACKAGE !== approval) throw new Error('desktop publish: package or destination changed after approval')
+  const upgradeQualification = await requireProductionDesktopUpgrade(plan).catch((error: unknown) => {
+    const detail = error instanceof Error && /^(?:Upgrade qualification |Missing desktop-upgrade-qualification|Invalid desktop upgrade qualification)/u.test(error.message)
+      ? error.message : 'could not verify desktop-upgrade-qualification.json and packaged source'
+    throw new Error(`desktop publish: ${detail}`)
+  })
+  const approval = createHash('sha256').update(JSON.stringify({ manifest, plan, upgradeQualification })).digest('hex')
+  if (env.DESKTOP_APPROVED_PACKAGE && env.DESKTOP_APPROVED_PACKAGE !== approval) throw new Error('desktop publish: package, destination or upgrade evidence changed after approval')
   return { route, manifest, config, plan, root, approval, stagingPercentage }
 }
 

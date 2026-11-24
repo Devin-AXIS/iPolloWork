@@ -14,6 +14,10 @@ export async function catalogArtwork(indexFile, releaseFile, update = false) {
     const bytes = execFileSync('tar', ['-xOf', archive, 'package/icon.svg'], { maxBuffer: 32_768 })
     const image = 'data:image/svg+xml;base64,' + bytes.toString('base64')
     const entry = index.plugins.find(item => item.name === release.name)
+    if (release.upgradeOnly === true) {
+      if (entry) throw Error('An upgrade-only archive cannot appear in the default market: ' + release.name)
+      continue
+    }
     if (!entry) throw Error('Bundled plugin is missing from the market')
     if (update) entry.icon = image
     else if (entry.icon !== image) throw Error('Market icon differs from the packaged plugin: ' + release.name)
@@ -25,7 +29,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   await catalogArtwork('catalog/index.json', 'catalog/bundled-releases.json', update)
   const manifest = JSON.parse(await readFile('package.json', 'utf8'))
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8'))
-  const current = ['catalog/index.json', 'catalog/bundled-releases.json', ...releases.plugins.map(release => 'catalog/packages/' + release.file)]
+  const current = ['catalog/index.json', 'catalog/bundled-releases.json', 'catalog/retired-plugins.json', ...releases.plugins.map(release => 'catalog/packages/' + release.file)]
   for (const release of releases.plugins) {
     const resource = release.name === 'deepseek-idesign' ? '@ipollo/dsh-design-resources' : '@ipollo/dsh-video-resources'
     if (manifest.dependencies?.[resource]) throw Error('Optional Studio resources must not be installed with the suite')

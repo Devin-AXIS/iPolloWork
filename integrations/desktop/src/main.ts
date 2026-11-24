@@ -14,6 +14,8 @@ import { access, readFile, writeFile } from 'node:fs/promises'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { isDeepStrictEqual } from 'node:util'
+import { writeFileAtomic } from '@deepseek-ai/dsh-atomic-write'
 import {
   app,
   BrowserWindow,
@@ -45,6 +47,7 @@ import type { DesktopMessages } from './locale.ts'
 import { claimDesktopSingleInstance } from './single-instance.ts'
 import { desktopUpdateChannel, fixedDesktopUpdateChannel } from './update-channel.ts'
 import { DesktopUpdateCoordinator } from './update-coordinator.ts'
+import { inspectPluginUpdate, localPluginUpdateDirectory, pluginUpdatePlanFile, pluginUpdatePrompt, prepareLegacyPluginUpdate } from './plugin-update.ts'
 import { prepareDesktopUpdateWindow } from './update-window.ts'
 import { DesktopCommandManager } from './command-management.ts'
 import { serveWebDocument, forwardWebRequest, removeLegacyHostCookies } from './web-document.ts'
@@ -551,7 +554,7 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion() }, onFailure,
+      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(), IPOLLOWORK_DESKTOP_VERSION: app.getVersion() }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
@@ -631,6 +634,16 @@ async function main(): Promise<void> {
   })
 
   const updateErrors = new WeakMap<DesktopUpdateState, Promise<void>>()
+  const downloadProgress = (state: DesktopUpdateState) => {
+    if (state.phase === 'verifying') return { label: locale.messages.updateVerifying }
+    const percent = Math.min(100, Math.max(0, Math.floor(state.percent ?? 0)))
+    return { label: formatDesktopMessage(locale.messages.updateDownloading, { percent: String(percent) }), percent }
+  }
+  const showDownloadProgress = (state: DesktopUpdateState): Promise<void> => ordinaryMessageBox({
+    title: locale.messages.updateCheckTitle, message: locale.messages.updateDownloadInProgress,
+    detail: locale.messages.updateDownloadDetail, progress: downloadProgress(state),
+    buttons: [locale.messages.updateClose], cancelId: 0,
+  }).then(() => {})
   const showUpdateFailure = (state: DesktopUpdateState): Promise<void> => {
     if (state.phase !== 'error') return Promise.resolve()
     if (isMandatory()) { mandatoryUI?.sync(); return Promise.resolve() }
@@ -647,6 +660,9 @@ async function main(): Promise<void> {
     updateJournal?.state(state)
     updateState = state
     mandatoryUI?.sync()
+    if (state.phase === 'downloading' || state.phase === 'verifying') {
+      updateDialog.setProgress(downloadProgress(state))
+    } else if (state.phase !== 'installing') updateDialog.closeProgress()
     for (const window of BrowserWindow.getAllWindows()) {
       window.webContents.send(DESKTOP_IPC.updatesPresentation, updatePresentation(state))
     }
@@ -699,6 +715,11 @@ async function main(): Promise<void> {
       await navigateMain(applicationUrl)
       await backend.start(async () => {
         await Promise.all([manager.applyRelease(), prepareHostEnvironment()])
+        try {
+          await prepareLegacyPluginUpdate(activeProject, resources.dsh, app.getVersion(), readDesktopRuntime(resources.dsh).release.version)
+        } catch (error) {
+          console.warn('desktop: could not prepare bundled plugin repair:', error instanceof Error ? error.name : 'UnknownError')
+        }
       })
       if (backend.host !== undefined) await openInitialWindow()
       if (backend.host !== undefined) updateJournal?.action('workspace-ready')
@@ -726,6 +747,43 @@ async function main(): Promise<void> {
     packagedChannel, changing: false,
     ...(initialChannel.kind === 'error' ? { error: configurationFailure(initialChannel.error) } : {}) }
   const updateChannel = initialChannel.kind === 'ready' ? initialChannel.channel : packagedChannel
+  const inspectPlugins = () => inspectPluginUpdate(paths.profile, resources.dsh, updates.targetPluginCompatibility)
+  const revealPluginSource = async (name: string): Promise<void> => {
+    const issue = inspectPlugins().issues.find(candidate => candidate.name === name && candidate.enabled)
+    const directory = issue === undefined ? undefined : localPluginUpdateDirectory(paths.profile, issue)
+    if (directory === undefined) throw new Error('desktop update: local plugin source is no longer available')
+    const manifest = join(directory, 'package.json')
+    await access(manifest)
+    shell.showItemInFolder(manifest)
+  }
+  const showPluginWarning = async (parent: BrowserWindow | undefined, plugins: ReturnType<typeof inspectPlugins>) => {
+    const mandatory = isMandatory()
+    const warning = pluginUpdatePrompt(plugins, locale.id === 'zh-CN', mandatory)
+    const localPlugins = plugins.issues.filter(issue => issue.linked && issue.enabled).map(issue => issue.name)
+    if (mandatory) {
+      const version = updates.state.version
+      if (version !== undefined) mandatoryUI?.showPluginBlock(version, { ...warning, localPlugins })
+      return
+    }
+    if (parent === undefined) return
+    const localPlugin = localPlugins[0]
+    const options: UpdateDialogOptions = {
+      type: 'warning', title: locale.messages.updateTitle, message: warning.title, detail: warning.detail,
+      ...(localPlugin === undefined
+        ? { buttons: [locale.messages.updateAcknowledge], cancelId: 0 }
+        : { buttons: [locale.messages.updateOpenPluginFolder, locale.messages.updateLater], cancelId: 1,
+          action: { index: 0, run: async () => {
+            try { await revealPluginSource(localPlugin) }
+            catch (error) {
+              console.error(error)
+              await updateDialog.show(parent, { type: 'error', title: locale.messages.updateTitle,
+                message: locale.messages.updatePluginFolderUnavailable })
+            }
+            return false
+          } } }),
+    }
+    await updateDialog.show(parent, options)
+  }
   const updates = new DesktopUpdateCoordinator(
     publishUpdate,
     async () => {
@@ -734,19 +792,28 @@ async function main(): Promise<void> {
       await startup?.catch(() => undefined)
       const host = backend.host
       if (host === undefined) throw new DesktopUpdatePreparationError('tasks-unavailable', locale.messages.updateTasksUnavailable)
-      const active = await host.updateTasks('inspect')
       const parent = currentDialogWindow()
       if (parent === undefined || !await prepareDesktopUpdateWindow(parent, locale.messages.updateFullscreenTimeout)) return false
-      const ready = desktopUpdateReadyConfirmation(locale.messages, updates.state.version ?? '', process.platform)
+      const version = updates.state.version ?? ''
+      const plugins = inspectPlugins()
+      const compatibility = pluginUpdatePrompt(plugins, locale.id === 'zh-CN')
+      const mandatory = isMandatory()
+      if (plugins.blocked) {
+        await showPluginWarning(parent, plugins)
+        return false
+      }
+      const active = await host.updateTasks('inspect')
+      const ready = desktopUpdateReadyConfirmation(locale.messages, version, process.platform)
+      const detail = active ? locale.messages.updateActiveTasksDetail : ready.detail
       const confirmation: Electron.MessageBoxOptions = {
-        type: active ? 'warning' : 'info', title: locale.messages.updateTitle,
+        type: active || plugins.issues.length > 0 ? 'warning' : 'info', title: locale.messages.updateTitle,
         message: active ? locale.messages.updateActiveTasks : ready.message,
-        detail: active ? locale.messages.updateActiveTasksDetail : ready.detail,
-        buttons: active ? [locale.messages.updateStopTasks, locale.messages.updateLater] : [locale.messages.installAndRestart],
+        detail: plugins.issues.length > 0 ? [compatibility.detail, detail].join('\n\n') : detail,
+        buttons: [active ? locale.messages.updateStopTasks : locale.messages.installAndRestart, locale.messages.updateLater],
         defaultId: 1, cancelId: 1,
       }
       if (isMandatory()) {
-        if (!await mandatoryUI?.confirm(updates.state.version ?? '', active)) return false
+        if (!await mandatoryUI?.confirm(version, active, plugins.issues.length > 0 ? compatibility.detail : undefined)) return false
       } else {
         const result = await updateDialog.show(parent, confirmation)
         if (result.response !== 0 || isMandatory()) return false
@@ -757,7 +824,19 @@ async function main(): Promise<void> {
       try {
         const stillActive = await host.updateTasks('lock')
         if (stillActive && !active) throw new DesktopUpdatePreparationError('tasks-changed', locale.messages.updateTasksChanged)
+        const finalPlugins = inspectPlugins()
+        if (!isDeepStrictEqual(finalPlugins, plugins)) {
+          await host.updateTasks('unlock')
+          if (finalPlugins.blocked || (!mandatory && finalPlugins.issues.length > 0)) await showPluginWarning(parent, finalPlugins)
+          return false
+        }
         mandatoryUI?.preparingRestart(stillActive)
+        if (!mandatory) {
+          void ordinaryMessageBox({ title: locale.messages.updateTitle, message: locale.messages.updateInstalling,
+            detail: locale.messages.updateDownloadedDetail, dismissible: false, buttons: [], cancelId: -1,
+            progress: { label: stillActive ? locale.messages.mandatoryStopping : locale.messages.mandatoryRestarting },
+          }, parent).catch((error: unknown) => { console.error(error) })
+        }
         // The embedded Platform document holds credentials issued by the Host that is about to stop.
         await platformView.closeAndWait()
         await disposeFileDrag().catch((error: unknown) => { console.error(error) })
@@ -768,6 +847,11 @@ async function main(): Promise<void> {
         // The backend's async cleanup callback can assign this after the reset above.
         const stopFailure = updateStopFailure as DesktopHostUncleanExitError | undefined
         if (stopFailure !== undefined) throw new DesktopUpdatePreparationError('stop-failed', locale.messages.updateStopFailed, stopFailure.message)
+        if (plugins.runtime !== undefined) {
+          await writeFileAtomic(join(paths.profile, pluginUpdatePlanFile), JSON.stringify({
+            version, runtime: plugins.runtime, plugins: plugins.plugins,
+          }) + '\n', { mode: 0o600 })
+        }
         await operationJournal?.drain(500)
         updateJournal?.action('install-confirmed')
         shellInstallerOwnsQuit = true
@@ -799,6 +883,17 @@ async function main(): Promise<void> {
   const updateSchedule = new DesktopUpdateSchedule(updates, resolveDesktopUpdateScheduleConfig(process.env))
 
   const downloadUpdate = async (version: string, revision = updates.revision): Promise<DesktopUpdateState> => {
+    if (revision === updates.revision && updates.state.version === version) {
+      const plugins = inspectPlugins()
+      if (plugins.blocked) {
+        await showPluginWarning(currentDialogWindow(), plugins)
+        return updates.state
+      }
+      if (!isMandatory()) {
+        void showDownloadProgress({ phase: 'downloading', version, percent: 0 })
+          .catch((error: unknown) => { console.error(error) })
+      }
+    }
     void track('desktop_upgrade_click', {})
     updateJournal?.action('download-requested')
     const state = await updates.download(version, revision)
@@ -1055,15 +1150,7 @@ async function main(): Promise<void> {
         updateDialog.focus()
         return Promise.resolve()
       }
-      const options = { type: 'info' as const, title: locale.messages.updateCheckTitle,
-        message: updates.state.phase === 'downloading' ? locale.messages.updateDownloadInProgress : locale.messages.updateVerifying,
-        detail: updates.state.phase === 'downloading' ? locale.messages.updateDownloadDetail : '', buttons: [locale.messages.updateClose], cancelId: 0,
-      }
-      return ordinaryMessageBox(options).then(() => {}).catch(async (error: unknown) => {
-        console.error(error)
-        try { await dialog.showMessageBox(options) }
-        catch (nativeError) { console.error(nativeError) }
-      })
+      return showDownloadProgress(updates.state).catch((error: unknown) => { console.error(error) })
     }
     let failedOperation: 'check' | 'download' | 'install' = 'check'
     promptOperation ??= Promise.resolve().then(async () => {
@@ -1108,11 +1195,11 @@ async function main(): Promise<void> {
           return
         }
         if (state.phase !== 'available' && !(state.phase === 'error' && state.failedOperation === 'download')) return
-        if (manual) {
+        if (manual || state.phase === 'available') {
           const result = await ordinaryMessageBox({ title: locale.messages.updateCheckTitle,
             message: formatDesktopMessage(locale.messages.updateAvailable, { version: state.version ?? '' }),
             detail: locale.messages.updateDetail,
-            buttons: [locale.messages.updateDownload], cancelId: 1 })
+            buttons: [locale.messages.updateDownload, locale.messages.updateLater], cancelId: 1 })
           if (result.response !== 0) return
         }
         if (!isMandatory() && state.version !== undefined) {
@@ -1601,7 +1688,7 @@ async function main(): Promise<void> {
         if (channelState?.error !== undefined) await showConfigurationError()
         if (channelState?.error === undefined) await Promise.all([checkPolicyManually(), updateSchedule.check(true)])
       },
-      download: downloadUpdate, install: version => updates.install(version),
+      download: downloadUpdate, install: version => updates.install(version), openPluginFolder: revealPluginSource,
     })
     void mandatoryPolicy.check('launch').then((state) => {
       if (app.isPackaged && state.error === 'authentication-required' && !isQuitting()) queuePolicyAuthentication()

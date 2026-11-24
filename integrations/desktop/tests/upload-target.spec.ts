@@ -5,6 +5,7 @@ import { loadDesktopPackageEnvironment } from '../scripts/desktop-package-enviro
 import { tagDesktopRelease } from '../scripts/desktop-release-tag.ts'
 import { uploadDesktopRelease } from '../scripts/desktop-upload-run.ts'
 import { runDesktopUploadCommand, uploadDesktopTarget } from '../scripts/upload-target.ts'
+import { requireProductionDesktopUpgrade } from '../scripts/require-desktop-upgrade-qualification.ts'
 
 vi.mock('../scripts/desktop-edgeone.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../scripts/desktop-edgeone.ts')>(),
@@ -15,6 +16,7 @@ vi.mock('../scripts/desktop-package-environment.mjs', () => ({ loadDesktopPackag
 vi.mock('../scripts/desktop-upload-plan.ts', () => ({ createDesktopUploadPlan: vi.fn() }))
 vi.mock('@deepseek-ai/dsh-desktop-publisher/desktop-cos.ts', () => ({ createDesktopCos: vi.fn() }))
 vi.mock('../scripts/desktop-upload-run.ts', () => ({ uploadDesktopRelease: vi.fn() }))
+vi.mock('../scripts/require-desktop-upgrade-qualification.ts', () => ({ requireProductionDesktopUpgrade: vi.fn() }))
 vi.mock('../scripts/desktop-release-tag.ts', async importOriginal => ({
   ...await importOriginal<typeof import('../scripts/desktop-release-tag.ts')>(),
   tagDesktopRelease: vi.fn(),
@@ -23,6 +25,10 @@ vi.mock('../scripts/desktop-release-tag.ts', async importOriginal => ({
 afterEach(() => {
   vi.restoreAllMocks()
   vi.resetAllMocks()
+})
+
+beforeEach(() => {
+  vi.mocked(requireProductionDesktopUpgrade).mockResolvedValue(undefined)
 })
 
 describe('desktop upload command', () => {
@@ -48,7 +54,10 @@ describe('desktop upload command', () => {
     await uploadDesktopTarget(['win-x64', ...latest ? ['--latest'] : []])
 
     expect(createDesktopUploadPlan).toHaveBeenCalledWith('win-x64', { environment: credentials, latest })
+    expect(requireProductionDesktopUpgrade).toHaveBeenCalledWith(plan)
     expect(uploadDesktopRelease).toHaveBeenCalledOnce()
+    expect(vi.mocked(requireProductionDesktopUpgrade).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(uploadDesktopRelease).mock.invocationCallOrder[0]!)
     expect(vi.mocked(uploadDesktopRelease).mock.calls[0]![0]).toBe(plan)
     if (environment === 'production' && latest) {
       expect(purgeDesktopInstaller).toHaveBeenCalledWith(
@@ -68,6 +77,14 @@ describe('desktop upload command', () => {
       expect(tagDesktopRelease).not.toHaveBeenCalled()
     }
   })
+
+  it('blocks a production upload before writing anything when upgrade evidence is missing', async () => {
+    vi.mocked(loadDesktopPackageEnvironment).mockReturnValue(productionEnvironment)
+    vi.mocked(requireProductionDesktopUpgrade).mockRejectedValue(new Error('missing qualification'))
+    await expect(uploadDesktopTarget(['win-x64'])).rejects.toThrow(/desktop-upgrade-qualification\.json/u)
+    expect(uploadDesktopRelease).not.toHaveBeenCalled()
+    expect(tagDesktopRelease).not.toHaveBeenCalled()
+  })
 })
 
 const productionEnvironment = {
@@ -83,6 +100,7 @@ describe('cache-only submission command', () => {
   it('submits a purge without reading or uploading an installer', async () => {
     await uploadDesktopTarget(['--latest', '--purge-only', 'mac-arm64'])
     expect(createDesktopUploadPlan).not.toHaveBeenCalled()
+    expect(requireProductionDesktopUpgrade).not.toHaveBeenCalled()
     expect(uploadDesktopRelease).not.toHaveBeenCalled()
     expect(tagDesktopRelease).not.toHaveBeenCalled()
     expect(purgeDesktopInstaller).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({

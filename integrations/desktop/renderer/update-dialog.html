@@ -13,11 +13,13 @@
     <main id="dialog" role="dialog" tabindex="-1" aria-modal="true" aria-labelledby="title" aria-describedby="detail" hidden>
       <header><h1 id="title"></h1><button id="close" class="close" type="button"></button></header>
       <p id="detail"></p>
+      <p id="status" role="status" aria-live="polite" hidden></p>
+      <progress id="progress" max="100" hidden></progress>
       <details id="technical-details" hidden>
         <summary id="technical-details-label"></summary>
         <pre id="technical-details-content" tabindex="0"></pre>
       </details>
-      <div id="actions"></div>
+      <div id="actions" hidden></div>
     </main>
     <script src="update-dialog.js"></script>
   </body>

@@ -9,6 +9,7 @@ import { parseInstallSpec, pinnedGitOrigin, type BundleInfo } from '@deepseek-ai
 import semver from 'semver'
 import type { MarketItem, MarketState } from '../shared/types.ts'
 import { SuiteError } from './errors.ts'
+import retiredPlugins from '../../catalog/retired-plugins.json' with { type: 'json' }
 import { bundledReleases, githubArchive, readBundledArchive, verifyArchive, type PublishedRelease } from './market-releases.ts'
 
 export interface InstalledBundle {
@@ -44,6 +45,7 @@ async function bundledInstallTargets(catalogPath: string, cacheDirectory?: strin
   try {
     const releases = bundledReleases.parse(JSON.parse(await readFile(new URL('../../catalog/bundled-releases.json', import.meta.url), 'utf8')))
     for (const release of releases.plugins) {
+      if (release.upgradeOnly) continue
       const key = `${release.name}@${release.version}`
       if (targets.has(key)) throw new Error('Duplicate bundled release')
       names.add(release.name)
@@ -92,6 +94,8 @@ export function updateKind(current: InstalledBundle | undefined, target: Archive
 export async function readMarket(path: string, manager: NativePluginManager, runtimeVersion: string, language: string, maxBytes: number, cacheDirectory?: string, _downloadOnDemand = false, curated: unknown[] = [], published: readonly PublishedRelease[] = []): Promise<MarketState> {
   const content = await readFile(path)
   if (content.byteLength > maxBytes) throw new SuiteError('IPW_CATALOG_TOO_LARGE', 500)
+  const defaults = isDefaultMarket(path)
+  const retired = (name: string) => defaults && retiredPlugins.includes(name)
   let index
   try { index = parseMarketIndex(JSON.parse(content.toString('utf8')), 'https://catalog.ipollowork.invalid/index.json') }
   catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 500, { cause }) }
@@ -102,10 +106,11 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       const merged = new Map(index.plugins.map(plugin => [plugin.name, plugin]))
       const additional = parseMarketIndex({ format: 1, title: 'Curated', metadata: { categories: index.metadata.categories }, plugins: curated }, 'https://catalog.ipollowork.invalid/index.json')
       for (const plugin of additional.plugins) {
+        if (retired(plugin.name)) continue
         const previous = merged.get(plugin.name)
         // An older service catalog must not hide a newer reviewed archive carried by this application.
         // Explicit operator catalogs remain authoritative; equal-version source changes retain their usual rules.
-        if (isDefaultMarket(path) && previous) {
+        if (defaults && previous) {
           const local = previous.versions.find(version => supportsRuntime(version.engines.dsh))
           const remote = plugin.versions.find(version => supportsRuntime(version.engines.dsh))
           if (local && (!remote || semver.gt(local.version, remote.version))) continue
@@ -123,7 +128,7 @@ export async function readMarket(path: string, manager: NativePluginManager, run
   return {
     title: localized(index.title, language), runtimeVersion,
     categories: Object.entries(index.metadata.categories).map(([id, value]) => ({ id, title: localized(value.title, language, id) })),
-    items: index.plugins.map(plugin => {
+    items: index.plugins.filter(plugin => !retired(plugin.name)).map(plugin => {
       const compatible = plugin.versions.find(version => supportsRuntime(version.engines.dsh))
       const version = compatible ?? plugin.versions[0]!
       const release = !remoteInstall.has(plugin.name) && bundled.names.has(plugin.name) ? published.find(candidate => candidate.name === plugin.name

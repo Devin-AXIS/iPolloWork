@@ -41,22 +41,41 @@ function setup(platform: NodeJS.Platform = 'darwin', beforeSync?: (surface: Retu
   let policy: DesktopPolicyState = { blocking: true, checking: false, page: 'https://downloads.example.com/desktop' }
   let update: DesktopUpdateState = { phase: 'ready', version: '1.0.1-nightly.1' }
   const install = vi.fn(async () => update)
+  const openPluginFolder = vi.fn(async (_name: string) => {})
   const createOverlay = (): WindowFixture => window
   const create = createOverlay as () => BrowserWindow
   const currentParent = (): WindowFixture => platform === 'win32' ? window : owner
   const parent = currentParent as () => BrowserWindow
   ui = new DesktopMandatoryUpdateWindow({ overlays: { create }, preload: 'owned', locale: resolveDesktopLocale('zh'),
     allowedPageOrigins: ['https://downloads.example.com'], parent,
-    policy: () => policy, update: () => update, refresh: async () => {}, download: async () => update, install })
+    policy: () => policy, update: () => update, refresh: async () => {}, download: async () => update, install, openPluginFolder })
   beforeSync?.(window)
   ui.sync()
   const event = { sender: window.webContents, senderFrame: window.webContents.mainFrame }
   const view = () => native.handlers.get(MANDATORY_IPC.status)!(event) as MandatoryUpdateView
-  const action = (name: string, version: string = '1.0.1-nightly.1', revision = view().confirmation?.revision) =>
-    native.handlers.get(MANDATORY_IPC.action)!(event, name, version, revision)
-  return { view, action, install, owner, policy(next: DesktopPolicyState) { policy = next; ui!.sync() },
+  const action = (name: string, version: string = '1.0.1-nightly.1', revision = view().confirmation?.revision, pluginName?: string) =>
+    native.handlers.get(MANDATORY_IPC.action)!(event, name, version, revision, pluginName)
+  return { view, action, install, openPluginFolder, owner, policy(next: DesktopPolicyState) { policy = next; ui!.sync() },
     update(next: DesktopUpdateState) { update = next; ui!.sync() } }
 }
+
+it('shows an inline plugin blocker and allows only its current local folder to open', async () => {
+  const f = setup('win32')
+  const version = '1.0.1-nightly.1'
+  f.update({ phase: 'available', version })
+  const notice = { title: 'Local plugin blocks this update', detail: 'Repair the source and retry.', localPlugins: ['workbench'] }
+  ui!.showPluginBlock(version, notice)
+  expect(f.view().pluginBlock).toEqual(notice)
+  expect(() => f.action('open-plugin', version, undefined, 'different')).toThrow(/no longer available/)
+  await f.action('open-plugin', version, undefined, 'workbench')
+  expect(f.openPluginFolder).toHaveBeenCalledExactlyOnceWith('workbench')
+  expect(f.view().policy.blocking).toBe(true)
+  expect(f.install).not.toHaveBeenCalled()
+  expect(native.messageBox).not.toHaveBeenCalled()
+  await f.action('download')
+  expect(f.view().pluginBlock).toBeUndefined()
+  expect(() => f.action('open-plugin', version, undefined, 'workbench')).toThrow(/no longer available/)
+})
 
 it('releases IPC after the Windows main window has already been destroyed', () => {
   setup('win32')

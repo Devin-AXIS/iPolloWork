@@ -1,0 +1,130 @@
+{
+  "name": "@docx-editor.dev/i18n",
+  "version": "2.39.0",
+  "description": "Shared UI locale strings and types for the @docx-editor.dev editor adapters (React and Vue).",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./en": {
+      "types": "./dist/en.d.ts",
+      "import": "./dist/en.mjs",
+      "require": "./dist/en.js"
+    },
+    "./ar": {
+      "types": "./dist/ar.d.ts",
+      "import": "./dist/ar.mjs",
+      "require": "./dist/ar.js"
+    },
+    "./de": {
+      "types": "./dist/de.d.ts",
+      "import": "./dist/de.mjs",
+      "require": "./dist/de.js"
+    },
+    "./es": {
+      "types": "./dist/es.d.ts",
+      "import": "./dist/es.mjs",
+      "require": "./dist/es.js"
+    },
+    "./fr": {
+      "types": "./dist/fr.d.ts",
+      "import": "./dist/fr.mjs",
+      "require": "./dist/fr.js"
+    },
+    "./he": {
+      "types": "./dist/he.d.ts",
+      "import": "./dist/he.mjs",
+      "require": "./dist/he.js"
+    },
+    "./hi": {
+      "types": "./dist/hi.d.ts",
+      "import": "./dist/hi.mjs",
+      "require": "./dist/hi.js"
+    },
+    "./id": {
+      "types": "./dist/id.d.ts",
+      "import": "./dist/id.mjs",
+      "require": "./dist/id.js"
+    },
+    "./it": {
+      "types": "./dist/it.d.ts",
+      "import": "./dist/it.mjs",
+      "require": "./dist/it.js"
+    },
+    "./ja": {
+      "types": "./dist/ja.d.ts",
+      "import": "./dist/ja.mjs",
+      "require": "./dist/ja.js"
+    },
+    "./pl": {
+      "types": "./dist/pl.d.ts",
+      "import": "./dist/pl.mjs",
+      "require": "./dist/pl.js"
+    },
+    "./pt-BR": {
+      "types": "./dist/pt-BR.d.ts",
+      "import": "./dist/pt-BR.mjs",
+      "require": "./dist/pt-BR.js"
+    },
+    "./ru": {
+      "types": "./dist/ru.d.ts",
+      "import": "./dist/ru.mjs",
+      "require": "./dist/ru.js"
+    },
+    "./tr": {
+      "types": "./dist/tr.d.ts",
+      "import": "./dist/tr.mjs",
+      "require": "./dist/tr.js"
+    },
+    "./zh-CN": {
+      "types": "./dist/zh-CN.d.ts",
+      "import": "./dist/zh-CN.mjs",
+      "require": "./dist/zh-CN.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "!dist/metafile-*.json",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "build": "tsup && node ../../scripts/inject-package-doc.mjs --package @docx-editor.dev/i18n",
+    "typecheck": "bun check",
+    "api:extract": "node ../../scripts/api-extractor.mjs --package @docx-editor.dev/i18n --local",
+    "api:check": "node ../../scripts/api-extractor.mjs --package @docx-editor.dev/i18n"
+  },
+  "devDependencies": {
+    "tsup": "^9.0.0",
+    "typescript7": "npm:typescript@^7.0.2"
+  },
+  "keywords": [
+    "docx",
+    "editor",
+    "i18n",
+    "locales",
+    "translations"
+  ],
+  "author": {
+    "name": "Jedr Blaszyk",
+    "email": "jedr@eigenpal.com",
+    "url": "https://github.com/jedrazb"
+  },
+  "license": "Apache-2.0",
+  "homepage": "https://docx-editor.dev/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eigenpal/docx-editor.git",
+    "directory": "packages/i18n"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

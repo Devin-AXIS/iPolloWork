@@ -14,6 +14,9 @@ const colors = {
   'media-studio': ['#e5f1ff', '#356cb5'], 'reference-context': ['#fff1df', '#99612d'],
   'short-video-studio': ['#fcebf2', '#b34270'], 'workspace-canvas': ['#e4f5f2', '#247b6b'],
   'data-annotation': ['#edf4df', '#5d772c'], 'operation-recorder': ['#fff0e7', '#af5d30'],
+  'markdown-editor': ['#e2efff', '#3c629e'], 'excel-editor': ['#e4f4e9', '#277554'],
+  'conversation-export': ['#efeafa', '#7259a7'], 'task-templates': ['#e8effa', '#3a598d'],
+  'reference-preparation': ['#fff1df', '#99612d'], 'legacy-workspace-import': ['#f9edeb', '#a34d46'],
 }
 export function featureArtwork(id) {
   const Icon = portedIcons[id]

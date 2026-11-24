@@ -1,0 +1,10 @@
+{
+  "//": "Environment boundary for the export lane. Translators may consume only the neutral store and published layout records; DOM globals must fail compilation.",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "noEmit": true
+  },
+  "include": ["."],
+  "exclude": ["__tests__"]
+}

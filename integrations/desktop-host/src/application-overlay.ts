@@ -4,11 +4,10 @@ import { join } from 'node:path'
 
 /**
  * Keep the installation's Suite enabled after the profile's editable layers.
- * @param runtimeDir Physical installed runtime directory.
  * @param profileDir Profile owned by this Desktop application.
  * @returns Overlay path accepted by the official DSH launcher.
  */
-export function writeApplicationOverlay(_runtimeDir: string, profileDir: string): string {
+export function writeApplicationOverlay(profileDir: string): string {
   const path = join(profileDir, 'ipollowork-application.overlay.json')
   writeFileSync(path, JSON.stringify([
     // Product entries share the native profile tree, retaining their stable patch ids.

@@ -5,7 +5,7 @@ description: Use with any iPolloWork template generating video, slides, websites
 
 # Reference context workflow
 
-This shared built-in Skill is supplied by the Reference Context package independently of the Video and Design plugins. Apply the same evidence contract to every template; let the selected template workflow decide the output format.
+Apply the same reference evidence contract in Design and Video. Follow the selected Studio workflow to choose the output format.
 
 1. Read `creative-context.json` at the workspace path in the request. The application compiles it locally from PDF, DOCX, PPTX, Markdown, TXT, CSV and JSON. It is an index, not the complete source. Version 1 uses `kind: creative-context` and `extraction.modelUsed: false`. If the version differs, inspect the supplied contract instead of guessing its meaning.
 2. Use `brief.user` as the confirmed requirements. `brief.inferred` is only a rule-based suggestion. An explicitly empty `brief.user.style` means the template default; do not silently restore the source style. Keep source documents separate when their facts or styles conflict.

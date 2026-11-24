@@ -33,6 +33,8 @@ Windows 本机已准备好的 Jovan 开发版，可用 `powershell -NoProfile -F
 
 在目标提交上建一个纯数字版本的草稿，例如 `v1.0.5`，然后运行 `ipollo-release-packages.yml`。工作流验证打包后的运行时，并为每个平台附上一份安装包，同时上传 macOS 更新 ZIP、blockmap 和 macOS 构建记录。运行 `ipollo-publish.yml` 校验文件、生成稳定版更新清单和校验和，再发布草稿。已配置国内存储时可开启镜像选项。
 
+正式发布前按[桌面升级验收 Skill](../../.agents/skills/desktop-upgrade-qualification/SKILL.md)完成验收。GitHub 草稿须附上 `desktop-upgrade-qualification.json`，COS 生产发布须在原包目录提供同名记录。发布前校验四项结果、源码提交、内置 DSH 和待发文件哈希。草稿打包和测试渠道可继续用于验收。
+
 iPollo 签名发行设置 `DSH_DESKTOP_UPDATE_URL=https://github.com/Devin-AXIS/iPolloWork/releases/latest/download` 和 `DSH_DESKTOP_UPDATE_CHANNEL=stable`。安装包中的更新器不得指向上游 DSH 下载服务；两个 Mac 架构共用包含各自 ZIP 条目的更新清单。
 
 Design 和 Video 由用户在插件市场按需安装。套件携带经过校验的插件市场归档，供安装时使用。各插件在自己的源码仓库构建，桌面发行无需单独附加这些归档。

@@ -11,6 +11,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-deepseek-account'
 import { localDragResource } from './file-drag.ts'
 import { writeApplicationOverlay } from './application-overlay.ts'
+import { applyDesktopPluginUpdate } from './plugin-update.ts'
 
 import { installDesktopUpdateTaskControl } from './update-tasks.ts'
 import { installDesktopQuitInspection } from './quit-inspection.ts'
@@ -44,25 +45,31 @@ async function main(): Promise<void> {
   // Set before the launch-environment snapshot and profile evaluation; empty means the payload sits beside the runtime directory.
   process.env.DSH_PRIMARY_RUNTIME = process.argv[4] || join(runtimeDir, '..', 'runtime', 'primary-runtime')
   const installAnchor = join(runtimeDir, 'package.json')
+  const packageManager = process.argv[5] === undefined ? undefined : {
+    command: process.execPath,
+    args: ['--expose-internals', process.argv[5]],
+    env: {
+      ELECTRON_RUN_AS_NODE: '1',
+      DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
+      PATH: (process.argv[6] ?? '') + delimiter + (process.env.PATH ?? ''),
+    },
+  }
+  try {
+    await applyDesktopPluginUpdate(projectDir, installAnchor, process.env.IPOLLOWORK_DESKTOP_VERSION, packageManager, authentication.signal)
+  } catch (error) {
+    authentication.signal.throwIfAborted()
+    // Keep the handoff for retry while the original profile opens through the native loader.
+    console.warn('desktop host: could not apply plugin update plan:', error instanceof Error ? error.name : 'UnknownError')
+  }
   const profile = loadProfileDirectory('dsh', projectDir, installAnchor)
   reportSkippedBundles('dsh', profile)
   const application = runProfile({
     environment: loadLayeredEnv('dsh'),
     profile: 'desktop',
     resolvedProfile: { profile, installAnchor },
-    patchFiles: [writeApplicationOverlay(runtimeDir, projectDir)],
+    patchFiles: [writeApplicationOverlay(projectDir)],
     args: ['--no-open', '--host', '127.0.0.1', '--port', '0'],
-    ...(process.argv[5] === undefined ? {} : {
-      packageManager: {
-        command: process.execPath,
-        args: ['--expose-internals', process.argv[5]],
-        env: {
-          ELECTRON_RUN_AS_NODE: '1',
-          DSH_DESKTOP_NODE_EXECUTABLE: process.execPath,
-          PATH: `${process.argv[6] ?? ''}${delimiter}${process.env.PATH ?? ''}`,
-        },
-      },
-    }),
+    ...(packageManager === undefined ? {} : { packageManager }),
   })
   let stopping: Promise<void> | undefined
   const dragReads = new Map<number, AbortController>()

@@ -1,0 +1,1836 @@
+{
+  "accept": {
+    "paragraph-ins": [
+      {
+        "p": "CASE paragraph-ins",
+        "align": "left"
+      },
+      {
+        "p": "First",
+        "align": "right"
+      },
+      {
+        "p": "Second",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-ins",
+        "align": "left"
+      }
+    ],
+    "empty-paragraph-ins": [
+      {
+        "p": "CASE empty-paragraph-ins",
+        "align": "left"
+      },
+      {
+        "p": "",
+        "align": "left"
+      },
+      {
+        "p": "Survivor",
+        "align": "left"
+      },
+      {
+        "p": "END empty-paragraph-ins",
+        "align": "left"
+      }
+    ],
+    "consecutive-paragraph-ins": [
+      {
+        "p": "CASE consecutive-paragraph-ins",
+        "align": "left"
+      },
+      {
+        "p": "One",
+        "align": "left"
+      },
+      {
+        "p": "Two",
+        "align": "left"
+      },
+      {
+        "p": "Three",
+        "align": "left"
+      },
+      {
+        "p": "END consecutive-paragraph-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-before-table-ins": [
+      {
+        "p": "CASE paragraph-before-table-ins",
+        "align": "left"
+      },
+      {
+        "p": "Before",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "After",
+        "align": "left"
+      },
+      {
+        "p": "END paragraph-before-table-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-in-cell-ins": [
+      {
+        "p": "CASE paragraph-in-cell-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "First",
+                  "align": "left"
+                },
+                {
+                  "p": "Second",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Neighbour",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END paragraph-in-cell-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-properties-ins": [
+      {
+        "p": "CASE paragraph-properties-ins",
+        "align": "left"
+      },
+      {
+        "p": "First",
+        "align": "right"
+      },
+      {
+        "p": "Second",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-properties-ins",
+        "align": "left"
+      }
+    ],
+    "section-break-ins": [
+      {
+        "p": "CASE section-break-ins",
+        "align": "left"
+      },
+      {
+        "p": "Before section",
+        "align": "left"
+      },
+      {
+        "p": "After section",
+        "align": "left"
+      },
+      {
+        "p": "END section-break-ins",
+        "align": "left"
+      }
+    ],
+    "inline-field-ins": [
+      {
+        "p": "CASE inline-field-ins",
+        "align": "left"
+      },
+      {
+        "p": "Field value tail",
+        "align": "left"
+      },
+      {
+        "p": "END inline-field-ins",
+        "align": "left"
+      }
+    ],
+    "hyperlink-ins": [
+      {
+        "p": "CASE hyperlink-ins",
+        "align": "left"
+      },
+      {
+        "p": "Link text tail",
+        "align": "left"
+      },
+      {
+        "p": "END hyperlink-ins",
+        "align": "left"
+      }
+    ],
+    "note-reference-ins": [
+      {
+        "p": "CASE note-reference-ins",
+        "align": "left"
+      },
+      {
+        "p": "Note anchor ",
+        "align": "left"
+      },
+      {
+        "p": "END note-reference-ins",
+        "align": "left"
+      }
+    ],
+    "bookmarked-text-ins": [
+      {
+        "p": "CASE bookmarked-text-ins",
+        "align": "left"
+      },
+      {
+        "p": "Bookmarked tail",
+        "align": "left"
+      },
+      {
+        "p": "END bookmarked-text-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-del": [
+      {
+        "p": "CASE paragraph-del",
+        "align": "left"
+      },
+      {
+        "p": "FirstSecond",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-del",
+        "align": "left"
+      }
+    ],
+    "empty-paragraph-del": [
+      {
+        "p": "CASE empty-paragraph-del",
+        "align": "left"
+      },
+      {
+        "p": "Survivor",
+        "align": "left"
+      },
+      {
+        "p": "END empty-paragraph-del",
+        "align": "left"
+      }
+    ],
+    "consecutive-paragraph-del": [
+      {
+        "p": "CASE consecutive-paragraph-del",
+        "align": "left"
+      },
+      {
+        "p": "OneTwoThree",
+        "align": "left"
+      },
+      {
+        "p": "END consecutive-paragraph-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-before-table-del": [
+      {
+        "p": "CASE paragraph-before-table-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "BeforeLeft",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "After",
+        "align": "left"
+      },
+      {
+        "p": "END paragraph-before-table-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-in-cell-del": [
+      {
+        "p": "CASE paragraph-in-cell-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "FirstSecond",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Neighbour",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END paragraph-in-cell-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-properties-del": [
+      {
+        "p": "CASE paragraph-properties-del",
+        "align": "left"
+      },
+      {
+        "p": "FirstSecond",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-properties-del",
+        "align": "left"
+      }
+    ],
+    "section-break-del": [
+      {
+        "p": "CASE section-break-del",
+        "align": "left"
+      },
+      {
+        "p": "Before sectionAfter section",
+        "align": "left"
+      },
+      {
+        "p": "END section-break-del",
+        "align": "left"
+      }
+    ],
+    "inline-field-del": [
+      {
+        "p": "CASE inline-field-del",
+        "align": "left"
+      },
+      {
+        "p": " tail",
+        "align": "left"
+      },
+      {
+        "p": "END inline-field-del",
+        "align": "left"
+      }
+    ],
+    "hyperlink-del": [
+      {
+        "p": "CASE hyperlink-del",
+        "align": "left"
+      },
+      {
+        "p": " tail",
+        "align": "left"
+      },
+      {
+        "p": "END hyperlink-del",
+        "align": "left"
+      }
+    ],
+    "note-reference-del": [
+      {
+        "p": "CASE note-reference-del",
+        "align": "left"
+      },
+      {
+        "p": "Note anchor ",
+        "align": "left"
+      },
+      {
+        "p": "END note-reference-del",
+        "align": "left"
+      }
+    ],
+    "bookmarked-text-del": [
+      {
+        "p": "CASE bookmarked-text-del",
+        "align": "left"
+      },
+      {
+        "p": " tail",
+        "align": "left"
+      },
+      {
+        "p": "END bookmarked-text-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-format": [
+      {
+        "p": "CASE paragraph-format",
+        "align": "left"
+      },
+      {
+        "p": "Formatting",
+        "align": "right"
+      },
+      {
+        "p": "END paragraph-format",
+        "align": "left"
+      }
+    ],
+    "run-format": [
+      {
+        "p": "CASE run-format",
+        "align": "left"
+      },
+      {
+        "p": "Formatted",
+        "align": "left"
+      },
+      {
+        "p": "END run-format",
+        "align": "left"
+      }
+    ],
+    "section-format": [
+      {
+        "p": "CASE section-format",
+        "align": "left"
+      },
+      {
+        "p": "Section formatting",
+        "align": "left"
+      },
+      {
+        "p": "END section-format",
+        "align": "left"
+      }
+    ],
+    "section-empty-history": [
+      {
+        "p": "CASE section-empty-history",
+        "align": "left"
+      },
+      {
+        "p": "Default section",
+        "align": "left"
+      },
+      {
+        "p": "END section-empty-history",
+        "align": "left"
+      }
+    ],
+    "numbering-insertion": [
+      {
+        "p": "CASE numbering-insertion",
+        "align": "left"
+      },
+      {
+        "p": "Numbered item",
+        "align": "left"
+      },
+      {
+        "p": "END numbering-insertion",
+        "align": "left"
+      }
+    ],
+    "numbering-property-history": [
+      {
+        "p": "CASE numbering-property-history",
+        "align": "left"
+      },
+      {
+        "p": "Numbering history",
+        "align": "left"
+      },
+      {
+        "p": "END numbering-property-history",
+        "align": "left"
+      }
+    ],
+    "numbering-insertion-and-history": [
+      {
+        "p": "CASE numbering-insertion-and-history",
+        "align": "left"
+      },
+      {
+        "p": "Numbering insertion history",
+        "align": "left"
+      },
+      {
+        "p": "END numbering-insertion-and-history",
+        "align": "left"
+      }
+    ],
+    "sdt-contained-ins": [
+      {
+        "p": "CASE sdt-contained-ins",
+        "align": "left"
+      },
+      {
+        "sdt": [
+          {
+            "p": "Controlled",
+            "align": "left"
+          }
+        ]
+      },
+      {
+        "p": "END sdt-contained-ins",
+        "align": "left"
+      }
+    ],
+    "nested-table-ins": [
+      {
+        "p": "CASE nested-table-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "grid": 1,
+                  "rows": [
+                    [
+                      {
+                        "span": "1",
+                        "blocks": [
+                          {
+                            "p": "Nested",
+                            "align": "left"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "p": "Tail",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Outside",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END nested-table-ins",
+        "align": "left"
+      }
+    ],
+    "row-span-ins": [
+      {
+        "p": "CASE row-span-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "2",
+              "blocks": [
+                {
+                  "p": "Spanning",
+                  "align": "left"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END row-span-ins",
+        "align": "left"
+      }
+    ],
+    "tracked-content-in-row-ins": [
+      {
+        "p": "CASE tracked-content-in-row-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Inserted",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Other",
+                  "align": "left"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline2",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END tracked-content-in-row-ins",
+        "align": "left"
+      }
+    ],
+    "sdt-contained-del": [
+      {
+        "p": "CASE sdt-contained-del",
+        "align": "left"
+      },
+      {
+        "sdt": [
+          {
+            "p": "",
+            "align": "left"
+          }
+        ]
+      },
+      {
+        "p": "END sdt-contained-del",
+        "align": "left"
+      }
+    ],
+    "row-span-del": [
+      {
+        "p": "CASE row-span-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END row-span-del",
+        "align": "left"
+      }
+    ],
+    "tracked-content-in-row-del": [
+      {
+        "p": "CASE tracked-content-in-row-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline2",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END tracked-content-in-row-del",
+        "align": "left"
+      }
+    ],
+    "table-properties": [
+      {
+        "p": "CASE table-properties",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END table-properties",
+        "align": "left"
+      }
+    ],
+    "row-properties": [
+      {
+        "p": "CASE row-properties",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END row-properties",
+        "align": "left"
+      }
+    ],
+    "cell-properties": [
+      {
+        "p": "CASE cell-properties",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END cell-properties",
+        "align": "left"
+      }
+    ],
+    "paired-move": [
+      {
+        "p": "CASE paired-move",
+        "align": "left"
+      },
+      {
+        "p": "",
+        "align": "left"
+      },
+      {
+        "p": "Between",
+        "align": "left"
+      },
+      {
+        "p": "Moved",
+        "align": "left"
+      },
+      {
+        "p": "END paired-move",
+        "align": "left"
+      }
+    ]
+  },
+  "reject": {
+    "paragraph-ins": [
+      {
+        "p": "CASE paragraph-ins",
+        "align": "left"
+      },
+      {
+        "p": "FirstSecond",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-ins",
+        "align": "left"
+      }
+    ],
+    "empty-paragraph-ins": [
+      {
+        "p": "CASE empty-paragraph-ins",
+        "align": "left"
+      },
+      {
+        "p": "Survivor",
+        "align": "left"
+      },
+      {
+        "p": "END empty-paragraph-ins",
+        "align": "left"
+      }
+    ],
+    "consecutive-paragraph-ins": [
+      {
+        "p": "CASE consecutive-paragraph-ins",
+        "align": "left"
+      },
+      {
+        "p": "OneTwoThree",
+        "align": "left"
+      },
+      {
+        "p": "END consecutive-paragraph-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-before-table-ins": [
+      {
+        "p": "CASE paragraph-before-table-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "BeforeLeft",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "After",
+        "align": "left"
+      },
+      {
+        "p": "END paragraph-before-table-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-in-cell-ins": [
+      {
+        "p": "CASE paragraph-in-cell-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "FirstSecond",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Neighbour",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END paragraph-in-cell-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-properties-ins": [
+      {
+        "p": "CASE paragraph-properties-ins",
+        "align": "left"
+      },
+      {
+        "p": "FirstSecond",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-properties-ins",
+        "align": "left"
+      }
+    ],
+    "section-break-ins": [
+      {
+        "p": "CASE section-break-ins",
+        "align": "left"
+      },
+      {
+        "p": "Before sectionAfter section",
+        "align": "left"
+      },
+      {
+        "p": "END section-break-ins",
+        "align": "left"
+      }
+    ],
+    "inline-field-ins": [
+      {
+        "p": "CASE inline-field-ins",
+        "align": "left"
+      },
+      {
+        "p": " tail",
+        "align": "left"
+      },
+      {
+        "p": "END inline-field-ins",
+        "align": "left"
+      }
+    ],
+    "hyperlink-ins": [
+      {
+        "p": "CASE hyperlink-ins",
+        "align": "left"
+      },
+      {
+        "p": " tail",
+        "align": "left"
+      },
+      {
+        "p": "END hyperlink-ins",
+        "align": "left"
+      }
+    ],
+    "note-reference-ins": [
+      {
+        "p": "CASE note-reference-ins",
+        "align": "left"
+      },
+      {
+        "p": "Note anchor ",
+        "align": "left"
+      },
+      {
+        "p": "END note-reference-ins",
+        "align": "left"
+      }
+    ],
+    "bookmarked-text-ins": [
+      {
+        "p": "CASE bookmarked-text-ins",
+        "align": "left"
+      },
+      {
+        "p": " tail",
+        "align": "left"
+      },
+      {
+        "p": "END bookmarked-text-ins",
+        "align": "left"
+      }
+    ],
+    "paragraph-del": [
+      {
+        "p": "CASE paragraph-del",
+        "align": "left"
+      },
+      {
+        "p": "First",
+        "align": "right"
+      },
+      {
+        "p": "Second",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-del",
+        "align": "left"
+      }
+    ],
+    "empty-paragraph-del": [
+      {
+        "p": "CASE empty-paragraph-del",
+        "align": "left"
+      },
+      {
+        "p": "",
+        "align": "left"
+      },
+      {
+        "p": "Survivor",
+        "align": "left"
+      },
+      {
+        "p": "END empty-paragraph-del",
+        "align": "left"
+      }
+    ],
+    "consecutive-paragraph-del": [
+      {
+        "p": "CASE consecutive-paragraph-del",
+        "align": "left"
+      },
+      {
+        "p": "One",
+        "align": "left"
+      },
+      {
+        "p": "Two",
+        "align": "left"
+      },
+      {
+        "p": "Three",
+        "align": "left"
+      },
+      {
+        "p": "END consecutive-paragraph-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-before-table-del": [
+      {
+        "p": "CASE paragraph-before-table-del",
+        "align": "left"
+      },
+      {
+        "p": "Before",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "After",
+        "align": "left"
+      },
+      {
+        "p": "END paragraph-before-table-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-in-cell-del": [
+      {
+        "p": "CASE paragraph-in-cell-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "First",
+                  "align": "left"
+                },
+                {
+                  "p": "Second",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Neighbour",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END paragraph-in-cell-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-properties-del": [
+      {
+        "p": "CASE paragraph-properties-del",
+        "align": "left"
+      },
+      {
+        "p": "First",
+        "align": "left"
+      },
+      {
+        "p": "Second",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-properties-del",
+        "align": "left"
+      }
+    ],
+    "section-break-del": [
+      {
+        "p": "CASE section-break-del",
+        "align": "left"
+      },
+      {
+        "p": "Before section",
+        "align": "left"
+      },
+      {
+        "p": "After section",
+        "align": "left"
+      },
+      {
+        "p": "END section-break-del",
+        "align": "left"
+      }
+    ],
+    "inline-field-del": [
+      {
+        "p": "CASE inline-field-del",
+        "align": "left"
+      },
+      {
+        "p": "Field value tail",
+        "align": "left"
+      },
+      {
+        "p": "END inline-field-del",
+        "align": "left"
+      }
+    ],
+    "hyperlink-del": [
+      {
+        "p": "CASE hyperlink-del",
+        "align": "left"
+      },
+      {
+        "p": "Link text tail",
+        "align": "left"
+      },
+      {
+        "p": "END hyperlink-del",
+        "align": "left"
+      }
+    ],
+    "note-reference-del": [
+      {
+        "p": "CASE note-reference-del",
+        "align": "left"
+      },
+      {
+        "p": "Note anchor ",
+        "align": "left"
+      },
+      {
+        "p": "END note-reference-del",
+        "align": "left"
+      }
+    ],
+    "bookmarked-text-del": [
+      {
+        "p": "CASE bookmarked-text-del",
+        "align": "left"
+      },
+      {
+        "p": "Bookmarked tail",
+        "align": "left"
+      },
+      {
+        "p": "END bookmarked-text-del",
+        "align": "left"
+      }
+    ],
+    "paragraph-format": [
+      {
+        "p": "CASE paragraph-format",
+        "align": "left"
+      },
+      {
+        "p": "Formatting",
+        "align": "center"
+      },
+      {
+        "p": "END paragraph-format",
+        "align": "left"
+      }
+    ],
+    "run-format": [
+      {
+        "p": "CASE run-format",
+        "align": "left"
+      },
+      {
+        "p": "Formatted",
+        "align": "left"
+      },
+      {
+        "p": "END run-format",
+        "align": "left"
+      }
+    ],
+    "section-format": [
+      {
+        "p": "CASE section-format",
+        "align": "left"
+      },
+      {
+        "p": "Section formatting",
+        "align": "left"
+      },
+      {
+        "p": "END section-format",
+        "align": "left"
+      }
+    ],
+    "section-empty-history": [
+      {
+        "p": "CASE section-empty-history",
+        "align": "left"
+      },
+      {
+        "p": "Default section",
+        "align": "left"
+      },
+      {
+        "p": "END section-empty-history",
+        "align": "left"
+      }
+    ],
+    "numbering-insertion": [
+      {
+        "p": "CASE numbering-insertion",
+        "align": "left"
+      },
+      {
+        "p": "Numbered item",
+        "align": "left"
+      },
+      {
+        "p": "END numbering-insertion",
+        "align": "left"
+      }
+    ],
+    "numbering-property-history": [
+      {
+        "p": "CASE numbering-property-history",
+        "align": "left"
+      },
+      {
+        "p": "Numbering history",
+        "align": "center"
+      },
+      {
+        "p": "END numbering-property-history",
+        "align": "left"
+      }
+    ],
+    "numbering-insertion-and-history": [
+      {
+        "p": "CASE numbering-insertion-and-history",
+        "align": "left"
+      },
+      {
+        "p": "Numbering insertion history",
+        "align": "center"
+      },
+      {
+        "p": "END numbering-insertion-and-history",
+        "align": "left"
+      }
+    ],
+    "sdt-contained-ins": [
+      {
+        "p": "CASE sdt-contained-ins",
+        "align": "left"
+      },
+      {
+        "sdt": [
+          {
+            "p": "",
+            "align": "left"
+          }
+        ]
+      },
+      {
+        "p": "END sdt-contained-ins",
+        "align": "left"
+      }
+    ],
+    "row-span-ins": [
+      {
+        "p": "CASE row-span-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END row-span-ins",
+        "align": "left"
+      }
+    ],
+    "tracked-content-in-row-ins": [
+      {
+        "p": "CASE tracked-content-in-row-ins",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline2",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END tracked-content-in-row-ins",
+        "align": "left"
+      }
+    ],
+    "sdt-contained-del": [
+      {
+        "p": "CASE sdt-contained-del",
+        "align": "left"
+      },
+      {
+        "sdt": [
+          {
+            "p": "Controlled",
+            "align": "left"
+          }
+        ]
+      },
+      {
+        "p": "END sdt-contained-del",
+        "align": "left"
+      }
+    ],
+    "nested-table-del": [
+      {
+        "p": "CASE nested-table-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "grid": 1,
+                  "rows": [
+                    [
+                      {
+                        "span": "1",
+                        "blocks": [
+                          {
+                            "p": "Nested",
+                            "align": "left"
+                          }
+                        ]
+                      }
+                    ]
+                  ]
+                },
+                {
+                  "p": "Tail",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Outside",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END nested-table-del",
+        "align": "left"
+      }
+    ],
+    "row-span-del": [
+      {
+        "p": "CASE row-span-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "2",
+              "blocks": [
+                {
+                  "p": "Spanning",
+                  "align": "left"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END row-span-del",
+        "align": "left"
+      }
+    ],
+    "tracked-content-in-row-del": [
+      {
+        "p": "CASE tracked-content-in-row-del",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Deleted",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Other",
+                  "align": "left"
+                }
+              ]
+            }
+          ],
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Baseline2",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END tracked-content-in-row-del",
+        "align": "left"
+      }
+    ],
+    "table-properties": [
+      {
+        "p": "CASE table-properties",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END table-properties",
+        "align": "left"
+      }
+    ],
+    "row-properties": [
+      {
+        "p": "CASE row-properties",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END row-properties",
+        "align": "left"
+      }
+    ],
+    "cell-properties": [
+      {
+        "p": "CASE cell-properties",
+        "align": "left"
+      },
+      {
+        "grid": 2,
+        "rows": [
+          [
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Left",
+                  "align": "left"
+                }
+              ]
+            },
+            {
+              "span": "1",
+              "blocks": [
+                {
+                  "p": "Right",
+                  "align": "left"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      {
+        "p": "END cell-properties",
+        "align": "left"
+      }
+    ],
+    "paired-move": [
+      {
+        "p": "CASE paired-move",
+        "align": "left"
+      },
+      {
+        "p": "Moved",
+        "align": "left"
+      },
+      {
+        "p": "Between",
+        "align": "left"
+      },
+      {
+        "p": "",
+        "align": "left"
+      },
+      {
+        "p": "END paired-move",
+        "align": "left"
+      }
+    ]
+  }
+}

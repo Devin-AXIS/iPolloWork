@@ -1,0 +1,144 @@
+{
+  "name": "@docx-editor.dev/core",
+  "version": "2.39.0",
+  "description": "Framework-agnostic core for docx-editor.dev: OOXML parse/serialize, the canonical document tree, layout and paint, and the Editor contract the adapters render.",
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "engines": {
+    "node": "^20.16.0 || >=22.3.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./automation": {
+      "types": "./dist/automation.d.ts",
+      "import": "./dist/automation.js",
+      "require": "./dist/automation.cjs"
+    },
+    "./binding": {
+      "types": "./dist/binding.d.ts",
+      "import": "./dist/binding.js",
+      "require": "./dist/binding.cjs"
+    },
+    "./collaboration": {
+      "types": "./dist/collaboration.d.ts",
+      "import": "./dist/collaboration.js",
+      "require": "./dist/collaboration.cjs"
+    },
+    "./collaboration/replication": {
+      "types": "./dist/collaboration/replication.d.ts",
+      "import": "./dist/collaboration/replication.js",
+      "require": "./dist/collaboration/replication.cjs"
+    },
+    "./contracts/editor": {
+      "types": "./dist/contracts/editor.d.ts",
+      "import": "./dist/contracts/editor.js",
+      "require": "./dist/contracts/editor.cjs"
+    },
+    "./contracts/document": {
+      "types": "./dist/contracts/document.d.ts",
+      "import": "./dist/contracts/document.js",
+      "require": "./dist/contracts/document.cjs"
+    },
+    "./contracts/interaction": {
+      "types": "./dist/contracts/interaction.d.ts",
+      "import": "./dist/contracts/interaction.js",
+      "require": "./dist/contracts/interaction.cjs"
+    },
+    "./contracts/modules": {
+      "types": "./dist/contracts/modules.d.ts",
+      "import": "./dist/contracts/modules.js",
+      "require": "./dist/contracts/modules.cjs"
+    },
+    "./contracts/types": {
+      "types": "./dist/contracts/types.d.ts",
+      "import": "./dist/contracts/types.js",
+      "require": "./dist/contracts/types.cjs"
+    },
+    "./layout": {
+      "types": "./dist/layout.d.ts",
+      "import": "./dist/layout.js",
+      "require": "./dist/layout.cjs"
+    },
+    "./output": {
+      "types": "./dist/output.d.ts",
+      "import": "./dist/output.js",
+      "require": "./dist/output.cjs"
+    },
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "import": "./dist/export.js",
+      "require": "./dist/export.cjs"
+    },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js",
+      "require": "./dist/store.cjs"
+    },
+    "./editor": {
+      "types": "./dist/editor.d.ts",
+      "import": "./dist/editor.js",
+      "require": "./dist/editor.cjs"
+    },
+    "./styles/editor.css": "./dist/editor.css",
+    "./harfbuzz.wasm": "./dist/harfbuzz.wasm",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "node ../../scripts/check-built-siblings.mjs && node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsup && node ../../scripts/build-core-declarations.mjs && node ../../scripts/build-core-styles.mjs",
+    "typecheck": "bun check"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.6.2",
+    "cssnano": "^9.9.0",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^3.4.1",
+    "tailwindcss-animate": "^1.0.7",
+    "typescript7": "npm:typescript@^7.0.2"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eigenpal/docx-editor.git",
+    "directory": "packages/core"
+  },
+  "dependencies": {
+    "@docx-editor.dev/i18n": "^2.39.0",
+    "bidi-js": "1.1.0",
+    "emf-converter": "4.28.0",
+    "fast-xml-parser": "^5.12.0",
+    "fflate": "^0.8.2",
+    "harfbuzzjs": "1.6.4",
+    "prosemirror-commands": "^1.7.1",
+    "prosemirror-keymap": "^1.2.3",
+    "prosemirror-model": "^1.25.13",
+    "prosemirror-state": "^1.4.4",
+    "prosemirror-view": "^1.42.9",
+    "utif2": "4.1.0"
+  },
+  "peerDependencies": {
+    "pdf-lib": "^1.17.1",
+    "yjs": "^13.6.0"
+  },
+  "peerDependenciesMeta": {
+    "pdf-lib": {
+      "optional": true
+    },
+    "yjs": {
+      "optional": true
+    }
+  },
+  "files": [
+    "dist",
+    "docs",
+    "licenses",
+    "!dist/metafile-*.json",
+    "README.md",
+    "THIRD_PARTY_NOTICES.md"
+  ]
+}

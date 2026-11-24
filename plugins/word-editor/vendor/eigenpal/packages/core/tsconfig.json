@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["bun"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "declaration": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "allowImportingTsExtensions": true,
+    "paths": {
+      "@docx-editor.dev/core": ["./src/index.ts"],
+      "@docx-editor.dev/core/automation": ["./src/automation/index.ts"],
+      "@docx-editor.dev/core/binding": ["./src/binding/index.ts"],
+      "@docx-editor.dev/core/collaboration/replication": ["./src/collaboration/replication.ts"],
+      "@docx-editor.dev/core/collaboration": ["./src/collaboration/index.ts"],
+      "@docx-editor.dev/core/contracts/editor": ["./src/contracts/editor.ts"],
+      "@docx-editor.dev/core/contracts/document": ["./src/contracts/document.ts"],
+      "@docx-editor.dev/core/contracts/interaction": ["./src/contracts/interaction.ts"],
+      "@docx-editor.dev/core/contracts/modules": ["./src/contracts/modules.ts"],
+      "@docx-editor.dev/core/contracts/types": ["./src/contracts/types-barrel.ts"],
+      "@docx-editor.dev/core/layout": ["./src/layout/index.ts"],
+      "@docx-editor.dev/core/output": ["./src/output/index.ts"],
+      "@docx-editor.dev/core/store": ["./src/store/index.ts"],
+      "@docx-editor.dev/core/editor": ["./src/editor/index.ts"],
+      "@docx-editor.dev/core/export": ["./src/export/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/store/__tests__",
+    "src/layout/__tests__",
+    "src/output/__tests__",
+    "src/binding/__tests__",
+    "src/editor/__tests__"
+  ]
+}

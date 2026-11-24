@@ -1,0 +1,3 @@
+- insert:
+    - id: ipollo-word-editor
+      name: '@ipollo/dsh-word-editor'

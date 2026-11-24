@@ -6,6 +6,12 @@ DSH 基准由[运行时固定记录](upstream.json)指定：`dsh-v0.2.3-alpha.2`
 
 ## 升级前复核的功能
 
+Design 和 Video 各自携带相同的参考资料 Skill。[Studio 兼容补丁](studio-alpha2.patch)通过 `ctx.skills.registerProvider` 为两个插件分别注册提供方，并沿用 `ipollowork-reference-analyzer` 名称。升级时分别验证单装、同时启用和停用任意一个 Studio 后都能读取完整 Skill。iPolloWork 默认市场移除了独立的参考资料、DeepSeek Harness 和插件工坊条目，同时过滤服务端旧目录中的同名条目。安装包保留这三个已核验的归档，用于迁移已有安装。
+
+桌面更新源附带打包时的目标 DSH 和已验收归档身份。桌面外壳在确认安装前通过 DSH 原生清单检查预检，并在锁定 Host 新请求后复查。仍启用且不兼容的第三方插件或本地链接阻止安装，已停用的不兼容项在确认时列出。从没有预检交接的旧客户端覆盖升级时，新版以实际随包清单重建交接，只替换已启用且确实不兼容的市场受管归档，并保留本地链接和较新版本。新版 Host 校验归档，在加载原有 profile 前运行带锁的原生包管理命令并保持启停状态。单个归档校验或安装失败时保留交接供重试，其余迁移和原生工作区启动继续执行。下次更换 pin 时复验从无交接旧版迁移、缓存来源、版本与哈希一致性、损坏归档后的启动和重试，以及用户配置和数据文件哈希。
+
+短片工作台预览缓存随视图释放，继续使用现有 `asset-read` 操作和 `ui/resource-teardown` 桥接消息。更换 DSH 版本时，从原生插件管理器打开实际发货工作台，复测图片预载、主动打开音视频、项目和视图切换、iframe 销毁及后台生成任务。
+
 alpha.2 的 `skill-office` 提供方仅发布一个覆盖 Word、PowerPoint 和 Excel 的 `office` 技能，原有 `office-docx`、`office-pptx`、`office-xlsx` 条目已移除。桌面打包须通过原生注册表列出并加载合并后的技能；冒烟仍执行三类真实文档转 PDF、图片渲染、OpenDocument 转换及 XLSX 重算。后续升级同时复核提供方当前目录和这些真实操作。
 
 Mac 打包先核对官方已发布 `dsh-cua-macos` 归档的锁定 SHA-512、准确 SDK 包版本、`cuaHelperSourceDigest` 和 `verifyCuaHelperPayload` 的双架构应用代次，再通过固定版本 `build_app.py` 的发布函数应用产品 Developer ID，公证、封存并重新读取选中的应用路径，运行宿主架构的官方 `protocol_e2e.py`。官方实现字节保持不变。后续升级复核这些构建工具接口和真实 Mac 签名、协议。
@@ -54,6 +60,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 
 | 功能与产品代码 | DSH 依赖 | 验证 |
 | --- | --- | --- |
+| [桌面更新兼容检查](../desktop/src/plugin-update.ts)和[强更恢复](../desktop/src/mandatory-update-window.ts) | 更新使用原生 profile 启用列表、`resolveBundleDir`、`evaluatePluginCompatibility` 和 `readProfileVersionExemptions` 已有的精确版本许可。迁移计划只收录安装包内已审核的市场归档。 | 在旧客户端安装用户自制的本地链接工作台。兼容更新后打开界面和调用工具，检查源码、设置、数据与启用状态。不兼容链接须能拦截强更。由强更页打开源目录，验证适配后重试，确认同一插件仍启用。 |
 | [组织网页入口](../../plugins/ipollowork-suite/src/client/organization-websites.tsx) | 复用组织设置页面和当前 DSH 连接身份下的套件 Host 接口，由 Work 账号服务判定可见性，并在打开时解析网址。 | 用管理员账号添加按部门和角色授权的链接，用有权限的成员账号打开。修改成员权限后，确认此前显示的入口也无法继续打开。检查深浅主题和窄窗口。 |
 | [插件后台安装](../../plugins/ipollowork-suite/src/client/market-installation.ts)与[原生添加插件入口](../../plugins/ipollowork-suite/src/client/add-plugin.ts) | DSH Plugin Manager 的安装请求 ID、`plugin-manager/install-state`、`plugin-manager/changed`、连接重置、`shell.overlay`、`plugins.tab`。原生工具栏的 DOM 是额外依赖，涉及 `data-plugin-toolbar`、菜单角色和本地化标签。 | 分别从工具栏主按钮、下拉菜单和市场开始安装。关闭弹窗并切换页面，确认安装继续、重新打开可见进度、安装结束按钮自动刷新。上游提供可替换的安装入口后移除 DOM 拦截。 |
 | [精选市场更新](../../plugins/ipollowork-suite/src/host/market.ts) | `listBundles` 提供版本、来源、归属、选中及只读状态。同来源的固定 Git 提交使用 `plugins.tab.update`。归档更新以预期包名、版本和 `enabled: false` 调用原生 `installBundle`，替换同一个依赖时沿用现有选中状态。 | 分别更新已启用、已停用的旧归档，重启核对版本、配置、工程文件和启用状态。验证当前版本变化、归档损坏时拒绝更新，并复验兼容性、离线目录、同来源 Git 更新、明暗主题与窄窗口。[桌面自检](../desktop/scripts/smoke-runtime.ts) 核对市场安装来源，并根据安装包内的运行时清单验证两个离线归档的哈希。 |
@@ -96,6 +103,16 @@ Design `1.0.0-beta.33` 将模板身份保存到原生 HTML 绑定，通过 `syst
 Design `1.0.0-beta.34` 将 HTML 交付约束应用于所有已激活的 Design 文档，包括直接从导航打开的文档。`surface.tsx` 等待鉴权后的 `/document` 继续编辑操作完成，再打开原生对话与右侧面板。会话级动态 `systemPrompt.section` 和必需的 `systemPrompt.context` 在关闭可选上下文时仍保留当前文件；`tools/pre-execute` 先恢复持久化绑定，再检查 `present`。升级时分别验证直接打开和使用模板，覆盖编辑器首次加载、已创建的 Agent 和插件重启。两条链路均先尝试返回 PPTX，再交付 HTML，由原生文件卡片重新打开并将编辑保存到同一个 HTML 文件。独立插件仓库的 CI 在 macOS 和 Windows 上运行该已安装归档的浏览器回归。
 
 2026 年 11 月 19 日，同一份 beta.34 归档（`a17735f6e7f7e86680e0bacdecc6113baa19dacf41928691831ba50d8c6485fc`）在 Windows 和 [macOS](https://github.com/Devin-AXIS/deepseek-design/actions/runs/44454238252) 上通过了两种对话入口的回归。测试模型先尝试返回 PPTX，再写入并交付 HTML；原生文件卡片能重新打开 Design，手动编辑保存到同一个文件，模板保留全部 38 页。Windows 还通过了 Design/Video 同时安装的验证，现有开发配置已通过原生管理器更新并启用。macOS 验证使用原生 DSH Host 和浏览器，未操作用户已有的 Electron 安装版；该安装版仍需更新插件。两端的构建、类型检查和全部 129 项源码测试均通过。较大范围的 Linux Video 安装冒烟遇到了外部 GPU 依赖下载失败。
+
+## 工作区工具与 Word 编辑插件
+
+工作区工具使用文档预览工具栏、右侧标签、会话菜单和 `uiWorkspace.startSession`。独立的 Markdown、Excel、Word 插件通过 `documentPreviews` 及对应的 `sidebar.right.tab.document` 插槽注册编辑页面，沿用原生文件地址和其他查看方式。Host 路由通过 `workspaceFiles.scopeOf`、会话沙箱、文件系统和连接鉴权检查本地文件，依据文件内容版本保存。升级固定 DSH 时，复验从对话和文件树直接打开、Markdown/XLSX/CSV/DOCX 写回、外部修改冲突、模板草稿、项目隔离、明暗主题及窄面板。Word 的开源核心构建和静态资源由插件提供。
+
+Excel 将 XLS、ODS 注册为与 XLSX 相同的渲染器读取模式。`plugins/workspace-tools/src/excel-host.ts` 将旧格式转换为 XLSX 副本，客户端通过原生 `fileActions.save` 保存，保留原文件。升级固定版本时复验大表滚动后的区域粘贴和撤销、数字格式和已有公式结果，以及两种旧格式的原生另存流程。
+
+对话导出和 Word 副本使用 Web App Bundle 的 `fileActions.save` 客户端服务。升级固定版本后，验证桌面端将生成的 Blob 写入下载目录，Web 端发起浏览器下载，并核对下载文件中的对话和 DOCX 副本内容。
+
+六个工作区市场插件各自注册路由和原生入口。任务模板和旧版工作区导入串行使用原有 `ipollo_workspace_tools` 存储域，因为 DSH 每个域只允许打开一个句柄。复验独立启用、同时编辑和导入模板、从旧合集切换后加载原有模板，以及默认市场提供各自锁定的安装包。
 
 ## 更新和验证
 

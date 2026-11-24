@@ -21,8 +21,6 @@ export function OnboardingWelcomeStep({ t, locale, heading, busy, onStart }: Pic
       <p className={css.heroDescription}>{t('onboardingIntroduction')}</p>
       <Button variant="primary" className={`${css.action} ${css.start}`} disabled={busy} onClick={onStart}>{t('onboardingStart')}</Button>
     </div>
-    <div className={css.welcomeIllustration} aria-hidden="true">
-      <OnboardingIllustration className={css.welcomeArtwork} src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />
-    </div>
+    <OnboardingIllustration src={locale === 'zh' ? artZh : art} darkSrc={locale === 'zh' ? artZhDark : artDark} />
   </div>
 }

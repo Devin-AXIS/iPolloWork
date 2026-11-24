@@ -1,0 +1,6 @@
+/* The editor stylesheet is the single source of truth in
+   @docx-editor.dev/core, including the one-surface page/overlay/input-host
+   layer used by the interactive paginated editor. This adapter imports it and
+   adds nothing — there are no React-only CSS rules (enforced by
+   `bun run check:adapter-css-thin`). */
+@import '@docx-editor.dev/core/styles/editor.css';

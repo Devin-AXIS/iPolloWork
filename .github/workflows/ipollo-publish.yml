@@ -32,6 +32,8 @@ jobs:
       RELEASE_TAG: ${{ inputs.release_tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24.22.3'
@@ -45,22 +47,23 @@ jobs:
           extra=()
           if [[ "$PROMOTE_PREVIEW" == true ]]; then extra+=(--promote-preview); fi
           node integrations/tooling/release-publication.mjs check release.json previous-release.json "${extra[@]}"
-      - name: Download and verify every release asset
+      - name: Verify release assets and desktop upgrade qualification
         run: |
           mkdir release-assets
           gh release download "$RELEASE_TAG" --dir release-assets
-          node integrations/tooling/release-publication.mjs prepare release.json release-assets
+          node integrations/tooling/release-publication.mjs prepare release.json release-assets previous-release.json
       - name: Attach verified update feeds and checksums
         run: |
           version="${RELEASE_TAG#v}"
           gh release upload "$RELEASE_TAG" release-assets/stable-mac.yml release-assets/stable.yml release-assets/IPOLLO-SHA256SUMS.txt \
             "release-assets/ipollowork-win-x64-$version.exe" release-assets/ipollowork-*-latest.* --clobber
       - name: Publish Latest
+        id: publish-latest
         run: gh release edit "$RELEASE_TAG" --draft=false --prerelease=false --latest
       - name: Verify public update feeds and every referenced download
         run: node integrations/tooling/release-publication.mjs verify release.json "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/" release-assets
       - name: Restore the previous Latest if public verification fails
-        if: failure()
+        if: failure() && steps.publish-latest.outcome == 'success'
         run: |
           if test -f previous-release.json; then
             previous=$(node -p 'JSON.parse(require("fs").readFileSync("previous-release.json", "utf8")).tag_name')
