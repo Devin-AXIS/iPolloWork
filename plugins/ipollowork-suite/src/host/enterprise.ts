@@ -866,11 +866,22 @@ export class EnterpriseService {
         const target = base + "/websites/" + z.uuid().parse(parts[3]);
         if (method === "POST" && parts[4] === "open") {
           if (!hasEnterpriseDesktop()) throw new SuiteError("IPW_DESKTOP_REQUIRED", 503);
+          const generation = this.account.generation;
           const authorized = z.object({
             userId: id, enterpriseId: z.literal(parts[1]), siteId: z.literal(parts[3]),
             label: z.string().min(1).max(80), url: z.string().max(2048),
             cookieNames: z.array(z.string().min(1).max(128)).max(12),
-          }).parse(await this.cloud(target + "/desktop"));
+          }).parse(await this.cloud(target + "/desktop").catch(async error => {
+            // Older account services authorize the URL but do not supply a desktop grant.
+            if (!(error instanceof SuiteError) || error.status !== 404 || error.code !== "IPW_ACCOUNT_UNAVAILABLE") throw error;
+            if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+            const { url } = z.object({ url: z.url({ protocol: /^https?$/ }).max(2048) }).parse(await this.cloud(target));
+            return {
+              userId: await this.signedIn(), enterpriseId: parts[1], siteId: parts[3],
+              label: new URL(url).hostname.slice(0, 80), url, cookieNames: [],
+            };
+          }));
+          if (generation !== this.account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
           await desktopEnterprise("open", { ...authorized, accountOrigin: this.origin });
           return { ok: true };
         }
@@ -889,7 +900,8 @@ export class EnterpriseService {
             departmentId: id.nullable(), role: z.enum(["owner", "admin", "member"]).nullable(),
             cookieNames: z.array(z.string().min(1).max(128)).max(12).optional(),
           }).strict()).max(50) }).strict().parse(input);
-          return this.cloud(base + "/websites/manage", data, "PUT");
+          const items = data.items.map(({ cookieNames, ...item }) => cookieNames?.length ? { ...item, cookieNames } : item);
+          return this.cloud(base + "/websites/manage", { revision: data.revision, items }, "PUT");
         }
       }
       if (parts[2] === "notifications" && parts.length === 3) {

@@ -137,6 +137,78 @@ test('the MCP list distinguishes an older service from empty, inaccessible, or m
   await assert.rejects(readMcp, { code: 'ENTERPRISE_NOT_FOUND', status: 404 })
 })
 
+test('the desktop opens an authorized website from an earlier account service without persisting cookies', async t => {
+  const origin = 'https://account.test'
+  const userId = 'existing-user'
+  const websiteId = '00000000-0000-4000-8000-000000000001'
+  const url = 'https://work.example.com/'
+  const target = `/api/v1/enterprises/team/websites/${websiteId}`
+  const calls: string[] = []
+  const opened: unknown[] = []
+  const oldVault = process.env.IPOLLOWORK_DESKTOP_VAULT
+  t.after(() => {
+    if (oldVault === undefined) delete process.env.IPOLLOWORK_DESKTOP_VAULT
+    else process.env.IPOLLOWORK_DESKTOP_VAULT = oldVault
+  })
+  process.env.IPOLLOWORK_DESKTOP_VAULT = '1'
+  for (const [property, value] of Object.entries({ connected: true, send: (message: Record<string, unknown>) => {
+    if (message.operation === 'open') opened.push(message.value)
+    const grant = JSON.stringify({ version: 1, origin, token: 'test-token' })
+    queueMicrotask(() => process.emit('message', { type: 'ipollo-enterprise-desktop-result', id: message.id, ok: true,
+      value: message.operation === 'unseal' ? grant : true }, undefined))
+    return true
+  } })) {
+    const original = Object.getOwnPropertyDescriptor(process, property)
+    Object.defineProperty(process, property, { value, configurable: true })
+    t.after(() => { if (original) Object.defineProperty(process, property, original); else Reflect.deleteProperty(process, property) })
+  }
+  let desktopStatus = 404, websiteStatus = 200
+  const account = new AccountService({
+    readRecord: async () => ({ kind: 'grant', payload: { version: 2, origin, sealed: 'fixture-sealed' } }),
+    modifyRecord: async () => undefined, deleteRecord: async () => {},
+  }, resolveConfig({ accountOrigin: origin }), new AbortController().signal, async (input, init) => {
+    const path = new URL(String(input)).pathname
+    calls.push(path)
+    if (path === '/api/auth/get-session') return Response.json({ user: { id: userId, email: 'member@example.com', name: 'Member' } })
+    assert.equal(new Headers(init?.headers).get('Authorization'), 'Bearer test-token')
+    if (path === target + '/desktop') {
+      if (desktopStatus === 404) return Response.json({ error: 'Unknown route' }, { status: 404 })
+      if (desktopStatus === 403) return Response.json({ code: 'ENTERPRISE_FORBIDDEN' }, { status: 403 })
+      return Response.json({ userId, enterpriseId: 'team', siteId: websiteId, label: 'Work', url, cookieNames: ['session'] })
+    }
+    if (path.endsWith('/websites/manage')) {
+      const input = JSON.parse(String(init?.body))
+      assert.deepEqual(input.items[0], { id: websiteId, label: 'Work', url, departmentId: null, role: null })
+      return Response.json({ revision: 2, items: input.items })
+    }
+    assert.equal(path, target)
+    return websiteStatus === 200 ? Response.json({ url }) : Response.json({ code: 'ORGANIZATION_WEBSITE_UNAVAILABLE' }, { status: 404 })
+  })
+  const enterprise = new EnterpriseService(account, {
+    workspaceRegistry: { list: () => [] }, sessionQuery: { readSurface: async () => ({ events: [] }) },
+  }, origin)
+  const open = () => enterprise.request('POST', `/organizations/team/websites/${websiteId}/open`)
+  assert.deepEqual(await open(), { ok: true })
+  assert.deepEqual(calls, [target + '/desktop', target, '/api/auth/get-session'])
+  assert.deepEqual(opened, [{ userId, enterpriseId: 'team', siteId: websiteId, label: 'work.example.com', url,
+    cookieNames: [], accountOrigin: origin }])
+  websiteStatus = 404
+  await assert.rejects(open(), { code: 'ORGANIZATION_WEBSITE_UNAVAILABLE', status: 404 })
+  desktopStatus = 403
+  const beforeDenied = calls.length
+  await assert.rejects(open(), { code: 'ENTERPRISE_FORBIDDEN', status: 403 })
+  assert.deepEqual(calls.slice(beforeDenied), [target + '/desktop'])
+  assert.equal(opened.length, 1)
+  desktopStatus = 200
+  const beforeModern = calls.length
+  assert.deepEqual(await open(), { ok: true })
+  assert.deepEqual(calls.slice(beforeModern), [target + '/desktop'])
+  assert.deepEqual(opened.at(-1), { userId, enterpriseId: 'team', siteId: websiteId, label: 'Work', url,
+    cookieNames: ['session'], accountOrigin: origin })
+  await enterprise.request('PUT', '/organizations/team/websites/manage', { revision: 1,
+    items: [{ id: websiteId, label: 'Work', url, departmentId: null, role: null, cookieNames: [] }] })
+})
+
 test('enterprise bridge uses native ids keep historical previews local and refuse legacy sharing', async () => {
   const calls: { path: string; body: unknown }[] = []
   const json = (data: unknown) => new Response(JSON.stringify(data), { headers: { 'Content-Type':'application/json' } })

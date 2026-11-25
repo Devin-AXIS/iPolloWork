@@ -1,4 +1,5 @@
 import type { EnterpriseCatalog, EnterpriseTab, MemberNotice, MemberNoticeFeed } from "../shared/enterprise.ts";
+import type { OrganizationContext } from "../shared/organizations.ts";
 export type { EnterpriseTab } from "../shared/enterprise.ts";
 import { request } from "./api.ts";
 
@@ -40,6 +41,7 @@ export interface EnterpriseState {
   signedIn: boolean;
   /** Selected enterprise; null shows personal records. */
   enterpriseId: string | null;
+  websiteOrganizationId: string | null;
   tab: EnterpriseTab;
   views: readonly EnterpriseView[];
   toast: EnterpriseToast | null;
@@ -76,6 +78,7 @@ export class EnterpriseController {
     dialog: null,
     signedIn: false,
     enterpriseId: remembered(),
+    websiteOrganizationId: null,
     tab: "projects",
     views: [],
     toast: null,
@@ -85,6 +88,7 @@ export class EnterpriseController {
   };
   private listeners = new Set<() => void>();
   private lifetime = new AbortController();
+  private websiteDiscovery: AbortController | undefined;
   private generation = 0;
   private loadedAt = 0;
   private toastId = 0;
@@ -109,6 +113,8 @@ export class EnterpriseController {
       ...(data === undefined ? {} : { body: JSON.stringify(data) }),
     });
   accountChanged(signedIn: boolean) {
+    this.websiteDiscovery?.abort();
+    this.websiteDiscovery = undefined;
     this.generation++;
     this.noticeAccount++;
     this.noticeRequest++;
@@ -118,6 +124,7 @@ export class EnterpriseController {
       error: "",
       dialog: null,
       signedIn,
+      websiteOrganizationId: null,
       views: [],
       toast: null,
       memberNotices: null,
@@ -126,6 +133,43 @@ export class EnterpriseController {
     });
     if (signedIn) void this.load();
   }
+  refreshWebsiteNavigation = async (): Promise<void> => {
+    this.websiteDiscovery?.abort();
+    this.websiteDiscovery = undefined;
+    if (!this.state.catalog?.enterprises.length || this.lifetime.signal.aborted) {
+      if (this.state.websiteOrganizationId) this.publish({ websiteOrganizationId: null });
+      return;
+    }
+    const discovery = new AbortController();
+    this.websiteDiscovery = discovery;
+    const signal = AbortSignal.any([discovery.signal, AbortSignal.timeout(10_000)]);
+    let websiteOrganizationId: string | null = null;
+    try {
+      const { organizations } = await request<OrganizationContext>("/enterprise/memberships", { signal });
+      const active = this.state.enterpriseId;
+      const ids = organizations.map(organization => organization.id);
+      const activeIndex = active ? ids.indexOf(active) : -1;
+      if (active && activeIndex > 0) {
+        ids.splice(activeIndex, 1);
+        ids.unshift(active);
+      }
+      for (const id of ids) {
+        if (signal.aborted) break;
+        const sites = await request<{ items: unknown[] }>(
+          `/enterprise/organizations/${encodeURIComponent(id)}/websites`, { signal },
+        ).catch(() => null);
+        if (sites?.items.length) {
+          websiteOrganizationId = id;
+          break;
+        }
+      }
+    } catch {
+      // Older account services lack the memberships route. An unverified page stays hidden.
+    }
+    if (discovery.signal.aborted) return;
+    this.websiteDiscovery = undefined;
+    if (websiteOrganizationId !== this.state.websiteOrganizationId) this.publish({ websiteOrganizationId });
+  };
   loadNotices = async (): Promise<MemberNoticeFeed | undefined> => {
     if (!this.state.signedIn) return;
     const requestId = ++this.noticeRequest;
@@ -235,6 +279,7 @@ export class EnterpriseController {
     if (this.state.toast?.id === id) this.publish({ toast: null });
   };
   dispose() {
+    this.websiteDiscovery?.abort();
     this.lifetime.abort();
     this.listeners.clear();
   }

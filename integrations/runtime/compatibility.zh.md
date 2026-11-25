@@ -230,4 +230,8 @@ Suite `src/host/model-request-recovery.ts` 保持原生模型 `retryPolicy.maxRe
 
 `plugins/ipollowork-suite` 通过 DSH 的 `sidebar.panellist`、`main` 插槽展示「业务网页」，通过所有者鉴权的 Web Host 路由发起桌面打开请求，通过 Cordis `provide` 提供 `ipolloOrganizations` 和 `ipolloOrganizationContext`，并用原生凭据提供方的原子 `modifyRecord` 保存桌面账号授权。产品 Electron 主进程通过私有 Host 进程通道调用系统凭据库。上游会话侧栏浏览器和 Agent 各自保有原有生命周期。
 
+`plugins/ipollowork-suite/src/client/enterprise.tsx` 在 `EnterpriseController` 确认账号服务返回了可访问网页后注册侧栏和页面插槽。分别用旧版账号服务和空网页列表确认入口隐藏，再添加及移除唯一可访问的网页，验证导航随配置更新，以及当前页面注销时 DSH 返回对话。
+
+`plugins/ipollowork-suite/src/host/enterprise.ts` 在旧账号服务缺少桌面接口时，复用已有的网页地址授权接口，并用同一个桌面窗口打开临时会话。复验旧服务的组织设置打开入口和拒绝访问路径，同时确认新版授权仍能恢复获准的 Cookie。保存普通网页时省略空 Cookie 列表，以兼容旧服务的校验。
+
 升级 DSH 固定版本时，使用独立桌面 profile，在没有会话的情况下从「业务网页」打开已配置的站点。以相同 profile 冷启动，验证获准的 HTTPS Cookie 恢复。切换账号、取消组织成员资格和主动退出，验证权限和隔离。检查插件 Host 的组织接口，以及凭据库中账号授权记录的加密状态。

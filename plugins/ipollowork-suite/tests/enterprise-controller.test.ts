@@ -78,6 +78,41 @@ test('refresh retries organization records even if refreshing the cached list fa
   } finally { controller.dispose(); server.restore() }
 })
 
+test('business websites require a supported membership route and at least one accessible website', async () => {
+  const original = globalThis.fetch
+  let membershipsAvailable = false
+  let visible = false
+  const calls: string[] = []
+  globalThis.fetch = async input => {
+    const path = String(input).replace('/ipollowork-suite/enterprise', '')
+    calls.push(path)
+    if (path === '') return Response.json(catalog(['a', 'b']))
+    if (path === '/memberships') return membershipsAvailable
+      ? Response.json({ organizations: [{ id: 'b' }, { id: 'a' }] })
+      : Response.json({ error: 'IPW_ACCOUNT_UNAVAILABLE' }, { status: 404 })
+    return Response.json({ items: visible && path === '/organizations/b/websites' ? [{ id: 'one' }] : [] })
+  }
+  const controller = new EnterpriseController()
+  try {
+    controller.accountChanged(true)
+    await controller.load()
+    await controller.refreshWebsiteNavigation()
+    assert.equal(controller.getSnapshot().websiteOrganizationId, null)
+    assert.equal(calls.at(-1), '/memberships')
+    membershipsAvailable = true
+    await controller.refreshWebsiteNavigation()
+    assert.equal(controller.getSnapshot().websiteOrganizationId, null)
+    visible = true
+    await controller.refreshWebsiteNavigation()
+    assert.deepEqual(calls.slice(-3), ['/memberships', '/organizations/a/websites', '/organizations/b/websites'])
+    assert.equal(controller.getSnapshot().websiteOrganizationId, 'b')
+    const beforeSignOut = controller.refreshWebsiteNavigation()
+    controller.accountChanged(false)
+    await beforeSignOut
+    assert.equal(controller.getSnapshot().websiteOrganizationId, null)
+  } finally { controller.dispose(); globalThis.fetch = original }
+})
+
 test('toasts are replaced by newer ones and only the current toast can be dismissed', () => {
   const controller = new EnterpriseController()
   controller.notify('first')

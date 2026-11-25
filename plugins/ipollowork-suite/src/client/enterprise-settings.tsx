@@ -80,7 +80,7 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
         <CopyLink url={serviceAddress} t={t} label={t.serviceAddress}/>
       </Section>
     </div>}
-    <OrganizationWebsites detail={detail} t={t} call={call}/>
+    <OrganizationWebsites detail={detail} t={t} call={call} onChange={controller.refreshWebsiteNavigation}/>
     {canManage && <MembershipWebhook path={'/organizations/' + enterprise.id + '/notifications'} t={t} call={call} />}
   </div>
 }
