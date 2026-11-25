@@ -19,14 +19,14 @@ export async function buildBusiness(slug, directory) {
     const manifestPath = join(business, 'ipollowork.plugin.json')
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
     manifest.resources = manifest.resources.filter(item => item.type === 'skill')
-    manifest.description = '使用当前 DSH 原生 Agent、子任务和会话完成开发、审查与研究，无需第二套运行时。'
+    manifest.description = '使用 iPolloWork 的 Agent、子任务和会话完成开发、审查与研究。'
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
     await writeFile(join(business, 'skills/deepseek-harness/SKILL.md'), '---\nname: deepseek-harness\ndescription: Use the current native DSH Agent and its available subagent tools for development, review and research.\n---\n\nUse this existing DSH session, workspace and model. Discover the native subagent tool when independent parallel work is authorized. Keep results in the selected workspace. Do not install or launch a second Harness, use the removed extension service, or move credentials into prompts.\n')
   }
   if (slug === 'plugin-workshop') {
     const manifestPath = join(business, 'ipollowork.plugin.json'), manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
-    manifest.description = '在原生会话中制作、检查和打包 DSH 插件，通过原生插件管理器安装与验证。'
-    if (manifest.localization?.translations?.en) manifest.localization.translations.en.description = 'Author, check and package native DSH plugins in conversation, then install and verify them with the native Plugin Manager.'
+    manifest.description = '在原生会话中制作、检查和打包 iPolloWork 插件，通过原生插件管理器安装与验证。'
+    if (manifest.localization?.translations?.en) manifest.localization.translations.en.description = 'Author, check and package iPolloWork plugins in conversation, then install and verify them with the native Plugin Manager.'
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + '\n')
     await writeFile(join(business, 'skills/plugin-workshop/SKILL.md'), '---\nname: plugin-workshop\ndescription: Build, preview and package installable native DSH plugins for iPolloWork.\n---\n\nRead the current repository AGENTS.md and docs/plugin-development.zh.md. Create a native ESM DSH Bundle with package.json exports, engines.dsh and dsh.bundle.patch. Register tools, Skills, authenticated routes and client slots through the native lifecycle. Never copy the old host or Agent loop. Keep credentials in the Host provider, enforce workspace and read-only permissions, and release registrations on disable. Build and check the package, inspect npm pack --dry-run, and test its actual .tgz in a disposable DSH_HOME. Deliver the package for installation in the native Plugin Manager. Publishing or deploying requires the user\'s request.\n')
   }

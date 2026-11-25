@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Jev DSH 决策引擎",
+    "title": "Jev 决策引擎",
     "description": "Jev 为多种 Agent Harness 提供结构化决策能力，辅助选择工具、Skill 和 Agent，进行评分与判断；由当前 Agent 执行。"
   }
 }

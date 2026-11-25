@@ -560,7 +560,7 @@
     if (!state.compiled.archiveBase64) throw new Error('本地服务未返回插件包。可以下载 SKILL.md 或 JSON 文件。');
     const bytes = Uint8Array.from(atob(state.compiled.archiveBase64), (char) => char.charCodeAt(0));
     download(bytes, state.compiled.archiveName || 'recorded-skill.tgz', 'application/gzip');
-    message('DSH 插件包已下载，可在插件管理中安装。');
+    message('iPolloWork 插件包已下载，可在插件管理中安装。');
   }));
 
   $('download-markdown').addEventListener('click', () => download($('skill-markdown').value, 'SKILL.md', 'text/markdown;charset=utf-8'));
@@ -571,7 +571,7 @@
   $('copy-path').addEventListener('click', () => void operation(() => copy(state.compiled.directory, '本地 Skill 目录已复制。')));
   async function refinementPrompt() {
     const evidence = await request('prepare', { sessionId: state.session.id });
-    return `请使用 DSH 当前会话的 ipollo_recorder 工具，把这段录制提炼成可复用 Skill。先调用 prepare，再分页调用 events 读取全部步骤。根据操作目标归纳用途、前置条件、语义定位、输入变量、异常处理和完成检查。保留已有成功条件，不编造缺失证据；gap 中的目标缺失需要当前界面或用户说明支持。生成 evals 的检查未实际运行，不得声称验证通过。最后调用 compile 保存，传入 sessionId、expectedRevision（最新 prepare 返回的 revision）、skillName、description、skillContent；保证 YAML frontmatter 一致。不要调用 review 标记人为批准。证据摘要：\n${JSON.stringify(evidence)}\n当前草稿名称：${state.compiled.name}\n当前描述：${JSON.stringify(state.compiled.manifest.description)}`;
+    return `请使用 iPolloWork 当前会话的 ipollo_recorder 工具，把这段录制提炼成可复用 Skill。先调用 prepare，再分页调用 events 读取全部步骤。根据操作目标归纳用途、前置条件、语义定位、输入变量、异常处理和完成检查。保留已有成功条件，不编造缺失证据；gap 中的目标缺失需要当前界面或用户说明支持。生成 evals 的检查未实际运行，不得声称验证通过。最后调用 compile 保存，传入 sessionId、expectedRevision（最新 prepare 返回的 revision）、skillName、description、skillContent；保证 YAML frontmatter 一致。不要调用 review 标记人为批准。证据摘要：\n${JSON.stringify(evidence)}\n当前草稿名称：${state.compiled.name}\n当前描述：${JSON.stringify(state.compiled.manifest.description)}`;
   }
 
   $('workflow-goal').addEventListener('change', () => { if (editable()) { state.dirty = true; state.editRevision++; state.stale = Boolean(state.compiled); scheduleSave(); renderControls(); } });
@@ -586,7 +586,7 @@
     const prompt = await refinementPrompt();
     const result = await bridgeRequest('ui/message', { role: 'user', content: [{ type: 'text', text: prompt }] });
     if (result?.isError) throw new Error('当前 AI 会话未接受请求，请使用「复制给 AI 提炼」。');
-    message('已打开 DSH 会话并填入提炼草稿，请检查后发送。');
+    message('已打开 iPolloWork 会话并填入提炼草稿，请检查后发送。');
   }));
 
   async function poll() {

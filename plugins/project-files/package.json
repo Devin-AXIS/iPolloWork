@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/dsh-project-files",
   "version": "0.1.1",
-  "description": "Project inputs, deliverables and file management in the native DSH right sidebar.",
+  "description": "Project inputs, deliverables and file management in the iPolloWork right sidebar.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

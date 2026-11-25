@@ -67,6 +67,7 @@ import {
   type Decision,
 } from "./management.ts";
 import * as NativeConnection from "@deepseek-ai/dsh-client-connection";
+import { createPluginToggleLimit } from "./plugin-toggle-limit.ts";
 export { Config };
 export const name = "ipollowork-suite";
 export const inject = [
@@ -85,6 +86,7 @@ export const inject = [
 ];
 const API = "/ipollowork-suite";
 export interface HostContext extends EnterpriseNative, MemoryContext {
+  on(event: "connection/request", listener: ReturnType<typeof createPluginToggleLimit>): unknown;
   fs: ArchiveContext["fs"];
   logger: ArchiveContext["logger"];
   inject?(
@@ -258,6 +260,7 @@ async function relayDownload(
 }
 /** Mount the suite without changing DSH's model, session, or plugin-management implementation. */
 export function apply(ctx: HostContext, input: ConfigInput): void {
+  ctx.on("connection/request", createPluginToggleLimit());
   const anchor = ctx.profileContext.installAnchor;
   const installation = JSON.parse(readFileSync(anchor, "utf8")) as { name?: unknown; version?: unknown; ipolloworkAccountOrigin?: unknown };
   const config = resolveConfig(input, installation.name === '@ipollo/desktop-runtime', installation.ipolloworkAccountOrigin);
@@ -298,7 +301,10 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   );
   ctx.provide?.("ipolloServices", services);
   if (config.account && config.enterpriseUsageReporting)
-    ctx.inject?.(["tools"], scope => mountEnterpriseActivity(scope, account, config.accountOrigin, config.enterpriseUsageQueueLimit));
+    ctx.inject?.(["tools", "agents"], scope => mountEnterpriseActivity(scope, account, {
+      origin: config.accountOrigin, queueLimit: config.enterpriseUsageQueueLimit, signal: lifetime.signal,
+      cloudProjectId: config.cloudRuntimeTokenEnv ? config.cloudRuntimeProjectId : "",
+    }));
   const appData = new AppDataService(account);
   // App data is the optional `ipollowork-app-data` entry of this bundle; the service, tool, skill and routes follow it.
   let appDataEnabled = false;

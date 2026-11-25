@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-workspace-canvas",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "A minimal MCP App canvas that can be edited by people and agents.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

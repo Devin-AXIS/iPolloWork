@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "xiaohongshu-ops",
   "name": "小红书运营台",
-  "description": "管理小红书本地账号记录、草稿、素材与运营任务；隔离网页账号和自动验证暂不可用。",
+  "description": "管理小红书本地账号记录、草稿、素材与运营任务。",
   "category": "营销",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -838,7 +838,7 @@
     "translations": {
       "en": {
         "name": "Xiaohongshu Operations",
-        "description": "Manage local Xiaohongshu account records, drafts, assets and operation tasks. Isolated browser accounts and automatic verification are unavailable.",
+        "description": "Manage local Xiaohongshu account records, drafts, assets and operation tasks.",
         "category": "Marketing",
         "composer": {
           "prompt": "Call open-workbench to open the local console directly. Connect an account before use and execute only explicitly requested operations."

@@ -78,20 +78,6 @@ export function mountEnterpriseAnalytics(app: App, store: Store): void {
     const base = `FROM service_calls c JOIN execution_services s ON s.id=c.service_id
       LEFT JOIN "user" u ON u.id=c.user_id LEFT JOIN departments d ON d.id=c.department_id AND d.enterprise_id=c.enterprise_id
       WHERE c.enterprise_id=? AND c.created_at>=? AND c.created_at<? AND NOT c.is_job_poll`;
-    const [total, rows, groups, projects, assets] = await Promise.all([
-      store.one(`SELECT ${aggregate} ${base}`, enterpriseId, from, to),
-      store.all(`SELECT ${key} AS id, ${label} AS name, ${aggregate} ${base}
-        GROUP BY 1,2 ORDER BY tasks DESC,id LIMIT ? OFFSET ?`, enterpriseId, from, to, pageSize, (query.page - 1) * pageSize),
-      store.one(`SELECT COUNT(DISTINCT ${key}) AS count ${base}`, enterpriseId, from, to),
-      store.one("SELECT COUNT(*) AS count FROM projects WHERE enterprise_id=? AND created_at>=? AND created_at<?", enterpriseId, from, to),
-      store.one(`SELECT COUNT(*) FILTER (WHERE kind='skill') AS skills, COUNT(*) FILTER (WHERE kind='plugin') AS plugins
-        FROM (SELECT kind FROM resources WHERE enterprise_id=? UNION ALL
-          SELECT kind FROM organization_publications WHERE enterprise_id=? AND published_version IS NOT NULL) assets`, enterpriseId, enterpriseId),
-    ]);
-    const metrics = (row: NonNullable<typeof total>) => ({
-      tasks: Number(row.tasks), succeeded: Number(row.succeeded), failed: Number(row.failed),
-      measured: Number(row.measured), inputTokens: Number(row.input_tokens), outputTokens: Number(row.output_tokens), points: Number(row.points),
-    });
     const activityDimension = {
       member: ["a.user_id", "COALESCE(u.name,a.user_id)"],
       department: ["COALESCE(a.department_id,'')", "COALESCE(d.name,a.department_id,'')"],
@@ -101,20 +87,39 @@ export function mountEnterpriseAnalytics(app: App, store: Store): void {
     const activityBase = `FROM enterprise_activity a LEFT JOIN "user" u ON u.id=a.user_id
       LEFT JOIN departments d ON d.id=a.department_id AND d.enterprise_id=a.enterprise_id
       WHERE a.enterprise_id=? AND a.created_at>=? AND a.created_at<?`;
-    const [activity, activityRows, activityGroups] = await Promise.all([
+    const [total, rows, groups, projects, assets, activity, activityRows, activityGroups] = await Promise.all([
+      store.one(`SELECT ${aggregate} ${base}`, enterpriseId, from, to),
+      store.all(`SELECT ${key} AS id, ${label} AS name, ${aggregate} ${base}
+        GROUP BY 1,2 ORDER BY tasks DESC,id LIMIT ? OFFSET ?`, enterpriseId, from, to, pageSize, (query.page - 1) * pageSize),
+      store.one(`SELECT COUNT(DISTINCT ${key}) AS count ${base}`, enterpriseId, from, to),
+      store.one("SELECT COUNT(*) AS count FROM projects WHERE enterprise_id=? AND created_at>=? AND created_at<?", enterpriseId, from, to),
+      store.one(`SELECT COUNT(*) FILTER (WHERE kind='skill' AND direct) AS direct_skills,
+          COUNT(*) FILTER (WHERE kind='skill' AND NOT direct) AS published_skills,
+          COUNT(*) FILTER (WHERE kind='plugin') AS plugins
+        FROM (SELECT kind,true AS direct FROM resources WHERE enterprise_id=?
+          UNION ALL SELECT p.kind,false FROM organization_publications p
+          LEFT JOIN organization_publication_versions v ON v.publication_id=p.id AND v.version=p.published_version
+          WHERE p.enterprise_id=? AND p.published_version IS NOT NULL AND (p.kind='plugin' OR v.status='approved')) assets`, enterpriseId, enterpriseId),
       store.one(`SELECT COUNT(*) FILTER (WHERE kind='skill') AS skills, COUNT(*) FILTER (WHERE kind='tool') AS tools ${activityBase}`, enterpriseId, from, to),
-      store.all(`SELECT ${activityKey} AS id,${activityLabel} AS name,a.kind,COUNT(*) AS calls,COUNT(*) FILTER (WHERE a.succeeded) AS succeeded
-        ${activityBase} GROUP BY 1,2,3 ORDER BY calls DESC,id,kind LIMIT ? OFFSET ?`, enterpriseId, from, to, pageSize, (query.activityPage-1)*pageSize),
-      store.one(`SELECT COUNT(*) AS count FROM (SELECT ${activityKey},a.kind ${activityBase} GROUP BY 1,2) groups`, enterpriseId, from, to),
+      store.all(`SELECT ${activityKey} AS id,${activityLabel} AS name,a.kind,a.name AS activity_name,
+        COUNT(*) AS calls,COUNT(*) FILTER (WHERE a.succeeded) AS succeeded
+        ${activityBase} GROUP BY 1,2,3,4 ORDER BY calls DESC,id,kind,activity_name LIMIT ? OFFSET ?`, enterpriseId, from, to, pageSize, (query.activityPage-1)*pageSize),
+      store.one(`SELECT COUNT(*) AS count FROM (SELECT ${activityKey},a.kind,a.name ${activityBase} GROUP BY 1,2,3) groups`, enterpriseId, from, to),
     ]);
+    const metrics = (row: NonNullable<typeof total>) => ({
+      tasks: Number(row.tasks), succeeded: Number(row.succeeded), failed: Number(row.failed),
+      measured: Number(row.measured), inputTokens: Number(row.input_tokens), outputTokens: Number(row.output_tokens), points: Number(row.points),
+    });
+    const skillInventory = { direct: Number(assets?.direct_skills ?? 0), published: Number(assets?.published_skills ?? 0) };
     return c.json({ from, to, groupBy: query.groupBy, page: query.page, pageSize,
       totalRows: Number(groups?.count ?? 0), projects: Number(projects?.count ?? 0),
       totals: metrics(total!), rows: rows.map(row => ({ id: String(row.id), name: String(row.name), ...metrics(row) })),
       // Inventory is current; activity covers only reported calls in linked enterprise projects.
-      skills: Number(assets?.skills ?? 0), plugins: Number(assets?.plugins ?? 0),
+      skills: skillInventory.direct + skillInventory.published, skillInventory, plugins: Number(assets?.plugins ?? 0),
       skillInvocations: Number(activity?.skills ?? 0), pluginInvocations: Number(activity?.tools ?? 0),
       activityPage: query.activityPage, activityTotalRows: Number(activityGroups?.count ?? 0),
-      activityRows: activityRows.map(row => ({ id: String(row.id), name: String(row.name), kind: String(row.kind), calls: Number(row.calls), succeeded: Number(row.succeeded) })),
+      activityRows: activityRows.map(row => ({ id: String(row.id), name: String(row.name), activityName: String(row.activity_name),
+        kind: String(row.kind), calls: Number(row.calls), succeeded: Number(row.succeeded) })),
     });
   });
 }

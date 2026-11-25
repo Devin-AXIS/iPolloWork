@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "douyin-ops",
   "name": "抖音运营台",
-  "description": "管理抖音本地草稿、素材、作品及评论记录，通过平台 API 和原生会话继续运营；隔离网页账号自动接入暂不可用。",
+  "description": "管理抖音本地草稿、素材、作品及评论记录，通过平台 API 和原生会话继续运营。",
   "category": "营销",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -947,7 +947,7 @@
     "translations": {
       "en": {
         "name": "Douyin Operations",
-        "description": "Manage local Douyin drafts, assets, posts and comment records through platform APIs and native conversation. Isolated browser account onboarding is unavailable.",
+        "description": "Manage local Douyin drafts, assets, posts and comment records through platform APIs and native conversation.",
         "category": "Marketing",
         "composer": {
           "prompt": "Read douyin-ops-worker. Connect with browser login. Prefer available APIs; execute browserTask with host browser tools and persist actual evidence. Never repeat uncertain submissions."

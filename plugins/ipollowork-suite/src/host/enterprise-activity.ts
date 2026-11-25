@@ -1,51 +1,59 @@
-/** Metadata-only reporting for tool executions in explicitly linked enterprise projects. */
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { z } from "zod";
+/** Metadata-only reporting for skill loads and tool calls in enterprise projects. */
+import type {} from "@deepseek-ai/dsh-agent";
+import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
 import type { AccountService } from "./account.ts";
+import { SuiteError } from "./errors.ts";
 import { matchesProjectAccount } from "./project-account.ts";
+import { readProjectLink } from "./project-context.ts";
+
+type ActivitySession = { id: string; header: { cwd?: string } };
+type ToolResultListener = (exec: { name: string; arguments: unknown; callId: string; agent?: { session: ActivitySession } },
+  result: { isError: boolean }) => undefined;
+type SessionListener = (session: Session, event: SessionEvent) => undefined;
 
 /** Minimal observer and lifecycle services required for usage reporting. */
 export interface ActivityScope {
-  on(event: "tools/result", listener: (exec: { name: string; arguments: unknown; callId: string; agent?: { session: { id: string; header: { cwd?: string } } } }, result: { isError: boolean }) => undefined): unknown;
+  on(event: "tools/result", listener: ToolResultListener): unknown;
+  on(event: "session/event", listener: SessionListener): unknown;
+  agents: { get(id: Session["id"]): { session: Session } | undefined };
   effect(setup: () => () => Promise<void>): unknown;
   logger: { warn(message: string): void };
 }
 
-const linkSchema = z.object({ origin: z.string(), projectId: z.string().min(1).max(200) });
-
-/** Record names and final outcomes without arguments, content or credentials. A bounded queue never delays tool execution.
- * @param scope Native Cordis scope owning the observer.
- * @param account Current account connection.
- * @param origin Account origin to match against project links.
- * @param queueLimit Maximum pending metadata reports.
- */
-export function mountEnterpriseActivity(scope: ActivityScope, account: AccountService, origin: string, queueLimit: number): void {
-  let active = true, pending = 0, tail = Promise.resolve();
-  scope.on("tools/result", (exec, result) => {
-    const cwd = exec.agent?.session.header.cwd;
-    if (!cwd || !active || pending >= queueLimit) return;
+/** A bounded queue submits metadata without blocking the agent or sharing message content. */
+export function mountEnterpriseActivity(scope: ActivityScope, account: AccountService, options: {
+  origin: string; queueLimit: number; signal: AbortSignal; cloudProjectId?: string;
+}): void {
+  const { origin, queueLimit, signal, cloudProjectId } = options;
+  let active = true;
+  let pending = 0;
+  let tail = Promise.resolve();
+  function report(session: ActivitySession, callId: string, kind: "skill" | "tool", name: string, succeeded: boolean) {
+    const cwd = session.header.cwd;
+    if ((!cloudProjectId && !cwd) || !active || pending >= queueLimit || !name || name.length > 200) return;
     const generation = account.generation;
-    const args = exec.arguments;
-    const skill = exec.name === "skill" && args !== null && typeof args === "object" && "name" in args && typeof args.name === "string" ? args.name : null;
-    const event = { sessionId: String(exec.agent!.session.id), callId: String(exec.callId),
-      kind: skill === null ? "tool" : "skill", name: skill ?? exec.name, succeeded: !result.isError };
+    const event = { sessionId: String(session.id), callId, kind, name, succeeded };
     pending++;
     tail = tail.then(async () => {
       if (!active || generation !== account.generation) return;
-      const state = await account.state();
-      if (state.status !== "signed-in") return;
-      let link: z.infer<typeof linkSchema>;
-      try { link = linkSchema.parse(JSON.parse(await readFile(join(cwd, ".ipollo", "project.json"), "utf8"))); }
-      catch (error) {
-        if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
-        throw error;
-      }
-      if (!active || generation !== account.generation || !matchesProjectAccount(link.origin, origin)) return;
-      await account.request("/api/v1/projects/" + encodeURIComponent(link.projectId) + "/activity", event);
-    }).catch(() => {
-      scope.logger.warn("Enterprise usage report failed; aggregate counts may be incomplete");
+      const link = !cloudProjectId && cwd ? await readProjectLink(cwd, signal) : null;
+      const projectId = cloudProjectId || (link && matchesProjectAccount(link.origin, origin) ? link.projectId : null);
+      if (!projectId || !active || generation !== account.generation) return;
+      await account.request("/api/v1/projects/" + encodeURIComponent(projectId) + "/activity", event);
+    }).catch((error: unknown) => {
+      if (active && !signal.aborted && !(error instanceof SuiteError && [401, 403, 404].includes(error.status)))
+        scope.logger.warn("Enterprise usage report failed; aggregate counts may be incomplete");
     }).finally(() => { pending--; });
+  }
+  scope.on("tools/result", (exec, result) => {
+    if (!exec.agent) return;
+    const args = exec.arguments;
+    const skill = exec.name === "skill" && args !== null && typeof args === "object" && "name" in args && typeof args.name === "string" ? args.name : null;
+    report(exec.agent.session, String(exec.callId), skill === null ? "tool" : "skill", skill ?? exec.name, !result.isError);
+  });
+  scope.on("session/event", (session, event) => {
+    if (event.type !== "user/message" || event.data.source.kind !== "skill-invocation" || scope.agents.get(session.id)?.session !== session) return;
+    report(session, "user-skill:" + event.seq, "skill", event.data.source.name, true);
   });
   scope.effect(() => async () => { active = false; await tail; });
 }

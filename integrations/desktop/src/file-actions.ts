@@ -1,8 +1,8 @@
 /** Trusted-window Chromium downloads and clipboard fallback reads. */
-import { app, ipcMain, session } from 'electron'
+import { app, dialog, ipcMain, session } from 'electron'
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
-import { closeSync, createWriteStream, openSync, rmSync } from 'node:fs'
-import { extname, join } from 'node:path'
+import { closeSync, createWriteStream, openSync, renameSync, rmSync } from 'node:fs'
+import { dirname, extname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { resolveDragFileName } from '@deepseek-ai/dsh-util-file-drag'
@@ -34,10 +34,12 @@ function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: str
     || ('mediaType' in value && typeof value.mediaType !== 'string')
     || !('mode' in value) || (value.mode !== 'download' && value.mode !== 'saveAs')) throw new Error('Invalid file save request')
   const url = new URL(value.url)
-  const projectDownload = url.protocol === 'dsh-app:' && url.host === 'app' && !url.search &&
-    value.mode === 'download' && 'name' in value && typeof value.name === 'string' && !!value.name.trim() &&
+  const packageDownload = /^\/ipollowork-suite\/enterprise\/organizations\/[\w-]{1,200}\/packages\/[\w-]{1,200}\/files\/[\w-]{1,200}\/download$/u.test(url.pathname)
+  const projectDownload = value.mode === 'download' &&
     /^\/ipollowork-suite\/enterprise\/(?:download\/[\w-]{1,200}|projects\/[\w-]{1,200}\/memory-versions\/\d+)$/u.test(url.pathname)
-  if ((!projectDownload && !['https:', 'http:', 'blob:', 'data:'].includes(url.protocol)) || url.username || url.password)
+  const appDownload = url.protocol === 'dsh-app:' && url.host === 'app' && !url.search &&
+    'name' in value && typeof value.name === 'string' && !!value.name.trim() && (packageDownload || projectDownload)
+  if ((!appDownload && !['https:', 'http:', 'blob:', 'data:'].includes(url.protocol)) || url.username || url.password)
     throw new Error('Unsupported file source')
   return { url, mode: value.mode,
     ...'name' in value ? { name: value.name as string } : {},
@@ -123,9 +125,20 @@ export function installFileActions(
     }
     owner.once('closed', abort)
     contents.on('did-start-navigation', navigate)
-    const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(downloadTimeoutMs)])
     let reserved: string | undefined
     try {
+      const name = resolveDragFileName({ name: request.name, mediaType: '' })
+      let destination: string | undefined
+      if (request.mode === 'saveAs') {
+        const choice = await dialog.showSaveDialog(owner, {
+          defaultPath: join(app.getPath('downloads'), name),
+          properties: ['showOverwriteConfirmation', 'createDirectory'],
+        })
+        if (choice.canceled || !choice.filePath || lifetime.signal.aborted) return { status: 'cancelled' }
+        assertOwner(event)
+        destination = choice.filePath
+      }
+      const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(downloadTimeoutMs)])
       request.url.hash = ''
       let response = await projectRequest(new Request(request.url, { signal }))
       if (response.status === 303) {
@@ -139,13 +152,15 @@ export function installFileActions(
         await response.body?.cancel()
         throw new Error('Project download unavailable')
       }
-      const name = resolveDragFileName({ name: request.name, mediaType: '' })
-      const file = reserveDownload(name)
+      // Stage beside the destination so an interrupted overwrite leaves the previous file intact.
+      const temporary = destination ? join(dirname(destination), '.ipollowork-download-' + randomUUID() + '.tmp') : undefined
+      const file = temporary ? { path: temporary, fd: openSync(temporary, 'wx') } : reserveDownload(name)
       reserved = file.path
       await pipeline(Readable.fromWeb(response.body as import('node:stream/web').ReadableStream), createWriteStream(file.path, { fd: file.fd }), { signal })
       assertOwner(event)
       signal.throwIfAborted()
-      return { status: 'saved', path: file.path }
+      if (destination) renameSync(file.path, destination)
+      return { status: 'saved', path: destination ?? file.path }
     } catch (error) {
       if (reserved !== undefined) rmSync(reserved, { force: true })
       if (lifetime.signal.aborted) return { status: 'cancelled' }

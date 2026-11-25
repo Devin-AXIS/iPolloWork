@@ -1,6 +1,6 @@
 /** Native original-byte saves and window-scoped IPC ownership. */
 import { EventEmitter } from 'node:events'
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { IpcMainInvokeEvent } from 'electron'
@@ -10,6 +10,7 @@ import { DESKTOP_IPC } from '../src/ipc.ts'
 
 const electron = vi.hoisted(() => ({
   app: { getPath: vi.fn() }, ipcMain: { handle: vi.fn() }, session: { defaultSession: { on: vi.fn() } },
+  dialog: { showSaveDialog: vi.fn() },
 }))
 vi.mock('electron', () => electron)
 const roots: string[] = []
@@ -96,6 +97,80 @@ it('retrieves a signed project attachment without forwarding the Host credential
   expect(fetchObject).toHaveBeenCalledWith(new URL(target), expect.objectContaining({ credentials: 'omit', redirect: 'error' }))
   expect(fetchObject.mock.calls[0]![1].headers).toBeUndefined()
   expect(await readFile(join(root, name))).toEqual(Buffer.from(bytes))
+})
+
+it.each(['admin', 'member'])('downloads organization package files for an authorized %s', async (role) => {
+  const root = await directory()
+  const authorized = vi.fn(async (_request: Request) => new Response(role))
+  const f = harness(root, authorized)
+  const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id/download'
+  const name = '组织文件.txt'
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name, mode: 'download' })).resolves.toEqual({ status: 'saved', path: join(root, name) })
+  expect(await readFile(join(root, name), 'utf8')).toBe(role)
+  expect(authorized.mock.calls[0]![0].url).toBe(url)
+})
+
+it('allows only the package download route and honors a Host permission denial', async () => {
+  const root = await directory()
+  const request = vi.fn(async (_request: Request) => new Response(null, { status: 403 }))
+  const f = harness(root, request)
+  const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id'
+  const name = '组织文件.txt'
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name, mode: 'download' })).rejects.toThrow('Unsupported file source')
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url: url + '/download?redirect=1', name, mode: 'saveAs' })).rejects.toThrow('Unsupported file source')
+  await expect(f.invoke(DESKTOP_IPC.fileSave, {
+    url: 'dsh-app://app/ipollowork-suite/enterprise/download/resource-id', name, mode: 'saveAs',
+  })).rejects.toThrow('Unsupported file source')
+  expect(electron.dialog.showSaveDialog).not.toHaveBeenCalled()
+  expect(request).not.toHaveBeenCalled()
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url: url + '/download', name, mode: 'download' })).rejects.toThrow('download unavailable')
+  expect(request).toHaveBeenCalledOnce()
+  expect(await readdir(root)).toEqual([])
+})
+
+it('asks where to save an organization file and returns the selected path', async () => {
+  const root = await directory()
+  const folder = join(root, '另存目录')
+  await mkdir(folder)
+  const selected = join(folder, '改名后的文件.txt')
+  await writeFile(selected, 'old content')
+  electron.dialog.showSaveDialog.mockResolvedValue({ canceled: false, filePath: selected })
+  const authorized = vi.fn(async (_request: Request) => new Response('organization file'))
+  const f = harness(root, authorized)
+  const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id/download'
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name: '组织文件.txt', mode: 'saveAs' })).resolves.toEqual({ status: 'saved', path: selected })
+  expect(electron.dialog.showSaveDialog).toHaveBeenCalledWith(f.owner, expect.objectContaining({ defaultPath: join(root, '组织文件.txt') }))
+  expect(await readFile(selected, 'utf8')).toBe('organization file')
+  expect(await readdir(root)).toEqual(['另存目录'])
+  expect(await readdir(folder)).toEqual(['改名后的文件.txt'])
+})
+
+it('cancels the organization save dialog without fetching or writing a file', async () => {
+  const root = await directory()
+  electron.dialog.showSaveDialog.mockResolvedValue({ canceled: true, filePath: '' })
+  const authorized = vi.fn(async (_request: Request) => new Response('organization file'))
+  const f = harness(root, authorized)
+  const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id/download'
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name: '组织文件.txt', mode: 'saveAs' })).resolves.toEqual({ status: 'cancelled' })
+  expect(authorized).not.toHaveBeenCalled()
+  expect(await readdir(root)).toEqual([])
+  expect(f.owner.listenerCount('closed')).toBe(0)
+})
+
+it('preserves an existing selected file if an organization download fails', async () => {
+  const root = await directory()
+  const selected = join(root, '已有文件.txt')
+  await writeFile(selected, 'old content')
+  electron.dialog.showSaveDialog.mockResolvedValue({ canceled: false, filePath: selected })
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) { controller.enqueue(new Uint8Array([1])) },
+    pull(controller) { controller.error(new Error('Attachment stream failed')) },
+  })
+  const f = harness(root, async () => new Response(stream))
+  const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id/download'
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name: '组织文件.txt', mode: 'saveAs' })).rejects.toThrow('Attachment stream failed')
+  expect(await readFile(selected, 'utf8')).toBe('old content')
+  expect(await readdir(root)).toEqual(['已有文件.txt'])
 })
 
 it('discards partial project downloads after a stream failure', async () => {

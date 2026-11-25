@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/dsh-collaboration-board",
   "version": "0.4.11",
-  "description": "A standalone DSH project board with tasks, dependencies, and organization notifications.",
+  "description": "An iPolloWork project board with tasks, dependencies, and organization notifications.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

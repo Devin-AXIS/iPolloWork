@@ -23,7 +23,7 @@ export const audienceSchema = z
 
 /** SQL predicate for "membership row `m` may use asset `kind`/`idColumn`"; takes one bound `kind` parameter. */
 export const grantedTo = (idColumn: string) =>
-  `EXISTS(SELECT 1 FROM enterprise_grants g WHERE g.asset_kind=? AND g.asset_id=${idColumn} AND (
+  `EXISTS(SELECT 1 FROM enterprise_grants g WHERE g.asset_kind=? AND g.asset_id=${idColumn} AND g.enterprise_id=m.enterprise_id AND (
     g.audience_kind='all' OR (g.audience_kind='department' AND g.audience_id=m.department_id) OR
     (g.audience_kind='member' AND g.audience_id=m.user_id) OR (g.audience_kind='department_tree' AND EXISTS(
       WITH RECURSIVE branch(id,parent_id) AS (
@@ -32,26 +32,38 @@ export const grantedTo = (idColumn: string) =>
       ) SELECT 1 FROM branch WHERE id=g.audience_id
     ))))`;
 
-export async function audienceOf(
+/** Read grants for a bounded page of assets already authorized by its caller. */
+export async function audiencesOf(
   store: Store,
+  enterpriseId: string,
   kind: AssetKind,
-  assetId: string,
-): Promise<Audience> {
-  const rows = await store.all<{ audience_kind: string; audience_id: string }>(
-    "SELECT audience_kind,audience_id FROM enterprise_grants WHERE asset_kind=? AND asset_id=?",
+  assetIds: readonly string[],
+): Promise<Map<string, Audience>> {
+  const audiences = new Map<string, Audience>(assetIds.map(id => [id, { all: false, departments: [], members: [] }]));
+  if (!assetIds.length) return audiences;
+  const rows = await store.all<{ asset_id: string; audience_kind: string; audience_id: string }>(
+    "SELECT asset_id,audience_kind,audience_id FROM enterprise_grants WHERE enterprise_id=? AND asset_kind=? AND asset_id=ANY(?::text[]) ORDER BY audience_id",
+    enterpriseId,
     kind,
-    assetId,
+    assetIds,
   );
-  return {
-    all: rows.some((r) => r.audience_kind === "all"),
-    departments: rows
-      .filter((r) => r.audience_kind === "department" || r.audience_kind === "department_tree")
-      .map((r) => r.audience_id),
-    ...(rows.some(row => row.audience_kind === "department_tree") ? { includeSubdepartments:true } : {}),
-    members: rows
-      .filter((r) => r.audience_kind === "member")
-      .map((r) => r.audience_id),
-  };
+  for (const row of rows) {
+    const audience = audiences.get(row.asset_id)!;
+    switch (row.audience_kind) {
+      case "all": audience.all = true; break;
+      case "member": audience.members.push(row.audience_id); break;
+      case "department": audience.departments.push(row.audience_id); break;
+      case "department_tree":
+        audience.departments.push(row.audience_id);
+        audience.includeSubdepartments = true;
+        break;
+    }
+  }
+  return audiences;
+}
+
+export async function audienceOf(store: Store, enterpriseId: string, kind: AssetKind, assetId: string): Promise<Audience> {
+  return (await audiencesOf(store, enterpriseId, kind, [assetId])).get(assetId)!;
 }
 
 /** Replace an asset's audience inside the caller's transaction after checking every referent belongs to the enterprise. */

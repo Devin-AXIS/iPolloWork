@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-operation-recorder",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": false,
   "type": "module",
   "description": "Independent semantic operation recorder and portable Agent Skill compiler for iPolloWork.",

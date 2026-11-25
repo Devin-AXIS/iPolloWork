@@ -44,6 +44,8 @@ test('cloud creation is idempotent; grants isolate projects, expire, and allow o
   await assert.rejects(cloud.claim(actor,authorized.grant,randomUUID()),{code:'CLOUD_PROJECT_BUSY'});
   const runtime=await cloud.authenticate(claim.runtimeToken);
   assert.equal(cloudGrantAllows(runtime.grant,`/api/v1/projects/${projectId}/runtime`,'GET'),true);
+  assert.equal(cloudGrantAllows(runtime.grant,`/api/v1/projects/${projectId}/activity`,'POST'),true);
+  assert.equal(cloudGrantAllows(runtime.grant,`/api/v1/projects/${randomUUID()}/activity`,'POST'),false);
   assert.equal(cloudGrantAllows(runtime.grant,'/api/v1/admin/settings','POST'),false);
   assert.equal(cloudGrantAllows(runtime.grant,'/api/v1/me/enterprise-mcp','GET'),true);
   for (const method of ['GET','POST','DELETE'])
@@ -54,6 +56,11 @@ test('cloud creation is idempotent; grants isolate projects, expire, and allow o
   const mount=await request(`/api/v1/projects/${projectId}/runtime`,claim.runtimeToken);
   assert.equal(mount.status,200);
   assert.equal(mount.data.volume.pvc.claimName,claim.volumeKey);
+  const activity={sessionId:'session',callId:'user-skill:1',kind:'skill',name:'review',succeeded:true};
+  assert.deepEqual(await request(`/api/v1/projects/${projectId}/activity`,claim.runtimeToken,activity),{status:200,data:{recorded:true}});
+  assert.equal((await request(`/api/v1/projects/${enterpriseProject.data.id}/activity`,claim.runtimeToken,activity)).status,403);
+  assert.equal((await request(`/api/v1/projects/${projectId}/activity`,claim.managerToken,activity)).status,403);
+  assert.equal((await request(`/api/v1/enterprises/${orgId}/analytics`,token,{})).data.activityRows[0].activityName,'review');
   assert.equal((await request('/api/v1/cloud-runtime/inspect',token,{})).status,403);
   assert.equal((await request('/api/v1/cloud-runtime/status',claim.runtimeToken)).status,200);
   assert.equal((await request('/api/v1/cloud-runtime/renew',claim.runtimeToken,{})).status,403);

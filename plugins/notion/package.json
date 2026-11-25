@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-notion",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "将 Notion 页面、数据库、项目文档和会议记录组合成可靠的知识工作流。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

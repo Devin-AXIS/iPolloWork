@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-acme-research",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Minimal independent plugin package for local development.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

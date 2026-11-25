@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-linear",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "把问题分流、Sprint 规划、交付跟进和项目更新组合成一致的 Linear 工作流。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

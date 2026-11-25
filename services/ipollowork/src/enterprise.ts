@@ -82,27 +82,28 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
     const id = c.req.param("id"),
       actor = c.get("actor");
     const enterprise = await enterpriseAccess(store, actor, id);
-    const canManage = await isEnterpriseManager(store, actor, id);
-    return c.json({
-      enterprise: { ...enterprise, member_count: Number((await store.one(
-        "SELECT COUNT(*) AS count FROM members WHERE enterprise_id=?", id,
-      ))?.count ?? 0) },
-      canManage,
-      members: await store.all(
+    const [memberCount, members, departments, canManage] = await Promise.all([
+      store.one("SELECT COUNT(*) AS count FROM members WHERE enterprise_id=?", id),
+      store.all(
         'SELECT m.*,COALESCE(m.display_name,u.name) AS name,u.email FROM members m JOIN "user" u ON u.id=m.user_id WHERE m.enterprise_id=? ORDER BY m.created_at LIMIT 500',
         id,
       ),
-      departments: await store.all(
+      store.all(
         `SELECT d.*,COALESCE(counts.member_count,0) AS member_count FROM departments d
            LEFT JOIN (SELECT department_id,COUNT(*) AS member_count FROM members WHERE enterprise_id=? GROUP BY department_id) counts
              ON counts.department_id=d.id
            WHERE d.enterprise_id=? ORDER BY d.name LIMIT 200`,
         id, id,
       ),
-      invitations: canManage ? await store.all(
-        "SELECT id,email,invitee_name,employee_number,role,department_id,expires_at,accepted_by,revoked_at,project_id,project_role FROM invitations WHERE enterprise_id=? AND accepted_by IS NULL AND revoked_at IS NULL ORDER BY created_at DESC",
-        id,
-      ) : [],
+      isEnterpriseManager(store, actor, id),
+    ]);
+    const invitations = canManage ? await store.all(
+      "SELECT id,email,invitee_name,employee_number,role,department_id,expires_at,accepted_by,revoked_at,project_id,project_role FROM invitations WHERE enterprise_id=? AND accepted_by IS NULL AND revoked_at IS NULL ORDER BY created_at DESC",
+      id,
+    ) : [];
+    return c.json({
+      enterprise: { ...enterprise, member_count: Number(memberCount?.count ?? 0) },
+      canManage, members, departments, invitations,
     });
   });
   app.get("/api/v1/enterprises/:id/members", async (c) => {

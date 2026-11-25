@@ -16,7 +16,7 @@ test('analytics replaces stale data, retries errors and hides administrator data
   const bundle = await build({ nodePaths: ['node_modules'],entryPoints:['src/client/enterprise-analytics.tsx'],bundle:true,platform:'node',format:'cjs',write:false,outfile:'/tmp/analytics-ui.cjs',loader:{'.css':'empty','.module.css':'empty'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']});
   const module = {exports:{}};
   runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,Intl,Date,require:name=>name==='@deepseek-ai/dsh-client-ui-primitives'?{IconRefreshOutlineRegular:()=>null,Button:({children,variant,size,...props})=>React.createElement('button',props,children)}:require(name)});
-  const labels = new Proxy({}, {get:(_target,key)=>String(key)});
+  const labels = new Proxy({analyticsSkillInventory:'{direct} directly uploaded · {published} published'}, {get:(target,key)=>target[key] ?? String(key)});
   let finish;
   const requests = [];
   const call = (_path, input) => { requests.push(input); return new Promise((resolve,reject)=>{finish={resolve,reject};}); };
@@ -40,10 +40,14 @@ test('analytics replaces stale data, retries errors and hides administrator data
     assert.match(dom.window.document.body.textContent,/77/);
 
     // Both independent pagers recover when a refresh reduces the available groups.
-    const expanded = {...fixture,totalRows:51,activityTotalRows:51,
-      activityRows:[{id:'tool',name:'Tool',kind:'tool',calls:3,succeeded:2}]};
+    const expanded = {...fixture,totalRows:51,activityTotalRows:51,skillInventory:{direct:1,published:2},
+      activityRows:[{id:'department',name:'Design',activityName:'read_files',kind:'tool',calls:3,succeeded:2}]};
     await act(async()=>root.render(React.createElement(module.exports.AnalyticsTab,{...props,revision:1})));
     await act(async()=>finish.resolve(expanded));
+    const activity = dom.window.document.querySelector('[aria-label="analyticsActivity"]');
+    assert.match(activity.textContent,/read_files/);
+    assert.match(activity.textContent,/Design/);
+    assert.match(dom.window.document.body.textContent,/1 directly uploaded · 2 published/);
     const next = () => [...dom.window.document.querySelectorAll('button')].filter(button=>button.textContent==='analyticsNext');
     await act(async()=>next()[0].click());
     assert.equal(requests.at(-1).page,2);

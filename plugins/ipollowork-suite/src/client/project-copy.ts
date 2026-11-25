@@ -71,6 +71,7 @@ const en = {
   download: "Download",
   downloading: "Downloading…",
   downloaded: "File downloaded",
+  downloadedTo: "Saved to {path}",
   downloadFailed: "Could not download the file. Check your access and try again.",
   submitHint:
     "Your submission leaves the main project unchanged until a maintainer accepts it.",
@@ -79,7 +80,7 @@ const en = {
   selectProject: "Select a project",
   stopShare: "Stop sharing",
   nativeMissing:
-    "Native sharing is not enabled. Enable DSH Liveshare and configure its sharing server first.",
+    "Set up the iPolloWork sharing service to share conversations.",
   nativeLogin:
     "Unable to connect native sharing. Check your account and try again.",
   nativeShare: "Share conversation",
@@ -164,13 +165,14 @@ const zh: typeof en = {
   download: "下载",
   downloading: "下载中…",
   downloaded: "文件已下载",
+  downloadedTo: "已保存到 {path}",
   downloadFailed: "无法下载文件，请检查访问权限或稍后重试",
   submitHint: "提交后由维护者接纳，主项目不会直接被覆盖。",
   nativeHint:
     "每个会话按所选分享范围与原生权限开放。分享期间，请保持此电脑在线。",
   selectProject: "选择项目",
   stopShare: "停止分享",
-  nativeMissing: "尚未启用原生共享，请先启用 DSH Liveshare 并配置共享服务",
+  nativeMissing: "请先配置 iPolloWork 会话共享服务",
   nativeLogin: "未能连接原生共享，请检查账号后重试",
   nativeShare: "分享会话",
   nativeReady: "共享会话",

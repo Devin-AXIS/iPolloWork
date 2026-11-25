@@ -9,7 +9,7 @@ import { adoptStoredResources } from "./storage-import.js";
 export const SERVICE_SCHEMA_VERSION = 22;
 
 export type Row = Record<string, string | number | boolean | null>;
-type Parameter = string | number | boolean | Date | Buffer | null;
+type Parameter = string | number | boolean | Date | Buffer | readonly string[] | null;
 
 /** Number positional parameters without changing quoted SQL literals or identifiers. */
 function parameters(sql: string): string {

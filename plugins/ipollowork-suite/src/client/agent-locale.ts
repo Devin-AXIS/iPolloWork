@@ -25,10 +25,10 @@ const en = {
   writingName: 'Writing assistant', writingPrompt: 'Help write and improve content for the current project. Use clear language, preserve the intended meaning, and adapt the style to the audience.',
   reviewName: 'Review assistant', reviewPrompt: 'Review work against the current project’s goals. Identify concrete problems, explain their impact, and suggest focused changes.',
   skills: 'Skills', services: 'Connected services', addSkills: 'Choose skills', addServices: 'Choose existing services', noneSelected: 'None selected',
-  searchSkills: 'Find a skill', skillsHint: 'Choose from skills already available in DSH.', noSkills: 'No matching skills',
-  servicesHint: 'Reuse services configured in DSH. Their connection and sign-in details stay in service settings.',
+  searchSkills: 'Find a skill', skillsHint: 'Choose from skills already available in iPolloWork.', noSkills: 'No matching skills',
+  servicesHint: 'Reuse services configured in iPolloWork. Their connection and sign-in details stay in service settings.',
   noServices: 'No services connected yet', serviceSetup: 'Add a service in DSH’s service settings, then refresh this list.', refresh: 'Refresh',
-  connected: 'Ready', unavailable: 'Unavailable', legacy: 'Saved dedicated connections are retained. New connections are managed in DSH service settings.',
+  connected: 'Ready', unavailable: 'Unavailable', legacy: 'Saved dedicated connections are retained. New connections are managed in iPolloWork service settings.',
   more: 'More options', enabled: 'Available for new tasks', disabled: 'Paused', save: 'Save assistant', cancel: 'Cancel', close: 'Close', working: 'Saving…',
   startTitle: 'Choose a project', startHint: 'This assistant will use this project’s conversation and memory.', project: 'Project', chooseProject: 'Choose a project',
   memoryHint: 'Memory is saved separately for each project. It never becomes another project’s memory.', saveMemory: 'Save memory',
@@ -37,7 +37,7 @@ const en = {
   IPOLLO_INVALID_AGENT: 'Check the assistant’s name and configuration.', IPOLLO_SKILL_NOT_FOUND: 'A selected skill is unavailable. Select it again.',
   IPOLLO_SERVICE_NOT_FOUND: 'A service is no longer available. Refresh the list.', IPOLLO_AGENT_NOT_FOUND: 'This assistant is missing or paused. Refresh.',
   IPOLLO_OPERATION_FAILED: 'The operation could not finish. Check the service and try again.', IPOLLO_INVALID_MEMORY: 'Shorten the memory before saving.',
-  IPOLLO_UNAUTHORIZED: 'Reconnect to DSH.', IPOLLO_INVALID_INPUT: 'Check the submitted fields.', broken: 'A saved connection needs attention before this assistant can start.',
+  IPOLLO_UNAUTHORIZED: 'Reconnect to iPolloWork.', IPOLLO_INVALID_INPUT: 'Check the submitted fields.', broken: 'A saved connection needs attention before this assistant can start.',
 }
 const zh: typeof en = {
   coordinator: '总助手', coordinatorHint: '消息统一交给它。它会直接处理、调用已配置的专家，或按任务创建临时助手。',
@@ -63,10 +63,10 @@ const zh: typeof en = {
   writingName: '写作助手', writingPrompt: '协助撰写和修改当前项目的内容。使用清楚自然的语言，保留原意，并根据读者调整表达方式。',
   reviewName: '审阅助手', reviewPrompt: '根据当前项目的目标检查内容。指出具体问题，说明影响，并给出有针对性的修改建议。',
   skills: '技能', services: '可用服务', addSkills: '选择技能', addServices: '从已有服务添加', noneSelected: '未添加',
-  searchSkills: '搜索技能', skillsHint: '从 DSH 已有的技能中选择，不用重新配置。', noSkills: '没有找到匹配的技能',
-  servicesHint: '直接使用 DSH 已连接的服务，连接方式和登录信息在服务设置中统一管理。',
-  noServices: '还没有连接服务', serviceSetup: '先在 DSH 服务设置中添加，再刷新这里的列表。', refresh: '刷新列表',
-  connected: '可用', unavailable: '暂不可用', legacy: '已保存的专用连接继续保留。新增连接请在 DSH 服务设置中统一管理。',
+  searchSkills: '搜索技能', skillsHint: '从 iPolloWork 已有的技能中选择，不用重新配置。', noSkills: '没有找到匹配的技能',
+  servicesHint: '直接使用 iPolloWork 已连接的服务，连接方式和登录信息在服务设置中统一管理。',
+  noServices: '还没有连接服务', serviceSetup: '先在 iPolloWork 服务设置中添加，再刷新这里的列表。', refresh: '刷新列表',
+  connected: '可用', unavailable: '暂不可用', legacy: '已保存的专用连接继续保留。新增连接请在 iPolloWork 服务设置中统一管理。',
   more: '更多设置', enabled: '允许新任务使用', disabled: '已暂停', save: '保存助手', cancel: '取消', close: '关闭', working: '正在保存…',
   startTitle: '在哪个项目中使用？', startHint: '助手会使用这个项目的会话和记忆。', project: '项目', chooseProject: '请选择项目',
   memoryHint: '每个项目单独保存，只在当前项目中使用。', saveMemory: '保存记忆',
@@ -75,7 +75,7 @@ const zh: typeof en = {
   IPOLLO_INVALID_AGENT: '请检查助手名称和配置', IPOLLO_SKILL_NOT_FOUND: '选中的技能不可用，请重新选择',
   IPOLLO_SERVICE_NOT_FOUND: '服务已不可用，请刷新列表', IPOLLO_AGENT_NOT_FOUND: '助手不存在或已暂停，请刷新',
   IPOLLO_OPERATION_FAILED: '操作未完成，请检查服务后重试', IPOLLO_INVALID_MEMORY: '记忆内容过长，请精简后保存',
-  IPOLLO_UNAUTHORIZED: '连接已失效，请重新打开 DSH', IPOLLO_INVALID_INPUT: '提交内容无效，请检查后重试', broken: '已保存的连接需要检查，暂时无法开始对话',
+  IPOLLO_UNAUTHORIZED: '连接已失效，请重新打开 iPolloWork', IPOLLO_INVALID_INPUT: '提交内容无效，请检查后重试', broken: '已保存的连接需要检查，暂时无法开始对话',
 }
 export type AgentLabels = typeof en
 export function agentCopy(ctx: ClientContext): AgentLabels { return language(ctx) === 'zh' ? zh : en }

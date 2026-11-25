@@ -21,9 +21,8 @@ import { fetchChatWithRateLimitRecovery } from "./chat-rate-limit.js";
 import { tokenUsage } from "./enterprise-analytics.js";
 import { requireUsageBudget } from "./usage.js";
 import {
-  audienceOf,
+  audiencesOf,
   audienceSchema,
-  canUse,
   grantedTo,
   replaceAudience,
   requireUse,
@@ -777,41 +776,34 @@ export class ExecutionService {
   async enterpriseList(actor: Actor, enterpriseId: string) {
     await enterpriseAccess(this.store, actor, enterpriseId);
     const manage = await isEnterpriseManager(this.store, actor, enterpriseId);
+    const visibility = manage ? "" : ` AND s.enabled=1 AND EXISTS(SELECT 1 FROM members m
+      WHERE m.enterprise_id=es.enterprise_id AND m.user_id=? AND m.status='active' AND ${grantedTo("s.id")})`;
     const rows = await this.store.all<ServiceRow>(
-      "SELECT s.* FROM execution_services s JOIN enterprise_services es ON es.service_id=s.id WHERE es.enterprise_id=? ORDER BY s.created_at,s.id LIMIT 200",
-      enterpriseId,
+      `SELECT s.* FROM execution_services s JOIN enterprise_services es ON es.service_id=s.id
+        WHERE es.enterprise_id=?${visibility} ORDER BY s.created_at,s.id LIMIT 200`,
+      enterpriseId, ...(manage ? [] : [actor.id, "service"]),
     );
-    const visible: ServiceRow[] = [];
-    for (const row of rows)
-      if (
-        manage ||
-        (row.enabled &&
-          (await canUse(this.store, actor, enterpriseId, "service", row.id)))
-      )
-        visible.push(row);
-    return await Promise.all(
-      visible.map(async (row) => {
-        const s = definition(row);
-        return {
-          id: s.id,
-          title: s.title,
-          provider: s.provider,
-          baseUrl: s.baseUrl,
-          models: s.models,
-          routes: s.routes,
-          category: s.category,
-          vendor: s.vendor,
-          enabled: s.enabled,
-          headerName: s.headerName,
-          headerPrefix: s.headerPrefix,
-          credentialMode: s.credentialMode,
-          configured: Boolean(
-            (await this.settings.get(this.keyName(s, actor))).key,
-          ),
-          audience: await audienceOf(this.store, "service", s.id),
-        };
-      }),
-    );
+    const services = rows.map(definition);
+    const [audiences, keys] = await Promise.all([
+      audiencesOf(this.store, enterpriseId, "service", services.map(service => service.id)),
+      this.settings.getMany(services.map(service => this.keyName(service, actor))),
+    ]);
+    return services.map(s => ({
+      id: s.id,
+      title: s.title,
+      provider: s.provider,
+      baseUrl: s.baseUrl,
+      models: s.models,
+      routes: s.routes,
+      category: s.category,
+      vendor: s.vendor,
+      enabled: s.enabled,
+      headerName: s.headerName,
+      headerPrefix: s.headerPrefix,
+      credentialMode: s.credentialMode,
+      configured: Boolean(keys.get(this.keyName(s, actor))?.key),
+      audience: audiences.get(s.id)!,
+    }));
   }
   /** Create or update an enterprise model. The enterprise pays its provider directly, so calls carry no points. */
   async enterpriseSave(actor: Actor, enterpriseId: string, raw: unknown) {

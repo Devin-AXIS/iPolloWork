@@ -122,7 +122,7 @@ export function cloudGrantAllows(grant:Grant,path:string,method:string):boolean 
   if(method==='GET' && [ '/api/v1/cloud-runtime/status','/api/v1/services','/api/v1/me/summary','/api/v1/me/orgs','/api/v1/projects',`/api/v1/projects/${grant.projectId}/runtime`].includes(path))return true;
     if(method==='GET' && path==='/api/v1/me/enterprise-mcp')return true;
     if(['GET','POST','DELETE'].includes(method) && /^\/api\/v1\/me\/enterprise-mcp\/[A-Za-z0-9_-]+\/connect$/.test(path))return true;
-    if(method==='POST' && path==='/api/v1/cloud-runtime/activity')return true;
+    if(method==='POST' && ['/api/v1/cloud-runtime/activity',`/api/v1/projects/${grant.projectId}/activity`].includes(path))return true;
   return method==='POST' && /^\/api\/v1\/services\/[^/]+\/invoke$/.test(path);
 }
 export function mountCloudProjects(app:App,cloud:CloudProjects) {

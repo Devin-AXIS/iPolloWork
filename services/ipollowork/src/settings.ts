@@ -20,8 +20,16 @@ export class Settings {
       "SELECT value FROM settings WHERE key=?",
       name,
     );
-    if (!row) return {};
-    const [iv, tag, body] = String(row.value).split(".");
+    return row ? this.decrypt(String(row.value)) : {};
+  }
+  /** Read a bounded list of service-owned keys in one query. */
+  async getMany(names: readonly string[]): Promise<Map<string, Record<string, string>>> {
+    if (!names.length) return new Map();
+    const rows = await this.store.all<{ key: string; value: string }>("SELECT key,value FROM settings WHERE key=ANY(?::text[])", names);
+    return new Map(rows.map(row => [row.key, this.decrypt(row.value)]));
+  }
+  private decrypt(value: string): Record<string, string> {
+    const [iv, tag, body] = value.split(".");
     const decipher = createDecipheriv(
       "aes-256-gcm",
       this.key,
