@@ -1,6 +1,7 @@
 /** Resolve the Desktop auto-update channel and its Tencent COS destination. */
 
 import { valid } from 'semver'
+import { DESKTOP_RELEASE_UPDATE_FEED, resolveDesktopReleaseFeedUrl } from './desktop-update-feed-url.mjs'
 
 /** Environment variable that selects the Desktop update deployment. */
 export const DESKTOP_AUTO_UPDATE_ENV = 'DSH_DESKTOP_AUTO_UPDATE_ENV'
@@ -169,12 +170,21 @@ function productUpdateUrl(value) {
  * @param {NodeJS.Platform} platform - Target Node.js platform.
  * @param {string} arch - Target Node.js architecture.
  * @returns {{ environment: 'test' | 'production', channel: 'nightly' | 'stable', target: 'mac-arm64' | 'mac-x64' | 'win-x64', origin: string, publicUrl: string, keyPrefix: string, binaryKeyPrefix: string }} Resolved updater configuration.
- * @throws {Error} When the test deployment lacks a valid HTTPS origin or a 32-character lowercase hexadecimal release ID.
+ * @throws {Error} When the official test feed lacks a valid HTTPS origin or a 32-character lowercase hexadecimal release ID.
  */
 export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
   const channel = resolveDesktopUpdateChannel(env)
   const environment = resolveDesktopAutoUpdateEnvironment(env)
   const target = resolveDesktopAutoUpdateTarget(platform, arch)
+  const releaseFeed = resolveDesktopReleaseFeedUrl(env[DESKTOP_RELEASE_UPDATE_FEED], target)
+  if (releaseFeed !== undefined) {
+    const url = new URL(releaseFeed)
+    const relativeDirectory = url.pathname.replace(/^\/+|\/+$/gu, '')
+    return {
+      environment, channel, target, origin: url.origin, publicUrl: releaseFeed,
+      keyPrefix: relativeDirectory, binaryKeyPrefix: relativeDirectory,
+    }
+  }
   const deployment = UPDATE_ENVIRONMENTS[environment]
   let origin = deployment.fixedOrigin
   if (origin === undefined) {
@@ -211,6 +221,9 @@ export function resolveDesktopAutoUpdateConfig(env, platform, arch) {
  * @throws {Error} When the selected deployment lacks a bucket or valid updater configuration.
  */
 export function resolveDesktopUploadConfig(env, platform, arch) {
+  if (env[DESKTOP_RELEASE_UPDATE_FEED] !== undefined) {
+    throw new Error('desktop upload: publish the enterprise feed files on the host selected by desktop.update.feedUrl')
+  }
   const update = resolveDesktopAutoUpdateConfig(env, platform, arch)
   const deployment = UPDATE_ENVIRONMENTS[update.environment]
   return {

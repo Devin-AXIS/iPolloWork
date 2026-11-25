@@ -3,6 +3,8 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { readJson, type AccountService } from "./account.ts";
 import { SuiteError } from "./errors.ts";
+import { desktopEnterprise, hasEnterpriseDesktop } from "./desktop-enterprise.ts";
+import type { OrganizationGateway } from "../shared/organizations.ts";
 import { linkProject, linkedProjectWorkspaces, readProjectLink } from "./project-context.ts";
 import { matchesProjectAccount, ProjectAccountMismatch } from "./project-account.ts";
 import { pinnedPlugin } from "./enterprise-plugin.ts";
@@ -236,6 +238,24 @@ export class EnterpriseService {
   private cloud(path: string, data?: unknown, method?: string) {
     return this.account.request("/api/v1/" + path, data, method);
   }
+  readonly organizations: OrganizationGateway = {
+    context: async (activeOrganizationId, signal) => {
+      const { organizations } = z.object({ organizations: z.array(z.object({
+        id, name, role: z.enum(["owner", "admin", "member"]),
+      })) }).parse(await this.account.request("/api/v1/me/organizations", undefined, "GET", signal));
+      return { organizations, activeOrganizationId: organizations.find(value => value.id === activeOrganizationId)?.id ?? null };
+    },
+    websites: async (organizationId, signal) => {
+      const path = "/api/v1/enterprises/" + id.parse(organizationId) + "/websites";
+      return z.object({ items: z.array(z.object({ id: z.uuid(), label: z.string() })).max(50) })
+        .parse(await this.account.request(path, undefined, "GET", signal)).items;
+    },
+    exchange: async (organizationId, websiteId, signal) => {
+      const path = "/api/v1/enterprises/" + id.parse(organizationId) + "/websites/" + z.uuid().parse(websiteId) + "/ticket";
+      return z.object({ ticket: z.string().min(1).max(4096), expiresIn: z.number().int().min(1).max(120) })
+        .parse(await this.account.request(path, undefined, "POST", signal, { timeoutMs: 10_000, maximum: 8192 }));
+    },
+  };
   private async signedIn() {
     const user = await this.account.user();
     if (!user) throw new SuiteError("IPW_SIGN_IN_REQUIRED", 401);
@@ -610,6 +630,7 @@ export class EnterpriseService {
     input?: unknown,
   ): Promise<unknown> {
     const parts = path.split("/").filter(Boolean);
+    if (method === "GET" && path === "/memberships") return this.organizations.context();
     if (method === 'GET' && path === '/design-templates') {
       const { items } = z.object({ items: z.array(z.object({ id, enterpriseId: id, title: name, description,
         version: publicationVersion, sourceName: name })).max(1000) }).parse(
@@ -841,6 +862,24 @@ export class EnterpriseService {
           throw error;
         }
       }
+      if (parts[2] === "websites" && parts.length === 5) {
+        const target = base + "/websites/" + z.uuid().parse(parts[3]);
+        if (method === "POST" && parts[4] === "open") {
+          if (!hasEnterpriseDesktop()) throw new SuiteError("IPW_DESKTOP_REQUIRED", 503);
+          const authorized = z.object({
+            userId: id, enterpriseId: z.literal(parts[1]), siteId: z.literal(parts[3]),
+            label: z.string().min(1).max(80), url: z.string().max(2048),
+            cookieNames: z.array(z.string().min(1).max(128)).max(12),
+          }).parse(await this.cloud(target + "/desktop"));
+          await desktopEnterprise("open", { ...authorized, accountOrigin: this.origin });
+          return { ok: true };
+        }
+        if (parts[4] === "ticket-config" && method === "GET") return this.cloud(target + "/ticket-config");
+        if (parts[4] === "ticket-config" && method === "PUT") {
+          const data = z.union([z.object({ endpoint: z.string().max(2048), credential: z.string().max(8192).optional() }).strict(), z.null()]).parse(input);
+          return this.cloud(target + "/ticket-config", data, "PUT");
+        }
+      }
       if (parts[2] === "websites" && (parts.length === 3 || parts.length === 4)) {
         const tail = parts.length === 3 ? "" : "/" + (parts[3] === "manage" ? "manage" : z.uuid().parse(parts[3]));
         if (method === "GET") return this.cloud(base + "/websites" + tail);
@@ -848,6 +887,7 @@ export class EnterpriseService {
           const data = z.object({ revision: z.number().int().nonnegative(), items: z.array(z.object({
             id: z.uuid(), label: z.string().trim().min(1).max(80), url: z.string().max(2048),
             departmentId: id.nullable(), role: z.enum(["owner", "admin", "member"]).nullable(),
+            cookieNames: z.array(z.string().min(1).max(128)).max(12).optional(),
           }).strict()).max(50) }).strict().parse(input);
           return this.cloud(base + "/websites/manage", data, "PUT");
         }

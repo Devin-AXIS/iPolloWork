@@ -2,6 +2,23 @@
 
 [English](deployment-configuration.md) | 中文
 
+## 企业发行配置
+
+在仓库根目录创建 `ipollowork.release.json`。最小内容是 `{"version":1}`，省略的字段沿用现有发行预设和软件默认值。完整结构见 [发行配置示例](../ipollowork.release.example.json)。也可以将文件放在仓库之外，用 `IPOLLOWORK_RELEASE_CONFIG` 指向它。图标、插件归档、插件补丁和数据库 CA 的相对路径以这份文件的位置为起点。
+
+- `desktop` 支持应用 ID、显示名称、数据目录、外部链接协议、安装包文件名和图标。文件名模板支持 `${version}`、`${os}`、`${arch}` 和 `${ext}`，必须以 `.${ext}` 结尾，构建模式后缀仍会自动加上。
+- `desktop.plugins` 使用包名加精确版本，或本地 `.tgz`。默认读取包内声明的 `dsh.bundle.patch`，也可通过 `patch` 指定文件。补丁使用 `insert` 新增条目，组件 ID 需要唯一。使用原有桌面发行打包命令即可带上这些插件。
+- 桌面账号地址依次读取 `PACKAGE_ACCOUNT_ORIGIN`、`desktop.accountOrigin`、`server.origin`、原发行预设、Suite 默认值。需要与官方版并装时，为企业版指定独立的应用 ID、数据目录和外部链接协议。普通自动更新使用 `desktop.update.feedUrl` 和可选的 `desktop.update.channel`，签名和强制更新策略继续从原预设读取。见[企业发行配置手册](enterprise-release-config.zh.md)。
+- `server.database` 支持主机、端口、库名、用户名、Schema、连接池、超时和 TLS。用 `passwordFromEnv` 引用密码，或用 `urlFromEnv` 引用完整连接串。桌面产物只写入所需的公开桌面元数据和账号服务地址。
+
+从仓库根目录部署外部 PostgreSQL 版本：
+
+```powershell
+node services/ipollowork/deploy/compose-release.mjs -p ipollowork up -d --build
+```
+
+在独立服务交接包中，设置 `IPOLLOWORK_RELEASE_CONFIG`，然后从服务目录执行 `node deploy/compose-release.mjs -p ipollowork up -d --build`。数据库密码和 `AUTH_SECRET` 从环境或服务的私密 `.env` 提供。自带 PostgreSQL 的部署继续使用原有 Compose 和 `POSTGRES_PASSWORD`。见 [企业服务交接手册](../services/ipollowork/HANDOFF.zh.md)。
+
 ## Electron 的账号服务
 
 默认地址统一保存在 [`plugins/ipollowork-suite/deployment.json`](../plugins/ipollowork-suite/deployment.json)。该文件只有公开地址，不放密码或 Token：
@@ -54,7 +71,7 @@ npm start
 | 云执行网关 | 平台后台「设置 → 云端执行网关」 | 地址、密钥与租约；保存前校验，默认关闭 |
 | Stage | 平台后台「设置 → Stage 官方通道与计费」 | 启用、来源与计费规则 |
 | 模型接口 | 平台后台「服务中心」 | 供应商连接、业务空间地址、模型及价格 |
-| Electron 更新源 | `DSH_DESKTOP_UPDATE_URL`、对应 mandatory-update 配置 | 与账号服务独立，不随账号地址自动切换 |
+| Electron 更新源 | `desktop.update.feedUrl`，缺省使用原发行预设（含 `DSH_DESKTOP_UPDATE_URL`） | 普通更新与账号地址、强制更新策略分别配置 |
 | 云执行器自身 | Suite `deploy/cloud` 的独立配置 | Sandbox API、OSS endpoint、角色、模板、账号地址 |
 
 支付和语音等供应商 SDK 的正式/沙箱协议端点以及价格文档链接是供应商协议默认值，不是公司数据库或账号部署地址。它们不应被统一替换为账号域名；当前已支持的供应商连接仍由服务中心和支付设置管理。

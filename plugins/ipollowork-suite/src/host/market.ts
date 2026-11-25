@@ -33,6 +33,12 @@ function localized(value: Text | undefined, language: string, fallback = ''): st
 
 type ArchiveTarget = Pick<MarketItem, 'spec' | 'archiveSha256'>
 const defaultCatalog = fileURLToPath(new URL('../../catalog/index.json', import.meta.url))
+const enableOnInstallPlugins = new Set([
+  '@ipollo/dsh-markdown-editor',
+  '@ipollo/dsh-excel-editor',
+  '@ipollo/dsh-conversation-export',
+])
+
 export function isDefaultMarket(path: string): boolean {
   return resolve(path) === defaultCatalog
 }
@@ -139,12 +145,15 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       const acceptable = release !== undefined || compatible !== undefined
       const current = installed.get(plugin.name)
       const update = acceptable ? updateKind(current, target, selectedVersion, archive !== undefined) : undefined
+      const enableOnInstall = acceptable && archive !== undefined && enableOnInstallPlugins.has(plugin.name)
+        && current?.installed !== true && current?.availability !== 'installation'
       return {
         name: plugin.name, title: localized(plugin.title, language, plugin.name), description: localized(plugin.description, language),
         author: plugin.author ?? '', icon: (current?.version && current.version !== selectedVersion ? plugin.icon : undefined) ?? current?.meta?.icon ?? plugin.icon ?? null, homepage: plugin.homepage ?? null,
         category: plugin.metadata.category ?? '', categoryTitle: localized(index.metadata.categories[plugin.metadata.category ?? '']?.title, language), version: selectedVersion, ...target,
         compatible: acceptable, requirement: release?.dsh ?? version.engines.dsh ?? null,
         ...(update && { update }),
+        ...(enableOnInstall && { enableOnInstall }),
         installed: current?.installed === true, enabled: current?.enabled === true, installedVersion: current?.version ?? null,
         providedByDsh: current?.availability === 'installation',
         resources: current?.rows.map(row => row.moduleName) ?? [],

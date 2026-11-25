@@ -36,21 +36,30 @@ describe('desktop development project', () => {
     const cli = join(root, 'cli')
     const host = join(root, 'host')
     const dependency = join(root, 'unhoisted')
+    const titles = '@deepseek-ai/dsh-experimental-session-titles-bundle'
+    const titlesDir = join(root, 'session-titles')
     const hoisted = join(root, 'hoisted')
     mkdirSync(join(cli, 'node_modules'), { recursive: true })
     mkdirSync(join(host, 'lib'), { recursive: true })
     mkdirSync(dependency)
+    mkdirSync(titlesDir)
+    mkdirSync(join(cli, 'node_modules', '@deepseek-ai'))
     mkdirSync(hoisted)
-    writeFileSync(join(cli, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '1.2.3', dependencies: { unhoisted: 'workspace:^' } }))
+    writeFileSync(join(cli, 'package.json'), JSON.stringify({ name: '@deepseek-ai/dsh', version: '1.2.3', dependencies: { unhoisted: 'workspace:^', [titles]: 'workspace:*' } }))
     writeFileSync(join(host, 'package.json'), JSON.stringify({ name: '@ipollo/desktop-host', version: '1.2.3' }))
     writeFileSync(join(host, 'lib/index.js'), '')
     writeFileSync(join(dependency, 'package.json'), JSON.stringify({ name: 'unhoisted', version: '1.2.3' }))
+    writeFileSync(join(titlesDir, 'package.json'), JSON.stringify({ name: titles, version: '1.2.3' }))
     symlinkSync(dependency, join(cli, 'node_modules/unhoisted'), process.platform === 'win32' ? 'junction' : 'dir')
+    symlinkSync(titlesDir, join(cli, 'node_modules', titles), process.platform === 'win32' ? 'junction' : 'dir')
     const project = prepareDevelopmentProject({ projectDir: join(root, 'runtime'), cliDir: cli, hostDir: host, dependencyDir: hoisted, release: release(), target: 'mac-arm64' })
     expect(realpathSync(join(project, 'node_modules/unhoisted'))).toBe(realpathSync(dependency))
     const descriptor = JSON.parse(readFileSync(join(project, 'desktop-runtime.json'), 'utf8')) as { platform: string; arch: string; sharedPackages: unknown[] }
     expect(descriptor).toMatchObject({ platform: 'darwin', arch: 'arm64' })
     expect(descriptor.sharedPackages).toContainEqual({ name: 'unhoisted', version: '1.2.3', path: 'node_modules/unhoisted' })
+    const manifest = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8')) as { dependencies: Record<string, string> }
+    expect(manifest.dependencies[titles]).toBe('1.2.3')
+    expect(manifest.dependencies.unhoisted).toBeUndefined()
   })
 
   it('manages development plugins without modifying the linked workspace packages', async () => {

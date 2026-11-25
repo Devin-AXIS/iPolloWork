@@ -1,0 +1,30 @@
+# Layer on compose.external.yml. Relative paths use its directory.
+services:
+  edge:
+    image: ${CADDY_IMAGE:-caddy:2.11.9-alpine}
+    restart: unless-stopped
+    depends_on: [work]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SERVICE_DOMAIN: ${SERVICE_DOMAIN:?Set the public account hostname}
+      PUBLICATION_DOMAIN: ${PUBLICATION_DOMAIN:?Set a separate publication hostname}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - edge-data:/data
+      - edge-config:/config
+    networks:
+      default:
+        ipv4_address: ${PROXY_IP:-10.238.82.254}
+  work:
+    environment:
+      TRUSTED_PROXY_IPS: ${PROXY_IP:-10.238.82.254}
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: ${SERVICE_SUBNET:-10.238.82.0/24}
+volumes:
+  edge-data:
+  edge-config:

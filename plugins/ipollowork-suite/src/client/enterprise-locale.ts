@@ -6,6 +6,14 @@ const en = {
   websiteDepartment: "Visible department", websiteRole: "Visible role", websiteAllDepartments: "All departments",
   websiteAllRoles: "All roles", websiteOwner: "Owner", websiteDepartmentUnavailable: "Department unavailable",
   noOrganizationWebsites: "No websites available", removeWebsite: "Remove website",
+  organizationBrowser: "Business websites", websiteCookieNames: "Remember sign-in cookies (comma separated)",
+  websiteTicket: "Business ticket exchange", websiteTicketEndpoint: "HTTPS ticket endpoint",
+  websiteTicketCredential: "Application credential", websiteTicketConfigured: "Credential saved. Leave blank to keep it.",
+  websiteTicketDisable: "Disable ticket exchange", websiteTicketConfirm: "The saved application credential will be removed.",
+  websiteOrganizationsEmpty: "You have no active organization memberships.",
+  websiteBrowserUnavailable: "The browser could not open this website. Check your system credential store and try again.",
+  websiteHttpsRequired: "Remembered login requires an HTTPS website.",
+  websiteCredentialRequired: "Enter the application credential when adding or changing the ticket endpoint.",
   websiteConflict: "The website list has changed. Reload it before saving.", websiteUnavailable: "This website is unavailable or your access has changed.",
   identityNotifications: "Member change notifications", notificationEndpoint: "HTTPS receiver", notificationEnabled: "Send member changes", notificationSecret: "Signing secret — copy once to your receiver", rotateSecret: "Rotate signing secret",
   credentialMode: "API key ownership", sharedKey: "Organization key", memberKey: "Each member supplies a key",
@@ -515,6 +523,14 @@ const zh: typeof en = {
   websiteDepartment: "可见部门", websiteRole: "可见角色", websiteAllDepartments: "全部部门",
   websiteAllRoles: "全部角色", websiteOwner: "所有者", websiteDepartmentUnavailable: "部门已不可用",
   noOrganizationWebsites: "暂无可用网页入口", removeWebsite: "移除网页入口",
+  organizationBrowser: "业务网页", websiteCookieNames: "保留登录的 Cookie 名称（逗号分隔）",
+  websiteTicket: "企业换票", websiteTicketEndpoint: "HTTPS 换票地址",
+  websiteTicketCredential: "应用凭证", websiteTicketConfigured: "凭证已保存，留空沿用",
+  websiteTicketDisable: "停用换票", websiteTicketConfirm: "停用后将删除已保存的应用凭证。",
+  websiteOrganizationsEmpty: "当前账号没有有效的组织成员身份。",
+  websiteBrowserUnavailable: "无法打开业务网页。请确认系统凭据库可用后重试。",
+  websiteHttpsRequired: "请填写 HTTPS 网页地址后再开启登录保留。",
+  websiteCredentialRequired: "新增或变更换票地址时，请输入应用凭证。",
   websiteConflict: "网页入口已更新，请重新加载后保存。", websiteUnavailable: "网页入口已移除或你的权限已变更。",
   identityNotifications: "身份变更通知", notificationEndpoint: "HTTPS 接收地址", notificationEnabled: "发送成员变更通知", notificationSecret: "签名密钥，请复制到接收系统，仅此次显示", rotateSecret: "更换签名密钥",
   credentialMode: "凭证模式", sharedKey: "组织共用 Key", memberKey: "每位成员填写自己的 Key",
@@ -1009,6 +1025,9 @@ export function enterpriseError(code: string, t: EnterpriseLabels, fallback = t.
   if (code === 'PACKAGE_NOT_FOUND') return t.packageMissing;
   if (code === "ORGANIZATION_WEBSITES_CONFLICT" || code === "IPW_ORGANIZATION_WEBSITES_CONFLICT") return t.websiteConflict;
   if (code === "ORGANIZATION_WEBSITE_UNAVAILABLE" || code === "IPW_ORGANIZATION_WEBSITE_UNAVAILABLE") return t.websiteUnavailable;
+  if (code === "IPW_ORGANIZATION_BROWSER_UNAVAILABLE") return t.websiteBrowserUnavailable;
+  if (code === "ORGANIZATION_WEBSITE_HTTPS_REQUIRED") return t.websiteHttpsRequired;
+  if (code === "ORGANIZATION_TICKET_CREDENTIAL_REQUIRED") return t.websiteCredentialRequired;
   const diagnostic = /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? ` (${code})` : '';
   if (code === 'IPW_ACCOUNT_UNAVAILABLE') return t.accountUnavailable + diagnostic;
   if (code === 'IPW_ACCOUNT_TIMEOUT') return t.accountTimeout + diagnostic;

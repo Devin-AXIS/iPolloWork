@@ -11,6 +11,7 @@ export interface MarketItem {
   providedByDsh: boolean;
   installedVersion: string | null; resources: readonly string[];
   archiveSha256?: string;
+  enableOnInstall?: boolean;
   update?: 'archive' | 'git';
 }
 export interface MarketState { title: string; items: MarketItem[]; categories: { id: string; title: string }[]; runtimeVersion: string; canManage?: boolean }

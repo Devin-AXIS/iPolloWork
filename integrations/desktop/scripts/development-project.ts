@@ -13,6 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { dirname, join } from 'node:path'
+import { OPTIONAL_BUNDLES } from '@deepseek-ai/dsh-official-bundles'
 import { createDevelopmentProjectMetadata } from '../src/project-manager.ts'
 import type { DesktopRelease } from '../src/release.ts'
 import { DESKTOP_RUNTIME_FILE, type DesktopRuntimeDescriptor } from '../src/runtime-tree.ts'
@@ -161,16 +162,19 @@ export function prepareDevelopmentProject(options: DevelopmentProjectOptions): s
   linkDirectory(options.hostDir, hostLink)
   if (options.suiteDir) {
     linkDirectory(options.suiteDir, join(destinationModules, '@ipollo', 'dsh-suite'))
-    const path = join(options.projectDir, 'package.json')
-    const current = readManifest(path)
-    const manifest = { ...current, dependencies: { ...current.dependencies,
-      '@ipollo/dsh-suite': readManifest(join(options.suiteDir, 'package.json')).version! } }
-    writeFileSync(path, JSON.stringify(manifest, undefined, 2) + '\n')
   }
   const sharedPackages = [...new Set([...names, '@deepseek-ai/dsh', '@ipollo/desktop-host', ...options.suiteDir ? ['@ipollo/dsh-suite'] : []])].flatMap((name) => {
     const manifest = readManifest(join(destinationModules, name, 'package.json'))
     return typeof manifest.version === 'string' ? [{ name, version: manifest.version, path: `node_modules/${name}` }] : []
   })
+  // DSH marks optional bundles as installation-owned only when the root manifest declares them.
+  const bundled = Object.fromEntries(sharedPackages
+    .filter(({ name }) => OPTIONAL_BUNDLES.includes(name) || name === '@ipollo/dsh-suite')
+    .map(({ name, version }) => [name, version]))
+  const path = join(options.projectDir, 'package.json')
+  const current = readManifest(path)
+  const manifest = { ...current, dependencies: { ...current.dependencies, ...bundled } }
+  writeFileSync(path, JSON.stringify(manifest, undefined, 2) + '\n')
   const runtime: DesktopRuntimeDescriptor = { schemaVersion: 1, release: options.release,
     ...desktopTargetPlatform(options.target), sharedPackages, files: [] }
   writeFileSync(join(options.projectDir, DESKTOP_RUNTIME_FILE), `${JSON.stringify(runtime, undefined, 2)}\n`)

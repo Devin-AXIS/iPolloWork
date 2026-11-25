@@ -424,3 +424,21 @@ it('upgrades an existing web or legacy Suite profile to the required desktop com
   await createPluginProfile(root, ['@ipollo/desktop-host'])
   expect(readdirSync(root).filter(name => name.startsWith('package.json.ipollo-backup-'))).toEqual(backups)
 })
+
+it('adopts a previously installed enterprise bundle while preserving its profile patch', async () => {
+  const root = temporaryRoot()
+  await createPluginProfile(root)
+  const path = join(root, 'package.json')
+  const manifest = JSON.parse(readFileSync(path, 'utf8'))
+  manifest.dsh.profile.bundles.push('@company/enterprise-plugin', '@company/another-plugin')
+  Object.assign(manifest.dependencies, { '@company/enterprise-plugin': '1.0.0', '@company/another-plugin': '1.0.0' })
+  writeFileSync(path, JSON.stringify(manifest))
+  const patch = '- id: enterprise-plugin\n  disabled: true\n'
+  writeFileSync(join(root, 'cordis.patch.yml'), patch)
+  await createPluginProfile(root, ['@ipollo/desktop-host'], ['@company/enterprise-plugin'])
+  const current = JSON.parse(readFileSync(path, 'utf8'))
+  expect(current.dsh.profile.bundles).not.toContain('@company/enterprise-plugin')
+  expect(current.dsh.profile.bundles).toContain('@company/another-plugin')
+  expect(current.dependencies).toEqual({ '@company/another-plugin': '1.0.0' })
+  expect(readFileSync(join(root, 'cordis.patch.yml'), 'utf8')).toBe(patch)
+})

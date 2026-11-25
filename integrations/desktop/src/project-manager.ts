@@ -133,7 +133,14 @@ export class DesktopProjectManager {
       // Validation only: an unreadable or mismatched runtime descriptor stops preparation before the Host starts.
       const descriptor = readDesktopRuntime(this.runtime.dsh)
       const hasSuite = existsSync(join(this.runtime.dsh, 'node_modules', '@ipollo', 'dsh-suite', 'package.json'))
-      await createPluginProfile(this.paths.profile, hasSuite ? [DESKTOP_HOST_PACKAGE] : [])
+      const manifestPath = join(this.runtime.dsh, 'package.json')
+      const enterprise: unknown = existsSync(manifestPath)
+        ? JSON.parse(readFileSync(manifestPath, 'utf8')).ipolloworkEnterpriseBundles : undefined
+      if (enterprise !== undefined && (!Array.isArray(enterprise) || enterprise.some(name =>
+        typeof name !== 'string' || !descriptor.sharedPackages.some(entry => entry.name === name)))) {
+        throw new Error('desktop project: invalid installation-owned enterprise bundles')
+      }
+      await createPluginProfile(this.paths.profile, hasSuite ? [DESKTOP_HOST_PACKAGE] : [], enterprise)
       removeLinkProjections(this.paths.profile)
       repairProfileRuntime(this.paths.profile, this.runtime.dsh, descriptor)
     })
@@ -222,8 +229,9 @@ export function createDevelopmentProjectMetadata(projectDir: string, release: De
 /** Create the first external plugin profile without running a package manager.
  * @param projectDir - Desktop profile directory.
  * @param requiredBundles - Installation-owned bundles enabled by the desktop distribution.
+ * @param enterpriseBundles - Plugins already enabled by the installation-owned composition.
  */
-export async function createPluginProfile(projectDir: string, requiredBundles: readonly string[] = []): Promise<void> {
+export async function createPluginProfile(projectDir: string, requiredBundles: readonly string[] = [], enterpriseBundles: readonly string[] = []): Promise<void> {
   initProfile(projectDir, [...WEB_PROFILE.bundles, ...requiredBundles])
   if (requiredBundles.includes(DESKTOP_HOST_PACKAGE)) {
     const manifestPath = join(projectDir, 'package.json')
@@ -234,8 +242,9 @@ export async function createPluginProfile(projectDir: string, requiredBundles: r
     }
     // The private application already owns these entries. Retaining the old public bundle
     // creates a competing instance and allows old profile code to replace the desktop UI.
-    const next = current.filter(name => name !== '@ipollo/dsh-suite' && name !== '@ipollo/dsh-stage')
-    const applicationPackages = new Set(['@ipollo/desktop-host', '@ipollo/dsh-suite', '@ipollo/dsh-stage'])
+    const applicationPackages = new Set(['@ipollo/desktop-host', '@ipollo/dsh-suite', '@ipollo/dsh-stage', ...enterpriseBundles])
+    // Preserve the layer order of a Host entry already present in the user's profile.
+    const next = current.filter(name => name === DESKTOP_HOST_PACKAGE || !applicationPackages.has(name))
     const dependencies: Record<string, Record<string, unknown>> = {}
     for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'] as const) {
       const values = (manifest as Record<string, unknown>)[section]

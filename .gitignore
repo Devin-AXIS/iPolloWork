@@ -1,6 +1,7 @@
 CLAUDE.local.md
 
 .env
+/ipollowork.release.json
 apps/desktop/.env.windows
 apps/desktop/.env.macos
 apps/desktop/*.p12

@@ -17,8 +17,6 @@
   to { opacity: 1; }
 }
 
-.loading { display: grid; place-items: center; height: 100%; color: var(--dsw-alias-label-tertiary); }
-
 .content {
   position: absolute;
   top: 50%;

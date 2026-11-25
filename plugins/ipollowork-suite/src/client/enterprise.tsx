@@ -8,6 +8,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import {
   Button,
   IconChevronDownOutlineRegular,
+  IconGlobeOutlineRegular,
   IconRefreshOutlineRegular,
   IconUsersOutlineRegular,
   IconWorkspaceTreeOutlineRegular,
@@ -74,6 +75,9 @@ import {
 } from "./enterprise-ui.tsx";
 import css from "./suite.module.css";
 import { organizationTemplateSource } from './organization-templates.ts';
+import { OrganizationWebsitePanel } from './organization-websites.tsx';
+import type { OrganizationContext } from '../shared/organizations.ts';
+import { request } from './api.ts';
 
 const PANEL = "ipollowork-enterprise";
 
@@ -778,6 +782,11 @@ export function mountEnterprise(
 ): void {
   const controller = new EnterpriseController(),
     labels = enterpriseLabels(ctx);
+  ctx.provide("ipolloOrganizationContext", async signal => {
+    const { organizations } = await request<OrganizationContext>('/enterprise/memberships', signal ? { signal } : undefined);
+    const current = controller.getSnapshot().enterpriseId;
+    return { organizations, activeOrganizationId: organizations.some(organization => organization.id === current) ? current : null };
+  });
   let notificationCenterEnabled = false;
   const notificationListeners = new Set<() => void>();
   const notificationCenterAvailable = {
@@ -920,6 +929,13 @@ export function mountEnterprise(
       EnterprisePanel,
     ),
   );
+  const websitesPanel = 'ipollowork-organization-websites';
+  ctx.slots.inject('main', () => ctx.slots.register({
+    name: 'main', key: websitesPanel, inject: () => ({ ...props(), account }),
+  }, OrganizationWebsitePanel));
+  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+    name: 'sidebar.panellist', id: websitesPanel, order: 12, label: () => enterpriseCopy(ctx).organizationBrowser,
+  }, IconGlobeOutlineRegular));
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register<Props>(
       {

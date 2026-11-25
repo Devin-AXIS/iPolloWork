@@ -3,7 +3,7 @@ import { officePackageDirectories } from '../../../scripts/libreoffice-packages.
 import { X509Certificate } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
-import { join, relative, sep } from 'node:path'
+import { extname, join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -29,6 +29,8 @@ import { installWindowsDirectoryInstaller } from './windows-directory-installer.
 import { preserveWindowsRuntimeSignature, signWindowsCode } from './windows-runtime-signature.mjs'
 import { prepareWindowsAsarUnpack, verifyWindowsAsarUnpack } from './windows-asar-unpack.mjs'
 import { recordPackagingEvent } from './packaging-run.mjs'
+import { DESKTOP_RELEASE_UPDATE_FEED } from '../../publisher/src/desktop-update-feed-url.mjs'
+import { desktopArtifactTemplate, readDesktopReleaseConfig, DEFAULT_DESKTOP_NAME, DEFAULT_DESKTOP_PROTOCOL } from '../../tooling/desktop-release-config.mjs'
 import {
   resolveMacOSAppUpdateFeed,
   verifyMacOSAppUpdateConfig,
@@ -51,7 +53,10 @@ export function createElectronBuilderConfig(
   preparedRuntime = undefined,
   preparedRuntimeVersion = undefined,
 ) {
+  const distribution = readDesktopReleaseConfig(env)
   const appId = resolveDesktopAppId(env)
+  const name = distribution.name ?? DEFAULT_DESKTOP_NAME
+  const externalProtocol = distribution.protocol ?? DEFAULT_DESKTOP_PROTOCOL
   const targetPlatform = env.DSH_DESKTOP_TARGET_PLATFORM
   const resolvedPlatform = targetPlatform ?? hostPlatform
   const resolvedArch = env.DSH_DESKTOP_TARGET_ARCH ?? hostArch
@@ -67,6 +72,16 @@ export function createElectronBuilderConfig(
   const packagesMacOS = targetPlatform === 'darwin' || (targetPlatform === undefined && hostPlatform === 'darwin')
   const packagesWindows = resolvedPlatform === 'win32'
   const packagesLinux = resolvedPlatform === 'linux'
+  const defaultIcon = fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url))
+  const macIcon = distribution.icons.macos ?? fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url))
+  const windowsIcon = distribution.icons.windows ?? defaultIcon
+  const linuxIcon = distribution.icons.linux ?? defaultIcon
+  const applicationIcon = packagesWindows ? windowsIcon : packagesLinux ? linuxIcon
+    : distribution.icons.macos && extname(distribution.icons.macos).toLowerCase() === '.png' ? macIcon : defaultIcon
+  const trayIcon = distribution.icons.tray ?? distribution.icons.windows
+    ?? fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url))
+  const iconFilename = 'icon' + extname(applicationIcon).toLowerCase()
+  const trayFilename = 'tray' + extname(trayIcon).toLowerCase()
   if (packagesLinux && !unsigned) throw new Error('desktop package: Linux requires unsigned packaging mode')
   const policy = packagesLinux || (packagesMacOS && unsigned) ? undefined : resolveDesktopPolicyEnvironment(env)
   if (resolvedPlatform === 'win32') installWindowsDirectoryInstaller()
@@ -104,7 +119,7 @@ export function createElectronBuilderConfig(
   }
   // Windows supports hash-verified NSIS updates without a signing certificate.
   // Only opt in when this product explicitly provides its HTTPS update feed.
-  const update = unsigned && !(packagesWindows && env.DSH_DESKTOP_UPDATE_URL)
+  const update = unsigned && !(packagesWindows && (env[DESKTOP_RELEASE_UPDATE_FEED] || env.DSH_DESKTOP_UPDATE_URL))
     ? undefined : resolveDesktopAutoUpdateConfig(env, resolvedPlatform, resolvedArch)
   if (preparedRuntime !== undefined) buildPaths.dsh = preparedRuntime
   const dshFiles = [
@@ -120,9 +135,14 @@ export function createElectronBuilderConfig(
   const packaged = resolveDesktopBuildCommit(env)
   return {
     appId,
-    protocols: [{ name: 'iPollo', schemes: ['dsh'] }],
+    protocols: [{ name, schemes: [externalProtocol] }],
     extraMetadata: {
-      productName: 'iPollo',
+      productName: name,
+      ...(distribution.appId === undefined ? {} : { name: appId.toLowerCase() }),
+      ...(distribution.dataDirectoryName === undefined ? {} : { dshUserDataName: distribution.dataDirectoryName }),
+      ...(distribution.protocol === undefined ? {} : { dshExternalProtocol: externalProtocol }),
+      ...(iconFilename === 'icon.png' ? {} : { dshApplicationIcon: iconFilename }),
+      ...(trayFilename === 'tray.ico' ? {} : { dshTrayIcon: trayFilename }),
       ...(packagesLinux ? { homepage: 'https://ipollo.ai' } : {}),
       dshDesktopAppId: appId,
       dshDesktopUpdateChannel: update?.channel ?? 'nightly',
@@ -130,11 +150,12 @@ export function createElectronBuilderConfig(
       ...buildVersion === productVersion ? {} : { version: buildVersion },
       ...packaged === undefined ? {} : { dshBuildCommit: packaged.commit, dshBuildDirty: packaged.dirty },
     },
-    productName: 'iPollo',
+    productName: name,
     // The default copyright uses author.name; this line names the product shown to users instead.
-    copyright: `Copyright © ${new Date().getFullYear()} iPollo`,
+    copyright: `Copyright © ${new Date().getFullYear()} ${name}`,
     // Unsigned builds carry their own suffix so a shared file can never pass for a release artifact.
-    artifactName: `iPollo-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
+    artifactName: distribution.installerName ? desktopArtifactTemplate(distribution.installerName, output.suffix)
+      : `iPollo-\${version}-\${os}-\${arch}${output.suffix}.\${ext}`,
     directories: { output: output.directory },
     asar: true,
     electronDist: buildPaths.electron,
@@ -146,7 +167,8 @@ export function createElectronBuilderConfig(
         '-OutputDirectory', join(buildPaths.root, 'installer-ui')], {
         env: scrubWindowsSigningEnvironment(env), windowsHide: true,
       })
-      await writeFile(join(buildPaths.root, 'installer-ui', 'strings.nsh'), renderInstallerStrings(readInstallerLocales()), 'utf8')
+      const identity = distribution.dataDirectoryName === undefined ? '' : `!define DSH_USER_DATA_NAME "${distribution.dataDirectoryName}"\n`
+      await writeFile(join(buildPaths.root, 'installer-ui', 'strings.nsh'), identity + renderInstallerStrings(readInstallerLocales()), 'utf8')
       if (windowsSigner !== undefined) {
         await windowsSigner({ path: join(buildPaths.root, 'installer-ui', 'window-frame.dll'), hash: 'sha256', isNest: false })
       }
@@ -174,18 +196,18 @@ export function createElectronBuilderConfig(
       // Office Kit checks whether optional native engines exist. Resolving the
       // runtime from disk lets its normal missing-engine path select WASM.
       ...(packagesLinux ? dshFiles : []),
-      { from: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)), to: 'icon.png' },
+      { from: applicationIcon, to: iconFilename },
       // Windows tray bitmaps; macOS keeps the Dock and ships no menu bar icon.
-      ...(packagesWindows ? [{ from: fileURLToPath(new URL('../resources/tray-windows.ico', import.meta.url)), to: 'tray.ico' }] : []),
+      ...(packagesWindows ? [{ from: trayIcon, to: trayFilename }] : []),
     ],
     mac: {
-      icon: fileURLToPath(new URL('../resources/icon-macos.png', import.meta.url)),
+      icon: macIcon,
       category: 'public.app-category.developer-tools',
       // macOS matches the application locale against this bundle, not Electron Framework resources.
       extendInfo: {
-        CFBundleDisplayName: 'iPollo',
+        CFBundleDisplayName: name,
         CFBundleLocalizations: ['en', 'zh_CN', 'ja', 'es', 'fr', 'de', 'ru', 'pt'],
-        NSMicrophoneUsageDescription: 'iPollo uses your microphone to transcribe speech into message drafts.',
+        NSMicrophoneUsageDescription: `${name} uses your microphone to transcribe speech into message drafts.`,
       },
       // Ad-hoc signing keeps the modified Electron executable runnable without a Developer ID.
       identity: unsigned ? '-' : macOSSigning?.signingIdentity,
@@ -260,7 +282,7 @@ export function createElectronBuilderConfig(
       )
     },
     win: {
-      icon: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)),
+      icon: windowsIcon,
       forceCodeSigning: !unsigned,
       signtoolOptions: {
         sign: windowsSigner,
@@ -272,14 +294,14 @@ export function createElectronBuilderConfig(
     linux: {
       category: 'Development',
       executableName: 'ipollo',
-      icon: fileURLToPath(new URL('../resources/icon-windows.png', import.meta.url)),
-      artifactName: 'iPollo-${version}-linux-x64-unsigned.AppImage',
+      icon: linuxIcon,
+      artifactName: distribution.installerName ? desktopArtifactTemplate(distribution.installerName, output.suffix) : 'iPollo-${version}-linux-x64-unsigned.AppImage',
       target: ['AppImage'],
     },
     nsis: {
       // Shortcuts and the installed-programs list show the product name; file and directory names keep productName.
-      shortcutName: 'iPollo',
-      uninstallDisplayName: 'iPollo',
+      shortcutName: name,
+      uninstallDisplayName: name,
       installerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
       uninstallerSidebar: join(buildPaths.root, 'installer-ui', 'uninstaller-sidebar.bmp'),
       include: fileURLToPath(new URL('./installer.nsh', import.meta.url)),

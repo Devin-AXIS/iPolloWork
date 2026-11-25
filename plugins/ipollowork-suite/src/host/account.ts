@@ -6,6 +6,7 @@ import type {
 } from "../shared/types.ts";
 import type { ResolvedConfig } from "./config.ts";
 import { AppDataRejection, InvitationRosterRejection, StageRejection, SuiteError } from "./errors.ts";
+import { desktopEnterprise, hasEnterpriseDesktop } from "./desktop-enterprise.ts";
 
 const KEY = "ipollowork-suite/account";
 type Grant = { version: 1; origin: string; token: string };
@@ -374,7 +375,28 @@ export class AccountService {
     }
     const record = await this.credentials.readRecord(KEY);
     if (!record) return undefined;
-    const value = record.payload;
+    let value: unknown = record.payload;
+    if (hasEnterpriseDesktop()) {
+      if (record.kind === "grant" && object(value) && value.version === 1 && value.origin === this.config.accountOrigin) {
+        const replacement = await this.credentials.modifyRecord(KEY, async current => {
+          const payload = object(current) ? current.payload : undefined;
+          if (!object(current) || current.kind !== "grant" || !object(payload) || payload.origin !== this.config.accountOrigin)
+            throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+          if (payload.version === 2 && typeof payload.sealed === "string") return { kind: "grant", payload };
+          if (payload.version !== 1 || typeof payload.token !== "string")
+            throw new SuiteError("IPW_INVALID_SAVED_ACCOUNT", 500);
+          return { kind: "grant", payload: await this.protectGrant({ version: 1, origin: payload.origin, token: payload.token }) };
+        });
+        if (!object(replacement) || replacement.kind !== "grant") return undefined;
+        value = replacement.payload;
+      }
+      if (object(value) && value.version === 2 && typeof value.sealed === "string") {
+        if (value.origin !== this.config.accountOrigin) return undefined;
+        const decrypted = await desktopEnterprise("unseal", { origin: value.origin, payload: value.sealed });
+        if (typeof decrypted !== "string") throw new SuiteError("IPW_INVALID_SAVED_ACCOUNT", 500);
+        value = JSON.parse(decrypted) as unknown;
+      }
+    }
     if (
       record.kind !== "grant" ||
       !object(value) ||
@@ -385,6 +407,12 @@ export class AccountService {
       throw new SuiteError("IPW_INVALID_SAVED_ACCOUNT", 500);
     if (value.origin !== this.config.accountOrigin) return undefined;
     return { version: 1, origin: value.origin, token: value.token };
+  }
+  private async protectGrant(grant: Grant) {
+    if (!hasEnterpriseDesktop()) return grant;
+    const sealed = await desktopEnterprise("seal", { origin: grant.origin, payload: JSON.stringify(grant) });
+    if (typeof sealed !== "string") throw new SuiteError("IPW_DESKTOP_VAULT_UNAVAILABLE", 503);
+    return { version: 2, origin: grant.origin, sealed };
   }
   private async sessionUser(grant: Grant): Promise<AccountUser | null> {
     let session: unknown;
@@ -493,10 +521,12 @@ export class AccountService {
       origin: this.config.accountOrigin,
       token: result.token,
     };
+    const payload = await this.protectGrant(grant);
+    if (hasEnterpriseDesktop()) await desktopEnterprise("close");
     await this.credentials.modifyRecord(KEY, async () => {
       if (revision !== this.revision || this.signal.aborted)
         throw new SuiteError("IPW_LOGIN_CANCELLED", 409);
-      return { kind: "grant", payload: grant };
+      return { kind: "grant", payload };
     });
     return this.state();
   }
@@ -504,6 +534,7 @@ export class AccountService {
   async signOut(): Promise<HostAccountState> {
     ++this.revision;
     await this.credentials.deleteRecord(KEY);
+    if (hasEnterpriseDesktop()) await desktopEnterprise("clear");
     return { status: "anonymous", origin: this.config.accountOrigin };
   }
 }

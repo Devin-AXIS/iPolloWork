@@ -28,6 +28,7 @@ export interface ClientContext {
   provide(name: 'ipolloSuiteThemeReady', value: true): void;
   provide(name: 'ipolloData', value: import('../shared/app-data.ts').IpolloData): void;
   provide(name: 'ipolloProjectConversationShare', value: import('../shared/enterprise.ts').ProjectConversationShare): void;
+  provide(name: 'ipolloOrganizationContext', value: import('../shared/organizations.ts').OrganizationContextSource): void;
   effect(effect: () => void | (() => void), label?: string): unknown;
   slots: {
     inject(name: string, install: () => void | (() => void) | Iterable<() => void>): unknown;

@@ -76,7 +76,7 @@ export async function publishEnterpriseMcp(
 }
 
 /** Accept only DNS answers for public IPv4 and use that exact address for the TLS connection. */
-function connect(endpoint: URL, method: string, headers: Record<string, string>, body: Buffer | undefined, signal: AbortSignal) {
+export function connectPublicHttps(endpoint: URL, method: string, headers: Record<string, string>, body: Buffer | undefined, signal: AbortSignal) {
   return new Promise<import("node:http").IncomingMessage>((resolve, reject) => {
     const outgoing = request(endpoint, {
       method, headers, signal, agent: false, family: 4,
@@ -85,7 +85,7 @@ function connect(endpoint: URL, method: string, headers: Record<string, string>,
           if (error) { callback(error, "", 4); return; }
           const first = addresses[0];
           if (!first || addresses.some(({ address }) => blocked.check(address)))
-            callback(new Error("MCP destination is not public"), "", 4);
+            callback(new Error("HTTPS destination is not public"), "", 4);
           else callback(null, first.address, 4);
         });
       },
@@ -109,7 +109,7 @@ function readSession(secret: string, member: string, row: Row, value: string): s
   throw new ServiceError("MCP_SESSION_INVALID", 400, "MCP 会话已失效，请重新连接");
 }
 
-export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, secret: string, transport = connect, origin?:string): void {
+export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, secret: string, transport = connectPublicHttps, origin?:string): void {
   const oauth = origin ? new EnterpriseMcpOAuth(store,settings,origin,transport) : undefined;
   oauth?.mount(app);
   app.get("/api/v1/enterprises/:id/mcp", async (c) => {
