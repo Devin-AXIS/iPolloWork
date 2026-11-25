@@ -99,6 +99,7 @@ export interface DshDesktopProductApi {
   readonly version?: string
   readonly appVersion: () => Promise<string>
   readonly browser: DesktopBrowserBridge
+  readonly organizationBrowser: true
   readonly fileDrag: DesktopFileDrag
   readonly keyboard: DesktopKeyboardApi
   readonly shortcuts: DesktopShortcutsApi

@@ -73,7 +73,7 @@ export function MarketPanel({ useLabels, load, installation, openPackage, update
     return {
       label: pending ? (update ? t.marketUpdating : t.installing) : unconfirmed ? t.installView
         : completed ? (update ? t.marketUpdated : t.installed) : update ? t.marketUpdate
-          : installed ? t.manage : item.compatible ? t.install : t.incompatible,
+          : installed ? t.manage : item.compatible ? (item.enableOnInstall ? t.installAndEnable : t.install) : t.incompatible,
       disabled: !pending && !unconfirmed && (completed || ((!installed || update) && (!item.compatible || Boolean(otherInstallPending)))),
       onClick: () => {
         if (pending || unconfirmed) installation.show()

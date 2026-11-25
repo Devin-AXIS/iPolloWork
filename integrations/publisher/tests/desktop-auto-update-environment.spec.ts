@@ -18,6 +18,17 @@ describe('desktop auto-update environment', () => {
     }, 'darwin', 'arm64').publicUrl).toBe('https://github.com/Devin-AXIS/iPolloWork/releases/latest/download/')
   })
 
+  it('selects architecture-specific enterprise feeds without official test download settings', () => {
+    const env = { DSH_DESKTOP_AUTO_UPDATE_ENV: 'test', DSH_DESKTOP_UPDATE_CHANNEL: 'stable',
+      IPOLLOWORK_DESKTOP_UPDATE_FEED: 'https://updates.example.com/desktop/${target}',
+      DSH_DESKTOP_UPDATE_URL: 'https://legacy.example.com/feed/' }
+    expect(resolveDesktopAutoUpdateConfig(env, 'win32', 'x64').publicUrl).toBe('https://updates.example.com/desktop/win-x64/')
+    expect(resolveDesktopAutoUpdateConfig(env, 'darwin', 'arm64').publicUrl).toBe('https://updates.example.com/desktop/mac-arm64/')
+    expect(resolveDesktopAutoUpdateConfig(env, 'darwin', 'x64').publicUrl).toBe('https://updates.example.com/desktop/mac-x64/')
+    expect(resolveDesktopAutoUpdateConfig(env, 'darwin', 'x64').channel).toBe('stable')
+    expect(() => resolveDesktopUploadConfig(env, 'win32', 'x64')).toThrow(/enterprise feed files/u)
+  })
+
   it.each(['http://updates.example.com', 'https://user:secret@example.com', 'https://example.com/?token=secret', 'invalid'])
   ('rejects an invalid product feed %s', url => {
     expect(() => resolveDesktopAutoUpdateConfig({ DSH_DESKTOP_AUTO_UPDATE_ENV: 'production',

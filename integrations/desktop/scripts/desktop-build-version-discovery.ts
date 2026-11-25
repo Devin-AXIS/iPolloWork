@@ -22,6 +22,7 @@ import { parse } from 'semver'
 import { desktopBuildVersionPrefix, validateDesktopBuildVersion } from './desktop-build-version.mjs'
 import { DESKTOP_AUTO_UPDATE_ENV, resolveDesktopUploadConfig } from '@deepseek-ai/dsh-desktop-publisher/desktop-auto-update-environment.mjs'
 import { createDesktopCos, DESKTOP_COS_REGION } from '@deepseek-ai/dsh-desktop-publisher/desktop-cos.ts'
+import { DESKTOP_RELEASE_UPDATE_FEED } from '../../publisher/src/desktop-update-feed-url.mjs'
 import type { DesktopPackageTargetName } from './package-target.ts'
 
 /** How long the whole bucket listing may take before the suggestion falls back to local artifacts. */
@@ -87,7 +88,7 @@ async function localVersions(artifactsRoot: string): Promise<string[]> {
  * @returns Versions parsed from object names, or undefined when the bucket cannot be listed completely in time.
  */
 async function remoteVersions(options: DesktopBuildVersionSuggestionOptions): Promise<string[] | undefined> {
-  if (options.target === 'linux-x64') return undefined
+  if (options.target === 'linux-x64' || options.environment[DESKTOP_RELEASE_UPDATE_FEED] !== undefined) return undefined
   const platform = options.target === 'win-x64' ? 'win32' as const : 'darwin' as const
   const arch = options.target === 'mac-arm64' ? 'arm64' : 'x64'
   // An unconfigured destination has nothing to be unique against; an invalid one must not be mistaken for it.

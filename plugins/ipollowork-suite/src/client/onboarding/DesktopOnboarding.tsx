@@ -2,7 +2,7 @@
 import type { ProductEventMap } from '@deepseek-ai/dsh-client-product-analytics/client'
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
-import { OnboardingSurface } from './OnboardingSurface.tsx'
+import { OnboardingLoading, OnboardingSurface } from './OnboardingSurface.tsx'
 import type { DesktopOnboardingProps } from './onboarding-contract.ts'
 import { OnboardingWelcomeStep } from './OnboardingWelcomeStep.tsx'
 import { OnboardingCreditStep } from './OnboardingCreditStep.tsx'
@@ -74,9 +74,7 @@ export function DesktopOnboarding({
   const popupClick = (button_name: ProductEventMap['onboarding_popup_click']['button_name']) => {
     track?.('onboarding_popup_click', { popup_name: dialog === 'skip' ? 'skip_setting' : 'skip_charge', button_name })
   }
-  if (state.visible && state.status === 'loading') return <OnboardingSurface>
-    <div className={css.loading} role="status">{t('onboardingLoading')}</div>
-  </OnboardingSurface>
+  if (state.visible && state.status === 'loading') return <OnboardingLoading label={t('onboardingLoading')} />
   if (!state.visible || pageName === undefined) return null
   const click = (button_name: ProductEventMap['onboarding_page_click']['button_name']) => {
     const selected_content = step === 'purpose' && progress.purpose !== null ? ({ office: 'office', development: 'code', both: 'code_office' } as const)[progress.purpose]

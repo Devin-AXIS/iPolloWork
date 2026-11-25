@@ -2,9 +2,11 @@ import type { ChangeResult, ClientRemote, PluginInstallProgress, PluginInstallRe
 import type { MarketItem } from '../shared/types.ts'
 
 type MarketTarget = Pick<MarketItem, 'name' | 'title' | 'spec' | 'version' | 'registry' | 'archiveSha256' | 'update'>
-  & Partial<Pick<MarketItem, 'installedVersion'>>
+  & Partial<Pick<MarketItem, 'installedVersion' | 'enableOnInstall'>>
 type ArchiveRequest = { name: string; version: string; fromVersion?: string }
-type Target = Pick<MarketTarget, 'title' | 'spec'> & { name?: string; version?: string; registry?: string | null; archive?: ArchiveRequest }
+type Target = Pick<MarketTarget, 'title' | 'spec'> & {
+  name?: string; version?: string; registry?: string | null; archive?: ArchiveRequest; enableOnInstall?: boolean
+}
 type Phase = 'confirm-update' | 'checking' | 'starting' | PluginInstallProgress['phase'] | 'reconciling' | 'unconfirmed' | 'done' | 'failed' | 'cancelled' | 'unknown'
 interface Task {
   target: Target
@@ -187,10 +189,10 @@ export class MarketInstallation {
       spec = prepared
       this.publish({ task: { ...task, phase: 'starting' } })
     }
-    // On archive replacement enabled:false leaves the existing DSH bundle selection intact.
+    // Archive updates retain the existing DSH bundle selection.
     const answer = await this.manager.installBundle(spec, {
       requestId,
-      enabled: false,
+      enabled: !target.archive?.fromVersion && target.enableOnInstall === true,
       ...(target.name && target.version ? { expected: { name: target.name, version: target.version } } : {}),
       ...(target.registry === undefined ? {} : { registry: target.registry }),
       ...(approvedBuilds?.length ? { approvedBuilds } : {}),

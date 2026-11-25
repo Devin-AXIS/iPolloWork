@@ -75,7 +75,7 @@ const secrets = new Set([
 ]);
 
 /** Create the standalone HTTP service and its local persistence owner. */
-export async function createService(config: Config) {
+export async function createService(config: Config, options?: { websiteTicketTransport?: Parameters<typeof mountOrganizationWebsites>[3] }) {
   let boardReminders:ReturnType<typeof boardReminderWorker>|undefined;
   const store = new Store(config);
   const dataStore = config.appData
@@ -468,7 +468,7 @@ export async function createService(config: Config) {
     mountEnterpriseAssets(app, store, storage, config);
     mountEnterpriseMcp(app, store, settings, config.secret, undefined, config.origin);
     mountEnterprise(app, store, config, cloud, organizationMembers);
-    mountOrganizationWebsites(app, store, settings);
+    mountOrganizationWebsites(app, store, settings, options?.websiteTicketTransport);
     mountOrganizationPublications(app, store);
     mountOrganizationConversations(app, store);
     organizationMembers.mount(app);

@@ -8,7 +8,11 @@ const applied: ChangeResult = {
   changed: true, application: 'applied', stage: 'enable', target: target.name, bundle: target.name,
 }
 
-function fixture(prepareArchive?: ConstructorParameters<typeof MarketInstallation>[2], specToInstall = target.spec) {
+function fixture(
+  prepareArchive?: ConstructorParameters<typeof MarketInstallation>[2],
+  specToInstall = target.spec,
+  expectedInstall = { name: target.name, version: target.version, enabled: false },
+) {
   let installs = 0
   let cancellations = 0
   const pending = Promise.withResolvers<RemoteResult<ChangeResult>>()
@@ -18,8 +22,8 @@ function fixture(prepareArchive?: ConstructorParameters<typeof MarketInstallatio
     installBundle: async (spec, options) => {
       installs++
       assert.equal(spec, specToInstall)
-      assert.deepEqual(options?.expected, { name: target.name, version: target.version })
-      assert.equal(options?.enabled, false)
+      assert.deepEqual(options?.expected, { name: expectedInstall.name, version: expectedInstall.version })
+      assert.equal(options?.enabled, expectedInstall.enabled)
       return pending.promise
     },
     cancelInstall: async () => {
@@ -32,6 +36,16 @@ function fixture(prepareArchive?: ConstructorParameters<typeof MarketInstallatio
   const installation = new MarketInstallation(manager, new AbortController().signal, prepareArchive)
   return { installation, inspection, pending, counts: () => ({ installs, cancellations }) }
 }
+
+test('reviewed workspace market installs request native activation in the same operation', async () => {
+  const reviewed = { ...target, spec: 'file:/cache/example.tgz', enableOnInstall: true }
+  const { installation, pending, counts } = fixture(undefined, reviewed.spec, { ...target, enabled: true })
+  installation.start(reviewed)
+  pending.resolve({ ok: true, value: { ...applied, enabled: true } })
+  await new Promise<void>(resolve => setImmediate(resolve))
+  assert.equal(counts().installs, 1)
+  assert.equal(installation.getSnapshot().task?.result?.enabled, true)
+})
 
 test('archive update confirms both versions and installs only the prepared target', async () => {
   const fromVersion = '1.2.2'

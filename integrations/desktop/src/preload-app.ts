@@ -37,6 +37,7 @@ function createProductApi(): DshDesktopProductApi {
         Promise<{ bytes: Uint8Array; mediaType: string }>,
     },
     browser: createDesktopBrowserBridge(),
+    organizationBrowser: true,
     fileDrag: {
       prepare: (source, requestId) => ipcRenderer.invoke(DESKTOP_IPC.fileDragPrepare, source, requestId) as
         Promise<FileDragHandle | undefined>,

@@ -75,6 +75,7 @@ test('the default market shows Design and Video first without installing or enab
 })
 
 test('workspace features each resolve to a distinct, verified market archive', async () => {
+  const installAndEnable = new Set(['@ipollo/dsh-markdown-editor', '@ipollo/dsh-excel-editor', '@ipollo/dsh-conversation-export'])
   const names = ['markdown-editor', 'excel-editor', 'conversation-export', 'task-templates',
     'reference-preparation', 'legacy-workspace-import'].map(id => `@ipollo/dsh-${id}`)
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as {
@@ -87,6 +88,7 @@ test('workspace features each resolve to a distinct, verified market archive', a
   assert.equal(new Set(items.map(item => item.spec)).size, names.length)
   for (const item of items) {
     assert(item.compatible && !item.installed && !item.enabled)
+    assert.equal(item.enableOnInstall === true, installAndEnable.has(item.name))
     assert.equal(item.category, 'productivity')
     assert(item.title !== item.name && item.icon)
     assert(item.spec.startsWith(`file:${resolve('catalog/packages')}`))

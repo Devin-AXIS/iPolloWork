@@ -48,6 +48,7 @@ import {
 } from "./project-archive.ts";
 import { EnterpriseService, type EnterpriseNative } from "./enterprise.ts";
 import type { ProjectRosterSource, ProjectBoardGateway } from "../shared/enterprise.ts";
+import type { OrganizationGateway } from "../shared/organizations.ts";
 import {
   mountEnterpriseSkills,
   type EnterpriseSkillScope,
@@ -97,6 +98,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   provide?(name: "ipolloData", value: IpolloData): void;
   provide?(name: "ipolloProjectBoard", value: ProjectBoardGateway): void;
   provide?(name: "ipolloProjectRoster", value: ProjectRosterSource): void;
+  provide?(name: "ipolloOrganizations", value: OrganizationGateway): void;
   provide?(name: "ipolloStage", value: import('../shared/stage.ts').StageBridge): void;
   get?(name: "ipolloCloud"): unknown;
   get?(name: "liveshareShares"): NativeSharing | undefined;
@@ -376,6 +378,7 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   if (config.account) ctx.provide?.("ipolloProjectBoard", (call, signal) => enterprise.projectBoard(call, signal));
   if (config.account) ctx.provide?.("ipolloProjectRoster", (workspaceId, signal, sessionId) =>
     enterprise.projectRoster(workspaceId, signal, sessionId));
+  if (config.account) ctx.provide?.("ipolloOrganizations", enterprise.organizations);
   const archive = config.account && config.automaticOutputArchive
     ? new ProjectArchive(
         ctx,

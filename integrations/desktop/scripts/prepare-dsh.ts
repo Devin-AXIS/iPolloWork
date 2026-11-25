@@ -37,6 +37,7 @@ import { desktopTargetPlatform, resolveDesktopBuildTarget, resolveDesktopTargetB
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
 import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
 import { desktopElectronExecutable } from './desktop-electron-executable.ts'
+import { readEnterprisePackageNames } from './pack-enterprise-plugins.ts'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const BUILD_PATHS = resolveDesktopTargetBuildPaths()
@@ -148,10 +149,12 @@ async function main(): Promise<void> {
         filter: source => desktopRuntimeFileExclusion(relative(modules, source), target, officeEngine) === undefined,
       })
     })
+    const enterprise = readEnterprisePackageNames(BUILD_PATHS.packedDsh)
     writeFileSync(join(DSH_OUTPUT_ROOT, 'package.json'), `${JSON.stringify({
       name: '@ipollo/desktop-runtime', private: true, version: release.version, type: 'module',
       ipolloworkAccountOrigin: resolveDesktopAccountOrigin(process.env),
-        dependencies: Object.fromEntries(packageSet.packages.map(entry => [entry.name, entry.version])),
+      ...(enterprise.length === 0 ? {} : { ipolloworkEnterpriseBundles: enterprise }),
+      dependencies: Object.fromEntries(packageSet.packages.map(entry => [entry.name, entry.version])),
     }, undefined, 2)}\n`)
     for (const file of DESKTOP_HOST_RUNTIME_FILES) {
       if (!existsSync(join(DSH_OUTPUT_ROOT, 'node_modules', DESKTOP_HOST_PACKAGE, file))) {

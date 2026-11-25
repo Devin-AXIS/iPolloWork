@@ -30,6 +30,7 @@ import { withMacOSNotarizationProxy } from './macos-notarization-proxy.ts'
 import { stageWebsiteInstaller } from './stage-website-installer.ts'
 import { parse } from 'yaml'
 import { pluginUpdateMetadata } from '../../tooling/plugin-update-metadata.mjs'
+import { desktopArtifactName, desktopProductName, readDesktopReleaseConfig } from '../../tooling/desktop-release-config.mjs'
 
 const APP_ROOT = resolve(import.meta.dirname, '..')
 const REPOSITORY_ROOT = resolve(APP_ROOT, '..', '..')
@@ -373,7 +374,7 @@ async function main(): Promise<void> {
   }
   const environment = target.platform === 'linux' || (target.platform === 'darwin' && invocation.unsigned)
     ? localUnsignedPackageEnvironment()
-    : loadDesktopPackageEnvironment(target.platform, process.env, APP_ROOT, {
+    : loadDesktopPackageEnvironment(target.platform, process.env, process.env.IPOLLOWORK_DESKTOP_SETTINGS_ROOT ?? APP_ROOT, {
       unsigned: invocation.unsigned, prepareOnly: invocation.prepareOnly,
     })
   const productVersion = packageVersion(join(APP_ROOT, 'package.json'), 'desktop package')
@@ -417,7 +418,10 @@ async function main(): Promise<void> {
       const stage = target.platform === 'win32' ? 'windows-package' : 'linux-package'
       await packagingStep(run.directory, stage, () => packageTarget(invocation, environment, run), secrets)
     }
-    if (!invocation.directory && !invocation.prepareOnly && !invocation.skipNotarization
+    const distribution = readDesktopReleaseConfig(environment)
+    const enterprise = distribution.name || distribution.appId || distribution.installerName || distribution.dataDirectoryName
+      || distribution.protocol || distribution.accountOrigin || distribution.update.feedUrl || distribution.plugins.length || Object.keys(distribution.icons).length
+    if (!enterprise && !invocation.directory && !invocation.prepareOnly && !invocation.skipNotarization
       && (target.platform !== 'darwin' || !invocation.unsigned)) {
       await packagingStep(run.directory, 'website-installer', async () => {
         const output = desktopArtifactOutput(desktopTargetBuildPaths(target.name, environment), invocation)
@@ -438,7 +442,7 @@ async function main(): Promise<void> {
   if (success && target.platform === 'darwin' && !invocation.directory && !invocation.prepareOnly) {
     const paths = desktopTargetBuildPaths(target.name, environment)
     const output = desktopArtifactOutput(paths, invocation)
-    const filename = `iPollo-${buildVersion}-mac-${target.arch}${output.suffix}.dmg`
+    const filename = desktopArtifactName(environment, { version: buildVersion, os: 'mac', arch: target.arch, ext: 'dmg', suffix: output.suffix })
     console.log(`DMG: ${join(output.directory, filename)}`)
   }
 }
@@ -456,6 +460,7 @@ export async function packageTarget(
   run: ReturnType<typeof createPackagingRun> | undefined,
 ): Promise<void> {
   const { target } = invocation
+  const macApplication = `${desktopProductName(environment)}.app`
   const execute = (args: readonly string[], env: NodeJS.ProcessEnv, cwd: string = APP_ROOT) => runPnpm(args, env, cwd, run)
   const journal = target.platform === 'darwin' ? process.env.DSH_DESKTOP_PACKAGING_RUN_DIR : undefined
   const proxyEvent = (status: string) => { if (journal) recordPackagingEvent(journal, { type: 'notarization-proxy', status }) }
@@ -577,13 +582,13 @@ export async function packageTarget(
   } else if (target.platform === 'darwin' && !invocation.unsigned && !invocation.skipNotarization) {
     await execute([...desktopElectronBuilderArguments(target, true), '--config.mac.notarize=false'], electronBuilderEnv)
     await execute(['exec', 'tsx', 'scripts/smoke-packaged-runtime.ts'], targetEnv)
-    const appPath = join(buildPaths.artifacts, target.arch === 'arm64' ? 'mac-arm64' : 'mac', 'iPollo.app')
+    const appPath = join(buildPaths.artifacts, target.arch === 'arm64' ? 'mac-arm64' : 'mac', macApplication)
     await withMacOSNotarizationProxy(mac?.notarizationProxy,
       () => notarizeMacOS({ appPath, ...resolveMacOSNotarizationEnvironment(environment) }), undefined, undefined, proxyEvent)
   } else {
     if (target.platform === 'darwin' && invocation.skipNotarization && !invocation.directory) {
       await execute(desktopElectronBuilderArguments(target, true), electronBuilderEnv)
-      const appPath = join(artifactsRoot, target.arch === 'arm64' ? 'mac-arm64' : 'mac', 'iPollo.app')
+      const appPath = join(artifactsRoot, target.arch === 'arm64' ? 'mac-arm64' : 'mac', macApplication)
       for (const format of ['dmg', 'zip'] as const) {
         await buildMacArtifact({ format, appPath, output: artifactsRoot })
       }

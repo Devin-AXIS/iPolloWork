@@ -2,6 +2,23 @@
 
 English | [中文](deployment-configuration.zh.md)
 
+## Enterprise release configuration
+
+Create `ipollowork.release.json` at the repository root. The smallest file is `{"version":1}`. Omitted settings use the existing preset or product default. See the [release configuration example](../ipollowork.release.example.json). You can also select a file outside the checkout with `IPOLLOWORK_RELEASE_CONFIG`. Relative icon, plugin archive, patch and CA paths resolve beside this file.
+
+- `desktop` supports the app ID, display name, data directory, external URL scheme, installer filename and icons. Templates support `${version}`, `${os}`, `${arch}` and `${ext}` and end in `.${ext}`. Build-mode suffixes are still added where applicable.
+- `desktop.plugins` accepts exact package versions or local `.tgz` archives. It uses the bundle's declared `dsh.bundle.patch` by default and accepts a separate `patch` file. Patches add entries with `insert` and use unique component IDs. The existing Desktop packaging commands include these plugins.
+- Account origin precedence is `PACKAGE_ACCOUNT_ORIGIN`, `desktop.accountOrigin`, `server.origin`, the existing preset, then the Suite default. For side-by-side installations, select a distinct app ID, data directory and external URL scheme. For ordinary automatic updates, set `desktop.update.feedUrl` to the HTTPS directory holding the channel metadata and its artifacts. Use `${target}` for separate target directories and set `desktop.update.channel` to `stable` or `nightly` if needed. Signing and mandatory update policy still come from the release preset.
+- `server.database` accepts the host, port, database, user, schema, pool limits, timeouts and TLS. Use `passwordFromEnv` for a password or `urlFromEnv` for a complete URL. The application includes only the required public Desktop metadata and account origin.
+
+For an external PostgreSQL deployment, run from the repository root:
+
+```powershell
+node services/ipollowork/deploy/compose-release.mjs -p ipollowork up -d --build
+```
+
+In a standalone service handoff, select the file with `IPOLLOWORK_RELEASE_CONFIG` and run `node deploy/compose-release.mjs -p ipollowork up -d --build` from the service directory. Supply passwords and `AUTH_SECRET` through the environment or the private service `.env` file. The bundled PostgreSQL deployment uses the original Compose file and `POSTGRES_PASSWORD`. See the [service handoff guide](../services/ipollowork/HANDOFF.md).
+
 ## Electron account service
 
 The public default is stored in [`plugins/ipollowork-suite/deployment.json`](../plugins/ipollowork-suite/deployment.json): `{"accountOrigin":"https://accounts.example.com"}`. Rebuild/package after changing it. Desktop composition writes the selected value into the installed `@ipollo/desktop-host/application.yml`. Dedicated desktop mode preserves the selected origin instead of forcing cloud.ipollo.net. Explicit enterprise and legacy official origins are retained.

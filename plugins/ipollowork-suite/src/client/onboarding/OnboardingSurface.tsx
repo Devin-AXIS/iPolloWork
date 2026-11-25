@@ -1,5 +1,6 @@
 /** Body-portaled introduction with shared background interaction ownership. */
 import { acquireOverlayInert } from './overlay-inert.ts'
+import { IconLoadingOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useLayoutEffect, useRef } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -39,4 +40,13 @@ export function OnboardingSurface({ children, exiting = false }: { children: Rea
       <div className={css.onboardingStage} data-window-drag-controls>{children}</div>
     </div>
   ), document.body)
+}
+
+export function OnboardingLoading({ label }: { label: string }) {
+  return <OnboardingSurface>
+    <div className={css.loading} role="status">
+      <IconLoadingOutlineRegular className={css.spinner} size={24} />
+      <span>{label}</span>
+    </div>
+  </OnboardingSurface>
 }

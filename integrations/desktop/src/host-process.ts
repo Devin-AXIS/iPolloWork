@@ -6,6 +6,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
 import { desktopNodeEnvironment } from './node-environment.ts'
+import { enterpriseDesktopMessage, type EnterpriseDesktopMessage } from './enterprise-desktop-protocol.ts'
 import { parsePluginOperationRecord, type PluginOperationRecord, type PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
 
 interface ReadyEvent {
@@ -215,6 +216,7 @@ export class DesktopHostProcess {
 
     private readonly onPlatformSession?: (session: PlatformSession | null) => void,
     private readonly onPluginOperation?: (record: PluginOperationRecord) => void,
+    private readonly onEnterpriseDesktop?: (message: EnterpriseDesktopMessage) => Promise<unknown>,
   ) {}
 
   /**
@@ -243,6 +245,15 @@ export class DesktopHostProcess {
     child.stderr?.on('data', (chunk: string) => { this.stderr = (this.stderr + chunk).slice(-MAX_HOST_DIAGNOSTIC_CHARS) })
     child.stdout?.pipe(process.stdout)
     child.on('message', (message: unknown) => {
+      if (typeof message === 'object' && message !== null && 'type' in message && message.type === 'ipollo-enterprise-desktop') {
+        const parsed = enterpriseDesktopMessage.safeParse(message)
+        if (!parsed.success || this.stopping || !this.onEnterpriseDesktop) return
+        const reply = (ok: boolean, value?: unknown) => {
+          if (child.connected) child.send({ type: 'ipollo-enterprise-desktop-result', id: parsed.data.id, ok, ...(value === undefined ? {} : { value }) }, () => {})
+        }
+        void this.onEnterpriseDesktop(parsed.data).then(value => reply(true, value), () => reply(false))
+        return
+      }
       if (typeof message === 'object' && message !== null && 'type' in message && message.type === 'plugin-operation') {
         const record = 'record' in message ? parsePluginOperationRecord(message.record) : undefined
         if (record !== undefined && record.runId === this.runId) {

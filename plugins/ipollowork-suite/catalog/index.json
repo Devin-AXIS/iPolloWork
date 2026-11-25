@@ -879,8 +879,8 @@
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "从会话菜单把用户和助手的消息导出为 Markdown。",
-        "en": "Export user and assistant messages as Markdown from the conversation menu."
+        "zh": "在左侧对话的右键菜单中，将用户和助手的消息导出为 Markdown。",
+        "en": "Right-click a conversation in the left sidebar to export user and assistant messages as Markdown."
       },
       "metadata": {
         "category": "productivity",
@@ -910,8 +910,8 @@
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "从对话保存常用任务，并在右侧面板用模板创建对话草稿。",
-        "en": "Save reusable tasks from conversations and use the sidebar panel to create conversation drafts."
+        "zh": "右键对话保存为模板，在右侧工作区新建「任务模板」标签页来复用。",
+        "en": "Right-click a conversation to save it as a template. Open a Task Templates tab in the right sidebar to reuse it."
       },
       "metadata": {
         "category": "productivity",
@@ -941,8 +941,8 @@
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "在本地提取文档内容，把参考索引和素材整理到当前项目。",
-        "en": "Extract document contents locally and organize references and assets in the current project."
+        "zh": "在右侧工作区新建「参考资料整理」标签页，在本地提取文档内容并将参考索引和素材保存到当前项目。",
+        "en": "Open a Prepare References tab in the right sidebar to extract document contents locally and save references and assets in the current project."
       },
       "metadata": {
         "category": "productivity",
@@ -972,8 +972,8 @@
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "预览并选择导入旧版工作区 JSON 中的命令和 Skill。",
-        "en": "Review and selectively import commands and skills from legacy workspace JSON."
+        "zh": "迁移旧工作区时，在右侧工作区新建「旧版工作区导入」标签页，从 JSON 预览并选择导入命令和 Skill。",
+        "en": "When migrating a legacy workspace, open an Import Legacy Workspace tab in the right sidebar to review and select commands and skills from a JSON backup."
       },
       "metadata": {
         "category": "productivity",

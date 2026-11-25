@@ -1,6 +1,6 @@
 /** Build a coherent product shell outside legacy directories in the user's checkout. */
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, readdir, realpath, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, readdir, realpath, stat, symlink, writeFile } from 'node:fs/promises'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -31,8 +31,38 @@ export async function localDesktopFingerprint(repository = root) {
 
 async function link(from, to, directory = true) {
   await mkdir(resolve(to, '..'), { recursive: true })
-  if (!directory) await cp(from, to)
-  else await symlink(await realpath(from), to, process.platform === 'win32' ? 'junction' : undefined)
+  const source = await realpath(from)
+  if (!directory || !(await stat(source)).isDirectory()) await cp(source, to)
+  else await symlink(source, to, process.platform === 'win32' ? 'junction' : undefined)
+}
+
+/** Stage product sources beside the pinned runtime when legacy root directories occupy its usual links. */
+export async function stageDesktopSources(stage) {
+  for (const name of ['desktop', 'desktop-host']) {
+    await cp(join(root, 'integrations', name), join(stage, 'integrations', name), { recursive: true, filter: path => included(path.split(/[\\/]/).at(-1)) })
+  }
+  const desktopDeps = join(upstream, 'apps/desktop/node_modules')
+  const stagedDeps = join(stage, 'integrations/desktop/node_modules')
+  for (const name of (await readdir(desktopDeps)).filter(name => name !== '@deepseek-ai')) {
+    await link(join(desktopDeps, name), join(stagedDeps, name))
+  }
+  for (const name of await readdir(join(desktopDeps, '@deepseek-ai'))) {
+    if (name !== 'dsh-desktop-publisher') await link(join(desktopDeps, '@deepseek-ai', name), join(stagedDeps, '@deepseek-ai', name))
+  }
+  await cp(join(root, 'integrations/publisher'), join(stage, 'integrations/publisher'), {
+    recursive: true, filter: path => included(path.split(/[\\/]/).at(-1)),
+  })
+  await link(desktopDeps, join(stage, 'integrations/publisher/node_modules'))
+  await link(join(stage, 'integrations/publisher'), join(stagedDeps, '@deepseek-ai/dsh-desktop-publisher'))
+  await link(join(upstream, 'apps/desktop-host/node_modules'), join(stage, 'integrations/desktop-host/node_modules'))
+  for (const name of ['apps', 'packages', 'scripts', 'vendor', 'native', 'node_modules']) await link(join(upstream, name), join(stage, name))
+  for (const name of ['tsconfig.base.json', 'tsconfig.base.client.json', 'tsconfig.node.base.json', 'vitest.shared.ts']) await link(join(upstream, name), join(stage, name), false)
+  await link(join(root, '.upstream'), join(stage, '.upstream'))
+  for (const name of ['runtime', 'tooling']) await link(join(root, 'integrations', name), join(stage, 'integrations', name))
+  await link(join(upstream, 'packages/boot/plugin-manager/node_modules/yaml'), join(stage, 'integrations/node_modules/yaml'))
+  await link(join(root, 'plugins/ipollowork-suite'), join(stage, 'plugins/ipollowork-suite'))
+  await link(join(root, 'services/ipollowork/deploy'), join(stage, 'services/ipollowork/deploy'))
+  await cp(join(root, 'package.json'), join(stage, 'package.json'))
 }
 
 export async function prepareLocalDesktop() {
@@ -52,17 +82,7 @@ export async function prepareLocalDesktop() {
     }
   } catch (error) { if (!['ENOENT', 'ENOTDIR'].includes(error.code) && !(error instanceof SyntaxError)) throw error }
   const stage = await mkdtemp(join(home, 'source-' + fingerprint.slice(0, 12) + '-'))
-  for (const name of ['desktop', 'desktop-host']) {
-    await cp(join(root, 'integrations', name), join(stage, 'integrations', name), { recursive: true, filter: path => included(path.split(/[\\/]/).at(-1)) })
-    await link(join(upstream, 'apps', name, 'node_modules'), join(stage, 'integrations', name, 'node_modules'))
-  }
-  for (const name of ['apps', 'packages', 'scripts', 'vendor', 'native', 'node_modules']) await link(join(upstream, name), join(stage, name))
-  for (const name of ['tsconfig.base.json', 'tsconfig.base.client.json', 'tsconfig.node.base.json', 'vitest.shared.ts']) await link(join(upstream, name), join(stage, name), false)
-  await link(upstream, join(stage, '.upstream/dsh'))
-  await link(join(root, 'integrations/publisher'), join(stage, 'integrations/publisher'))
-  await link(join(upstream, 'packages/boot/plugin-manager/node_modules/yaml'), join(stage, 'integrations/node_modules/yaml'))
-  await link(join(root, 'plugins/ipollowork-suite'), join(stage, 'plugins/ipollowork-suite'))
-  await cp(join(root, 'package.json'), join(stage, 'package.json'))
+  await stageDesktopSources(stage)
   await pnpm(['exec', 'tsc', '-b', 'integrations/desktop', 'integrations/desktop-host'], stage)
   for (const name of ['desktop', 'desktop-host']) await pnpm(['exec', 'tsdown', '--config-loader', 'native', '--config', `integrations/${name}/tsdown.config.ts`], stage)
   const { load, dump } = createRequire(join(root, 'plugins/ipollowork-suite/package.json'))('js-yaml')

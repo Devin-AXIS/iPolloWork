@@ -8,6 +8,7 @@ await writeFile('lib/stage.d.ts', await readFile('src/shared/stage.ts', 'utf8'))
 await rm('lib/host/sandbox', { recursive: true, force: true })
 await writeFile('lib/services.d.ts', await readFile('src/shared/services.ts', 'utf8'))
 await writeFile('lib/connections.d.ts', await readFile('src/shared/connections.ts', 'utf8'))
+await writeFile('lib/organizations.d.ts', await readFile('src/shared/organizations.ts', 'utf8'))
 await writeFile('lib/notification-center.d.ts', await readFile('../notification-center/src/contract.ts', 'utf8'))
 // Only declared runtime packages stay external. DSH maps every package name in a bundle's dependency closure to one
 // directory per process, so third-party libraries are bundled: a name shared with another bundle would otherwise move

@@ -4,7 +4,7 @@ import { stageWindowsCuaHelper } from './stage-windows-cua-helper.ts'
 
 import { resolve, join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { mkdirSync, mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempDisposableSync, mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs'
 import { x, c } from 'tar'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -17,6 +17,10 @@ import { packFamilyMembers, parsePackConcurrency } from '../../../scripts/releas
 import { pnpmInvocation } from '../../../scripts/pnpm-invocation.ts'
 import { isEntry, runConcurrent } from '../../../scripts/release/process.ts'
 import { packedManifest, tarballFiles } from '../../../scripts/release/tarball.ts'
+import { writeDesktopComposition } from '../../tooling/desktop-composition.mjs'
+import { resolveDesktopAccountOrigin } from '../../tooling/account-service.mjs'
+import { readDesktopReleaseConfig } from '../../tooling/desktop-release-config.mjs'
+import { stageEnterprisePlugins } from './pack-enterprise-plugins.ts'
 
 /** Pack the desktop inputs with one worker and one pnpm process. */
 export async function packDesktopFamilyInOneProcess(root: string, family: ReleaseFamily, destination: string): Promise<string[]> {
@@ -63,8 +67,18 @@ async function main(): Promise<void> {
     const version = JSON.parse(readFileSync(resolve(upstream, 'packages/experimental/cua-windows/package.json'), 'utf8')).version
     await stageWindowsCuaHelper(resolve(destination, `deepseek-ai-dsh-cua-windows-${version}.tgz`), root)
   }
-  execFileSync(process.execPath, [resolve(root, 'integrations/tooling/desktop-composition.mjs')], { cwd: root, stdio: 'inherit' })
-  execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'integrations/desktop-host'), stdio: 'inherit', shell: process.platform === 'win32' })
+  const distribution = readDesktopReleaseConfig()
+  const dshVersion = JSON.parse(readFileSync(join(upstream, 'package.json'), 'utf8')).version as string
+  const enterprise = stageEnterprisePlugins(distribution.plugins, destination, dshVersion)
+  const host = mkdtempDisposableSync(join(tmpdir(), 'ipollo-desktop-host-'))
+  try {
+    const source = resolve(root, 'integrations/desktop-host')
+    for (const file of ['package.json', 'lib', 'locale', 'LICENSE', 'THIRD_PARTY_NOTICES.md', 'LICENSE.upstream']) {
+      cpSync(join(source, file), join(host.path, file), { recursive: true })
+    }
+    await writeDesktopComposition(host.path, resolveDesktopAccountOrigin(), enterprise)
+    execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: host.path, stdio: 'inherit', shell: process.platform === 'win32' })
+  } finally { host.remove() }
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'build'], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
   execFileSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['pack', '--pack-destination', destination], { cwd: resolve(root, 'plugins/ipollowork-suite'), stdio: 'inherit', shell: process.platform === 'win32' })
   // Keep checked Studio archives available to the market without installing either plugin by default.

@@ -51,6 +51,14 @@ describe('desktop build version discovery', () => {
       .resolves.toBe(`${PRERELEASE}.${DATE}.11`)
   })
 
+  it('numbers enterprise builds using local artifacts without requiring an official bucket', async () => {
+    const artifactsRoot = await artifactsWith([`iPollo-${PRERELEASE}.${DATE}.2-win-x64.exe`])
+    await expect(suggestDesktopBuildVersion({
+      productVersion: PRERELEASE, target: 'win-x64', date: DATE, artifactsRoot,
+      environment: { DSH_DESKTOP_AUTO_UPDATE_ENV: 'production', IPOLLOWORK_DESKTOP_UPDATE_FEED: 'https://updates.example.com/feed/' },
+    })).resolves.toBe(`${PRERELEASE}.${DATE}.3`)
+  })
+
   it('ignores artifacts from another date or product version', async () => {
     const artifactsRoot = await artifactsWith([
       `iPollo-${PRERELEASE}.20260920.7-win-x64.exe`,

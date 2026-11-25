@@ -47,6 +47,8 @@ docker compose -p ipollowork --env-file .env -f deploy/compose.external.yml up -
 
 执行管理员命令前，在当前终端私密设置 `ADMIN_PASSWORD`；不要写入命令行参数、脚本、Git 或工单。命令也可使用公司 Secret 注入方式。新密码至少 10 字符，执行后清除终端环境变量。同一管理员重复执行不会改密码。若邮箱已注册为普通用户，增加 `--promote-existing` 明确提升权限并保留其原密码、账号和数据；这需要受信任的服务器运维权限。
 
+外部库也可使用企业发行配置。将 `IPOLLOWORK_RELEASE_CONFIG` 指向该 JSON 后，运行 `node deploy/compose-release.mjs -p ipollowork up -d --build`。配置里的 `server.database.tls.caFile` 启用只读 CA 挂载，`server.https: true` 启用 Caddy，需要设置账号域名、独立的发布域名和 DNS。也可直接在 `deploy/compose.external.yml` 后叠加 `deploy/compose.external.ca.yml` 或 `deploy/compose.external.https.yml`。直接叠加 CA 时，把宿主机证书绝对路径填入 `DATABASE_CA_FILE`，数据库连接串用 `sslmode=verify-full&sslrootcert=/run/ipollowork/db-ca.pem`，主机名须与证书匹配。K8s 挂载到同一容器路径即可复用连接串。独立应用库使用同一个 CA 时，也要在自己的连接串里填写 TLS 参数。
+
 自带 PostgreSQL：设置 URL-safe 的 `POSTGRES_PASSWORD`，使用原有 `compose.yml`；它会生成容器内数据库连接串，不使用 `.env` 中的 `DATABASE_URL`。首次执行 `docker compose up -d --build`，再用 `docker compose exec -e ADMIN_PASSWORD work npm run admin -- admin@example.com 管理员`。需要 HTTPS 入口时叠加 `deploy/compose.production.yml` 并填写两个域名，详见 [阿里云部署](deploy/README.zh.md)。现有服务器继续沿用原 Compose 项目名和卷，禁止 `down -v`。
 
 `deploy/compose.beta-2c4g.yml` 是生产配置的资源限制覆盖层，必须与 `compose.yml`、`deploy/compose.production.yml` 三个文件一起使用；不能只叠加到基础文件上。

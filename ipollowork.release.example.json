@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "desktop": {
+    "appId": "com.example.work",
+    "name": "Example Work",
+    "dataDirectoryName": "Example Work Desktop",
+    "protocol": "example-work",
+    "installerName": "ExampleWork-${version}-${os}-${arch}.${ext}",
+    "update": {
+      "feedUrl": "https://updates.example.com/ipollowork/${target}/",
+      "channel": "stable"
+    },
+    "icons": {
+      "windows": "./branding/app.ico",
+      "macos": "./branding/app.icns"
+    },
+    "plugins": [
+      { "package": "@example/work-plugin", "version": "1.2.3" }
+    ]
+  },
+  "server": {
+    "origin": "https://work.example.com",
+    "publicationOrigin": "https://sites.example.com",
+    "https": true,
+    "database": {
+      "host": "pg.example.internal",
+      "name": "ipollowork",
+      "user": "ipollowork",
+      "schema": "public",
+      "passwordFromEnv": "IPOLLOWORK_DB_PASSWORD",
+      "tls": {
+        "mode": "verify-full",
+        "caFile": "./deploy/rds-ca.pem"
+      }
+    }
+  }
+}

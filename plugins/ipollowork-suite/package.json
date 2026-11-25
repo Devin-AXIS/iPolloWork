@@ -16,6 +16,9 @@
     "./connections": {
       "types": "./lib/connections.d.ts"
     },
+    "./organizations": {
+      "types": "./lib/organizations.d.ts"
+    },
     "./notifications": {
       "types": "./lib/notification-center.d.ts"
     },

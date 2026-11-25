@@ -2,7 +2,7 @@
 !include FileFunc.nsh
 ; main.ts keeps Electron user data, and by default the Harness home, in this %APPDATA% folder. The product name also
 ; names other iPolloWork data under %APPDATA%, so it never selects what to remove.
-!define DSH_USER_DATA_NAME "iPolloWork Desktop"
+!define /ifndef DSH_USER_DATA_NAME "iPolloWork Desktop"
 Var UnTarget
 Var UnHome
 

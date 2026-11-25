@@ -26,6 +26,10 @@ Windows 安装核验准确的 Git commit 和 tree，无需文件符号链接权�
 
 服务 schema 22 是已有产品迁移，并非 DSH 新增 schema。构建按导出的服务 schema 常量复制全部迁移；部署从构建镜像读取目标版本，避免继续固定为 21。实际服务器完成备份、向前迁移和切换后就绪验证前，不能宣称部署已完成。
 
+首次启动与重启等待设置时共用 `plugins/ipollowork-suite/src/client/onboarding/OnboardingSurface.tsx`。原有 `shell.overlay` 入口使用公开的 `IconLoadingOutlineRegular` 和 DSH 主题文字色。下次更换固定版本时，在桌面启动期间延迟设置或账号读取，检查加载指示居中、标题栏留空、明暗主题、减少动态效果，以及读取结束后提示退出。
+
+企业桌面包通过 `integrations/desktop/scripts/pack-enterprise-plugins.ts` 将选择的归档加入现有签名包集合。归档新增的 Cordis 条目随私有 Host 应用从原生 install anchor 加载。下次更换固定版本时，验证 npm 与本地归档、相对入口解析和重复 ID 拒绝，再用独立 profile 启动已安装客户端，修改一项插件偏好后复测覆盖安装。
+
 alpha.2 的客户端聚合 remotes 类型不再自动引入 settings 命名空间。Suite 显式声明公开的 `@deepseek-ai/dsh-api-settings-controller/remote` 类型扩展；MCP 配置操作仍打开原生配置文档。Include 的 `applyEntryPatches` 改为返回 `{data,index}`，桌面组合测试读取 `data`，桌面 overlay 沿用 profile 所属的产品条目。下次更换 pin 时重跑 Suite 严格类型检查、MCP 设置入口及完整桌面测试。npm 安装后先运行 `link:workspace` 再测源码，让官方仅在工作区提供的开发依赖从固定版本依赖图解析。
 
 真实 Electron 冷启动发现两处配置变化：`group: true` 现在要求数组；原生 ConfigEditor 仅编辑所属 profile 配置树，嵌套 Include 的设置另有归属。桌面改由私有 Bundle 直接插入产品条目，保留既有条目 ID 和已保存偏好，最终 overlay 仅保持 Suite 启用。运行时根清单显式声明发货 Suite 依赖，使 alpha.2 能解析这些原生配置条目。回归检查真实 Loader 格式及偏好保留；真实 Electron 验证套件 `/info`、教程与通知设置发现、全部九步漫游、刷新保留进度和深色受限窗口。私有 Host 必须依赖当前发货的 Suite 版本，打包前强制核对。
@@ -113,6 +117,10 @@ Excel 将 XLS、ODS 注册为与 XLSX 相同的渲染器读取模式。`plugins/
 对话导出和 Word 副本使用 Web App Bundle 的 `fileActions.save` 客户端服务。升级固定版本后，验证桌面端将生成的 Blob 写入下载目录，Web 端发起浏览器下载，并核对下载文件中的对话和 DOCX 副本内容。
 
 六个工作区市场插件各自注册路由和原生入口。任务模板和旧版工作区导入串行使用原有 `ipollo_workspace_tools` 存储域，因为 DSH 每个域只允许打开一个句柄。复验独立启用、同时编辑和导入模板、从旧合集切换后加载原有模板，以及默认市场提供各自锁定的安装包。
+
+从市场首次安装经过哈希校验的 Markdown 编辑、Excel 编辑和对话导出归档时，以 `enabled: true` 调用 DSH 原生 `installBundle`。下次更新 DSH 时，在启用热更新且已运行的配置中安装三款插件，确认均返回 `applied`、插件处于启用状态，且客户端入口在同一 Host 进程中出现。归档升级沿用原来的启用状态。
+
+[开发运行时项目](../desktop/scripts/development-project.ts)将已映射的 DSH `OPTIONAL_BUNDLES` 声明为安装版组件。复验「会话标题」使用运行时随附的包，可在同一 Host 进程中启停，并由原生管理器保护安装版组件。
 
 ## 更新和验证
 
@@ -218,3 +226,8 @@ Suite `src/host/model-request-recovery.ts` 保持原生模型 `retryPolicy.maxRe
 `plugins/collaboration-board/src/client.tsx` 的项目看板继续使用 `conversation.view`、账号身份事件及 `projectBoardOwnershipEvent`。账号范围的取消信号同时覆盖任务分页、写入、对话授权及 `sessions.using`/`prompt` 交接；普通刷新不得中断「保存并交给 AI」。升级 pin 时复验在途写入或第二页读取时切换账号/归属、全部已加载页刷新、轮询错误提示和保存后的 AI 交接。生产组件隔离页验证了明暗主题下 1200/390 px 的四种视图，以及编辑、依赖解锁、拖拽、搜索、重试和键盘关闭；当前桌面验证了原生入口及视图。原生排期保护和 PostgreSQL 组织权限/通知另有隔离集成检查。
 
 套件通过可选的 `ipolloNotificationCenter` 服务注册组织通知，并用既有 DSH `layout.selectPanel` 打开已授权的来源页面。组织页保留自身的通知入口。复验账号切换、单条已读、显式批量已读、资源或会话撤权以及定位到对应记录。模板管理可在未启用 Design 时使用，应用模板仍依赖既有 Design 集成。使用原生组织页复验分析、成员分页和文件包上传，并分别验证桌面端 `fileActions.save` 和 Web 下载。将桌面端与账号服务联测，并复验 PostgreSQL schema 21 迁移。
+## 组织业务网页和插件组织上下文
+
+`plugins/ipollowork-suite` 通过 DSH 的 `sidebar.panellist`、`main` 插槽展示「业务网页」，通过所有者鉴权的 Web Host 路由发起桌面打开请求，通过 Cordis `provide` 提供 `ipolloOrganizations` 和 `ipolloOrganizationContext`，并用原生凭据提供方的原子 `modifyRecord` 保存桌面账号授权。产品 Electron 主进程通过私有 Host 进程通道调用系统凭据库。上游会话侧栏浏览器和 Agent 各自保有原有生命周期。
+
+升级 DSH 固定版本时，使用独立桌面 profile，在没有会话的情况下从「业务网页」打开已配置的站点。以相同 profile 冷启动，验证获准的 HTTPS Cookie 恢复。切换账号、取消组织成员资格和主动退出，验证权限和隔离。检查插件 Host 的组织接口，以及凭据库中账号授权记录的加密状态。

@@ -1,0 +1,9 @@
+services:
+  work:
+    volumes:
+      - type: bind
+        source: ${DATABASE_CA_FILE:?Set the host path of the PostgreSQL CA file}
+        target: /run/ipollowork/db-ca.pem
+        read_only: true
+        bind:
+          create_host_path: false

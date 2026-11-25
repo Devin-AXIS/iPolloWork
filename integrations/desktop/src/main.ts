@@ -11,7 +11,7 @@ import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
 import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
-import { mkdirSync } from 'node:fs'
+import { mkdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
@@ -73,14 +73,23 @@ import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
+import { EnterpriseDesktop } from './enterprise-browser.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
 import { DesktopQuitConfirmation } from './quit-confirmation.ts'
 import { DesktopTray } from './tray.ts'
 import { DesktopBackgroundNotice } from './background-notice.ts'
 
-app.setName('iPollo')
-const productData = join(app.getPath('appData'), 'iPolloWork Desktop')
+const desktopIdentity = JSON.parse(readFileSync(join(app.getAppPath(), 'package.json'), 'utf8')) as {
+  productName?: string
+  dshUserDataName?: string
+  dshExternalProtocol?: string
+  dshApplicationIcon?: string
+  dshTrayIcon?: string
+}
+app.setName(desktopIdentity.productName ?? 'iPollo')
+const productData = join(app.getPath('appData'), desktopIdentity.dshUserDataName ?? 'iPolloWork Desktop')
+const externalProtocol = desktopIdentity.dshExternalProtocol ?? 'dsh'
 mkdirSync(productData, { recursive: true })
 app.setPath('userData', productData)
 process.env.DSH_HOME ??= join(app.getPath('userData'), 'harness')
@@ -510,6 +519,7 @@ async function main(): Promise<void> {
   let hostUrl: string | undefined
   let hostCookie: string | undefined
   const browserGuests = new DesktopBrowserGuests(() => hostUrl)
+  const enterpriseDesktop = new EnterpriseDesktop(join(app.getPath('userData'), 'organization-browser'), () => hostUrl)
   let injections: readonly unknown[] = []
   let welcomeBackend: DesktopWelcomeBackend | undefined
   let reportedLaunch = false
@@ -554,14 +564,15 @@ async function main(): Promise<void> {
   const backend = new DesktopBackendController((onFailure) => {
     const hostInspectPort = developmentHostInspectPort(development)
     const host = new DesktopHostProcess(resources.node, resources.dsh, activeProject,
-      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(), IPOLLOWORK_DESKTOP_VERSION: app.getVersion() }, onFailure,
+      hostInspectPort, { ...hostEnvironment, DSH_CLIENT_VERSION: desktopClientVersion(), IPOLLOWORK_DESKTOP_VERSION: app.getVersion(), IPOLLOWORK_DESKTOP_VAULT: '1' }, onFailure,
       primaryRuntime,
       resources, (next) => { platformView.setSession(next) }, (record) => {
         operationJournal ??= new OperationJournal(join(app.getPath('userData'), 'plugin-operations'), {
           segmentBytes: 256 * 1024, recordBytes: 4096, queuedBytes: 64 * 1024,
         })
         operationJournal.enqueue(JSON.stringify(record))
-      })
+      }, message => message.operation === 'open' && (quitting || shuttingDown || isMandatory())
+        ? Promise.reject(new Error('Desktop organization browser is unavailable')) : enterpriseDesktop.handle(message))
     return {
       start: async () => {
         const ready = await host.start()
@@ -1281,9 +1292,9 @@ async function main(): Promise<void> {
   })
 
   const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
-    : join(process.resourcesPath, 'icon.png')
+    : join(process.resourcesPath, desktopIdentity.dshApplicationIcon ?? 'icon.png')
   app.setAboutPanelOptions({
-    applicationName: 'iPollo',
+    applicationName: app.getName(),
     applicationVersion: app.getVersion(),
     // The release has no separate build number; omit Electron's bundle version.
     version: '',
@@ -1367,7 +1378,8 @@ async function main(): Promise<void> {
     tray?.relabel()
   }
   refreshApplicationMenu()
-  const trayIconPath = development ? join(app.getAppPath(), 'resources', 'tray-windows.ico') : join(process.resourcesPath, 'tray.ico')
+  const trayIconPath = development ? join(app.getAppPath(), 'resources', 'tray-windows.ico')
+    : join(process.resourcesPath, desktopIdentity.dshTrayIcon ?? 'tray.ico')
   if (process.platform === 'win32') {
     // The tray is the way back to a hidden window; without it, relaunching the application still focuses it.
     try {
@@ -1589,10 +1601,10 @@ async function main(): Promise<void> {
     window.focus()
   }
 
-  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient('dsh')
+  if (app.isPackaged || process.env.DSH_DESKTOP_DEV_APP === '1') app.setAsDefaultProtocolClient(externalProtocol)
   app.on('open-url', (event, url) => {
     event.preventDefault()
-    if (url === 'dsh://open' || url === 'dsh://open/') focusPrimaryWindow()
+    if (url === `${externalProtocol}://open` || url === `${externalProtocol}://open/`) focusPrimaryWindow()
   })
 
   app.on('activate', (_event, hasVisibleWindows) => {
@@ -1621,6 +1633,7 @@ async function main(): Promise<void> {
         throw error
       }),
       platformView.dispose(),
+      enterpriseDesktop.flush(),
       disposeFileDrag(),
     ].map(cleanup => cleanup.catch((error: unknown) => { console.error(error) })))
       .then(() => { app.quit() })
