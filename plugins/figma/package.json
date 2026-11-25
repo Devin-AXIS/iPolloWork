@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-figma",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "完整的 Figma 设计到代码、Code Connect、设计系统和画布写入工作流。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

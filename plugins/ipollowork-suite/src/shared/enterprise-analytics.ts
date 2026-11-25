@@ -11,8 +11,10 @@ export const enterpriseAnalyticsSchema = z.object({
   page: count, pageSize: count, totalRows: count, projects: count,
   totals: metrics, rows: z.array(metrics.extend({ id: z.string(), name: z.string() })),
   skills: count, plugins: count, skillInvocations: count, pluginInvocations: count,
+  skillInventory: z.object({ direct: count, published: count }).optional(),
   activityPage: count, activityTotalRows: count,
-  activityRows: z.array(z.object({ id: z.string(), name: z.string(), kind: z.enum(["skill", "tool"]), calls: count, succeeded: count })),
+  activityRows: z.array(z.object({ id: z.string(), name: z.string(), activityName: z.string().optional(),
+    kind: z.enum(["skill", "tool"]), calls: count, succeeded: count })),
 });
 /** Display records contain only counts and public resource labels. */
 export type EnterpriseAnalytics = z.infer<typeof enterpriseAnalyticsSchema>;

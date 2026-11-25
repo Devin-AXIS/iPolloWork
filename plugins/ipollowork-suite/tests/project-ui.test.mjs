@@ -22,11 +22,56 @@ async function fixture(entry) {
     loader:{'.css':'empty','.module.css':'text'},external:['react','react-dom','react/jsx-runtime','@deepseek-ai/dsh-client-ui-primitives']})
   const module = {exports:{}}
   runInNewContext(bundle.outputFiles[0].text,{module,exports:module.exports,require:name=>name==='@deepseek-ai/dsh-client-ui-primitives'?primitives:require(name),
-    ...globals,Error,URL,TextEncoder,crypto,DataTransfer:class { items={add:file=>this.files.push(file)};files=[] }})
+    ...globals,location:dom.window.location,Error,URL,TextEncoder,crypto,DataTransfer:class { items={add:file=>this.files.push(file)};files=[] }})
   const root = createRoot(dom.window.document.getElementById('root'))
   return {dom,root,component:module.exports,button:text=>[...dom.window.document.querySelectorAll('button')].find(node=>node.textContent===text),
     async close(){await act(async()=>root.unmount());dom.window.close();for(const [key,value] of Object.entries(saved)){if(value)Object.defineProperty(globalThis,key,value);else delete globalThis[key]}}}
 }
+
+test('organization downloads request a save location and display the completed path', async () => {
+  const ui = await fixture('src/client/organization-file-packages.tsx')
+  const requests = []
+  const notifications = []
+  let finish
+  const bridge = {
+    organizationPackageSaveAs: true,
+    fileActions: { save: request => { requests.push(request); return new Promise(resolve => { finish = resolve }) } },
+  }
+  ui.dom.window.dshDesktop = bridge
+  const call = async path => path.endsWith('/assets')
+    ? { packages: [{ id: 'package', title: 'Organization package' }] }
+    : { files: [{ id: 'file', name: '原始文件.txt' }] }
+  const props = {
+    enterpriseId: 'org', detail: { canManage: false }, revision: 0, language: 'en', t: { packagesTab: 'Packages' },
+    call, controller: { notify: text => notifications.push(text) },
+  }
+  const status = () => ui.dom.window.document.querySelector('[role="status"]')
+  try {
+    await act(async () => ui.root.render(React.createElement(ui.component.OrganizationFilePackages, props)))
+    await act(async () => ui.button('Organization package').click())
+    await act(async () => ui.button('Download').click())
+    assert.equal(requests[0].mode, 'saveAs')
+    assert.equal(new URL(requests[0].url).pathname, '/ipollowork-suite/enterprise/organizations/org/packages/package/files/file/download')
+    assert.equal(requests[0].name, '原始文件.txt')
+    assert.equal(ui.button('Downloading…').disabled, true)
+    assert.equal(status(), null)
+    await act(async () => finish({ status: 'cancelled' }))
+    assert.deepEqual(notifications, [])
+    assert.equal(status(), null)
+
+    await act(async () => ui.button('Download').click())
+    const saved = 'D:\\项目资料\\交付.txt'
+    await act(async () => finish({ status: 'saved', path: saved }))
+    assert.equal(status().textContent, 'Saved to ' + saved)
+    assert.deepEqual(notifications, ['File downloaded'])
+
+    delete bridge.organizationPackageSaveAs
+    await act(async () => ui.root.render(React.createElement(ui.component.OrganizationFilePackages, { ...props, revision: 1 })))
+    await act(async () => ui.button('Download').click())
+    assert.equal(requests.at(-1).mode, 'download')
+    await act(async () => finish({ status: 'cancelled' }))
+  } finally { await ui.close() }
+})
 
 test('project refresh updates overview and files, and access edits contain only named members',async()=>{
   const ui = await fixture('src/client/collaboration.tsx'), calls=[],writes=[]

@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/dsh-deepseek-harness",
   "version": "0.1.5",
-  "description": "使用当前 DSH 原生 Agent、子任务和会话完成开发、审查与研究，无需第二套运行时。",
+  "description": "使用 iPolloWork 的 Agent、子任务和会话完成开发、审查与研究。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

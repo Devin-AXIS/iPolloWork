@@ -94,7 +94,7 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
       <Field label={t.name}><input name="title" maxLength={120} required defaultValue={publication?.title}/></Field>
       <Field label={zh ? "说明" : "Description"}><textarea name="description" maxLength={kind === "skill" ? 1000 : 2000}
         required rows={2} defaultValue={publication?.description}/></Field>
-      {kind === "plugin" ? <Field label={zh ? "DSH 插件包名" : "DSH plugin package"}>
+      {kind === "plugin" ? <Field label={zh ? "插件包名" : "Plugin package name"}>
         <input name="packageName" required maxLength={214} placeholder="@team/plugin" readOnly={!!publication} defaultValue={publication?.packageName}/>
       </Field> : kind === "skill" ? <FilePicker label={t.skillFile} hint={t.skillFileHint} language={language}
         name="skillFile" accept=".md,.markdown" required disabled={task.busy} onSelect={(files, input) => {
@@ -199,7 +199,7 @@ function PublicationDetails(props: PublicationProps & {
         }[row.status];
         return <Row key={row.version} title={row.version} meta={[status, row.title, row.description, row.note].filter(Boolean).join(" · ")} actions={<>
           {(published || kind !== "plugin") && <Button size="sm" variant="outline" disabled={task.busy} onClick={() => read(row.version)}>
-            {kind === "plugin" ? (zh ? "用 DSH 安装" : "Install with DSH") : (zh ? "预览" : "Preview")}
+            {kind === "plugin" ? (zh ? "在 iPolloWork 中安装" : "Install in iPolloWork") : (zh ? "预览" : "Preview")}
           </Button>}
           {canManage && !published && row.status === "approved" && <Button size="sm" variant="primary" disabled={task.busy} onClick={() => publish(row.version)}>{zh ? "下发" : "Publish"}</Button>}
           {canManage && !published && row.status === "pending" && <>

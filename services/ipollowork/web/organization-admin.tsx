@@ -140,7 +140,7 @@ export function OrganizationPublications({ path, kind, departments }: {
         <Field label="资源名称"><input name="title" required maxLength={120} defaultValue={editing === "new" ? "" : editing.title}/></Field>
         <Field label="说明"><textarea name="description" maxLength={kind === "skill" ? 1000 : 2000} required={kind === "skill"} rows={2}
           defaultValue={editing === "new" ? "" : editing.description}/></Field>
-        {kind === "plugin" ? <Field label="DSH 插件包名"><input name="packageName" placeholder="@team/plugin" required
+        {kind === "plugin" ? <Field label="插件包名"><input name="packageName" placeholder="@team/plugin" required
           defaultValue={editing === "new" ? "" : editing.packageName} readOnly={editing !== "new"}/></Field>
           : kind === "skill" ? <Field label="SKILL.md"><textarea name="markdown" required rows={7} maxLength={32000}/></Field>
           : <Field label="HTML 文件"><input required type="file" name="html" accept=".html,.htm,text/html"/></Field>}
@@ -484,7 +484,7 @@ function PackageFiles({ path, canManage }: { path: string; canManage: boolean })
     {listing.data && <Table rows={listing.data.files} columns={[
       {label:"文件",cell:row=>text(row.name)}, {label:"上传人",cell:row=>text(row.addedBy)},
       {label:"操作",cell:row=><div className="actions">
-        <a href={path + "/files/" + encodeURIComponent(text(row.id)) + "/download"}>下载</a>
+        <a href={path + "/files/" + encodeURIComponent(text(row.id)) + "/download?redirect=1"}>下载</a>
         {canManage && <button onClick={() => setRemoving(row)}>移除</button>}
       </div>},
     ]}/>}
@@ -509,6 +509,7 @@ type Usage = {
   totals: { tasks: number; measured: number; inputTokens: number; outputTokens: number };
   rows: Row[]; activityRows: Row[]; pageSize: number; totalRows: number; activityTotalRows: number;
   projects: number; skills: number; plugins: number;
+  skillInventory?: { direct: number; published: number };
 };
 
 export function OrganizationAnalytics({ path }: { path: string }) {
@@ -535,7 +536,8 @@ export function OrganizationAnalytics({ path }: { path: string }) {
     <Status error={current?.error} loading={!data}/>
     {current?.error && <button onClick={() => retry(value => value + 1)}>重试</button>}
     {data && <>
-      <p>调用 {data.totals.tasks} · 已采集 Token 的调用 {data.totals.measured} · 新增项目 {data.projects} · 现有 Skill {data.skills} · 现有插件 {data.plugins}</p>
+      <p>调用 {data.totals.tasks} · 已采集 Token 的调用 {data.totals.measured} · 新增项目 {data.projects} · 当前技能 {data.skills}
+        {data.skillInventory && <>（直接上传 {data.skillInventory.direct} 项，审核发布 {data.skillInventory.published} 项）</>} · 现有插件 {data.plugins}</p>
       <Table rows={data.rows} columns={[
         {label:"名称",cell:row=>text(row.name) || "未分配"}, {label:"调用",cell:row=>text(row.tasks)},
         {label:"成功",cell:row=>text(row.succeeded)}, {label:"失败",cell:row=>text(row.failed)},
@@ -545,8 +547,11 @@ export function OrganizationAnalytics({ path }: { path: string }) {
       <OrganizationPager previous={query.page > 1 ? () => setQuery({...query,page:query.page-1}) : undefined}
         next={query.page * data.pageSize < data.totalRows ? () => setQuery({...query,page:query.page+1}) : undefined}/>
       <h3>Skill 与工具使用</h3>
-      <Table rows={data.activityRows.map(row => ({...row,id:text(row.id)+":"+text(row.kind)}))} columns={[
-        {label:"名称",cell:row=>text(row.name) || "未分配"}, {label:"类型",cell:row=>row.kind === "skill" ? "Skill" : "工具"},
+      <Table rows={data.activityRows.map(row => ({...row,id:JSON.stringify([row.id,row.kind,row.activityName])}))} columns={[
+        {label:"名称",cell:row=>text(row.activityName ?? row.name) || "未分配"},
+        ...(query.groupBy !== "sku" && data.activityRows.some(row => row.activityName !== undefined)
+          ? [{label:query.groupBy === "member" ? "成员" : "部门",cell:(row: Row)=>text(row.name) || "未分配"}] : []),
+        {label:"类型",cell:row=>row.kind === "skill" ? "技能" : "工具"},
         {label:"调用",cell:row=>text(row.calls)}, {label:"成功",cell:row=>text(row.succeeded)},
       ]}/>
       <OrganizationPager previous={query.activityPage > 1 ? () => setQuery({...query,activityPage:query.activityPage-1}) : undefined}

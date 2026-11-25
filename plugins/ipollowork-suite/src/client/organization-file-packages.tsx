@@ -6,7 +6,7 @@ import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, useRe
 import { FilePicker } from "./file-picker.tsx";
 import { ProjectDownload } from "./project-files.tsx";
 import { projectCopy } from "./project-copy.ts";
-import { enterpriseError } from "./enterprise-locale.ts";
+import { enterpriseError, format } from "./enterprise-locale.ts";
 import css from "./suite.module.css";
 
 export function OrganizationFilePackages(props: AssetProps) {
@@ -83,14 +83,17 @@ function PackageFiles({ path, afterChange, call, revision, controller, detail, t
       ? t.packageFileLimit : enterpriseError(code, t, t.packageUploadFailed);
   });
   const [files, setFiles] = useState<File[]>([]);
+  const [savedPath, setSavedPath] = useState<string>();
   const c = projectCopy(language);
   const refresh = () => { record.reload(); afterChange(); };
   return <div className={css.enterpriseForm}>
     <Notice error={record.error} t={t} retry={record.reload}/>
+    {savedPath && <p className={css.projectDownloadPath} role="status">{format(c.downloadedTo, { path: savedPath })}</p>}
     {!record.data && !record.error && <ListSkeleton rows={2}/>}
     {record.data?.files.map(file => <Row key={file.id} title={file.name} meta={file.addedBy}
       actions={<>
-        <ProjectDownload href={"/ipollowork-suite/enterprise" + path + "/files/" + file.id + "/download"} name={file.name} view={{t, language, controller}}/>
+        <ProjectDownload href={"/ipollowork-suite/enterprise" + path + "/files/" + file.id + "/download"}
+          name={file.name} view={{t, language, controller}} chooseDestination onSaved={setSavedPath}/>
         {detail.canManage && <Button size="sm" variant="ghost" onClick={() => controller.open({
           kind:"confirm", title:t.remove, description:file.name, confirmLabel:t.remove,
           run:async()=>{await call(path + "/files/" + file.id, undefined, "DELETE"); refresh();},

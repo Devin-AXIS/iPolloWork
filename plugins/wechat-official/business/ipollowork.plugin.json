@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "wechat-official",
   "name": "微信公众号",
-  "description": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流；隔离网页账号接入暂不可用。",
+  "description": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流。",
   "category": "商业与运营",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -21,7 +21,7 @@
     "translations": {
       "en": {
         "name": "WeChat Official Account",
-        "description": "Manage WeChat Official Accounts, articles, drafts, messages and operations through platform APIs. Isolated browser accounts are unavailable.",
+        "description": "Manage WeChat Official Accounts, articles, drafts, messages and operations through platform APIs.",
         "category": "Business & Operations",
         "composer": {
           "prompt": "Use the WeChat Official Account operations plugin to confirm the target accountId and its capabilities before handling content, comments, menus, or follower interactions within the confirmed scope."

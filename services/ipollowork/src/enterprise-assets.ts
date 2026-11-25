@@ -18,13 +18,12 @@ import {
 import { ServiceError } from "./errors.js";
 import {
   audienceOf,
+  audiencesOf,
   audienceSchema,
-  canUse,
   dropAudience,
   grantedTo,
   replaceAudience,
   requireUse,
-  type AssetKind,
 } from "./grants.js";
 
 const title = z.string().trim().min(1).max(120);
@@ -85,21 +84,6 @@ async function skillOf(
   );
   if (!row) throw new ServiceError("SKILL_NOT_FOUND", 404, "Skill 不存在");
   return row;
-}
-/** Assets of one kind in an enterprise that the actor may see: managers see all, members only granted ones. */
-async function visible<T extends { id: string }>(
-  store: Store,
-  actor: Actor,
-  enterpriseId: string,
-  kind: AssetKind,
-  rows: T[],
-): Promise<T[]> {
-  if (await isEnterpriseManager(store, actor, enterpriseId)) return rows;
-  const result: T[] = [];
-  for (const row of rows)
-    if (await canUse(store, actor, enterpriseId, kind, row.id))
-      result.push(row);
-  return result;
 }
 /** Kebab-case skill name for the native skill registry; non-ASCII titles fall back to a stable id-derived name. */
 export function skillName(titleText: string, id: string): string {
@@ -188,49 +172,46 @@ export function mountEnterpriseAssets(
       actor = c.get("actor");
     await enterpriseAccess(store, actor, id);
     const canManage = await isEnterpriseManager(store, actor, id);
-    // Apply recipient visibility before the limit so newer private packages cannot hide granted ones.
-    const packageVisibility = canManage ? "" : ` AND EXISTS(SELECT 1 FROM members m
-      WHERE m.enterprise_id=p.enterprise_id AND m.user_id=? AND m.status='active' AND ${grantedTo("p.id")})`;
-    const packages = await store.all<PackageRow & { file_count: number; bytes: number }>(
-      `SELECT p.*,COUNT(f.resource_id) AS file_count,COALESCE(SUM(r.bytes),0) AS bytes FROM file_packages p
-        LEFT JOIN package_files f ON f.package_id=p.id LEFT JOIN resources r ON r.id=f.resource_id
-        WHERE p.enterprise_id=?${packageVisibility} GROUP BY p.id ORDER BY p.updated_at DESC,p.id LIMIT 200`,
-      id, ...(canManage ? [] : [actor.id, "package"]),
-    );
-    const skills = await visible(
-      store,
-      actor,
-      id,
-      "skill",
-      await store.all<SkillRow>(
-        "SELECT id,enterprise_id,title,description,version,bytes,storage_key,created_at FROM resources WHERE enterprise_id=? AND kind='skill' ORDER BY created_at DESC LIMIT 200",
-        id,
+    // Apply recipient visibility before the limit so newer private assets cannot hide granted ones.
+    const visibility = (alias: "p" | "s") => canManage ? "" : ` AND EXISTS(SELECT 1 FROM members m
+      WHERE m.enterprise_id=${alias}.enterprise_id AND m.user_id=? AND m.status='active' AND ${grantedTo(alias + ".id")})`;
+    const [packages, skills] = await Promise.all([
+      store.all<PackageRow & { file_count: number; bytes: number }>(
+        `SELECT p.*,COUNT(f.resource_id) AS file_count,COALESCE(SUM(r.bytes),0) AS bytes FROM file_packages p
+          LEFT JOIN package_files f ON f.package_id=p.id LEFT JOIN resources r ON r.id=f.resource_id
+          WHERE p.enterprise_id=?${visibility("p")} GROUP BY p.id ORDER BY p.updated_at DESC,p.id LIMIT 200`,
+        id, ...(canManage ? [] : [actor.id, "package"]),
       ),
-    );
+      store.all<SkillRow>(
+        `SELECT s.id,s.enterprise_id,s.title,s.description,s.version,s.bytes,s.storage_key,s.created_at FROM resources s
+          WHERE s.enterprise_id=? AND s.kind='skill'${visibility("s")} ORDER BY s.created_at DESC,s.id LIMIT 200`,
+        id, ...(canManage ? [] : [actor.id, "skill"]),
+      ),
+    ]);
+    const [packageAudiences, skillAudiences] = await Promise.all([
+      audiencesOf(store, id, "package", packages.map(p => p.id)),
+      audiencesOf(store, id, "skill", skills.map(s => s.id)),
+    ]);
     return c.json({
       canManage,
-      packages: await Promise.all(
-        packages.map(async (p) => ({
-          id: p.id,
-          title: p.title,
-          description: p.description,
-          fileCount: Number(p.file_count),
-          bytes: Number(p.bytes),
-          updatedAt: p.updated_at,
-          audience: await audienceOf(store, "package", p.id),
-        })),
-      ),
-      skills: await Promise.all(
-        skills.map(async (s) => ({
-          id: s.id,
-          title: s.title,
-          description: s.description,
-          name: skillName(s.title, s.id),
-          bytes: s.bytes,
-          updatedAt: s.created_at,
-          audience: await audienceOf(store, "skill", s.id),
-        })),
-      ),
+      packages: packages.map((p) => ({
+        id: p.id,
+        title: p.title,
+        description: p.description,
+        fileCount: Number(p.file_count),
+        bytes: Number(p.bytes),
+        updatedAt: p.updated_at,
+        audience: packageAudiences.get(p.id)!,
+      })),
+      skills: skills.map((s) => ({
+        id: s.id,
+        title: s.title,
+        description: s.description,
+        name: skillName(s.title, s.id),
+        bytes: s.bytes,
+        updatedAt: s.created_at,
+        audience: skillAudiences.get(s.id)!,
+      })),
     });
   });
   app.put("/api/v1/enterprises/:id/grants", async (c) => {
@@ -266,7 +247,7 @@ export function mountEnterpriseAssets(
     });
     return c.json({
       ok: true,
-      audience: await audienceOf(store, input.kind, input.assetId),
+      audience: await audienceOf(store, id, input.kind, input.assetId),
     });
   });
 
@@ -350,7 +331,7 @@ export function mountEnterpriseAssets(
         id: row.id,
         title: row.title,
         description: row.description,
-        audience: await audienceOf(store, "package", row.id),
+        audience: await audienceOf(store, id, "package", row.id),
       },
       files: files.map((f) => ({
         id: f.resource_id,
@@ -462,7 +443,7 @@ export function mountEnterpriseAssets(
         c.req.param("fileId"),
       );
       if (!file) throw new ServiceError("FILE_NOT_FOUND", 404, "文件不存在");
-      return await storage.download(file.storage_key, file.name);
+      return await storage.download(file.storage_key, file.name, c.req.query("redirect") === "1");
     },
   );
 

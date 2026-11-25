@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/dsh-xiaohongshu-ops",
-  "version": "0.1.7",
-  "description": "管理小红书本地账号记录、草稿、素材与运营任务；隔离网页账号和自动验证暂不可用。",
+  "version": "0.1.8",
+  "description": "管理小红书本地账号记录、草稿、素材与运营任务。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

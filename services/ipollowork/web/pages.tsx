@@ -1116,7 +1116,7 @@ export function SharePage({ id }: { id: string }) {
       {result.data && (
         <section className="panel shared">
           <h2>{result.data.title}</h2>
-          <p>这是历史分享。新的会话分享请使用 iPolloWork 中的 DSH 原生共享。</p>
+          <p>这是历史分享。新的会话分享请使用 iPolloWork 的会话共享。</p>
           {result.data.transcript.map((m, i) => (
             <article key={i}>
               <small>{m.role === "user" ? "用户" : "助手"}</small>

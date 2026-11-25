@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "wechat-channels-ops",
   "name": "视频号运营台",
-  "description": "管理视频号本地草稿、视频封面素材与运营任务，在原生会话中继续工作；隔离网页账号自动接入暂不可用。",
+  "description": "管理视频号本地草稿、视频封面素材与运营任务，在原生会话中继续工作。",
   "category": "营销",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -771,7 +771,7 @@
     "translations": {
       "en": {
         "name": "WeChat Channels Operations",
-        "description": "Manage local WeChat Channels drafts, video covers and operation tasks in native conversation. Isolated browser account onboarding is unavailable.",
+        "description": "Manage local WeChat Channels drafts, video covers and operation tasks in native conversation.",
         "category": "Marketing",
         "composer": {
           "prompt": "Open the workbench with open-workbench and read wechat-channels-ops-worker before execution. Verify the real Channels ID in the account-specific browser. prepare-job only prepares work; persist mark-submitting before the final click and read the actual result afterward. Reconcile uncertain work instead of resubmitting. Keep scheduled account IDs and operation keys stable."

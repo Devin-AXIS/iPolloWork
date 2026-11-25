@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { App } from "./http.js";
 import type { Store, Row } from "./database.js";
 import { audit, enterpriseAccess, isEnterpriseManager, now, uid } from "./domain.js";
-import { audienceOf, grantedTo, replaceAudience, requireUse } from "./grants.js";
+import { audienceOf, audiencesOf, grantedTo, replaceAudience, requireUse } from "./grants.js";
 import { ServiceError } from "./errors.js";
 import { isSharedMcpEndpoint, publishEnterpriseMcp } from "./enterprise-mcp.js";
 import { organizationNotice } from "./organization-notice.js";
@@ -78,13 +78,14 @@ export function mountOrganizationPublications(app: App, store: Store) {
          ))) ORDER BY p.created_at DESC,p.id LIMIT 200`,
       id, kind, canManage, actor.id, actor.id, kind,
     );
-    const items = await Promise.all(records.map(async ({ resource_key, published_version, submitted_by, ...row }) => ({
+    const audiences = canManage ? await audiencesOf(store, id, kind, records.map(row => row.id)) : undefined;
+    const items = records.map(({ resource_key, published_version, submitted_by, ...row }) => ({
       ...row,
       ...(kind === "plugin" ? { packageName: resource_key } : {}),
       publishedVersion: published_version,
       canSubmit: canManage || submitted_by === actor.id,
-      ...(canManage ? { audience: await audienceOf(store, kind, row.id) } : {}),
-    })));
+      ...(audiences ? { audience: audiences.get(row.id)! } : {}),
+    }));
     return c.json({ canManage, items });
   });
   app.get(item, async c => {
@@ -100,7 +101,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
     return c.json({ id: publication.id, title: publication.title, description: publication.description,
       ...(kind === "plugin" ? { packageName: publication.resource_key } : {}),
       publishedVersion: publication.published_version, canSubmit,
-      ...(canManage ? { audience: await audienceOf(store, kind, publication.id) } : {}),
+      ...(canManage ? { audience: await audienceOf(store, id, kind, publication.id) } : {}),
     });
   });
   app.post(list, async c => {

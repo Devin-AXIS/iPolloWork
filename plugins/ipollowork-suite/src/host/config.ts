@@ -12,6 +12,7 @@ const ACCOUNT_ORIGIN = deployment.accountOrigin;
 export interface Config {
   accountOrigin?: string;
   cloudRuntimeTokenEnv?: string;
+  cloudRuntimeProjectId?: string;
   catalogPath?: string;
   requestTimeoutMs?: number;
   maxResponseBytes?: number;
@@ -29,6 +30,7 @@ export interface Config {
 }
 export const Config = z.object({
   cloudRuntimeTokenEnv: z.string().default(""),
+  cloudRuntimeProjectId: z.string().default(""),
   accountOrigin: z.string().default(ACCOUNT_ORIGIN),
   catalogPath: z
     .string()

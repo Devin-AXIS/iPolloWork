@@ -1,5 +1,6 @@
 /** Minimal public DSH client capabilities consumed by the suite. */
 import type { ComponentType } from 'react'
+import type { Context } from '@deepseek-ai/cordis'
 import type { ClientRemote, PluginInstallProgress } from '@deepseek-ai/dsh-api-remotes/client'
 // alpha.2's aggregate declaration omits the settings namespace augmentation.
 import type {} from '@deepseek-ai/dsh-api-settings-controller/remote'
@@ -19,6 +20,7 @@ export interface ClientContext {
   }) => void): unknown;
   inject(dependencies: readonly ['ipolloDesignTemplates'], callback: (scope: ClientContext & { ipolloDesignTemplates: import('../shared/design-templates.ts').DesignTemplateSources }) => void): unknown;
   inject(dependencies: readonly ['remote.pluginManager'], callback: (scope: ClientContext) => void): unknown;
+  inject(dependencies: readonly ['pluginChanges'], callback: (scope: ClientContext & Pick<Context, 'pluginChanges'>) => void): unknown;
   inject(dependencies: readonly ['remoteAccess'], callback: (scope: ClientContext) => void): unknown;
   inject(dependencies: readonly ['remote.liveshareShares'], callback: (scope: {
     remote: { liveshareShares: import('./sharing/owner-shares.ts').OwnerShares }

@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-context7",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "通过版本感知的官方文档检索，为实现、升级和技术决策提供可追溯的上下文。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

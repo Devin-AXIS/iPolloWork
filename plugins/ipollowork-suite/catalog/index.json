@@ -5,8 +5,8 @@
     "zh": "iPolloWork 插件市场"
   },
   "description": {
-    "en": "A curated directory of native DSH bundles.",
-    "zh": "由我们维护的 DSH 原生插件目录。"
+    "en": "A curated directory of iPolloWork plugins.",
+    "zh": "由我们维护的 iPolloWork 插件目录。"
   },
   "metadata": {
     "categories": {
@@ -54,8 +54,8 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.39-ipollo.2",
-          "publishTimestamp": 1795499085,
+          "version": "1.0.0-beta.39-ipollo.4",
+          "publishTimestamp": 1795598560,
           "source": {
             "type": "npm"
           },
@@ -89,8 +89,8 @@
       },
       "versions": [
         {
-          "version": "1.0.0-beta.27-ipollo.2",
-          "publishTimestamp": 1795499086,
+          "version": "1.0.0-beta.27-ipollo.3",
+          "publishTimestamp": 1795599823,
           "source": {
             "type": "npm"
           },
@@ -151,7 +151,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -185,7 +185,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -205,8 +205,8 @@
       },
       "author": "zjy-web222",
       "description": {
-        "zh": "管理抖音本地草稿、素材、作品及评论记录，通过平台 API 和原生会话继续运营；隔离网页账号自动接入暂不可用。",
-        "en": "Manage local Douyin drafts, assets, posts and comment records through platform APIs and native conversation. Isolated browser account onboarding is unavailable."
+        "zh": "管理抖音本地草稿、素材、作品及评论记录，通过平台 API 和原生会话继续运营。",
+        "en": "Manage local Douyin drafts, assets, posts and comment records through platform APIs and native conversation."
       },
       "homepage": "https://github.com/Devin-AXIS/iPolloWork",
       "metadata": {
@@ -219,7 +219,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -253,7 +253,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -287,7 +287,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -321,7 +321,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -336,8 +336,8 @@
     {
       "name": "@ipollo/dsh-jev-decision-model",
       "title": {
-        "zh": "Jev DSH 决策引擎",
-        "en": "Jev DSH Decision Engine"
+        "zh": "Jev 决策引擎",
+        "en": "Jev Decision Engine"
       },
       "author": "iPolloWork",
       "description": {
@@ -355,7 +355,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -389,8 +389,8 @@
       },
       "versions": [
         {
-          "version": "0.1.3",
-          "publishTimestamp": 1795382400,
+          "version": "0.1.4",
+          "publishTimestamp": 1795605741,
           "source": {
             "type": "npm"
           },
@@ -423,7 +423,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -457,7 +457,7 @@
       },
       "versions": [
         {
-          "version": "0.1.7",
+          "version": "0.1.8",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -491,7 +491,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -525,8 +525,8 @@
       },
       "versions": [
         {
-          "version": "0.2.3",
-          "publishTimestamp": 1795382400,
+          "version": "0.2.4",
+          "publishTimestamp": 1795605741,
           "source": {
             "type": "npm"
           },
@@ -559,7 +559,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -593,7 +593,7 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -627,7 +627,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -647,8 +647,8 @@
       },
       "author": "zjy-web222",
       "description": {
-        "zh": "管理视频号本地草稿、视频封面素材与运营任务，在原生会话中继续工作；隔离网页账号自动接入暂不可用。",
-        "en": "Manage local WeChat Channels drafts, video covers and operation tasks in native conversation. Isolated browser account onboarding is unavailable."
+        "zh": "管理视频号本地草稿、视频封面素材与运营任务，在原生会话中继续工作。",
+        "en": "Manage local WeChat Channels drafts, video covers and operation tasks in native conversation."
       },
       "homepage": "https://github.com/Devin-AXIS/iPolloWork",
       "metadata": {
@@ -661,7 +661,7 @@
       },
       "versions": [
         {
-          "version": "0.1.5",
+          "version": "0.1.6",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -681,8 +681,8 @@
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流；隔离网页账号接入暂不可用。",
-        "en": "Manage WeChat Official Accounts, articles, drafts, messages and operations through platform APIs. Isolated browser accounts are unavailable."
+        "zh": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流。",
+        "en": "Manage WeChat Official Accounts, articles, drafts, messages and operations through platform APIs."
       },
       "homepage": "https://github.com/Devin-AXIS/iPolloWork",
       "metadata": {
@@ -695,7 +695,7 @@
       },
       "versions": [
         {
-          "version": "0.1.7",
+          "version": "0.1.8",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -729,7 +729,7 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -749,8 +749,8 @@
       },
       "author": "zjy-web222",
       "description": {
-        "zh": "管理小红书本地账号记录、草稿、素材与运营任务；隔离网页账号和自动验证暂不可用。",
-        "en": "Manage local Xiaohongshu account records, drafts, assets and operation tasks. Isolated browser accounts and automatic verification are unavailable."
+        "zh": "管理小红书本地账号记录、草稿、素材与运营任务。",
+        "en": "Manage local Xiaohongshu account records, drafts, assets and operation tasks."
       },
       "homepage": "https://github.com/Devin-AXIS/iPolloWork",
       "metadata": {
@@ -763,7 +763,7 @@
       },
       "versions": [
         {
-          "version": "0.1.7",
+          "version": "0.1.8",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -784,7 +784,7 @@
       "author": "iPolloWork",
       "description": {
         "zh": "整理产业关系、关键指标和证据，生成可展开的决策图谱。",
-        "en": "Research a decision in a DSH workspace, explore its evidence and publish a read-only atlas."
+        "en": "Research a decision in an iPolloWork workspace, explore its evidence and publish a read-only atlas."
       },
       "homepage": "https://github.com/Devin-AXIS/ipollo-decision-intelligence",
       "metadata": {

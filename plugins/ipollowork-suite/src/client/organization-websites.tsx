@@ -17,13 +17,13 @@ export function OrganizationWebsitePanel({ account, controller, useEnterpriseLab
   Pick<EnterpriseProps, 'controller' | 'useEnterpriseLabels' | 'useEnterpriseState'> & { account: AccountController }) {
   const { account: signedIn, error } = useSyncExternalStore(account.subscribe, account.getSnapshot)
   const t = useEnterpriseLabels(value => value)
-  const activeOrganization = useEnterpriseState(value => value.enterpriseId)
+  const availableOrganization = useEnterpriseState(value => value.websiteOrganizationId)
   const revision = useEnterpriseState(value => value.revision)
   return <section className={css.page + ' ' + css.enterprisePage} aria-label={t.organizationBrowser}>
     <section className={css.organizationSettingsCard}>
       <Notice error={error ?? ''} t={t} retry={() => { void account.refresh() }}/>
       {signedIn?.status === 'signed-in' ?
-        <WebsiteDirectory key={signedIn.user.id} activeOrganization={activeOrganization} revision={revision} t={t} call={controller.call}/> :
+        <WebsiteDirectory key={signedIn.user.id} availableOrganization={availableOrganization} revision={revision} t={t} call={controller.call}/> :
         signedIn ? <EmptyState title={t.organizationBrowser}>
           <FormButton type="button" variant="outline" onClick={account.openAccountSettings}>{t.signIn}</FormButton>
         </EmptyState> : !error && <ListSkeleton rows={2}/>}
@@ -31,14 +31,14 @@ export function OrganizationWebsitePanel({ account, controller, useEnterpriseLab
   </section>
 }
 
-function WebsiteDirectory({ activeOrganization, revision, t, call }: {
-  activeOrganization: string | null; revision: number; t: EnterpriseLabels; call: Call
+function WebsiteDirectory({ availableOrganization, revision, t, call }: {
+  availableOrganization: string | null; revision: number; t: EnterpriseLabels; call: Call
 }) {
   const memberships = useRecord<OrganizationContext>('/memberships', call, revision)
   const [selection, setSelection] = useState<string>()
   const organizations = memberships.data?.organizations ?? []
   const organization = organizations.find(value => value.id === selection) ??
-    organizations.find(value => value.id === activeOrganization) ?? organizations[0]
+    organizations.find(value => value.id === availableOrganization) ?? organizations[0]
   const path = organization ? '/organizations/' + organization.id + '/websites' : null
   const sites = useRecord<List>(path, call, revision)
   const task = useTask(t)
@@ -109,7 +109,9 @@ function TicketSettings({ path, t, call }: { path: string; t: EnterpriseLabels; 
   </Section>
 }
 
-export function OrganizationWebsites({ detail, t, call }: { detail: EnterpriseDetail; t: EnterpriseLabels; call: Call }) {
+export function OrganizationWebsites({ detail, t, call, onChange }: {
+  detail: EnterpriseDetail; t: EnterpriseLabels; call: Call; onChange: () => void
+}) {
   const path = '/organizations/' + detail.enterprise.id + '/websites'
   const available = useRecord<List>(path, call, 0)
   const manage = useRecord<Document>(detail.canManage ? path + '/manage' : null, call, 0)
@@ -128,6 +130,7 @@ export function OrganizationWebsites({ detail, t, call }: { detail: EnterpriseDe
     await call(path + '/manage', { revision: document.revision, items }, 'PUT')
     setEditing(undefined)
     reload()
+    onChange()
   }
   const open = (id: string) => void task.run(async () => {
     try {

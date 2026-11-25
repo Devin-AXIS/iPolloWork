@@ -34,20 +34,33 @@ interface Listing {
   policy: { outputs: boolean };
 }
 
-export function ProjectDownload({ href, name, view }: { href: string; name: string; view: Pick<ViewProps, "t" | "language" | "controller"> }) {
+export function ProjectDownload({ href, name, view, chooseDestination, onSaved }: {
+  href: string; name: string; view: Pick<ViewProps, "t" | "language" | "controller">;
+  chooseDestination?: boolean; onSaved?: (path: string) => void;
+}) {
   const c = projectCopy(view.language);
   const { dshDesktop } = window as Window & {
-    dshDesktop?: { fileActions?: { save(request: { url: string; name: string; mode: "download" }): Promise<{ status: string }> } };
+    dshDesktop?: {
+      organizationPackageSaveAs?: boolean;
+      fileActions?: {
+        save(request: { url: string; name: string; mode: "download" | "saveAs" }):
+          Promise<{ status: "saved"; path: string } | { status: "cancelled" | "requested" }>;
+      };
+    };
   };
   const task = useTask(view.t, () => c.downloadFailed);
   if (!dshDesktop?.fileActions)
     return <a className={css.projectDownload} href={href} target="_blank" rel="noreferrer">{c.download}</a>;
 
   const fileActions = dshDesktop.fileActions;
+  const mode = chooseDestination && dshDesktop.organizationPackageSaveAs ? "saveAs" : "download";
   return <span>
     <Button size="sm" variant="ghost" disabled={task.busy} onClick={() => void task.run(async () => {
-      const result = await fileActions.save({ url: new URL(href, location.href).href, name: name.split(/[\\/]/).at(-1) || name, mode: "download" });
-      if (result.status === "saved") view.controller.notify(c.downloaded);
+      const result = await fileActions.save({ url: new URL(href, location.href).href, name: name.split(/[\\/]/).at(-1) || name, mode });
+      if (result.status === "saved") {
+        onSaved?.(result.path);
+        view.controller.notify(c.downloaded);
+      }
     })}>{task.busy ? c.downloading : c.download}</Button>
     <FormError message={task.error} />
   </span>;

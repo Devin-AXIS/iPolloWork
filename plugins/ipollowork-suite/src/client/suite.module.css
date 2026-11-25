@@ -90,6 +90,7 @@
 :global(body[data-ipw-suite]) { --ipw-plugin-icon-size: 48px; --ipw-plugin-title-size: 20px; --ipw-plugin-section-gap: 32px; }
 :global(body[data-ipw-suite] [data-plugin-detail]) { --card-icon-size: var(--ipw-plugin-icon-size); }
 :global(body[data-ipw-suite] [data-plugin-detail] > :has([data-plugin-name]) h3) { font-size: var(--ipw-plugin-title-size); }
+:global(button[data-ipw-plugin-toggle-locked]:not(:disabled)) { cursor: default; opacity: .5; }
 :global(body[data-ipw-suite] [data-composer-card]) {
   --dsw-alias-label-on-color: var(--ipw-accent-ink);
   border: .5px solid var(--ipw-border);
@@ -355,6 +356,7 @@ button.rowMain:focus-visible { outline:2px solid var(--dsw-alias-border-selected
 :global(body[data-ipw-suite] input[type="file"]:disabled::file-selector-button) { cursor:default;opacity:.6; }
 .projectDownload { color:inherit; text-decoration:none; font-size:13px; }
 .projectDownload:hover { text-decoration:underline; }
+.projectDownloadPath { margin:0; font-size:13px; color:var(--ipw-muted); overflow-wrap:anywhere; }
 
 .connections { display: grid; gap: 12px; font-size: 13px; }
 .connections h2 { margin: 0; font-size: 16px; font-weight: 500; }

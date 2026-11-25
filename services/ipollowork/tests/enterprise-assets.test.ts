@@ -1,4 +1,4 @@
-import test from "node:test";
+import test, { mock } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,7 +18,7 @@ import type { App } from "../src/http.js";
 const code = (expected: string) => (error: unknown) =>
   (error as { code?: string }).code === expected;
 
-test("organization assets enforce member and department grants, and project owners can remove projects", async () => {
+test("organization assets enforce member and department grants, and project owners can remove projects", async t => {
   const dir = await mkdtemp(join(tmpdir(), "ipw-assets-"));
   const config = await loadConfig({
     DATA_DIR: dir,
@@ -265,12 +265,58 @@ test("organization assets enforce member and department grants, and project owne
       403,
     );
 
+    // Signing an OSS download only uses local fixture credentials and never contacts OSS.
+    const original = await service.store.one("SELECT storage_key FROM resources WHERE id=?", file);
+    const signedKey = "oss/organization/" + enterprise + "/" + file;
+    const packageDownload = base + `/packages/${pack}/files/${file}/download`;
+    try {
+      await service.settings.set("oss", { region: "oss-cn-hangzhou", bucket: "ipw-download-fixture",
+        accessKeyId: "fixture-access-key", accessKeySecret: "fixture-secret" });
+      await service.store.run("UPDATE storage_objects SET storage_key=? WHERE storage_key=?", signedKey, original!.storage_key);
+      await service.store.run("UPDATE resources SET storage_key=? WHERE id=?", signedKey, file);
+      const browserDownload = (token: string) => service.app.request(config.origin + packageDownload + "?redirect=1", {
+        headers: { Authorization: "Bearer " + token, Origin: config.origin },
+      });
+      for (const token of [owner.token, design.token]) {
+        const result = await browserDownload(token);
+        assert.equal(result.status, 303);
+        const location = new URL(result.headers.get("Location")!);
+        assert.equal(location.hostname, "ipw-download-fixture.oss-cn-hangzhou.aliyuncs.com");
+        assert.match(location.searchParams.get("response-content-disposition") ?? "", /logo\.svg/);
+      }
+      assert.equal((await browserDownload(sales.token)).status, 403);
+      await service.store.run("UPDATE members SET role='admin' WHERE enterprise_id=? AND user_id=?", enterprise, sales.id);
+      try {
+        assert.equal((await browserDownload(sales.token)).status, 303);
+      } finally {
+        await service.store.run("UPDATE members SET role='member' WHERE enterprise_id=? AND user_id=?", enterprise, sales.id);
+      }
+      const desktopDownload = await http<{ url: string }>(packageDownload, design.token);
+      assert.equal(desktopDownload.status, 200);
+      assert.equal(new URL(desktopDownload.data.url).protocol, "https:");
+    } finally {
+      await service.store.run("UPDATE resources SET storage_key=? WHERE id=?", original!.storage_key, file);
+      await service.store.run("UPDATE storage_objects SET storage_key=? WHERE storage_key=?", original!.storage_key, signedKey);
+      await service.store.run("DELETE FROM settings WHERE key='oss'");
+    }
+
     // A recipient's granted package must not disappear behind 200 newer private packages.
     await service.store.run(`INSERT INTO file_packages(id,enterprise_id,title,description,created_by,created_at,updated_at)
       SELECT 'hidden-package-'||i,?,'Private '||i,'',?,?,CAST(? AS BIGINT)+i FROM generate_series(1,200) i`,
       enterprise, owner.id, Date.now(), Date.now() + 1000);
     assert.deepEqual((await listed(design.token)).packages.map(item => item.id), [pack]);
     assert.deepEqual((await listed(sales.token)).packages, []);
+    const observed = mock.method(service.store, 'all');
+    try {
+      const start = performance.now();
+      const listing = await http<{ packages: unknown[] }>(base + "/assets", owner.token);
+      assert.equal(listing.status, 200, JSON.stringify(listing.data));
+      assert.equal(listing.data.packages.length, 200);
+      const elapsed = Math.round(performance.now() - start);
+      const grantReads = observed.mock.calls.filter(({ arguments: [sql] }) => /SELECT .*audience_kind.*FROM enterprise_grants/.test(sql));
+      assert.equal(grantReads.length, 1);
+      t.diagnostic(`200 file packages loaded in ${elapsed} ms with one audience query`);
+    } finally { observed.mock.restore(); }
 
     const grant = await http<{ audience: { members: string[] } }>(
       base + "/grants",

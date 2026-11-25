@@ -9,7 +9,7 @@ import type { Store } from "./database.js";
 import type { Settings } from "./settings.js";
 import { ServiceError } from "./errors.js";
 import { audit, enterpriseAccess, isEnterpriseManager, now, requireEnterpriseManager, uid } from "./domain.js";
-import { audienceOf, audienceSchema, grantedTo, replaceAudience, requireUse } from "./grants.js";
+import { audiencesOf, audienceSchema, grantedTo, replaceAudience, requireUse } from "./grants.js";
 import { EnterpriseMcpOAuth, mcpMemberCredentials, mcpOAuthConfig, memberMcpToken, type McpOAuthConfig } from "./enterprise-mcp-oauth.js";
 
 const maxRequest = 1024 * 1024;
@@ -127,14 +127,20 @@ export function mountEnterpriseMcp(app: App, store: Store, settings: Settings, s
          WHERE r.enterprise_id=? AND r.enabled AND m.user_id=? AND m.status='active' AND ${grantedTo("r.id")} ORDER BY r.created_at DESC,r.id LIMIT 100`,
         enterprise, actor.id, "mcp",
       );
-    return c.json({ canManage, items: await Promise.all(rows.map(async (r) => ({
+    const tokens = rows.filter(row => row.oauth_config).map(row => memberMcpToken(String(row.id), actor.id));
+    const [audiences, presentTokens] = await Promise.all([
+      audiencesOf(store, enterprise, "mcp", rows.map(row => String(row.id))),
+      tokens.length ? store.all<{ key: string }>("SELECT key FROM settings WHERE key=ANY(?::text[])", tokens) : [],
+    ]);
+    const authorized = new Set(presentTokens.map(row => row.key));
+    return c.json({ canManage, items: rows.map((r) => ({
       id: r.id, title: r.title, description: r.description, host: new URL(r.endpoint).hostname,
       enabled: r.enabled,
       oauthRequired:!!r.oauth_config,
-      authorized:!r.oauth_config || Boolean(await store.one("SELECT 1 FROM settings WHERE key=?",memberMcpToken(r.id,actor.id))),
+      authorized:!r.oauth_config || authorized.has(memberMcpToken(String(r.id), actor.id)),
       ...(canManage ? {endpoint:r.endpoint, reviewed:r.reviewed, ...(r.oauth_config ? {oauth:JSON.parse(r.oauth_config) as McpOAuthConfig} : {})} : {}),
-      audience: await audienceOf(store, "mcp", r.id),
-    }))) });
+      audience: audiences.get(String(r.id))!,
+    })) });
   });
   app.post("/api/v1/enterprises/:id/mcp", async (c) => {
     const enterprise = c.req.param("id"), actor = c.get("actor");

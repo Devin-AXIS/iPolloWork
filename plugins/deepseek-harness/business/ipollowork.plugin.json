@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "deepseek-harness",
-  "name": "DeepSeek Harness",
-  "description": "使用当前 DSH 原生 Agent、子任务和会话完成开发、审查与研究，无需第二套运行时。",
+  "name": "iPolloWork 协作助手",
+  "description": "使用 iPolloWork 的 Agent、子任务和会话完成开发、审查与研究。",
   "category": "AI Agent 与自动化",
   "preview": true,
   "source": {
@@ -15,10 +15,10 @@
     "simpleIconSlug": "deepseek"
   },
   "composer": {
-    "prompt": "请使用 DeepSeek Harness 协作完成以下任务："
+    "prompt": "请使用 iPolloWork 协作完成以下任务："
   },
   "setup": {
-    "instructions": "软件已内置 Windows 和 macOS DeepSeek Harness 运行环境。连接 DeepSeek 后即可开始委派任务。",
+    "instructions": "软件已内置 Windows 和 macOS iPolloWork 运行环境。连接 DeepSeek 后即可开始委派任务。",
     "primaryCta": "连接 DeepSeek",
     "secondaryCta": "检查服务状态"
   },
@@ -26,23 +26,24 @@
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "Use the current native DSH Agent, subagent tools and sessions for development, review and research.",
+        "name": "iPolloWork Collaboration Assistant",
+        "description": "Use iPolloWork's agent, subagent tools and sessions for development, review and research.",
         "category": "AI Agents & Automation",
         "composer": {
-          "prompt": "Work with DeepSeek Harness on the following task:"
+          "prompt": "Work with iPolloWork on the following task:"
         },
         "setup": {
-          "instructions": "The Windows and macOS DeepSeek Harness runtime is bundled. Connect DeepSeek to start delegating tasks.",
+          "instructions": "The Windows and macOS iPolloWork runtime is bundled. Connect DeepSeek to start delegating tasks.",
           "primaryCta": "Connect DeepSeek",
           "secondaryCta": "Check Service Status"
         },
         "resources": {
           "deepseek-harness-service": {
-            "description": "Let OpenCode delegate tasks to DeepSeek Harness and view progress and results."
+            "description": "Let OpenCode delegate tasks to iPolloWork and view progress and results."
           },
           "deepseek-harness": {
-            "label": "DeepSeek Harness",
-            "description": "Let OpenCode delegate code review, development, and research tasks to DeepSeek Harness."
+            "label": "iPolloWork",
+            "description": "Let OpenCode delegate code review, development, and research tasks to iPolloWork."
           }
         },
         "authorizationMethods": {
@@ -63,13 +64,13 @@
         },
         "permissions": {
           "network": {
-            "reason": "Connect the bundled DeepSeek Harness runtime to the selected model provider."
+            "reason": "Connect the bundled iPolloWork runtime to the selected model provider."
           },
           "workspace-read": {
             "reason": "Read the active project for delegated tasks."
           },
           "process": {
-            "reason": "Run DeepSeek Harness for delegated tasks."
+            "reason": "Run iPolloWork for delegated tasks."
           }
         }
       }
@@ -96,7 +97,7 @@
   "permissions": [
     {
       "id": "network",
-      "reason": "使用内置 DeepSeek Harness 连接用户选择的模型服务。"
+      "reason": "使用内置 iPolloWork 连接用户选择的模型服务。"
     },
     {
       "id": "workspace-read",
@@ -104,7 +105,7 @@
     },
     {
       "id": "process",
-      "reason": "运行 DeepSeek Harness 以完成委派任务。"
+      "reason": "运行 iPolloWork 以完成委派任务。"
     }
   ],
   "authorization": {
@@ -139,8 +140,8 @@
     {
       "type": "skill",
       "id": "deepseek-harness",
-      "label": "DeepSeek Harness",
-      "description": "供 OpenCode 把代码审查、开发和研究任务委派给 DeepSeek Harness 协作完成。",
+      "label": "iPolloWork",
+      "description": "供 OpenCode 把代码审查、开发和研究任务委派给 iPolloWork 协作完成。",
       "path": "skills/deepseek-harness/SKILL.md",
       "provides": [
         "workflow:deepseek-harness"

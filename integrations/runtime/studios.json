@@ -3,15 +3,15 @@
   "sourceRevision": "85660cb3c5198de86efd5e4fa4ad9bd19cf4ea54",
   "dshVersion": "0.2.3-alpha.2",
   "patchFile": "studio-alpha2.patch",
-  "patchSha256": "a6c0560518ac52a6ec6b1ee692786b8632577b8dcf08f822496a68a61b8daad1",
+  "patchSha256": "40af17c87bc95042aeb4fe2d116e1ae76ef88ff4624c70625a40b1fef24cde12",
   "packages": [
     {
       "name": "deepseek-idesign",
-      "version": "1.0.0-beta.39-ipollo.2"
+      "version": "1.0.0-beta.39-ipollo.4"
     },
     {
       "name": "deepseek-ivideo",
-      "version": "1.0.0-beta.27-ipollo.2"
+      "version": "1.0.0-beta.27-ipollo.3"
     }
   ]
 }

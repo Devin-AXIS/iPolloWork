@@ -92,6 +92,7 @@ const en = {
   analyticsSuccess: "Succeeded",
   analyticsFailed: "Failed",
   analyticsSkills: "Current skills",
+  analyticsSkillInventory: "{direct} uploaded directly · {published} published after review",
   analyticsPlugins: "Current plugins",
   analyticsInvocationHint: "Skill and plugin counts are current inventory; other metrics cover the selected period. Reported skill loads and plugin/tool calls cover linked enterprise projects while reporting is enabled. Unreported history is excluded; tool calls do not measure plugin installations or full sessions.",
   analyticsSkillCalls: "Reported skill loads",
@@ -484,11 +485,11 @@ const en = {
   importMarkdown: "Import Markdown",
   noSkills: "No directly shared skills",
   noSkillsHint:
-    "Shared ways of working live here. Colleagues with access can use them in their own DSH.",
+    "Shared ways of working live here. Colleagues with access can use them in their own iPolloWork.",
   skillCreated: "Skill created",
   deleteSkillTitle: "Delete skill “{name}”?",
   deleteSkillBody: "Colleagues will no longer be able to use this skill.",
-  skillNameHint: "Name in DSH: {name}",
+  skillNameHint: "Name in iPolloWork: {name}",
   newModel: "Connect a service",
   noModels: "No organization services yet",
   noModelsHint:
@@ -601,6 +602,7 @@ const zh: typeof en = {
   analyticsSuccess: "成功",
   analyticsFailed: "失败",
   analyticsSkills: "当前技能数",
+  analyticsSkillInventory: "直接上传 {direct} 项 · 审核发布 {published} 项",
   analyticsPlugins: "当前插件数",
   analyticsInvocationHint: "技能和插件数量为当前库存，其余指标按所选时间范围统计。已上报的技能加载与插件/工具调用仅覆盖启用用量上报的企业关联项目，历史未上报数据不计入；工具调用次数不代表插件安装数或完整任务数",
   analyticsSkillCalls: "已上报技能加载次数",
@@ -969,11 +971,11 @@ const zh: typeof en = {
   importMarkdown: "导入 Markdown",
   noSkills: "暂无直接共享的 Skill",
   noSkillsHint:
-    "把团队的工作方法沉淀在这里，有权限的同事在自己的 DSH 里直接就能用",
+    "把团队的工作方法沉淀在这里，有权限的同事在自己的 iPolloWork 里直接就能用",
   skillCreated: "Skill 已创建",
   deleteSkillTitle: "删除 Skill「{name}」？",
   deleteSkillBody: "同事将不能再使用这个 Skill",
-  skillNameHint: "在 DSH 里的名称：{name}",
+  skillNameHint: "在 iPolloWork 里的名称：{name}",
   newModel: "接入服务",
   noModels: "还没有组织服务",
   noModelsHint:

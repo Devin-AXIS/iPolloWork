@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "id": "jev-decision-model",
-  "name": "Jev DSH 决策引擎",
+  "name": "Jev 决策引擎",
   "description": "Jev 为多种 Agent Harness 提供结构化决策能力，辅助选择工具、Skill 和 Agent，进行评分与判断；由当前 Agent 执行。",
   "category": "AI Agent 与自动化",
   "icon": {
@@ -25,7 +25,7 @@
     "updateId": "ipollowork/jev-decision-model"
   },
   "composer": {
-    "prompt": "使用 Jev DSH 决策引擎，帮助我选择适合当前任务的工具、Skill 或 Agent，并解释推荐结果。"
+    "prompt": "使用 Jev 决策引擎，帮助我选择适合当前任务的工具、Skill 或 Agent，并解释推荐结果。"
   },
   "setup": {
     "instructions": "在 TypeSafe AI 控制台创建 API Key，然后在此插件中连接。连接测试会发送一个最小评估请求；状态检查只检查本地配置。待评估内容将发送至 TypeSafe AI。",
@@ -154,11 +154,11 @@
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "name": "Jev DSH Decision Engine",
+        "name": "Jev Decision Engine",
         "description": "Jev provides structured decisions for agent harnesses, helping select tools, Skills, and agents, score results, and make judgments. The current agent executes the selected actions.",
         "category": "AI Agents & Automation",
         "composer": {
-          "prompt": "Use the Jev DSH Decision Engine to select tools, Skills, or agents for the current task and explain the recommendation."
+          "prompt": "Use the Jev Decision Engine to select tools, Skills, or agents for the current task and explain the recommendation."
         },
         "setup": {
           "instructions": "Create an API key in the TypeSafe AI console, then connect it in this plugin. The connection test sends a minimal evaluation request; the status check only inspects local configuration. Evaluation content is sent to TypeSafe AI."

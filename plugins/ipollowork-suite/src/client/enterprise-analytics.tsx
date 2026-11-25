@@ -38,6 +38,7 @@ export function AnalyticsTab({ enterpriseId, canManage, call, revision, t, langu
   const number = (value: number) => new Intl.NumberFormat(language).format(value);
   const groups = { department: t.analyticsDepartment, member: t.analyticsMember, sku: t.analyticsSku };
   const pages = data ? Math.max(1, Math.ceil(data.totalRows / data.pageSize)) : 1;
+  const showActivityGroup = groupBy !== "sku" && data?.activityRows.some(row => row.activityName !== undefined);
   const metrics = data ? [
     [t.analyticsTasks, number(data.totals.tasks)],
     [t.analyticsTokens, data.totals.measured ? number(data.totals.inputTokens + data.totals.outputTokens) : t.analyticsUnavailable],
@@ -59,6 +60,9 @@ export function AnalyticsTab({ enterpriseId, canManage, call, revision, t, langu
     <p className={css.analyticsHint}>{t.analyticsHint} {t.analyticsInvocationHint}</p>
     {current?.error ? <Notice error={current.error} t={t} fallback={t.analyticsLoadFailed} retry={() => setRetry(value => value + 1)} /> : !data ? <ListSkeleton /> : <>
       <dl className={css.analyticsMetrics}>{metrics.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
+      {data.skillInventory && <p className={css.analyticsHint}>{format(t.analyticsSkillInventory, {
+        direct: number(data.skillInventory.direct), published: number(data.skillInventory.published),
+      })}</p>}
       <p className={css.analyticsHint}>{format(t.analyticsCoverage, { measured: number(data.totals.measured), tasks: number(data.totals.tasks) })}</p>
       {!data.rows.length ? <EmptyState title={t.analyticsEmpty} /> : <div className={css.analyticsTableScroll} tabIndex={0} role="region" aria-label={t.analyticsTab}>
         <table className={css.analyticsTable}><thead><tr>{[groups[groupBy], t.analyticsTasks, t.analyticsSuccess, t.analyticsFailed, t.analyticsInput, t.analyticsOutput, t.analyticsPoints].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
@@ -68,8 +72,16 @@ export function AnalyticsTab({ enterpriseId, canManage, call, revision, t, langu
       {pages > 1 && <div className={css.analyticsPages}><Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>{t.analyticsPrevious}</Button><span>{format(t.analyticsPage, { page, pages })}</span><Button variant="ghost" size="sm" disabled={page >= pages} onClick={() => setPage(value => value + 1)}>{t.analyticsNext}</Button></div>}
       <h2>{t.analyticsActivity}</h2>
       {data.activityRows.length ? <div className={css.analyticsTableScroll} tabIndex={0} role="region" aria-label={t.analyticsActivity}>
-        <table className={css.analyticsTable}><thead><tr>{[groupBy === "sku" ? t.analyticsName : groups[groupBy], t.analyticsKind, t.analyticsCalls, t.analyticsSuccess].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
-          <tbody>{data.activityRows.map(row => <tr key={row.kind + row.id}><th scope="row">{row.name || t.analyticsUnnamed}</th><td>{row.kind === "skill" ? t.analyticsSkillType : t.analyticsToolType}</td><td>{number(row.calls)}</td><td>{number(row.succeeded)}</td></tr>)}</tbody>
+        <table className={css.analyticsTable}><thead><tr>
+          <th scope="col">{showActivityGroup || groupBy === "sku" ? t.analyticsName : groups[groupBy]}</th>
+          {showActivityGroup && <th scope="col">{groups[groupBy]}</th>}
+          <th scope="col">{t.analyticsKind}</th><th scope="col">{t.analyticsCalls}</th><th scope="col">{t.analyticsSuccess}</th>
+        </tr></thead>
+          <tbody>{data.activityRows.map(row => <tr key={JSON.stringify([row.kind, row.id, row.activityName])}>
+            <th scope="row">{(row.activityName ?? row.name) || t.analyticsUnnamed}</th>
+            {showActivityGroup && <td>{row.name || t.analyticsUnnamed}</td>}
+            <td>{row.kind === "skill" ? t.analyticsSkillType : t.analyticsToolType}</td><td>{number(row.calls)}</td><td>{number(row.succeeded)}</td>
+          </tr>)}</tbody>
         </table>
       </div> : <p className={css.analyticsHint}>{t.analyticsNoActivity}</p>}
       {data.activityTotalRows > data.pageSize && <div className={css.analyticsPages}><Button variant="ghost" size="sm" disabled={activityPage <= 1} onClick={() => setActivityPage(value => value - 1)}>{t.analyticsPrevious}</Button><span>{format(t.analyticsPage, { page: activityPage, pages: Math.ceil(data.activityTotalRows / data.pageSize) })}</span><Button variant="ghost" size="sm" disabled={activityPage >= Math.ceil(data.activityTotalRows / data.pageSize)} onClick={() => setActivityPage(value => value + 1)}>{t.analyticsNext}</Button></div>}

@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/dsh-custom-appearance",
   "version": "0.1.1",
-  "description": "Profile branding and color presets for iPolloWork and DeepSeek Harness.",
+  "description": "Profile branding and color presets for iPolloWork.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

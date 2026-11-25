@@ -24,6 +24,10 @@ authorized detail view.
 
 Keep existing product behavior, accounts, projects and files. New capabilities use official plugins, configuration or independent services. Keep credentials out of browser storage and logs. Reuse the official `dsh` profile launcher; do not create a second Agent runtime.
 
+## Product coding and upgrade compatibility
+
+For every product code change, follow [ipollowork-maintainable-code](.codex/skills/ipollowork-maintainable-code/SKILL.md). Check compatibility with the pinned DSH and preserve the supported in-app update path and existing user data. Use the desktop upgrade qualification for affected releases and runtime changes.
+
 ## Plugin development
 
 For every task that creates, changes, ports, reviews, packages or integrates a DSH plugin, read and follow the repository skill at [`.agents/skills/ipollowork-plugin-development/SKILL.md`](.agents/skills/ipollowork-plugin-development/SKILL.md) before planning or editing. This applies even when the user does not name the skill and when plugin composition or distribution changes outside `plugins/`. Follow the [plugin development standard](docs/plugin-development.zh.md), including its DSH architecture and UI requirements, and any instructions for the affected subtree.

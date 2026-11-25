@@ -350,15 +350,18 @@ export class Storage {
     if (!source) throw new ServiceError("INVALID_STORAGE_KEY", 409);
     return Readable.toWeb(source) as ReadableStream<Uint8Array>;
   }
-  async download(key: string, filename: string): Promise<Response> {
+  async download(key: string, filename: string, redirect = false): Promise<Response> {
     await this.requireReadable(key);
-    if (key.startsWith("oss/"))
-      return Response.json({
-        url: (await this.client(true)).signatureUrl(key.slice(4), {
-          expires: 60,
-          response: { "content-disposition": "attachment" },
-        }),
+    const disposition = "attachment; filename*=UTF-8''" + encodeURIComponent(filename);
+    if (key.startsWith("oss/")) {
+      const url = (await this.client(true)).signatureUrl(key.slice(4), {
+        expires: 60,
+        response: { "content-disposition": redirect ? disposition : "attachment" },
       });
+      return redirect
+        ? new Response(null, { status: 303, headers: { Location: url, "Cache-Control": "private, no-store" } })
+        : Response.json({ url });
+    }
     if (!/^local\/[a-f0-9-]{36}$/.test(key))
       throw new ServiceError("INVALID_STORAGE_KEY", 409);
     return new Response(
@@ -368,8 +371,7 @@ export class Storage {
       {
         headers: {
           "Content-Type": "application/octet-stream",
-          "Content-Disposition":
-            "attachment; filename*=UTF-8''" + encodeURIComponent(filename),
+          "Content-Disposition": disposition,
           "Cache-Control": "private, no-store",
         },
       },

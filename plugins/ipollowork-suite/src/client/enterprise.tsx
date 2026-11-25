@@ -930,12 +930,38 @@ export function mountEnterprise(
     ),
   );
   const websitesPanel = 'ipollowork-organization-websites';
-  ctx.slots.inject('main', () => ctx.slots.register({
+  const whenWebsitesAvailable = (register: () => () => void) => () => {
+    let unregister: (() => void) | undefined;
+    const sync = () => {
+      if (controller.getSnapshot().websiteOrganizationId) {
+        unregister ??= register();
+      } else if (unregister) {
+        const dispose = unregister;
+        unregister = undefined;
+        dispose();
+      }
+    };
+    sync();
+    const unsubscribe = controller.subscribe(sync);
+    return () => { unsubscribe(); unregister?.(); };
+  };
+  ctx.slots.inject('main', whenWebsitesAvailable(() => ctx.slots.register({
     name: 'main', key: websitesPanel, inject: () => ({ ...props(), account }),
-  }, OrganizationWebsitePanel));
-  ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+  }, OrganizationWebsitePanel)));
+  ctx.slots.inject('sidebar.panellist', whenWebsitesAvailable(() => ctx.slots.register({
     name: 'sidebar.panellist', id: websitesPanel, order: 12, label: () => enterpriseCopy(ctx).organizationBrowser,
-  }, IconGlobeOutlineRegular));
+  }, IconGlobeOutlineRegular)));
+  ctx.effect(() => {
+    let catalog: EnterpriseCatalog | null = null;
+    const sync = () => {
+      const next = controller.getSnapshot().catalog;
+      if (next === catalog) return;
+      catalog = next;
+      void controller.refreshWebsiteNavigation();
+    };
+    sync();
+    return controller.subscribe(sync);
+  }, 'ipollowork-suite: business websites availability');
   ctx.slots.inject("shell.overlay", () =>
     ctx.slots.register<Props>(
       {

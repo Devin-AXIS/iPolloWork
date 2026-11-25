@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/dsh-notification-center",
   "version": "0.1.5",
-  "description": "Notification inbox and source contract for iPolloWork DSH plugins.",
+  "description": "Notification inbox and source contract for iPolloWork plugins.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {

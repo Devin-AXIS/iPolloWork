@@ -5,12 +5,14 @@ import type { SuiteInfo, MarketState, MarketEntry } from '../shared/types.ts'
 import { request } from './api.ts'
 import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
+import { mountNativeBrandCopy } from './native-brand-copy.ts'
 import { brandAttribute } from '../../../custom-appearance/src/model.ts'
 import { mountCurrentVersion } from './desktop-version.tsx'
 import { MarketPanel } from './market.tsx'
 import { MarketInstallation } from './market-installation.ts'
 import { MarketInstallDialog } from './market-install-dialog.tsx'
 import { mountAddPlugin } from './add-plugin.ts'
+import { mountPluginToggleLimit } from './plugin-toggle-limit.ts'
 import { AccountPanel, AccountLauncher } from './account.tsx'
 import { AccountController } from './account-controller.ts'
 import { mountAgents } from './agents.tsx'
@@ -28,6 +30,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   // Shared pages use their scoped native services; the owner's account UI must not be mounted there.
   if ('__DSH_LIVESHARE_VIEWER__' in globalThis) return
   mountCurrentVersion(ctx)
+  mountNativeBrandCopy(ctx)
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort(), 'ipollowork-suite: client requests')
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/ipollowork-suite/assets/client.css'
@@ -40,6 +43,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   mountConnections(ctx)
   mountAgents(ctx)
   mountIm(ctx)
+  ctx.inject(['pluginChanges'], scope => mountPluginToggleLimit(scope, scope.pluginChanges))
   if (info.theme) mountTheme(ctx)
   let enterpriseInstaller: MarketInstallation | undefined
   ctx.inject(['remote.pluginManager'], scope => {
