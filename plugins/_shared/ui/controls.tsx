@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useId, useLayoutEffect, useRef, useState,
   type ComponentPropsWithoutRef, type ReactElement, type ReactNode } from 'react';
 import { Button, Input, Menu, Switch } from '@deepseek-ai/dsh-client-ui-primitives';
-import { ChevronDown, lineStroke } from './icons.ts';
+import { ChevronDown, Search, lineStroke } from './icons.ts';
 
 export { Button, Switch, Tag } from '@deepseek-ai/dsh-client-ui-primitives';
 
@@ -12,6 +12,11 @@ type TextAreaProps = ComponentPropsWithoutRef<'textarea'>;
 export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextInput({ className = '', ...props }, ref) {
   return <Input {...props} ref={ref} className={'ipw-control ipw-text-input ' + className} />;
 });
+
+export function SearchInput({ className = '', ...props }: Omit<InputProps, 'type' | 'icon'>) {
+  return <TextInput {...props} type="search" className={'ipw-search-input ' + className}
+    icon={<Search size={14} strokeWidth={lineStroke} aria-hidden="true" />} />;
+}
 
 export function TextArea({ className = '', ...props }: TextAreaProps) {
   return <textarea {...props} className={'ipw-control ipw-text-area ' + className} />;

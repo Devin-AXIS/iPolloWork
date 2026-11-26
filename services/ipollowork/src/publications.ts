@@ -237,6 +237,7 @@ export function mountPublications(
       getMimeType(path) ?? "application/octet-stream",
       c.req.raw.body,
       Number(file.bytes),
+      publication.project_id ? { projectId: publication.project_id } : undefined,
     );
     try {
       await store.transaction(async () => {

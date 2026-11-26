@@ -16,7 +16,7 @@ import { projectAccess,
   requireEnterpriseManager,
   wallet,
 } from "./domain.js";
-import { ServiceError } from "./errors.js";
+import { ServiceError, ServiceInvocationError } from "./errors.js";
 import { fetchChatWithRateLimitRecovery } from "./chat-rate-limit.js";
 import { tokenUsage } from "./enterprise-analytics.js";
 import { requireUsageBudget } from "./usage.js";
@@ -206,6 +206,7 @@ function isBase64Body(value: string): boolean {
 const requestSchema = z
   .object({
     requestId: z.uuid(),
+    replayOnly: z.literal(true).optional(),
     path: z.string().min(1).max(2000),
     method: z.enum(["GET", "POST"]),
     body: z
@@ -1040,7 +1041,7 @@ export class ExecutionService {
     );
     if(projectId){
       const project=await projectAccess(this.store,actor,projectId);
-      if(owner&&owner.enterprise_id!==project.enterprise_id)throw new ServiceError('CLOUD_MODEL_FORBIDDEN',403,'云端仅可使用官方或本项目企业的模型');
+      if(owner&&owner.enterprise_id!==project.enterprise_id)throw new ServiceError('CLOUD_MODEL_FORBIDDEN',403,'云端仅可使用官方或本项目组织的模型');
     }
     if (owner)
       await requireUse(this.store, actor, owner.enterprise_id, "service", id);
@@ -1049,6 +1050,9 @@ export class ExecutionService {
     if (owner && s.credentialMode === "member" && !projectId) throw new ServiceError("SERVICE_ORGANIZATION_CONTEXT_REQUIRED", 403);
     const route = routeCost(s, input.path, input.method, input.destination),
       key = (await this.settings.get(this.keyName(s, actor))).key;
+    const chat = input.method === "POST" && input.path === "/chat/completions"
+      && s.capabilities.includes("chat") && !route.async && !route.jobField && !route.jobResultField;
+    if (input.replayOnly && !chat) throw new ServiceError("SERVICE_REPLAY_UNSUPPORTED", 400);
     let points = owner ? 0 : route.points;
     let reservation: BillingReservation | undefined;
     if (!key) throw new ServiceError("SERVICE_UNCONFIGURED", 503);
@@ -1119,7 +1123,7 @@ export class ExecutionService {
       if (parent && parent.service_id !== s.id) return this.invoke(actor, parent.service_id, raw, projectId, signal);
       throw new ServiceError("SERVICE_JOB_FORBIDDEN", 403);
     }
-    if (!owner && s.billing && input.method === "POST" && !jobId) {
+    if (!input.replayOnly && !owner && s.billing && input.method === "POST" && !jobId) {
       const payload = z
         .record(z.string(), z.unknown())
         .parse(JSON.parse(upstreamBody?.toString("utf8") ?? "{}"));
@@ -1141,7 +1145,7 @@ export class ExecutionService {
     const existing = await this.store.transaction(async () => {
       await this.store.run("SELECT pg_advisory_xact_lock(hashtextextended(?,0))", input.requestId);
       const metered = reservation !== undefined && reservation.micros > 0;
-      if (points || metered) await lockWallet(this.store, actor.id);
+      if (!input.replayOnly && (points || metered)) await lockWallet(this.store, actor.id);
       const previous = await this.store.one<CallRow>(
         "SELECT * FROM service_calls WHERE id=?",
         input.requestId,
@@ -1151,6 +1155,7 @@ export class ExecutionService {
           throw new ServiceError("IDEMPOTENCY_CONFLICT", 409);
         return previous;
       }
+      if (input.replayOnly) throw new ServiceError("SERVICE_CALL_NOT_FOUND", 404);
       if (metered) {
         if (Number((await wallet(this.store, actor.id)).balance) <= 0)
           throw new ServiceError("INSUFFICIENT_POINTS", 409, "账户积分已用完，请补充积分后重试");
@@ -1189,6 +1194,7 @@ export class ExecutionService {
           headers: {
             "content-type": existing.response_type ?? "application/json",
             "cache-control": "no-store",
+          "x-ipollo-call-id": input.requestId,
           },
         });
       throw new ServiceError(
@@ -1239,25 +1245,27 @@ export class ExecutionService {
         body: input.method === "POST" ? speech?.body ?? upstreamBody : undefined,
         redirect: "error",
         signal: AbortSignal.any([cancellation.signal, ...(signal ? [signal] : []), AbortSignal.timeout(s.timeoutMs)]),
-      }, input.method === "POST" && input.path === "/chat/completions" && s.capabilities.includes("chat") && !route.async && !route.jobResultField);
+      }, chat);
       if (s.billing?.protocol === "volcengine-speech") response = await speechResponse(response, input.path, input.requestId);
     } catch (error) {
-      if (error instanceof ServiceError && error.code === "SERVICE_RATE_LIMITED") {
+      if (error instanceof ServiceError && ["SERVICE_RATE_LIMITED", "SERVICE_UPSTREAM_CONNECTION_FAILED"].includes(error.code)) {
         await fail("failed");
-        throw error;
+        throw new ServiceInvocationError(error.code, error.status, input.requestId, undefined, { cause: error });
       }
       await fail("unknown");
-      throw new ServiceError("SERVICE_OUTCOME_UNKNOWN", 503);
+      throw new ServiceInvocationError("SERVICE_OUTCOME_UNKNOWN", 503, input.requestId, undefined, { cause: error });
     }
     if (!response.ok) {
       console.warn("service_upstream_rejected", JSON.stringify({ requestId: input.requestId, status: response.status }));
-      await response.body?.cancel();
+      await response.body?.cancel().catch(() => {}); // The upstream status is known even if body cleanup fails.
       await fail(response.status < 500 ? "failed" : "unknown");
-      throw new ServiceError(
+      throw new ServiceInvocationError(
         response.status === 429 ? "SERVICE_RATE_LIMITED" : response.status < 500
           ? "SERVICE_UPSTREAM_REJECTED"
           : "SERVICE_OUTCOME_UNKNOWN",
         response.status === 429 ? 429 : 503,
+        input.requestId,
+        response.status,
       );
     }
     const type =
@@ -1337,7 +1345,9 @@ export class ExecutionService {
           if (size > 16 * 1024 * 1024) throw new Error("response limit");
           chunks.push(Buffer.from(next.value));
           controller.enqueue(next.value);
-        } catch {
+        } catch (error) {
+          console.warn("service_response_interrupted", JSON.stringify({ requestId: input.requestId,
+            reason: error instanceof ServiceError ? error.code : "STREAM_FAILED" }));
           await fail("unknown");
           await reader?.cancel().catch(() => {});
           controller.error(new Error("Service response interrupted"));

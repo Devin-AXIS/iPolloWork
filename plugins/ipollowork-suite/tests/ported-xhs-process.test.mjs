@@ -21,6 +21,14 @@ test('Electron XHS worker explicitly starts as Node, with a separate process and
     // This test owns a packaged worker fixture; dependency installation is a separate operation.
     await mkdir(join(fixture,'business/runtime/dist'),{recursive:true})
     await writeFile(join(fixture,'business/runtime/dist/server.mjs'),'// Captured by the spawn fixture, never executed.\n')
+    await writeFile(join(fixture,'business/runtime/package.json'),'{"type":"module"}\n')
+    await mkdir(join(fixture,'business/runtime/public'),{recursive:true})
+    await writeFile(join(fixture,'business/runtime/public/app.js'),'')
+    await writeFile(join(fixture,'business/runtime/public/app.css'),'')
+    const binary=`sharp-${process.platform}-${process.arch}`
+    const vendor=join(fixture,'business/runtime/vendor/@img',binary,'lib')
+    await mkdir(vendor,{recursive:true})
+    await writeFile(join(vendor,binary+'.node'),'native binary fixture')
     const code=buildSync({entryPoints:[fileURLToPath(url)],bundle:true,platform:'node',format:'cjs',packages:'external',write:false,define:{'import.meta.url':JSON.stringify(fixtureModule.href)}}).outputFiles[0].text
     const compiled={exports:{}}
     new Function('require','module','exports',code)(id=>id==='node:child_process'?{spawn:(...args)=>{calls.push(args);return child}}:require(id),compiled,compiled.exports)
@@ -29,6 +37,7 @@ test('Electron XHS worker explicitly starts as Node, with a separate process and
     service=compiled.exports.default({storage:{dataDir:join(fixture,'storage')},plugin:{version:'test'}})
     assert.match((await service.actions['open-workbench']()).url,/\/accounts$/)
     assert.equal(calls.length,1)
+    assert.match(calls[0][1][0],/runtime[/\\]bundle-[a-f0-9]+[/\\]dist[/\\]server\.mjs$/)
     assert.equal(calls[0][2].env.ELECTRON_RUN_AS_NODE,'1')
     assert.deepEqual(calls[0][2].stdio,['ignore','ignore','pipe'])
     assert.equal(calls[0][2].windowsHide,true)

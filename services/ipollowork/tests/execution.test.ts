@@ -45,10 +45,16 @@ test("chat rate-limit recovery settles and replays one invocation without duplic
 
 test("the model gateway forwards large screenshot histories and rejects invalid Base64", async () => {
   const received: { path: string | undefined; hash: string }[] = [];
+  let rejection = false;
   const upstream = createServer(async (req, res) => {
     const hash = createHash("sha256");
     for await (const chunk of req) hash.update(chunk);
     received.push({ path: req.url, hash: hash.digest("hex") });
+    if (rejection) {
+      res.writeHead(401, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "private provider diagnostics" }));
+      return;
+    }
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" } }] }));
   });
@@ -71,9 +77,9 @@ test("the model gateway forwards large screenshot histories and rejects invalid 
         baseUrl: `http://127.0.0.1:${address.port}/v1`, capabilities: ["chat"], enabled: true,
         routes: [{ method: "POST", path: "/chat/completions", points: 0 }],
       });
-      const invoke = (body: string) => {
-        const envelope = JSON.stringify({ requestId: randomUUID(), method: "POST", path: "/chat/completions",
-          contentType: "application/json", body });
+      const invoke = (body: string, requestId = randomUUID(), replayOnly?: true) => {
+        const envelope = JSON.stringify({ requestId, method: "POST", path: "/chat/completions",
+          contentType: "application/json", body, replayOnly });
         return app.app.request("/api/v1/services/vision-fixture/invoke", {
           method: "POST",
           headers: { authorization: `Bearer ${caller.token}`, "content-type": "application/json",
@@ -99,6 +105,17 @@ test("the model gateway forwards large screenshot histories and rejects invalid 
       assert.equal(oversized.status, 413);
       await oversized.body?.cancel();
       assert.equal(received.length, 1);
+
+      rejection = true;
+      const requestId = randomUUID();
+      const small = Buffer.from('{"model":"fixture","messages":[{"role":"user","content":"Hello"}]}').toString("base64");
+      const rejected = await invoke(small, requestId);
+      assert.equal(rejected.status, 503);
+      assert.deepEqual(await rejected.json(), { code: "SERVICE_UPSTREAM_REJECTED", error: "SERVICE_UPSTREAM_REJECTED", requestId, upstreamStatus: 401 });
+      const replay = await invoke(small, requestId, true);
+      assert.equal(replay.status, 409);
+      assert.equal((await replay.json()).code, "SERVICE_CALL_FAILED");
+      assert.equal(received.length, 2);
     } finally {
       await app.close();
     }

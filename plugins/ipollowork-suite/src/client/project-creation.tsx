@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { FormButton, FormSelect, TextInput } from "../../../_shared/ui/controls.tsx";
-import { Modal } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
+import { audienceDraft, audienceReady } from "../../../../services/ipollowork/src/audience-scope.ts";
 import {
   isAbsoluteProjectPath,
   projectCreationError,
@@ -8,14 +9,17 @@ import {
 } from "./project-creation-actions.ts";
 import type { EnterpriseState } from "./enterprise-controller.ts";
 import { enterpriseError, type EnterpriseLabels } from "./enterprise-locale.ts";
-import type { ProjectGrant } from "../shared/enterprise.ts";
-import { DirectoryStatus, useMemberDirectory, type Call } from "./enterprise-ui.tsx";
+import type { EnterpriseDetail } from "../shared/enterprise.ts";
+import { AudienceFields } from "./enterprise-assets.tsx";
+import { useRecord, type Call } from "./enterprise-ui.tsx";
 import { request } from "./api.ts";
+import { projectScopeAccess, type ProjectAccess } from "../../../../services/ipollowork/src/project-audience.ts";
 import { projectCopy } from "./project-copy.ts";
 import css from "./suite.module.css";
 
-const callEnterprise: Call = (path, data) => request("/enterprise" + path, {
-  method: "POST", body: JSON.stringify(data),
+const callEnterprise: Call = (path, data, method) => request("/enterprise" + path, {
+  method: method ?? (data === undefined ? "GET" : "POST"),
+  ...(data === undefined ? {} : { body: JSON.stringify(data) }),
 });
 
 export interface DirectoryLevel {
@@ -35,7 +39,7 @@ export interface ProjectCreationProps {
   createProject(
     path: string,
     enterpriseId: string | null,
-    access?: { mode: "enterprise" | "selected"; grants: ProjectGrant[] },
+    access?: ProjectAccess,
   ): Promise<CreatedProject>;
   listDirectory(path?: string, signal?: AbortSignal): Promise<DirectoryLevel>;
   createDirectory(path: string, name: string): Promise<string>;
@@ -66,17 +70,17 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
     const timer=window.setInterval(refresh,5000);
     return ()=>{abort.abort();window.removeEventListener('focus',refresh);window.clearInterval(timer);};
   },[props.open]);
-  const [shareWith, setShareWith] = useState(""),
-    [shareRole, setShareRole] = useState<"view" | "participate">("participate");
+  const [audience, setAudience] = useState(() => audienceDraft()),
+    [shareRole, setShareRole] = useState<"view" | "participate">("view");
   const [path, setPath] = useState(""),
     [enterpriseId, setEnterpriseId] = useState(""),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const [memberQuery, setMemberQuery] = useState("");
-  const [shareName, setShareName] = useState("");
-  const directory = useMemberDirectory(props.open ? enterpriseId || null : null, callEnterprise, state.revision, {
-    query: memberQuery, active: true,
-  });
+  const targetOrganization = props.organizationId ?? enterpriseId;
+  const departments = useRecord<EnterpriseDetail>(
+    props.open && targetOrganization && audience.scope === "departments" ? "/organizations/" + targetOrganization : null,
+    callEnterprise, state.revision,
+  );
   const [browsing, setBrowsing] = useState(false),
     [level, setLevel] = useState<DirectoryLevel | null>(null),
     [draft, setDraft] = useState(""),
@@ -91,7 +95,8 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
     if (props.open) {
       void props.refreshEnterprises();
       setPath("");
-      setShareWith(""); setShareName(""); setMemberQuery("");
+      setAudience(audienceDraft());
+      setShareRole("view");
       setMode("local");setCloudName("");creationKey.current=crypto.randomUUID();
       setEnterpriseId(props.organizationId ?? "");
       setError("");
@@ -106,8 +111,8 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
       readAbort.current?.abort();
     };
   }, [props.open, props.refreshEnterprises, props.organizationId]);
-  const targetOrganization = props.organizationId ?? enterpriseId;
   const disabled = busy || !!props.busy;
+  const ready = !targetOrganization || audienceReady(audience);
   const browse = async (target?: string) => {
     readAbort.current?.abort();
     const abort = new AbortController();
@@ -155,12 +160,13 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if(disabled)return;
+    if(disabled || !ready)return;
+    const access = targetOrganization ? projectScopeAccess(audience, shareRole) : undefined;
     if(mode==='cloud') {
       if(!cloudEnabled||!cloudName.trim()||!state.signedIn)return;
       setBusy(true);setError('');
       void request<{url:string}>('/cloud/projects',{method:'POST',body:JSON.stringify({title:cloudName.trim(),enterpriseId:targetOrganization||null,creationKey:creationKey.current,
-        ...(targetOrganization?{access:{mode:'selected',grants:shareWith?[{kind:'member',subjectId:shareWith.slice(2),role:shareRole}]:[]}}:{})})}).then(result=>{
+        ...(access ? { access } : {})})}).then(result=>{
         if(!alive.current)return;
         const target=new URL(result.url);if(target.protocol!=='https:')throw new Error('IPW_INVALID_RESPONSE');
         window.location.assign(target.href);
@@ -174,21 +180,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
       .createProject(
         path.trim(),
         targetOrganization || null,
-        targetOrganization
-          ? {
-              mode: "selected",
-              grants:
-                shareWith
-                  ? [
-                      {
-                        kind: "member",
-                        subjectId: shareWith.slice(2),
-                        role: shareRole,
-                      },
-                    ]
-                  : [],
-            }
-          : undefined,
+        access,
       )
       .then(
         (project) => {
@@ -211,7 +203,6 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
       className={
         css.page + " " + css.enterpriseModal + " " + css.enterpriseWide + " ipw-frosted"
       }
-      contentClassName={css.enterpriseModalContent!}
       onClose={() => {
         if (!disabled) props.onCancel();
       }}
@@ -384,7 +375,8 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
               disabled={disabled || !state.signedIn || state.loading}
               onChange={(e) => {
                 setEnterpriseId(e.target.value);
-                setShareWith(""); setShareName(""); setMemberQuery("");
+                setAudience(audienceDraft());
+                setShareRole("view");
               }}
             >
               <option value="">{t.personal}</option>
@@ -396,33 +388,21 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
             </FormSelect>
           )}
         </label>
-        {enterpriseId && (
-          <div className={css.enterpriseColumns}>
-            <label className={css.enterpriseField}>
-              <span>{t.visibility}</span>
-              <TextInput type="search" maxLength={120} value={memberQuery} placeholder={t.searchMembers} aria-label={t.searchMembers}
-                onChange={event => setMemberQuery(event.target.value)}/>
-              <FormSelect aria-label={t.visibility}
-                value={shareWith}
-                disabled={disabled || (!directory.data && !shareWith)}
-                onChange={(e) => { setShareWith(e.target.value); setShareName(e.currentTarget.selectedOptions[0]?.text ?? ""); }}
-              >
-                <option value="">{c.selected}</option>
-                {shareWith && !directory.data?.items.some(m => "m:" + m.userId === shareWith) &&
-                  <option value={shareWith}>{shareName}</option>}
-                {directory.data?.items.map((m) => (
-                  <option key={m.userId} value={"m:" + m.userId}>
-                    {m.name || m.email}
-                  </option>
-                ))}
-              </FormSelect>
-            </label>
-            <DirectoryStatus directory={directory} t={t}/>
-            {shareWith && (
+        {targetOrganization && (
+          <>
+            <AudienceFields enterpriseId={targetOrganization} detail={departments.data ?? { departments: [] }}
+              t={t} call={callEnterprise} revision={state.revision} value={audience} change={setAudience}
+              disabled={disabled} includeDepartmentTree={false}/>
+            {departments.error && <div className={css.enterpriseActions}>
+              <p role="alert" className={css.error}>{enterpriseError(departments.error, t)}</p>
+              <FormButton type="button" variant="outline" onClick={departments.reload}>{t.refresh}</FormButton>
+            </div>}
+            {(audience.scope === "employees" || audience.scope === "departments") && (
               <label className={css.enterpriseField}>
                 <span>{t.permission}</span>
                 <FormSelect
                   value={shareRole}
+                  disabled={disabled}
                   onChange={(e) =>
                     setShareRole(e.target.value as "view" | "participate")
                   }
@@ -432,7 +412,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
                 </FormSelect>
               </label>
             )}
-          </div>
+          </>
         )}
         {state.loading && (
           <p className={css.muted} role="status">
@@ -473,7 +453,7 @@ export function ProjectCreationDialog(props: ProjectCreationProps) {
           <FormButton
             type="submit"
             variant="primary"
-            disabled={disabled || (mode==='cloud' ? !cloudEnabled || !cloudName.trim() || !state.signedIn : !path.trim() || invalidPath)}
+            disabled={disabled || !ready || (mode==='cloud' ? !cloudEnabled || !cloudName.trim() || !state.signedIn : !path.trim() || invalidPath)}
           >
             {disabled ? t.loading : t.createProject}
           </FormButton>

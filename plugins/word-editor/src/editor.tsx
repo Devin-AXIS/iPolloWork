@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Modal } from '../../_shared/ui/modal.tsx';
 import type { FileActions } from '@deepseek-ai/dsh-client-ui-file-actions/types';
 import { DocxEditor, type DocxEditorRef } from '@docx-editor.dev/react';
 import { zhCN } from '@docx-editor.dev/i18n';

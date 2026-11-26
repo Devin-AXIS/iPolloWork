@@ -1,5 +1,6 @@
 import { useId, useState, useSyncExternalStore } from 'react'
-import { Button, IconWarningOutlineRegular, Input, Modal, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconWarningOutlineRegular, Input, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
 import { installPending, type MarketInstallation } from './market-installation.ts'
 import type { Labels } from './locale.ts'
 import { Field } from './enterprise-ui.tsx'

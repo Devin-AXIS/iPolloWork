@@ -26,5 +26,5 @@ test('every migrated sidebar entry has distinct meaningful artwork instead of a 
     assert.equal(pluginGlyph(item.name), Icon)
     artwork.add(svg)
   }
-  assert.equal(artwork.size, 20)
+  assert.equal(artwork.size, 18)
 })

@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-xiaohongshu-ops",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "管理小红书本地账号记录、草稿、素材与运营任务。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

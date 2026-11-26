@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { cp, mkdir, access, readFile, writeFile, realpath, stat } from 'node:fs/promises';
+import { cp, mkdir, access, mkdtemp, readFile, rename, rm, writeFile, realpath, stat } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { basename, dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -7,7 +8,32 @@ import { fileURLToPath } from 'node:url';
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const origin = process.env.XHS_OPS_ORIGIN || 'http://127.0.0.1:4790';
 if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(origin).hostname)) throw new Error('运营台必须使用本机服务地址');
-const dataDir = resolve(process.env.XHS_OPS_DATA_DIR || resolve(homedir(), '.ipollowork/plugin-data/xiaohongshu-ops'));
+
+async function preparePackagedRuntime(source, storage) {
+  const vendor = resolve(source, 'vendor');
+  const binary = `sharp-${process.platform}-${process.arch}`;
+  const files = await Promise.all(['dist/server.mjs', 'public/app.js', 'public/app.css',
+    `vendor/@img/${binary}/lib/${binary}.node`].map(path => readFile(resolve(source, path))));
+  const fingerprint = createHash('sha256');
+  for (const file of files) fingerprint.update(createHash('sha256').update(file).digest());
+  const key = fingerprint.digest('hex').slice(0, 24);
+  const root = resolve(storage, 'runtime');
+  const target = resolve(root, `bundle-${key}`);
+  if (await access(resolve(target, 'dist/server.mjs')).then(() => true, () => false)) return target;
+  await mkdir(root, { recursive: true });
+  const staging = await mkdtemp(resolve(root, 'install-'));
+  try {
+    await cp(resolve(source, 'dist'), resolve(staging, 'dist'), { recursive: true });
+    await cp(resolve(source, 'public'), resolve(staging, 'public'), { recursive: true });
+    await cp(vendor, resolve(staging, 'node_modules'), { recursive: true });
+    await cp(resolve(source, 'package.json'), resolve(staging, 'package.json'));
+    try { await rename(staging, target); }
+    catch (error) {
+      if (!await access(resolve(target, 'dist/server.mjs')).then(() => true, () => false)) throw error;
+    }
+    return target;
+  } finally { await rm(staging, { recursive: true, force: true }); }
+}
 
 async function healthy() {
   try {
@@ -30,6 +56,7 @@ export default function createWorkbench(runtime) {
   let starting;
   let disposed = false;
   const leases = new Map();
+  const dataDir = resolve(process.env.XHS_OPS_DATA_DIR || runtime.storage.dataDir || resolve(homedir(), '.ipollowork/plugin-data/xiaohongshu-ops'));
   const appRoot = resolve(runtime.storage.dataDir, 'runtime', runtime.plugin.version);
   const node = process.env.IPOLLOWORK_NODE_BIN?.trim()
     || (process.versions.bun ? (process.platform === 'win32' ? 'node.exe' : 'node') : process.execPath);
@@ -37,8 +64,12 @@ export default function createWorkbench(runtime) {
   async function start() {
     if (disposed) throw new Error('插件已关闭，请重新打开工作台。');
     if (await healthy()) return { url: `${origin}/accounts` };
-    const packagedRoot = resolve(packageRoot, 'runtime');
-    const packaged = await access(resolve(packagedRoot, 'dist/server.mjs')).then(() => true, () => false);
+    const bundled = resolve(packageRoot, 'runtime');
+    const packaged = await access(resolve(bundled, 'dist/server.mjs')).then(() => true, () => false);
+    const packagedRoot = packaged ? await preparePackagedRuntime(bundled, runtime.storage.dataDir).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+      throw Object.assign(new Error('小红书运营台的安装包缺少本机运行组件，请更新插件包后重试。'), { code: 'IPW_PORTED_RUNTIME_MISSING' });
+    }) : bundled;
     if (!packaged) await mkdir(appRoot, { recursive: true });
     if (!packaged) await cp(resolve(packageRoot, 'skills/xhs-ops-worker/app'), appRoot, { recursive: true });
     const ready = resolve(appRoot, '.dependencies-ready');

@@ -29,7 +29,7 @@ import { Storage } from "./storage.js";
 import { mountStorage } from "./storage-http.js";
 import { seedOfficialServices } from "./official-services.js";
 import { audit, now, requireAdmin, wallet } from "./domain.js";
-import { ServiceError } from "./errors.js";
+import { ServiceError, ServiceInvocationError } from "./errors.js";
 import { mountProjectSpace } from "./project-space.js";
 import { mountProjectArchive } from "./project-archive.js";
 import { mountCollaboration } from "./collaboration.js";
@@ -46,6 +46,9 @@ import { mountPublications } from "./publications.js";
 import { AppData, migrateAppData } from "./app-data.js";
 import { mountEnterpriseAnalytics } from "./enterprise-analytics.js";
 import { mountAppData } from "./app-data-http.js";
+import { DeletionJobs } from "./deletion-jobs.js";
+import { mountProjectDeletion } from "./project-deletion.js";
+import { removeAccount } from "./account-deletion.js";
 
 export const settingFields: Record<string, readonly string[]> = {
   stage: ["enabled", "origin", "rates"],
@@ -95,6 +98,12 @@ export async function createService(config: Config, options?: { websiteTicketTra
     const cloud = new CloudProjects(store, settings, config);
     const storage = new Storage(store, settings, config);
     const appFiles=appData?new AppDataFiles(store,appData,storage,config.storageCleanupIntervalMs):undefined;
+    const deletions = new DeletionJobs(store, storage, async (kind, id) => {
+      if (kind !== "data-app") return true;
+      if (!appData || !appFiles) return false;
+      return await appData.purgeDeletedApp(id) && await appFiles.purgeApp(id) &&
+        !await store.one("SELECT 1 FROM deletion_jobs WHERE kind='app-file' AND target_id LIKE ? AND completed_at IS NULL", id + "/%");
+    });
     const app: App = new Hono();
     app.use('*', async (c, next) => {
       const requestId = randomUUID();
@@ -151,6 +160,7 @@ export async function createService(config: Config, options?: { websiteTicketTra
         if (error.status === 503 || error.status === 429) c.header('Retry-After', '2');
         return c.json({
           error: error.message, code: error.code,
+          ...(error instanceof ServiceInvocationError ? { requestId: error.requestId, upstreamStatus: error.upstreamStatus } : {}),
           ...(error instanceof InvitationRosterError && error.row !== undefined ? { row: error.row } : {}),
         }, error.status);
       }
@@ -224,6 +234,8 @@ export async function createService(config: Config, options?: { websiteTicketTra
         if(grant.kind!=='runtime')throw new ServiceError('CLOUD_GRANT_SCOPE',403);
         return c.json({user:actor});
       }
+      if (c.req.method === "POST" && c.req.path === "/api/auth/admin/remove-user")
+        return removeAccount(c.req.raw, auth, store, config.origin, appData);
       // Native Work sends JSON credentials without cookies or a browser Origin.
       // Cookie-bearing and explicit cross-origin requests still use Better Auth's checks.
       if (
@@ -465,9 +477,11 @@ export async function createService(config: Config, options?: { websiteTicketTra
     mountExecution(app, execution);
     mountCapabilities(app, new Capabilities(execution, store));
     mountAccessKeys(app, auth);
-    mountEnterpriseAssets(app, store, storage, config);
+    mountEnterpriseAssets(app, store, storage, config, deletions);
     mountEnterpriseMcp(app, store, settings, config.secret, undefined, config.origin);
     mountEnterprise(app, store, config, cloud, organizationMembers);
+    mountProjectDeletion(app, store, storage, deletions, appData);
+    deletions.mount(app);
     mountOrganizationWebsites(app, store, settings, options?.websiteTicketTransport);
     mountOrganizationPublications(app, store);
     mountOrganizationConversations(app, store);
@@ -485,7 +499,7 @@ export async function createService(config: Config, options?: { websiteTicketTra
     mountResources(app, store, storage, config);
     mountStorage(app, store, storage);
     mountLiveshare(app, relay, auth);
-    mountAppData(app, appData, config.appData, auth, store, appFiles, cloud);
+    mountAppData(app, appData, config.appData, auth, store, deletions, appFiles, cloud);
     app.notFound((c) => c.json({ error: "接口不存在" }, 404));
     app.get("/api/*", (c) => c.json({ error: "接口不存在" }, 404));
     const webRoot = fileURLToPath(
@@ -501,6 +515,7 @@ export async function createService(config: Config, options?: { websiteTicketTra
     storage.start();
     stage.start();
     appData?.start();
+    deletions.start(Math.min(config.storageCleanupIntervalMs, 5_000));
     eventLoop.enable();
     let closing: Promise<void> | undefined;
     return {
@@ -512,6 +527,7 @@ export async function createService(config: Config, options?: { websiteTicketTra
       relay,
       appData,
       appFiles,
+      deletions,
       admission,
       beginDrain: () => admission.close(),
       close: () => closing ??= (async () => {
@@ -519,6 +535,7 @@ export async function createService(config: Config, options?: { websiteTicketTra
         eventLoop.disable();
         await stage.close();
         await organizationMembers.close();
+        await deletions.close();
         await appFiles?.close();
         await storage.close();
         await relay.close();

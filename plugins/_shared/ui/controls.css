@@ -33,13 +33,23 @@ html[data-input-modality="keyboard"] .ipw-text-input:focus-within {
   outline: 1px solid var(--dsw-focus-ring-color, var(--dsw-alias-label-secondary));
   outline-offset: 1px;
 }
+.ipw-search-input { max-inline-size: 100%; }
+html[data-input-modality="keyboard"] .ipw-search-input:focus-within {
+  box-shadow: none;
+  outline-offset: 0;
+}
 .ipw-control :is(input,textarea)::placeholder, textarea.ipw-control::placeholder {
   color: var(--dsw-alias-label-secondary);
   opacity: .88;
   font-weight: 400;
 }
 textarea.ipw-text-area { width: 100%; min-height: 84px; padding: 8px 12px; border-radius: 14px; resize: vertical; }
-.ipw-form-select { width: 100%; height: var(--ipw-control-height); }
+.ipw-form-select {
+  width: 100%;
+  height: var(--ipw-control-height);
+  padding-block: 0;
+  line-height: normal;
+}
 @media (pointer: coarse) {
   .ipw-control:is(textarea, select), .ipw-control:is(span, div) input { font-size: 16px; }
 }
@@ -141,13 +151,14 @@ button.ipw-form-button[data-ipw-variant="primary"]:hover:not(:disabled) {
 .ipw-field-layer .ipw-field-options button[role="menuitem"] { min-height: 28px; padding-inline: 8px; border-radius: 999px; font-size: 12px; }
 button.ipw-control.ipw-select-trigger {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   height: var(--ipw-control-height);
   padding-block: 0;
   font-variant-numeric: tabular-nums;
 }
 .ipw-select-trigger span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ipw-select-trigger svg { color: var(--dsw-alias-label-secondary); }
+.ipw-select-trigger svg { flex: none; }
 .ipw-schedule { display: grid; gap: 8px; min-width: 0; }
 .ipw-date-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .ipw-control.ipw-date-control { display: flex; align-items: center; padding-inline: 7px 4px; gap: 1px; }

@@ -334,6 +334,16 @@
     .outputs-empty p { max-width:290px; margin:8px 0 0; font-size:13px; line-height:1.7; color:var(--muted); text-wrap:balance; }
     @media(max-height:420px) { .outputs-empty { min-height:170px; padding:16px; } .outputs-empty-art { transform:scale(.8); height:76px; margin-bottom:8px; } }
     .generation-gallery:has(#outputsEmpty:not([hidden])) .gallery-sections, .generation-gallery:has(#outputsEmpty:not([hidden])) .reference-bar { display:none; }
+    .ported-compose { display:grid; gap:8px; margin:12px 16px 0; min-width:0; }
+    .workspace:has(.ported-compose:not([hidden])) { display:flex; flex-direction:column; overflow:auto; }
+    .workspace:has(.ported-compose:not([hidden])) .stage { position:relative; inset:auto; flex:1; min-height:130px; }
+    .ported-compose label { display:grid; gap:4px; min-width:0; }
+    .ported-compose textarea, .ported-compose select, .ported-compose input { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:inherit; font:inherit; }
+    .ported-compose textarea { resize:vertical; max-height:100px; }
+    .ported-compose-actions { display:flex; flex-wrap:wrap; align-items:end; gap:8px; }
+    .ported-compose-actions label { flex:1 1 160px; }
+    .ported-compose output { overflow-wrap:anywhere; }
+    .ported-compose output:empty { display:none; }
   </style>
 </head>
 <body>
@@ -363,6 +373,21 @@
     <div class="shell">
       <main class="workspace">
         <div id="workbenchHint" class="workbench-hint" role="status" hidden></div>
+        <form id="portedCompose" class="ported-compose" hidden>
+          <label><span data-i18n="imageDescription">图片描述</span><textarea id="portedPrompt" maxlength="8000" rows="2" required></textarea></label>
+          <div class="ported-compose-actions">
+            <label><span data-i18n="model">图片模型</span><select id="portedModel" required></select></label>
+            <button id="portedRun" class="button primary" type="submit" data-i18n="generateImage">生成图片</button>
+          </div>
+          <details id="portedRecovery">
+            <summary data-i18n="recoverImage">找回已生成图片</summary>
+            <div class="ported-compose-actions">
+              <label><span data-i18n="imageRequestId">任务编号</span><input id="portedRequestId" maxlength="36" autocomplete="off"></label>
+              <button id="portedRecover" class="button ghost" type="button" data-i18n="recoverImage">找回已生成图片</button>
+            </div>
+          </details>
+          <output id="portedStatus" aria-live="polite"></output>
+        </form>
         <div id="stage" class="stage">
           <section id="generationGallery" class="generation-gallery" hidden data-i18n-aria="生成图片历史" aria-label="生成图片历史">
             <div class="gallery-sections">
@@ -551,7 +576,7 @@
         moveParameters: "移动参数浮层", openImage: "打开图片", importImage: "导入图片", replaceImage: "打开图片", downloadImage: "另存为", back: "返回", startGenerate: "开始生成", expand: "扩图", startExpand: "开始扩图", erase: "消除笔", eraseAction: "消除", smart: "智能选取", hand: "抓手", brush: "画笔选取", add: "加选", subtract: "减选", rectangle: "矩形选区", ellipse: "椭圆选区", askAi: "AI 批注", undo: "撤销选区", redo: "重做选区", clearSelection: "取消选区", zoomOut: "缩小", zoomIn: "放大", fitWindow: "适合窗口", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", expandDirection: "方向", expandScale: "尺寸", expandAll: "四周", expandLeft: "左", expandRight: "右", expandTop: "上", expandBottom: "下", source: "当前图片", replace: "替换",
         importWorkspace: "从本地导入", instruction: "图片描述", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "添加参考图或直接描述想生成的画面内容...",
         selection: "选区", nonDestructive: "不覆盖原图", brushSize: "画笔大小", hardness: "边缘硬度", variables: "画面参数", optional: "可选",
-        model: "图片模型", chooseModel: "选择图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
+        model: "图片模型", chooseModel: "选择图片模型", imageDescription: "图片描述", recoverImage: "找回已生成图片", imageRequestId: "任务编号", imageRequestRequired: "请输入图片任务编号。", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
         imageParameters: "生成图片", generateDescription: "描述内容并设置画面参数",
         editDescription: "先预览编辑结果，再选择覆盖或另存为",
         overwriteOriginal: "覆盖原图", confirmOverwrite: "确认覆盖", saveAs: "另存为", cancel: "取消",
@@ -572,7 +597,7 @@
         moveParameters: "Move parameters", openImage: "Open image", importImage: "Import image", replaceImage: "Open image", downloadImage: "Save as", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
         importWorkspace: "Import from device", instruction: "Image description", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Add a reference image or describe the image you want to generate...",
         selection: "Selection", nonDestructive: "Original preserved", brushSize: "Brush size", hardness: "Edge hardness", variables: "Visual controls", optional: "Optional",
-        model: "Image model", chooseModel: "Choose image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
+        model: "Image model", chooseModel: "Choose image model", imageDescription: "Image description", recoverImage: "Recover an image", imageRequestId: "Request ID", imageRequestRequired: "Enter the image request ID.", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
         imageParameters: "Generate image", generateDescription: "Describe the image and set visual controls",
         editDescription: "Preview the edit, then overwrite or save as a copy",
         overwriteOriginal: "Overwrite original", confirmOverwrite: "Confirm overwrite", saveAs: "Save as", cancel: "Cancel",
@@ -626,6 +651,11 @@
     function setStatus(message, error = false) {
       state.statusMessage = message || "";
       state.statusTone = error ? "error" : /已另存为|Saved as/.test(state.statusMessage) ? "success" : "info";
+      $("#portedStatus").textContent = state.statusMessage;
+      if (error && window.ipolloPortedHost) {
+        const receipt = state.statusMessage.match(/任务编号\s+([a-f0-9-]{36})/i)?.[1];
+        if (receipt) { $("#portedRequestId").value = receipt; $("#portedRecovery").open = true; }
+      }
       publishContext();
     }
     function imageProgressPercent() {
@@ -654,6 +684,7 @@
     }
     function setBusy(busy, message = tr("processing")) {
       state.busy = busy;
+      syncPortedControls();
       $("#busyText").textContent = message;
       $("#busyLayer").classList.toggle("visible", busy && state.mode !== "generate");
       renderGallery();
@@ -775,6 +806,7 @@
       $("#providerName").textContent = model?.label || tr("chooseModel");
       $("#providerStatus").textContent = model ? tr(state.providerReady ? "connectedStatus" : "notConnected") : tr("chooseStatus");
       $("#provider").title = `${model?.label || tr("chooseModel")} · ${$("#providerStatus").textContent}`;
+      syncPortedControls();
       publishContext();
     }
     function renderEmptyState() {
@@ -788,6 +820,7 @@
     }
     function renderMode() {
       document.documentElement.classList.toggle("generating", state.mode === "generate");
+      if (window.ipolloPortedHost) $("#portedCompose").hidden = state.mode !== "generate";
       const editing = state.mode === "edit";
       const hasSource = Boolean(state.sourcePath);
       const editingSource = editing && hasSource;
@@ -1920,6 +1953,11 @@
     });
     function openModelMenu() {
       if (state.busy) return;
+      if (window.ipolloPortedHost) {
+        if (state.mode !== "generate") setMode("generate");
+        $("#portedModel").focus();
+        return;
+      }
       const rect = $("#modelMenu").getBoundingClientRect();
       post({ type: "ipollowork:image-studio:model-menu", value: state.model,
         options: state.models.filter(entry => entry.available && entry.configured).map(entry => ({ id: entry.id, label: entry.label, disabled: false })),
@@ -1927,6 +1965,42 @@
         manageLabel: state.locale === "en" ? "Manage connections…" : "管理连接…" });
     }
     $("#modelMenu").addEventListener("click", openModelMenu);
+    function syncPortedControls() {
+      if (!window.ipolloPortedHost) return;
+      const select = $("#portedModel");
+      const models = state.models.filter(model => model.available && model.configured);
+      select.replaceChildren(new Option(tr("chooseModel"), ""), ...models.map(model => new Option(model.label, model.id)));
+      select.value = state.model;
+      select.disabled = $("#portedPrompt").disabled = state.busy;
+      if ($("#portedPrompt").value !== state.prompt) $("#portedPrompt").value = state.prompt;
+      $("#portedRun").disabled = state.busy;
+      $("#portedRecover").disabled = state.busy;
+      $("#portedRun").textContent = tr(state.busy ? "processing" : "generateImage");
+    }
+    $("#portedPrompt").addEventListener("input", event => { state.prompt = event.target.value; });
+    $("#portedModel").addEventListener("change", event => {
+      if (event.target.value) updateParameters({ model: event.target.value });
+      else { state.model = ""; renderProvider(); }
+    });
+    $("#portedCompose").addEventListener("submit", event => {
+      event.preventDefault();
+      void run();
+    });
+    $("#portedRecover").addEventListener("click", async () => {
+      const requestId = $("#portedRequestId").value.trim();
+      if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(requestId)) {
+        setStatus(tr("imageRequestRequired"), true); $("#portedRequestId").focus(); return;
+      }
+      setBusy(true);
+      try {
+        const result = await callService("recover-image", { requestId });
+        await rememberGalleryImage(result);
+        await renderImage(result);
+        setMode("edit");
+        setStatus("");
+      } catch (error) { setStatus(error.message || tr("failed"), true); }
+      finally { setBusy(false); }
+    });
     addEventListener("message", event => {
       if (event.source !== parent) return;
       if (event.data?.type === "ipollowork:image-studio:model-menu-closed") { $("#modelMenu").focus(); return; }
@@ -1952,6 +2026,7 @@
     for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => state.hostContext?.mediaStudio ? post({type:"ipollowork:media-studio:open"}) : $("#fileInput").click());
     $('#fileInfo').onclick=()=>{const m=state.sourceMetadata||{},g=m.generation;const gcd=(a,b)=>b?gcd(b,a%b):a;const divisor=gcd(state.imageWidth,state.imageHeight);post({type:'ipollowork:image-studio:file-info',rows:[{label:'名称',value:state.sourceName},{label:'格式',value:m.mimeType||'图片'},{label:'文件大小',value:typeof m.bytes==='number'?`${(m.bytes/1024/1024).toFixed(2)} MB`:'未知'},{label:'尺寸',value:`${state.imageWidth} × ${state.imageHeight} px`},{label:'比例',value:`${state.imageWidth/divisor}:${state.imageHeight/divisor}`},{label:'生成模型',value:g?.model||'无生成记录'},{label:'生成时间',value:g?.createdAt||'无生成记录'}],prompt:g?.prompt||''});};
     $("#downloadImage").addEventListener("click", () => {
+      if (window.ipolloPortedHost) { downloadCurrentImage(); return; }
       const rect = $("#downloadImage").getBoundingClientRect();
       post({type:"ipollowork:image-studio:download-menu",left:rect.left,top:rect.top,width:rect.width,height:rect.height});
     });
@@ -1980,7 +2055,7 @@
       try {
         const provider = await callService("status", {});
         applyProviderModels(provider);
-      } catch { applyProviderModels({ models: [] }); }
+      } catch (error) { applyProviderModels({ models: [] }); if (window.ipolloPortedHost) setStatus(error.message || tr("failed"), true); }
       renderProvider();
       post({type:"ipollowork:image-studio:list-images"});
       publishContext();

@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import { buildBusiness } from './ported-business.mjs'
 import { dependencyNotices } from './ported-licenses.mjs'
 import { featureArtwork } from './ported-artwork.mjs'
+import { packNativeArchive } from './native-package.mjs'
 
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const suite = join(root, 'plugins/ipollowork-suite')
@@ -104,7 +105,7 @@ if (command === 'import') {
     const needsUiRuntime = ['short-video-studio', 'media-studio', 'douyin-ops', 'wechat-channels-ops', 'wechat-official', 'xiaohongshu-ops'].includes(entry.id)
     const uiRuntime = needsUiRuntime ? `import { installFrameUi } from './src/ported/native-ui.tsx';` : ''
     const client = await build({ ...common, target: 'es2022', stdin: { contents: `import { mountBundle } from './src/ported/client.tsx'; ${uiRuntime} import manifest from ${JSON.stringify(join(directory, 'business/ipollowork.plugin.json'))}; export const inject = ['slots','locale','layout','theme','uiWorkspace']; export function apply(ctx) { ${needsUiRuntime ? 'ctx.effect(installFrameUi);' : ''} return mountBundle(ctx, manifest, ${JSON.stringify(manifest.name)}); }`, resolveDir: suite },
-      outfile: join(directory, 'lib/client.js'), platform: 'browser', format: 'cjs', define: { 'process.env.NODE_ENV': '"production"' }, external: ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives'], write: false })
+      outfile: join(directory, 'lib/client.js'), platform: 'browser', format: 'cjs', loader: { '.css': 'text' }, define: { 'process.env.NODE_ENV': '"production"' }, external: ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-primitives'], write: false })
     const clientFile = join(directory, 'lib/client.js'), temporary = clientFile + '.build-' + process.pid
     await writeFile(temporary, `window.__ModuleLoader__.load({id:${JSON.stringify(manifest.name)},factory(require){const module={exports:{}};const exports=module.exports;\n${client.outputFiles[0].text}\nreturn module.exports;}});\n`)
     await rename(temporary, clientFile)
@@ -121,7 +122,7 @@ if (command === 'import') {
       const output = join(root, 'dist/ported-plugins')
       await mkdir(output, { recursive: true })
       const npm = process.env.npm_execpath ?? (process.platform === 'win32' ? 'C:/Program Files/nodejs/node_modules/npm/bin/npm-cli.js' : '/usr/local/lib/node_modules/npm/bin/npm-cli.js')
-      const packed = JSON.parse(execFileSync(process.execPath, [npm, 'pack', '--ignore-scripts', '--json', '--pack-destination', output], { cwd: directory, encoding: 'utf8', maxBuffer: 4_000_000 }))[0]
+      const packed = await packNativeArchive(directory, output, npm)
       const bytes = await readFile(join(output, packed.filename))
       console.log(JSON.stringify({ name: manifest.name, version: manifest.version, file: packed.filename, sha256: createHash('sha256').update(bytes).digest('hex') }))
     } else console.log(`${command}: ${entry.id}`)

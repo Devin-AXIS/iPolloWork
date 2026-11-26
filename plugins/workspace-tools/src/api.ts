@@ -1,5 +1,4 @@
-export type WorkspaceFeature = 'markdown-editor' | 'excel-editor' | 'conversation-export'
-  | 'task-templates' | 'reference-preparation' | 'legacy-workspace-import';
+export type WorkspaceFeature = 'markdown-editor' | 'excel-editor' | 'conversation-export';
 declare const __IPOLLO_WORKSPACE_FEATURE__: WorkspaceFeature | 'workspace-tools';
 export const feature: WorkspaceFeature | 'workspace-tools' = typeof __IPOLLO_WORKSPACE_FEATURE__ === 'undefined'
   ? 'workspace-tools' : __IPOLLO_WORKSPACE_FEATURE__;
@@ -9,7 +8,6 @@ export const hasFeature = (candidate: WorkspaceFeature) => feature === 'workspac
 export const limit = 16 * 1024 * 1024;
 export const documentPattern = feature === 'markdown-editor' ? /\.(?:md|markdown)$/i
   : feature === 'excel-editor' ? /\.xlsx$/i : /\.(?:md|markdown|xlsx)$/i;
-export const referencePattern = /\.(?:pdf|docx|pptx|md|markdown|txt|csv|tsv|json)$/i;
 
 export type Cell = { address: string; value: string; display?: string; kind: 'text' | 'number' | 'boolean' | 'formula' | 'locked' };
 export type Sheet = { name: string; rows: number; columns: number; cells: Cell[]; protected?: boolean; blocked?: string[] };
@@ -17,7 +15,3 @@ export type CellChange = { sheet: string; address: string; value: string; kind: 
 export type Document = { version: string; kind: 'markdown'; text: string }
   | { version: string; kind: 'workbook'; sheets: Sheet[] };
 export type Message = { role: 'user' | 'assistant'; text: string };
-export type Template = { id: string; title: string; prompt: string };
-export type LegacySkill = { name: string; description: string; content: string };
-export type Legacy = { templates: Omit<Template, 'id'>[]; skills: LegacySkill[] };
-export type Reference = { name: string; text: string; pages: number; assets: number; warning?: string };

@@ -492,6 +492,7 @@ async function openTarget(target) {
     });
     if (result?.isError)
       throw new Error("账号浏览器未打开，请重新打开运营台。");
+    return result;
   } else
     await sendAI("打开抖音官方授权页面。", {
       action: "open-authorization",
@@ -503,8 +504,10 @@ async function connect(id) {
   const target = await action("connect-browser", id ? { accountId: id } : {});
   await selectAccount(target.account.id);
   await refresh();
-  await openTarget(target);
-  notify("请在账号浏览器完成登录并进入“我”的主页，账号会自动识别。");
+  const result = await openTarget(target);
+  notify(result?.browser === "external"
+    ? "请在系统浏览器打开的抖音页面扫码。当前工作台无法自动确认该浏览器中的登录。"
+    : "请在账号浏览器完成登录并进入“我”的主页，账号会自动识别。");
 }
 const dispatchKey = (job, reconcile = false) =>
   reconcile
@@ -679,7 +682,9 @@ function Accounts() {
         h(
           ui.DialogDescription,
           null,
-          "每个账号使用独立的浏览器环境，登录后自动识别。",
+          window.ipolloPortedHost
+            ? "在系统浏览器的抖音官方页面扫码，工作台会保留待核验的账号。"
+            : "每个账号使用独立的浏览器环境，登录后自动识别。",
         ),
       ),
       model.notice &&
@@ -698,6 +703,8 @@ function Accounts() {
         h(ui.Icon, { name: "Plus" }),
         pending.has("connect") ? "正在打开…" : "扫码添加账号",
       ),
+      window.ipolloPortedHost &&
+        h("a", { href: "https://www.douyin.com/user/self", target: "_blank", rel: "noopener noreferrer" }, "手动打开抖音登录页"),
       h(
         "div",
         { className: "stack compact" },

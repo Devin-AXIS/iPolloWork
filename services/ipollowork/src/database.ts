@@ -6,7 +6,7 @@ import type { Config } from "./config.js";
 import { ServiceError } from "./errors.js";
 import { adoptStoredResources } from "./storage-import.js";
 
-export const SERVICE_SCHEMA_VERSION = 22;
+export const SERVICE_SCHEMA_VERSION = 23;
 
 export type Row = Record<string, string | number | boolean | null>;
 type Parameter = string | number | boolean | Date | Buffer | readonly string[] | null;
@@ -298,6 +298,10 @@ export async function migrate(store: Store, config: Config): Promise<void> {
     if(version<22){
       await store.run(await readFile(new URL('./migration-pg-022.sql',import.meta.url),'utf8'));
       await store.run('INSERT INTO service_schema(version) VALUES(22)');
+    }
+    if (version < 23) {
+      await store.run(await readFile(new URL("./migration-pg-023.sql", import.meta.url), "utf8"));
+      await store.run("INSERT INTO service_schema(version) VALUES(23)");
     }
     await adoptStoredResources(store, config);
   });

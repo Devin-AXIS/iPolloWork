@@ -1,5 +1,5 @@
 import { readInstallerLocales, renderInstallerStrings } from './installer-locales.mjs'
-import { officePackageDirectories } from '../../../scripts/libreoffice-packages.mjs'
+import { officePackageDirectories } from '../../../.upstream/dsh/scripts/libreoffice-packages.mjs'
 import { X509Certificate } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Plus, ArrowLeft, Copy, Download, Search } from "lucide-react";
 import { StorageQuota } from "./storage.js";
-import { OrganizationActivity, OrganizationAnalytics, OrganizationDepartments, OrganizationMcp, OrganizationMembershipWebhook, OrganizationPackages, OrganizationPager, OrganizationPublications, OrganizationSettings } from "./organization-admin.js";
+import { OrganizationActivity, OrganizationAnalytics, OrganizationDepartments, OrganizationMcp, OrganizationMembershipWebhook, OrganizationPackages, OrganizationPager, OrganizationPublications, OrganizationResourceGrants, OrganizationSettings, OrganizationWebsites, ProjectAudienceFields, readProjectAudience } from "./organization-admin.js";
+import type { ProjectAccess } from "../src/project-audience.js";
 import { planBudget } from "../src/pricing.js";
 import { api, count, date, text, type Row, type User } from "./api.js";
 import {
@@ -29,7 +30,7 @@ function Message({ content }: { content: string }) {
     </div>
   ) : null;
 }
-function CopyValue({ value, label }: { value: string; label: string }) {
+function CopyValue({ value, label, copyLabel }: { value: string; label: string; copyLabel: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="copy-link">
@@ -41,7 +42,7 @@ function CopyValue({ value, label }: { value: string; label: string }) {
         }}
       >
         <Copy size={14} />
-        {copied ? "已复制" : "复制"}
+        {copied ? "已复制" : copyLabel}
       </button>
     </div>
   );
@@ -106,7 +107,7 @@ export function Enterprises({ user }: { user: User }) {
         <span>组织成员共同使用项目与资源</span>
         <div className="actions">
           <MembershipNotices/>
-          <button onClick={() => setJoin(true)}>通过邀请码加入</button>
+          <button onClick={() => setJoin(true)}>加入组织</button>
           <Add onClick={() => setCreate(true)}>创建组织</Add>
         </div>
       </div>
@@ -137,7 +138,7 @@ export function Enterprises({ user }: { user: User }) {
           />
         )}
       </section>
-      {join && <Modal title="通过邀请码加入" close={() => setJoin(false)}>
+      {join && <Modal title="加入组织" close={() => setJoin(false)}>
         <ActionForm label="加入组织" submit={async form => {
           const service = new URL(value(form,"service"));
           if (service.origin !== location.origin || service.pathname !== "/" || service.username || service.password || service.search || service.hash)
@@ -198,9 +199,7 @@ function Enterprise({
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
   const directory = useData<{items:Row[];more:boolean}>(path + "/members?" + new URLSearchParams({query,page:String(page)}));
-  const [emailLinks, setEmailLinks] = useState<{email:string;url:string}[]>();
   const refresh = () => {
-    setEmailLinks(undefined);
     setModal("");
     setIssued(undefined);
     setExpiry(undefined);
@@ -210,7 +209,7 @@ function Enterprise({
   };
   const tabs = [
     ["members","成员"], ["departments","部门"], ["templates","模板"], ["packages","文件包"], ["plugins","插件"], ["skills","Skill"], ["mcp","MCP"],
-    ...(result.data?.canManage ? [["analytics","数据分析"],["activity","操作记录"]] : []), ["settings","设置"],
+    ...(result.data?.canManage ? [["models","模型与工具"],["analytics","数据分析"],["activity","操作记录"]] : []), ["settings","设置"],
   ] as const;
   async function remove(userId: string) {
     try {
@@ -250,14 +249,17 @@ function Enterprise({
         departments={result.data.departments}/>}
       {result.data && tab === "mcp" && <OrganizationMcp path={path} departments={result.data.departments}/>}
       {result.data && tab === "packages" && <OrganizationPackages path={path} departments={result.data.departments} canManage={result.data.canManage}/>}
+      {result.data?.canManage && (tab === "models" || tab === "skills") &&
+        <OrganizationResourceGrants key={tab} path={path} departments={result.data.departments} kind={tab === "models" ? "service" : "skill"}/>}
       {result.data?.canManage && tab === "analytics" && <OrganizationAnalytics path={path}/>}
       {result.data?.canManage && tab === "activity" && <OrganizationActivity path={path}/>}
       {result.data && tab === "settings" && <OrganizationSettings path={path} enterprise={result.data.enterprise} canManage={result.data.canManage} reload={result.reload}/>}
+      {result.data?.canManage && tab === "settings" && <OrganizationWebsites path={path} departments={result.data.departments}/>}
       {result.data?.canManage && tab === "settings" && <section className="panel organization-settings">
         <div className="panel-heading">
           <h2>组织服务地址</h2>
         </div>
-        <CopyValue value={location.origin} label="组织服务地址"/>
+        <CopyValue value={location.origin} label="组织服务地址" copyLabel="复制服务地址"/>
       </section>}
       {result.data?.canManage && tab === "settings" && <OrganizationMembershipWebhook path={path}/>}
       {result.data && tab === "members" && (
@@ -265,12 +267,11 @@ function Enterprise({
           <div className="panel-heading organization-member-heading">
             <h2>成员</h2>
             {result.data.canManage && <div className="actions">
-              <button onClick={() => setModal("email")}>批量邮箱邀请</button>
               <button onClick={() => setModal("batch")}>从 CSV 批量生成</button>
               <Add onClick={() => setModal("code")}>添加员工</Add>
             </div>}
           </div>
-          <input type="search" aria-label="搜索成员" placeholder="姓名、邮箱或工号" maxLength={120} value={query}
+          <input type="search" aria-label="搜索成员" placeholder="姓名或工号" maxLength={120} value={query}
             onChange={event => { setQuery(event.target.value); setPage(1); }}/>
           <Status error={directory.error} loading={!directory.data}/>
           {directory.error && <button onClick={directory.reload}>重试</button>}
@@ -279,12 +280,7 @@ function Enterprise({
             columns={[
               {
                 label: "成员",
-                cell: (r) => (
-                  <span>
-                    {text(r.name)}
-                    <small>{text(r.email)}</small>
-                  </span>
-                ),
+                cell: (r) => text(r.name),
               },
               { label: "工号", cell: (r) => text(r.employee_number) || "—" },
               {
@@ -326,9 +322,9 @@ function Enterprise({
           <OrganizationPager previous={page > 1 ? () => setPage(page - 1) : undefined}
             next={directory.data?.more ? () => setPage(page + 1) : undefined}/>
           {result.data.canManage && result.data.invitations.length > 0 && <>
-            <div className="panel-heading"><h2>待使用的邀请码</h2></div>
+            <div className="panel-heading"><h2>待使用的邀请</h2></div>
             <Table rows={result.data.invitations} columns={[
-              {label:"员工",cell:r=>[r.invitee_name,r.email].filter(Boolean).join(" · ") || "邀请码"},
+              {label:"员工",cell:r=>text(r.invitee_name) || (r.email ? "历史邀请链接" : "邀请码")},
               {label:"工号",cell:r=>text(r.employee_number) || "—"},
               {label:"有效期",cell:r=>r.expires_at === null ? "永久有效" : date(r.expires_at)},
               {label:"状态",cell:r=>r.expires_at !== null && Number(r.expires_at) <= Date.now() ? "已过期" : "待使用"},
@@ -350,8 +346,8 @@ function Enterprise({
       />}
       {modal === "code" && <Modal title="添加员工" close={refresh}>
         {issued ? <>
-          <Field label="组织服务地址"><CopyValue value={issued.serviceAddress} label="组织服务地址"/></Field>
-          <Field label="邀请码"><CopyValue value={issued.code} label="邀请码"/></Field>
+          <Field label="组织服务地址"><CopyValue value={issued.serviceAddress} label="组织服务地址" copyLabel="复制服务地址"/></Field>
+          <Field label="邀请码"><CopyValue value={issued.code} label="邀请码" copyLabel="复制邀请码"/></Field>
           <p>{issued.expiresAt === null ? "永久有效" : "有效期至 " + date(issued.expiresAt)}</p>
         </> : <ActionForm label="生成邀请码" submit={async form => {
           setIssued(await api(path + "/join-codes", {
@@ -377,29 +373,6 @@ function Enterprise({
           <CodeDays initial={expiry.expires_at === null ? undefined : Math.max(1, Math.min(30, Math.ceil((Number(expiry.expires_at) - Date.now()) / 86_400_000)))}/>
           <p>留空则永久有效。</p>
         </ActionForm>
-      </Modal>}
-      {modal === "email" && <Modal title="批量邮箱邀请" close={refresh}>
-        {emailLinks ? <>
-          <Field label="邀请链接"><textarea readOnly rows={8} value={emailLinks.map(row => row.email + " " + row.url).join("\n")}/></Field>
-          <button onClick={() => downloadCsv("organization-invitations.csv", ["邮箱,邀请链接", ...emailLinks.map(row =>
-            [row.email,row.url].map(cell => '"' + (/^[=+\-@\t\r]/.test(cell) ? "'" : "") + cell.replaceAll('"','""') + '"').join(","),
-          )].join("\r\n"))}>导出邀请链接</button>
-        </> : <ActionForm label="生成邀请链接" submit={async form => {
-          const addresses = value(form,"emails").split(/\r?\n/).map(email=>email.trim()).filter(Boolean);
-          if (!addresses.length || addresses.length > 500) throw new Error("请输入 1 到 500 个邮箱");
-          const role = value(form,"role"), departmentId = value(form,"department") || null;
-          const response = await api<{items:{email:string;url:string}[]}>(path + "/invitations/batch", {
-            people: addresses.map(email=>({email,role,departmentId})), days:Number(value(form,"days")),
-          });
-          setEmailLinks(response.items); result.reload();
-        }}>
-          <Field label="员工邮箱，每行一个"><textarea name="emails" rows={7} required maxLength={130000}/></Field>
-          <Field label="部门"><select name="department"><option value="">未分配</option>
-            {result.data?.departments.map(row => <option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
-          </select></Field>
-          <Field label="身份"><select name="role"><option value="member">普通成员</option><option value="admin">管理员</option></select></Field>
-          <Field label="有效天数"><input type="number" name="days" min={1} max={30} defaultValue={7} required/></Field>
-        </ActionForm>}
       </Modal>}
       {modal === "batch" && <Modal title="从 CSV 批量生成" close={refresh}>
         <ActionForm label="导出邀请码" submit={async form => {
@@ -487,6 +460,8 @@ export function Projects() {
     "/api/v1/projects" + (filter ? "?enterpriseId=" + filter : ""),
   );
   const [create, setCreate] = useState(false);
+  const [organization, setOrganization] = useState("");
+  const [sharing, setSharing] = useState<Row>();
   return (
     <>
       <div className="toolbar">
@@ -502,7 +477,7 @@ export function Projects() {
             </option>
           ))}
         </select>
-        <Add onClick={() => setCreate(true)}>添加项目</Add>
+        <Add onClick={() => { setOrganization(filter); setCreate(true); }}>添加项目</Add>
       </div>
       <section className="panel">
         <Status error={result.error} loading={!result.data} />
@@ -522,6 +497,8 @@ export function Projects() {
                   ) || "个人",
               },
               { label: "创建时间", cell: (r) => date(r.created_at) },
+              { label: "操作", cell: (r) => r.enterprise_id && r.project_role === "maintain"
+                ? <button onClick={() => setSharing(r)}>共享范围</button> : null },
             ]}
           />
         )}
@@ -532,7 +509,8 @@ export function Projects() {
             submit={async (f) => {
               await api("/api/v1/projects", {
                 title: value(f, "title"),
-                enterpriseId: filter || value(f, "enterprise") || null,
+                enterpriseId: organization || null,
+                ...(organization ? { access: readProjectAudience(f) } : {}),
               });
               setCreate(false);
               result.reload();
@@ -542,7 +520,8 @@ export function Projects() {
               <input name="title" required />
             </Field>
             <Field label="所属组织">
-              {filter ? <strong>{text(enterprises.data?.items.find(item=>item.id===filter)?.name)}</strong> : <select name="enterprise" defaultValue="">
+              {filter ? <strong>{text(enterprises.data?.items.find(item=>item.id===filter)?.name)}</strong> :
+                <select value={organization} onChange={event => setOrganization(event.target.value)}>
                 <option value="">个人项目</option>
                 {enterprises.data?.items.map((r) => (
                   <option key={text(r.id)} value={text(r.id)}>
@@ -551,11 +530,29 @@ export function Projects() {
                 ))}
               </select>}
             </Field>
+            {organization && <ProjectAudienceFields key={organization} organizationId={organization}/>}
           </ActionForm>
         </Modal>
       )}
+      {sharing && <ProjectSharingDialog key={text(sharing.id)} project={sharing}
+        close={() => setSharing(undefined)} reload={result.reload}/>}
     </>
   );
+}
+function ProjectSharingDialog({ project, close, reload }: { project: Row; close(): void; reload(): void }) {
+  const path = "/api/v1/projects/" + encodeURIComponent(text(project.id)) + "/access";
+  const access = useData<ProjectAccess>(path);
+  return <Modal title="共享范围" close={close}>
+    <p>{text(project.title)}</p>
+    <Status error={access.error} loading={!access.data}/>
+    {access.error && <button type="button" onClick={access.reload}>重试</button>}
+    {access.data && <ActionForm submit={async form => {
+      const next = readProjectAudience(form, access.data);
+      if (next !== access.data) await api(path, next, "PUT");
+      close();
+      reload();
+    }}><ProjectAudienceFields organizationId={text(project.enterprise_id)} access={access.data}/></ActionForm>}
+  </Modal>;
 }
 export function Resources({ user }: { user: User }) {
   const [kind, setKind] = useState("skill"),

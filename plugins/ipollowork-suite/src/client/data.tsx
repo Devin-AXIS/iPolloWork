@@ -12,15 +12,16 @@ import {
   IconEllipsisOutlineRegular,
   IconLinkOutlineRegular,
   IconRefreshOutlineRegular,
-  IconSearchOutlineRegular,
   Menu,
-  Modal,
-} from '@deepseek-ai/dsh-client-ui-primitives'
+  } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
+import { SearchInput } from '../../../_shared/ui/controls.tsx'
 import { workspaceDisplayTitle } from '@deepseek-ai/dsh-api-workspace-controller/default-workspace'
 import type { DataAppDetail, DataAppList, DataAppSummary } from '../shared/app-data.ts'
 import type { ClientContext } from './native.ts'
 import type { AccountController, AccountSnapshot } from './account-controller.ts'
 import { request } from './api.ts'
+import { waitForDeletion, type DeletionEntry } from './deletion.ts'
 import { format } from './enterprise-locale.ts'
 import { EmptyState, ListSkeleton } from './enterprise-ui.tsx'
 import { Monogram } from './glyphs.tsx'
@@ -54,6 +55,7 @@ function DataPanel(props: Props) {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState<DataAppSummary | null>(null)
+  const [history, setHistory] = useState(false)
   const load = async () => {
     setFailed(false)
     try {
@@ -133,10 +135,8 @@ function DataPanel(props: Props) {
               </button>
             ))}
           </div>
-          <label className={css.miniSearch}>
-            <IconSearchOutlineRegular size={13} />
-            <input value={query} placeholder={t.search} aria-label={t.search} onChange={event => setQuery(event.target.value)} />
-          </label>
+          <SearchInput className={css.compactSearch!} value={query} placeholder={t.search} aria-label={t.search}
+            onChange={event => setQuery(event.target.value)} />
         </div>
         {visible.length === 0 ? (
           owned.length ? <EmptyState title={t.noMatch} /> : <EmptyState title={t.empty} hint={t.emptyHint} />
@@ -163,13 +163,15 @@ function DataPanel(props: Props) {
           <h1>{t.title}</h1>
           <p>{t.intro}</p>
         </div>
-        {signedIn && (
+        {signedIn && <div className={css.enterpriseActions}>
+          <Button variant="ghost" onClick={() => setHistory(true)}>{t.deletionHistory}</Button>
           <button type="button" className={css.iconGhost} aria-label={t.refresh} title={t.refresh} onClick={() => void load()}>
             <IconRefreshOutlineRegular size={16} />
           </button>
-        )}
+        </div>}
       </div>
       {body}
+      {history && signedIn && <DeletionHistory t={t} close={() => setHistory(false)} />}
     </section>
   )
 }
@@ -218,7 +220,7 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
         {app?.canManage && (
           <Menu open={menu} portal align="end" onClose={() => setMenu(false)}
             anchor={<button type="button" className={css.iconGhost} aria-label={t.more} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu(value => !value)}><IconEllipsisOutlineRegular size={16} /></button>}
-            items={[{ id: 'admins', label: t.admins }, { id: 'delete', label: t.deleteApp, danger: true }]}
+            items={[...(app.roles.length ? [{ id: 'admins', label: t.admins }] : []), { id: 'delete', label: t.deleteApp, danger: true }]}
             onSelect={id => { setMenu(false); if (id === 'admins') setGranting(true); else setConfirming(true) }} />
         )}
       </header>
@@ -252,32 +254,27 @@ function AppDetail({ summary, ownerName, t, back, deleted }: {
   )
 }
 
-/** Grant or remove the app's administrators by iPollo account email. */
+/** Existing app administrators can still be removed while new grants are hidden. */
 function AdminsDialog({ app, t, close, changed }: { app: DataAppDetail; t: DataLabels; close(): void; changed(): void }) {
   const [roles, setRoles] = useState(app.roles)
-  const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false), [error, setError] = useState('')
-  const send = (statement: unknown) => {
+  const revoke = (email: string) => {
     setBusy(true)
     setError('')
-    request<{ roles: DataAppDetail['roles'] }>(`/data/apps/${app.id}/run`, { method: 'POST', body: JSON.stringify(statement) })
-      .then(value => { setRoles(value.roles); setEmail(''); changed() })
+    request<{ roles: DataAppDetail['roles'] }>(`/data/apps/${app.id}/run`, { method: 'POST', body: JSON.stringify({ revoke: email }) })
+      .then(value => { setRoles(value.roles); changed() })
       .catch(cause => setError(cause instanceof Error ? cause.message : t.loadFailed))
       .finally(() => setBusy(false))
   }
   return (
     <Modal open title={t.admins} description={t.adminsHint} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!busy) close() }}>
-      <form className={css.dataAdminForm} onSubmit={event => { event.preventDefault(); send({ grant: 'admin', email: email.trim() }) }}>
-        <input type="email" required placeholder={t.adminEmail} aria-label={t.adminEmail} value={email} disabled={busy} onChange={event => setEmail(event.target.value)} />
-        <Button variant="primary" type="submit" disabled={busy}>{t.addAdmin}</Button>
-      </form>
       {error && <p className={css.dataError} role="alert">{error}</p>}
       {roles.length === 0 ? <p className={css.dataFaint}>{t.noAdmins}</p> : (
         <ul className={css.dataAdminList}>
           {roles.map(role => (
             <li key={role.id}>
-              <span><strong>{role.name || role.email}</strong><small>{role.email} · {role.role}</small></span>
-              <button type="button" className={css.dataLink} data-danger disabled={busy} onClick={() => send({ revoke: role.email })}>{t.removeAdmin}</button>
+              <span><strong>{role.name || role.id}</strong><small>{role.id}</small></span>
+              <button type="button" className={css.dataLink} data-danger disabled={busy} onClick={() => revoke(role.email)}>{t.removeAdmin}</button>
             </li>
           ))}
         </ul>
@@ -305,24 +302,57 @@ function CopyRow({ label, value, t }: { label: string; value: string; t: DataLab
 }
 
 function DeleteDialog({ app, t, close, deleted }: { app: DataAppDetail; t: DataLabels; close(): void; deleted(): void }) {
-  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false)
+  const [busy, setBusy] = useState(false), [status, setStatus] = useState('')
+  const pending = status === t.deletionPending
+  const dismiss = pending ? deleted : close
   return (
     <Modal open tone="warning" title={format(t.deleteTitle, { name: app.name })} description={format(t.deleteHint, { count: app.records })}
-      closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!busy) close() }}
+      closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!busy) dismiss() }}
       footer={<div className={css.dialogFooter}>
-        <Button variant="outline" disabled={busy} onClick={close}>{t.cancel}</Button>
+        <Button variant="outline" disabled={busy} onClick={dismiss}>{pending ? t.close : t.cancel}</Button>
         <Button variant="primary" disabled={busy} onClick={() => {
           setBusy(true)
-          setFailed(false)
+          setStatus('')
           request(`/data/apps/${app.id}`, { method: 'DELETE' })
+            .then(receipt => waitForDeletion(receipt))
             .then(() => { close(); deleted() })
-            .catch(() => setFailed(true))
+            .catch((error: Error) => setStatus(error.message === 'IPW_DELETION_PENDING' ? t.deletionPending
+              : error.message === 'IPW_DELETION_STATUS_UNAVAILABLE' ? t.deletionStatusUnavailable : t.loadFailed))
             .finally(() => setBusy(false))
-        }}>{t.delete}</Button>
+        }}>{pending ? t.refresh : t.delete}</Button>
       </div>}>
-      {failed && <p className={css.dataError} role="alert">{t.loadFailed}</p>}
+      {status && <p className={css.dataError} role="status">{status}</p>}
     </Modal>
   )
+}
+
+function DeletionHistory({ t, close }: { t: DataLabels; close(): void }) {
+  const [entries, setEntries] = useState<DeletionEntry[]>()
+  const [failed, setFailed] = useState(false)
+  useEffect(() => {
+    const abort = new AbortController()
+    let timer: number
+    const load = async () => {
+      try {
+        const list = await request<{ items: DeletionEntry[] }>('/deletions', { signal: abort.signal })
+        setEntries(list.items)
+        setFailed(false)
+      } catch {
+        if (!abort.signal.aborted) setFailed(true)
+      }
+      if (!abort.signal.aborted) timer = window.setTimeout(load, 5000)
+    }
+    void load()
+    return () => { abort.abort(); window.clearTimeout(timer) }
+  }, [])
+  return <Modal open title={t.deletionHistory} closeLabel={t.close} className={css.enterpriseModal!} onClose={close}>
+    {failed ? <p role="alert">{t.deletionStatusUnavailable}</p> : !entries ? <ListSkeleton rows={3} />
+      : !entries.length ? <p>{t.noDeletions}</p>
+        : <ul className={css.dataAdminList}>{entries.map(entry => <li key={entry.deletionId}>
+          <span><strong>{t.deletionKinds[entry.kind] ?? entry.kind}</strong><small>{entry.deletionId}</small></span>
+          <span>{entry.status === 'completed' ? t.deletionCompleted : t.deletionInProgress}</span>
+        </li>)}</ul>}
+  </Modal>
 }
 
 /**

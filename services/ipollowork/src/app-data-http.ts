@@ -15,6 +15,7 @@ import { appDataBodyLimit, type AppData, type DataCaller } from "./app-data.js";
 import { ServiceError } from "./errors.js";
 import { audit, requireAdmin } from "./domain.js";
 import type { Store } from "./database.js";
+import type { DeletionJobs } from "./deletion-jobs.js";
 
 const createInput = z
   .object({
@@ -44,7 +45,7 @@ const updateInput = z
  * @param auth - Better Auth, used to resolve bearer tokens.
  * @param accounts - the account database, which records the operator's actions.
  */
-export function mountAppData(app: App, data: AppData | undefined, limits: AppDataConfig | undefined, auth: Auth, accounts: Store, files?: AppDataFiles, cloud?:CloudProjects): void {
+export function mountAppData(app: App, data: AppData | undefined, limits: AppDataConfig | undefined, auth: Auth, accounts: Store, jobs: DeletionJobs, files?: AppDataFiles, cloud?:CloudProjects): void {
   app.use(
     "/api/data/v1/*",
     cors({
@@ -129,9 +130,19 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
   app.delete("/api/v1/admin/data-apps/:app", async (c) => {
     const actor = c.get("actor");
     requireAdmin(actor);
-    await ready().discard(c.req.param("app"));
-    await audit(accounts, actor, "data-app.delete", c.req.param("app"));
-    return c.json({ ok: true });
+    const id = c.req.param("app"), apps = ready();
+    const job = await accounts.transaction(async () => {
+      await jobs.lock("data-app", id);
+      const existing = await jobs.existing("data-app", id, actor);
+      if (existing) return existing;
+      const app = await apps.data.one<{ project_id: string | null }>("SELECT project_id FROM data_apps WHERE id=?", id);
+      if (!app)
+        throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在");
+      await audit(accounts, actor, "data-app.delete", id);
+      return jobs.enqueue("data-app", id, actor, [], app.project_id);
+    });
+    const result = await jobs.receipt(job);
+    return c.json({ ok: result.status === "completed", ...result }, result.status === "completed" ? 200 : 202);
   });
   app.get("/api/data/v1/apps", async (c) => {
     const who = await member(c);
@@ -152,14 +163,22 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
     return c.json({ app: await ready().update(who, c.req.param("app"), input) });
   });
   app.delete("/api/data/v1/apps/:app", async (c) => {
-    await ready().remove(await member(c), c.req.param("app"));
-    return c.json({ deleted: true });
+    const who = await member(c), id = c.req.param("app"), apps = ready();
+    const job = await accounts.transaction(async () => {
+      await jobs.lock("data-app", id);
+      const existing = await jobs.existing("data-app", id, who.actor);
+      if (existing) return existing;
+      const projectId = await apps.authorizeRemoval(who, id);
+      return jobs.enqueue("data-app", id, who.actor, [], projectId);
+    });
+    const result = await jobs.receipt(job);
+    return c.json({ deleted: result.status === "completed", ...result }, result.status === "completed" ? 200 : 202);
   });
   app.post('/api/data/v1/apps/:app/files',async c=>{
     ready();if(!files)throw new ServiceError('APP_DATA_NOT_CONFIGURED',503);
     const who=await caller(c);
     const info=JSON.parse(decodeURIComponent(c.req.header('x-data-file')??'{}'));
-    return c.json(await files.upload(who,c.req.param('app'),info,c.req.raw.body,Number(c.req.header('content-length')),c.req.header('content-type')??'application/octet-stream'),201);
+    return c.json(await files.upload(who,c.req.param('app'),info,c.req.raw.body,Number(c.req.header('content-length')),c.req.header('content-type')??'application/octet-stream',jobs),201);
   });
   app.get('/api/data/v1/apps/:app/files/:file',async c=>{
     ready();if(!files)throw new ServiceError('APP_DATA_NOT_CONFIGURED',503);
@@ -167,7 +186,8 @@ export function mountAppData(app: App, data: AppData | undefined, limits: AppDat
   });
   app.delete('/api/data/v1/apps/:app/files/:file',async c=>{
     ready();if(!files)throw new ServiceError('APP_DATA_NOT_CONFIGURED',503);
-    await files.remove(await caller(c),c.req.param('app'),c.req.param('file'));return c.json({deleted:true});
+    const result=await files.remove(await caller(c),c.req.param('app'),c.req.param('file'),jobs);
+    return c.json({deleted:result.status==='completed',...result},result.status==='completed'?200:202);
   });
   app.post("/api/data/v1/apps/:app/run", async (c) => {
     const who = await caller(c);

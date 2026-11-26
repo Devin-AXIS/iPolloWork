@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
+import { waitForDeletion } from "./deletion.ts";
+import { audienceDraft, audienceInput, audienceReady } from "../../../../services/ipollowork/src/audience-scope.ts";
 import type { EnterpriseAssets, EnterprisePackage, PackageDetail } from "../shared/enterprise.ts";
-import { AccessDialog, AudiencePill, RowMenu, type AssetProps } from "./enterprise-assets.tsx";
+import { AccessDialog, AudienceFields, AudiencePill, RowMenu, type AssetProps } from "./enterprise-assets.tsx";
 import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, useRecord, useTask } from "./enterprise-ui.tsx";
 import { FilePicker } from "./file-picker.tsx";
 import { ProjectDownload } from "./project-files.tsx";
@@ -33,7 +36,7 @@ export function OrganizationFilePackages(props: AssetProps) {
             <RowMenu t={t} items={[{id:"edit",label:t.edit},{id:"remove",label:t.remove,danger:true}]} onSelect={id => {
               if (id === "edit") setEditing(item);
               else controller.open({kind:"confirm",title:zh ? "移除文件包" : "Remove file package",
-                description:item.title,confirmLabel:t.remove,run:async()=>{await call(path,undefined,"DELETE"); record.reload();}});
+                description:item.title,confirmLabel:t.remove,run:async()=>{await waitForDeletion(await call(path,undefined,"DELETE"), true); record.reload();}});
             }}/>
           </>}/>
         {selected === item.id && <PackageFiles {...props} path={path} afterChange={record.reload}/>}
@@ -46,19 +49,21 @@ export function OrganizationFilePackages(props: AssetProps) {
   </Section>;
 }
 
-function PackageEditor({ item, title, path, close, opened, call, t, language }: AssetProps & {
+function PackageEditor({ item, title, path, close, opened, call, t, language, enterpriseId, detail, revision }: AssetProps & {
   item: EnterprisePackage | undefined; title: string; path: string; close(): void; opened(id: string): void;
 }) {
   const task = useTask(t);
+  const [audience, setAudience] = useState(() => audienceDraft());
   return <Modal open title={title} closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close(); }}>
     <form className={css.enterpriseForm} onSubmit={event => {
       event.preventDefault();
+      if (!item && !audienceReady(audience)) return;
       const form = new FormData(event.currentTarget);
       void task.run(async () => {
         const metadata = { title: String(form.get("name") ?? ""), description: String(form.get("description") ?? "") };
         if (item) await call(path + "/" + item.id, metadata, "PATCH");
         else {
-          const { id } = await call<{id:string}>(path, { ...metadata, audience: { all: false, departments: [], members: [] } });
+          const { id } = await call<{id:string}>(path, { ...metadata, audience: audienceInput(audience) });
           opened(id);
         }
         close();
@@ -67,8 +72,10 @@ function PackageEditor({ item, title, path, close, opened, call, t, language }: 
       <Field label={t.name}><input name="name" required maxLength={120} defaultValue={item?.title} disabled={task.busy}/></Field>
       <Field label={language.startsWith("zh") ? "说明" : "Description"}><textarea name="description" maxLength={2000} rows={3}
         defaultValue={item?.description} disabled={task.busy}/></Field>
+      {!item && <AudienceFields enterpriseId={enterpriseId} detail={detail} t={t} call={call} revision={revision}
+        value={audience} change={setAudience} disabled={task.busy}/>}
       <FormError message={task.error}/>
-      <div className={css.dialogFooter}><Button type="submit" variant="primary" disabled={task.busy}>{t.save}</Button></div>
+      <div className={css.dialogFooter}><Button type="submit" variant="primary" disabled={task.busy || (!item && !audienceReady(audience))}>{t.save}</Button></div>
     </form>
   </Modal>;
 }
@@ -96,7 +103,7 @@ function PackageFiles({ path, afterChange, call, revision, controller, detail, t
           name={file.name} view={{t, language, controller}} chooseDestination onSaved={setSavedPath}/>
         {detail.canManage && <Button size="sm" variant="ghost" onClick={() => controller.open({
           kind:"confirm", title:t.remove, description:file.name, confirmLabel:t.remove,
-          run:async()=>{await call(path + "/files/" + file.id, undefined, "DELETE"); refresh();},
+          run:async()=>{await waitForDeletion(await call(path + "/files/" + file.id, undefined, "DELETE"), true); refresh();},
         })}>{t.remove}</Button>}
       </>}/>)}
     {record.data?.files.length === 0 && <p className={css.quietLine}>{language.startsWith("zh") ? "暂无文件" : "No files yet"}</p>}

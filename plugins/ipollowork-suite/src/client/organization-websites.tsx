@@ -1,15 +1,17 @@
 import { useState, useSyncExternalStore } from 'react'
 import { FormButton, FormSelect, TextInput } from '../../../_shared/ui/controls.tsx'
-import type { EnterpriseDetail } from '../shared/enterprise.ts'
+import { audienceDraft, audienceInput, audienceReady, type AudienceDraft } from '../../../../services/ipollowork/src/audience-scope.ts'
+import type { Audience, EnterpriseDetail } from '../shared/enterprise.ts'
 import type { EnterpriseLabels } from './enterprise-locale.ts'
 import type { OrganizationContext } from '../shared/organizations.ts'
 import type { Props as EnterpriseProps } from './enterprise.tsx'
 import type { AccountController } from './account-controller.ts'
 import { ConfirmDialog, EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, useRecord, useTask, type Call } from './enterprise-ui.tsx'
+import { AudienceFields } from './enterprise-assets.tsx'
 import css from './suite.module.css'
 
 type Role = 'owner' | 'admin' | 'member'
-type Website = { id: string; label: string; url: string; departmentId: string | null; role: Role | null; cookieNames?: string[] }
+type Website = { id: string; label: string; url: string; departmentId: string | null; role: Role | null; memberIds?: string[]; audience?: Audience; cookieNames?: string[] }
 type List = { items: Array<Pick<Website, 'id' | 'label'>> }
 type Document = { revision: number; items: Website[] }
 
@@ -120,7 +122,8 @@ export function OrganizationWebsites({ detail, t, call, onChange }: {
   const [editing, setEditing] = useState<Website>()
   const [cookieNames, setCookieNames] = useState('')
   const [deleting, setDeleting] = useState<Website>()
-  const roles: Record<Role, string> = { owner: t.websiteOwner, admin: t.admin, member: t.member }
+  const [scope, setScope] = useState<AudienceDraft>()
+  const legacy = editing && !editing.audience && Boolean(editing.departmentId || editing.role || editing.memberIds)
   const items = document?.items ?? available.data?.items ?? []
   const entries = new Map(document?.items.map(item => [item.id, item]))
   const visibleIds = new Set(available.data?.items.map(item => item.id))
@@ -145,6 +148,7 @@ export function OrganizationWebsites({ detail, t, call, onChange }: {
       <FormButton type="button" variant="outline" disabled={task.busy} onClick={() => {
         task.setError('')
         setCookieNames('')
+        setScope(audienceDraft())
         setEditing({ id: crypto.randomUUID(), label: '', url: '', departmentId: null, role: null })
       }}>{t.addWebsite}</FormButton>}>
       <Notice error={manage.error || available.error} t={t} retry={reload}/>
@@ -157,13 +161,22 @@ export function OrganizationWebsites({ detail, t, call, onChange }: {
             {visibleIds.has(item.id) && <FormButton type="button" variant="outline" disabled={task.busy}
               onClick={() => open(item.id)}>{t.openWebsite}</FormButton>}
             {entry && <FormButton type="button" variant="outline" disabled={task.busy || !!editing}
-              onClick={() => { task.setError(''); setCookieNames(entry.cookieNames?.join(', ') ?? ''); setEditing(entry) }}>{t.edit}</FormButton>}
+              onClick={() => {
+                task.setError('')
+                setCookieNames(entry.cookieNames?.join(', ') ?? '')
+                setEditing(entry)
+                setScope(entry.audience ? audienceDraft(entry.audience) : entry.departmentId || entry.role || entry.memberIds
+                  ? undefined : audienceDraft({ all: true, departments: [], members: [] }))
+              }}>{t.edit}</FormButton>}
           </>}/>
       })}
       {editing && document && <form className={css.enterpriseForm} onSubmit={event => {
         event.preventDefault()
+        if (scope && !audienceReady(scope)) return
         const current = document.items
-        const edited = { ...editing, cookieNames: [...new Set(cookieNames.split(/[,，]/).map(value => value.trim()).filter(Boolean))] }
+        const { memberIds, ...entry } = editing
+        const access = scope ? { ...entry, departmentId: null, role: null, audience: audienceInput(scope) } : editing
+        const edited = { ...access, cookieNames: [...new Set(cookieNames.split(/[,，]/).map(value => value.trim()).filter(Boolean))] }
         const items = current.some(item => item.id === editing.id)
           ? current.map(item => item.id === editing.id ? edited : item) : [...current, edited]
         void task.run(() => save(items))
@@ -174,23 +187,14 @@ export function OrganizationWebsites({ detail, t, call, onChange }: {
           onChange={event => setEditing({ ...editing, url: event.target.value })}/></Field>
         <Field label={t.websiteCookieNames}><TextInput maxLength={1600} autoComplete="off" value={cookieNames}
           disabled={task.busy} onChange={event => setCookieNames(event.target.value)}/></Field>
-        <Field label={t.websiteDepartment}><FormSelect value={editing.departmentId ?? ''} disabled={task.busy}
-          onChange={event => setEditing({ ...editing, departmentId: event.target.value || null })}>
-          <option value="">{t.websiteAllDepartments}</option>
-          {editing.departmentId && !detail.departments.some(department => department.id === editing.departmentId) &&
-            <option value={editing.departmentId}>{t.websiteDepartmentUnavailable}</option>}
-          {detail.departments.map(department => <option key={department.id} value={department.id}>{department.name}</option>)}
-        </FormSelect></Field>
-        <Field label={t.websiteRole}><FormSelect value={editing.role ?? ''} disabled={task.busy}
-          onChange={event => setEditing({ ...editing, role: (event.target.value || null) as Role | null })}>
-          <option value="">{t.websiteAllRoles}</option>
-          {Object.entries(roles).map(([role, label]) => <option key={role} value={role}>{label}</option>)}
-        </FormSelect></Field>
+        <AudienceFields enterpriseId={detail.enterprise.id} detail={detail} t={t} call={call} revision={document.revision}
+          value={scope ?? audienceDraft()} change={setScope} disabled={task.busy} legacy={!scope}
+          {...(legacy ? { onLegacy: () => setScope(undefined) } : {})}/>
         <div className={css.dialogFooter}>
           {document.items.some(item => item.id === editing.id) && <FormButton type="button" variant="outline" disabled={task.busy}
             onClick={() => setDeleting(editing)}>{t.remove}</FormButton>}
           <FormButton type="button" variant="outline" disabled={task.busy} onClick={() => { task.setError(''); setEditing(undefined) }}>{t.cancel}</FormButton>
-          <FormButton type="submit" variant="primary" disabled={task.busy}>{t.save}</FormButton>
+          <FormButton type="submit" variant="primary" disabled={task.busy || Boolean(scope && !audienceReady(scope))}>{t.save}</FormButton>
         </div>
       </form>}
       <FormError message={task.error}/>

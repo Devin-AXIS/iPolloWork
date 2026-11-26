@@ -161,6 +161,19 @@ test("organization assets enforce member and department grants, and project owne
       access:{mode:"selected",grants:[{kind:"member",subjectId:randomUUID(),role:"view"}]}})).status,400);
     assert.equal(await service.store.one("SELECT id FROM projects WHERE native_id='uncommitted'"), undefined);
 
+    assert.equal((await http(securedPath + "/access", owner.token, {mode:"selected",grants:[]}, "PUT")).status,200);
+    assert.equal((await http(securedPath + "/space", owner.token)).status,200);
+    assert.equal((await http(securedPath + "/space", design.token)).status,403);
+    assert.equal((await http(securedPath + "/access", owner.token, {
+      mode:"selected",grants:[{kind:"department",subjectId:salesDep,role:"view"}],
+    }, "PUT")).status,200);
+    assert.equal((await http(securedPath + "/space", design.token)).status,403);
+    assert.equal((await http(securedPath + "/space", sales.token)).status,200);
+    assert.equal((await http(securedPath + "/access", owner.token, {mode:"enterprise",grants:[]}, "PUT")).status,200);
+    assert.equal((await http(securedPath + "/space", design.token)).status,200);
+    assert.equal((await http(securedPath + "/space", sales.token)).status,200);
+    assert.equal((await http(securedPath + "/access", owner.token, secured.access, "PUT")).status,200);
+
     await service.store.run(`WITH synthetic AS (
       INSERT INTO "user"(id,name,email,"emailVerified")
       SELECT 'asset-roster-'||i,'Roster '||i,'roster-'||i||'@assets.test',true FROM generate_series(1,501) i RETURNING id
@@ -238,18 +251,24 @@ test("organization assets enforce member and department grants, and project owne
     assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), quotaBefore);
 
     const failedFile = await http<{ id: string }>(base + `/packages/${pack}/files`, owner.token, temporary);
+    const failedPath = base + `/packages/${pack}/files/${failedFile.data.id}`;
     const failedRemoval = t.mock.method(service.storage, "remove", async () => { throw new Error("storage temporarily offline"); });
+    let receipt = "";
     try {
-      const result = await http<{ code: string }>(base + `/packages/${pack}/files/${failedFile.data.id}`, owner.token, undefined, "DELETE");
-      assert.equal(result.status, 503);
-      assert.equal(result.data.code, "PACKAGE_FILE_CLEANUP_PENDING");
+      const result = await http<{ deletionId: string; status: string }>(failedPath, owner.token, undefined, "DELETE");
+      assert.equal(result.status, 202);
+      assert.equal(result.data.status, "pending");
+      receipt = result.data.deletionId;
+      assert.equal((await http<{ deletionId: string }>(failedPath, owner.token, undefined, "DELETE")).data.deletionId, receipt);
     } finally {
       failedRemoval.mock.restore();
     }
     assert.equal(await service.store.one("SELECT id FROM resources WHERE id=?", failedFile.data.id), undefined);
     assert.equal((await service.store.one("SELECT state FROM storage_objects WHERE id=?", failedFile.data.id))?.state, "deleting");
     assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), quotaBefore + 9);
-    await service.storage.cleanup();
+    await service.store.run("UPDATE deletion_jobs SET retry_at=0 WHERE id=?", receipt);
+    await service.deletions.cleanup();
+    assert.equal((await http<{ status: string }>("/api/v1/deletions/" + receipt, owner.token)).data.status, "completed");
     assert.equal((await service.store.one("SELECT state FROM storage_objects WHERE id=?", failedFile.data.id))?.state, "deleted");
     assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), quotaBefore);
 

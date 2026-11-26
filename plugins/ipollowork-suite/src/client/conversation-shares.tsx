@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { Button, IconShareOutlineRegular, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, IconShareOutlineRegular } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
 import type { PropsRuntime } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
-import type { SharedMessage } from "../shared/enterprise.ts";
+import { audienceDraft, audienceInput, audienceReady, audienceScopes, type AudienceDraft } from "../../../../services/ipollowork/src/audience-scope.ts";
+import type { EnterpriseDetail, SharedMessage } from "../shared/enterprise.ts";
 import type { Props } from "./enterprise.tsx";
 import type { EnterpriseLabels } from "./enterprise-locale.ts";
-import type { AssetProps } from "./enterprise-assets.tsx";
-import { DirectoryStatus, EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, Transcript, When, useMemberDirectory, useRecord, useTask } from "./enterprise-ui.tsx";
+import { AudienceFields, type AssetProps } from "./enterprise-assets.tsx";
+import { EmptyState, Field, FormError, ListSkeleton, Notice, Row, Section, Transcript, When, useRecord, useTask } from "./enterprise-ui.tsx";
 import styles from "./suite.module.css";
 import trigger from "./sharing/ShareAction.module.css";
 
@@ -48,54 +50,47 @@ export function ConversationShareAction({ sessionId, useSessions, useEnterpriseS
         {!state.signedIn ? <Button onClick={openAccountSettings}>{zh ? "先登录组织账户" : "Sign in to your organization account"}</Button> :
           state.error && !state.catalog ? <Notice error={state.error} t={t} fallback={t.organizationListLoadFailed} retry={controller.load}/> :
           !state.catalog ? <ListSkeleton rows={2}/> :
-          !selected ? <EmptyState title={zh ? "先加入企业才能分享" : "Join an organization to share"}/> :
+          !selected ? <EmptyState title={zh ? "先加入组织才能分享" : "Join an organization to share"}/> :
           <>
             {organizations.length > 1 && <Field label={zh ? "组织" : "Organization"}><select value={selected} onChange={event => setOrganization(event.currentTarget.value)}>
               {organizations.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select></Field>}
             <Notice error={failure} t={t}/>
             {!failure && <RecipientSelection key={selected} enterpriseId={selected} requestId={requestId} sessionId={sessionId} title={title}
-              preview={preview} controller={controller} userId={state.catalog.userId} t={t} zh={zh} onClose={() => setOpen(false)}/>}
+              preview={preview} controller={controller} userId={state.catalog.userId} t={t} zh={zh}
+              manager={organizations.some(item => item.id === selected && (item.role === "owner" || item.role === "admin"))}
+              onClose={() => setOpen(false)}/>}
           </>}
       </div>
     </Modal>}
   </>;
 }
 
-function RecipientSelection({ enterpriseId, requestId, sessionId, title, preview, controller, userId, t, zh, onClose }: {
+function RecipientSelection({ enterpriseId, requestId, sessionId, title, preview, controller, userId, t, zh, manager, onClose }: {
   enterpriseId: string; requestId: string; sessionId: string; title: string; preview: Preview | undefined;
-  controller: Props["controller"]; userId: string; t: EnterpriseLabels; zh: boolean; onClose(): void;
+  controller: Props["controller"]; userId: string; t: EnterpriseLabels; zh: boolean; manager: boolean; onClose(): void;
 }) {
   const path = "/organizations/" + enterpriseId;
-  const [selected, setSelected] = useState<string[]>([]), [query, setQuery] = useState("");
-  const directory = useMemberDirectory(enterpriseId, controller.call, 0, { query, active: true });
+  const [selected, setSelected] = useState<AudienceDraft>(() => ({ ...audienceDraft(), scope: "employees" }));
+  const detail = useRecord<EnterpriseDetail>(path, controller.call, 0);
   const task = useTask(t);
-  const members = directory.data?.items.filter(member => member.userId !== userId) ?? [];
+  if (!detail.data) return detail.error ? <Notice error={detail.error} t={t} retry={detail.reload}/> : <ListSkeleton rows={2}/>;
   return <form className={styles.enterpriseStack} onSubmit={event => {
     event.preventDefault();
-    if (!preview || !selected.length) return;
+    if (!preview || !audienceReady(selected)) return;
     void task.run(async () => {
-      await controller.call(path + "/messages", { requestId, sessionId, title: title.trim().slice(0,120), recipients: selected, revision: preview.revision });
-      controller.notify(zh ? "已分享给选中的成员" : "Shared with selected members");
+      await controller.call(path + "/messages", { requestId, sessionId, title: title.trim().slice(0,120),
+        audience: audienceInput(selected), revision: preview.revision });
+      controller.notify(zh ? "会话已分享" : "Conversation shared");
       onClose();
     });
   }}>
-    <Field label={zh ? "选择成员" : "Select members"}>
-      <input type="search" maxLength={120} value={query} onChange={event=>setQuery(event.currentTarget.value)} placeholder={zh ? "搜索姓名或工号" : "Search name or employee number"}/>
-    </Field>
-    <div className={styles.shareMembers} role="group" aria-label={zh ? "组织成员" : "Organization members"}>
-      {members.map(member => (
-        <label key={member.userId}><input type="checkbox" checked={selected.includes(member.userId)} onChange={event => {
-          setSelected(ids => event.target.checked ? [...ids,member.userId] : ids.filter(id=>id!==member.userId));
-        }}/><span>{member.name}{member.employeeNumber ? <small>{member.employeeNumber}</small> : null}</span></label>
-      ))}
-    </div>
-    {directory.data && !members.length && <p>{t.noMembersMatch}</p>}
-    <DirectoryStatus directory={directory} t={t}/>
+    <AudienceFields enterpriseId={enterpriseId} detail={detail.data} t={t} call={controller.call} revision={0}
+      value={selected} change={setSelected} disabled={task.busy} managersHaveAccess={false} excludeUserId={userId}
+      scopes={manager ? audienceScopes : ["employees"]}/>
     <FormError message={task.error}/>
     <div className={styles.dialogFooter}>
-      <span className={styles.muted}>{zh ? `已选 ${selected.length} 人` : `${selected.length} selected`}</span>
-      <Button type="submit" variant="primary" disabled={!selected.length || selected.length > 100 || !preview || task.busy}>
+      <Button type="submit" variant="primary" disabled={!audienceReady(selected) || !preview || task.busy}>
         {zh ? "分享会话" : "Share conversation"}
       </Button>
     </div>

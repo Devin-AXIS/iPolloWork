@@ -18,13 +18,13 @@ Work commits 884d31cf21, e108fda087, 349dc900a8 and f3f6d38846 and the iPolloOS 
 
 Organization resources have one audience: everyone, or chosen departments and members. Owners and administrators can always use published resources. New template, plugin, Skill and MCP publications start with administrators only, and administrators can choose the audience before publishing. Existing grants and the defaults for directly created models are unchanged. The account service stores audiences in `enterprise_grants` and checks them on reads and uses. Deleting a department unassigns its members and removes its grants; removing a member removes their individual grants.
 
-The Departments tab lists departments on the left. The selected department shows its members and one switch per direct Skill, published Skill and model. A switch adds or removes that department from the asset's audience. Assets available to everyone show a locked switch.
+The Departments tab lists departments on the left. The selected department shows its members and one switch per direct Skill, published Skill and model. A switch adds or removes that department from the asset's audience. Open the adjacent access pill to grant the same resource to specific employees by name or employee number.
 
 The member directory and recipient pickers use server-side search and paging. Create and distribute email-bound invitations from Members and manage signed member-change webhooks from Settings. File packages use the account service's existing package and member/department grant records. New packages in the client start with manager access.
 
 Organization activity is searchable by operator and paginated. New project ownership, permission, deletion and file changes write organization-scoped entries. Organization notifications also appear in the sidebar Notification Center. Opening the feed preserves unread state. Opening a record rechecks access and navigates to the resource, project or shared conversation before acknowledging that item.
 
-In Organization Space → Settings → Websites, organization managers can save browser links. A link can be available to all active members or restricted by department and role. When both criteria are set, members must match both. Work checks access again when someone opens the link. The destination website continues to handle its own sign-in and access.
+In Organization Space → Settings → Websites, organization managers can save browser links. A link can be restricted to selected employees, a department, a role, or a combination of these. When several criteria are set, members must match all of them. Work checks access again when someone opens the link or requests a sign-in ticket. The destination website continues to handle its own sign-in and access.
 
 ## Skills
 

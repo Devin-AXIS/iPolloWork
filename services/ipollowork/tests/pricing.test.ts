@@ -52,7 +52,7 @@ test("chat credits settle from final SSE usage and a duplicate call does not cha
     await app.store.transaction(() =>
       ledgerEntry(app.store, user.id, 10000, "grant", "Grant"),
     );
-    let calls = 0, missingUsage = false;
+    let calls = 0, missingUsage = false, rejectionStatus: number | undefined;
     const executor = new ExecutionService(
       app.store,
       app.settings,
@@ -63,6 +63,7 @@ test("chat credits settle from final SSE usage and a duplicate call does not cha
             .stream_options.include_usage,
           true,
         );
+        if (rejectionStatus) return new Response("private provider explanation", { status: rejectionStatus });
         if (missingUsage) return new Response('data: [DONE]\n\n', {headers:{'content-type':'text/event-stream'}});
         return new Response(
           'data: {"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":10}}\n\ndata: [DONE]\n\n',
@@ -96,7 +97,7 @@ test("chat credits settle from final SSE usage and a duplicate call does not cha
       ).toString("base64"),
     };
     const response = await executor.invoke(actor, "meter-chat", request);
-    await response.text();
+    const savedOutput = await response.text();
     assert.equal((await wallet(app.store, user.id)).balance, 9970);
     assert.equal(
       (
@@ -107,7 +108,11 @@ test("chat credits settle from final SSE usage and a duplicate call does not cha
       )?.cost_micros,
       30000,
     );
-    await (await executor.invoke(actor, "meter-chat", request)).text();
+    const recovered = await executor.invoke(actor, "meter-chat", { ...request, replayOnly: true });
+    assert.equal(recovered.headers.get("x-ipollo-call-id"), request.requestId);
+    assert.equal(await recovered.text(), savedOutput);
+    await assert.rejects(executor.invoke(actor, "meter-chat", { ...request, requestId: randomUUID(), replayOnly: true }), { code: "SERVICE_CALL_NOT_FOUND" });
+    await assert.rejects(executor.invoke(actor, "meter-chat", { ...request, body: Buffer.from('{"model":"fixture","messages":[]}').toString("base64"), replayOnly: true }), { code: "IDEMPOTENCY_CONFLICT" });
     assert.equal(calls, 1);
     assert.equal((await wallet(app.store, user.id)).balance, 9970);
     missingUsage = true;
@@ -115,8 +120,18 @@ test("chat credits settle from final SSE usage and a duplicate call does not cha
     const incomplete = await executor.invoke(actor, "meter-chat", {...request,requestId:uncertain});
     await assert.rejects(incomplete.text(), /Service response interrupted/);
     assert.equal((await app.store.one("SELECT state FROM service_calls WHERE id=?",uncertain))?.state,"unknown");
+    await assert.rejects(executor.invoke(actor, "meter-chat", { ...request, requestId: uncertain, replayOnly: true }), { code: "SERVICE_CALL_UNKNOWN" });
+    assert.equal(calls, 2);
     await executor.reconcile(actor,uncertain,"failed");
     assert.equal((await wallet(app.store,user.id)).balance,9970);
+
+    rejectionStatus = 401;
+    const rejected = { ...request, requestId: randomUUID() };
+    await assert.rejects(executor.invoke(actor, "meter-chat", rejected), {
+      code: "SERVICE_UPSTREAM_REJECTED", requestId: rejected.requestId, upstreamStatus: 401, message: "SERVICE_UPSTREAM_REJECTED",
+    });
+    assert.equal(calls, 3);
+    assert.equal((await wallet(app.store, user.id)).balance, 9970);
   } finally {
     await app.close();
     await rm(dir, { recursive: true, force: true });

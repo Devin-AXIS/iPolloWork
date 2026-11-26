@@ -69,13 +69,17 @@ body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:
     appearance: base-select;
   }
   body[data-ipw-suite] select:not([multiple]):is(:not([size]), [size="1"]) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
     min-inline-size: 0;
     max-inline-size: 100%;
-    gap: 8px;
-    padding-inline: 10px;
     min-block-size: var(--ipw-control-height);
+    gap: 8px;
+    padding: 0 10px;
     border: 0;
     border-radius: var(--ipw-control-radius);
+    line-height: 1.4;
     color: var(--ipw-text);
     background: var(--ipw-field-fill);
     box-shadow: inset 0 0 0 .5px var(--ipw-hairline);
@@ -93,7 +97,10 @@ body[data-ipw-suite] [data-chat-running][data-holding] > span:last-child > span:
     cursor: not-allowed;
   }
   body[data-ipw-suite] select::picker-icon {
-    color: var(--ipw-muted);
+    flex: none;
+    margin-inline-start: auto;
+    color: inherit;
+    line-height: 1;
     rotate: none;
   }
   body[data-ipw-suite] select:open::picker-icon { rotate: 180deg; }

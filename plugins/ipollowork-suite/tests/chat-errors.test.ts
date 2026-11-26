@@ -16,6 +16,25 @@ test('missing selection and a saved model whose adapter is gone have different r
   assert.doesNotMatch(unavailable.message, /未选择模型|ipollo-official-bailian/)
 })
 
+test('only confirmed diagnostics determine the cause and upstream status', () => {
+  const requestId = 'dd7e905d-b9b0-405a-8e74-f54943ecaf61'
+  const report = (code: string, upstreamStatus?: unknown) => describeChatError({
+    code: 'SERVER', message: '503: ' + JSON.stringify({ error: { code, requestId, upstreamStatus, message: 'private secret' } }),
+  }, 'zh')
+  assert.match(report('IPW_MODEL_GATEWAY_CONNECTION_FAILED').message, /连接 iPolloWork 模型网关失败/)
+  assert.match(report('IPW_MODEL_PROXY_FAILED').message, /转发模型请求时出错/)
+  assert.match(report('IPW_MODEL_STREAM_INTERRUPTED').message, /响应中途断开/)
+  assert.match(report('SERVICE_CALL_UNKNOWN').message, /未能确认/)
+  const rejected = report('SERVICE_UPSTREAM_REJECTED', 401)
+  assert.equal(rejected.requestId, requestId)
+  assert.equal(rejected.upstreamStatus, 401)
+  assert.match(rejected.message, /上游未接受服务的身份验证/)
+  assert.doesNotMatch(rejected.message, /private secret/)
+  assert.equal(report('SERVICE_UPSTREAM_REJECTED', '401').upstreamStatus, undefined)
+  assert.match(report('SERVICE_UPSTREAM_REJECTED').message, /上游拒绝了请求/)
+  assert.equal(report('IPW_MODEL_STREAM_INTERRUPTED', 401).upstreamStatus, undefined)
+})
+
 test('gateway outages and other common failures display recovery guidance without raw provider text', () => {
   const outage = describeChatError({
     code: 'SERVER', message: '503: {"code":"IPW_SERVICE_UNAVAILABLE","message":"provider diagnostics"}',

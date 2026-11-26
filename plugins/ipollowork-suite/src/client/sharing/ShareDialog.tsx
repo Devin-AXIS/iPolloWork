@@ -2,9 +2,9 @@
 
 import { useEffect, useState, type ReactNode } from 'react'
 import {
-  Button, IconCloseOutlineRegular, IconSettingsOutlineRegular, Input, Modal,
-  Tooltip, writeClipboard,
+  Button, IconCloseOutlineRegular, IconSettingsOutlineRegular, Input, Tooltip, writeClipboard,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../../_shared/ui/modal.tsx'
 import type { PropsLocale, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-session/types'
 import type { CreatedShare } from '@deepseek-ai/dsh-experimental-liveshare/types'

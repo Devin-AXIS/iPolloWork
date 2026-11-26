@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import { zipSync, unzipSync, strToU8, strFromU8 } from 'fflate';
 import { projectFile, readFileBounded, versionOf, writeVersion } from '../../_shared/workspace-document-files.ts';
 import { readWorkbook, updateWorkbook } from '../src/workbook.ts';
-import { extract } from '../src/references.ts';
 
 const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const relType = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet';
@@ -62,15 +61,4 @@ test('versioned saves reject stale edits and preserve the external modification'
     assert.equal(await readFile(path, 'utf8'), '# saved');
     await assert.rejects(projectFile(root, '../outside.md'), /outside-project/);
   } finally { await rm(root, { recursive: true, force: true }); }
-});
-
-test('Word reference extraction keeps text, tables and embedded images', async () => {
-  const bytes = zipSync({
-    'word/document.xml': part('<w:document xmlns:w="urn:w"><w:body><w:p><w:r><w:t>项目简报</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>2026</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>'),
-    'word/media/logo.png': new Uint8Array([1, 2, 3]),
-  });
-  const result = await extract('brief.docx', bytes);
-  assert.equal(result.chunks[0]?.text, '项目简报\n2026');
-  assert.equal(result.assets[0]?.name, 'logo.png');
-  assert.deepEqual(await extract('notes.md', part('# Notes')), { chunks: [{ page: 1, text: '# Notes' }], assets: [] });
 });

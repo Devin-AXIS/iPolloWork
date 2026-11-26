@@ -63,7 +63,6 @@ export function AccountPanel({ useLabels, useAccount, signIn, signUp, signOut, r
           {message && <p role="alert" className={css.authError}>{message}</p>}
           <FormButton variant="primary" className={css.authSubmit} type="submit" disabled={busy || !email || !password}>{busy ? t.loading : registering ? t.registerAndSignIn : t.signIn}<ArrowGlyph size={14}/></FormButton>
         </form>
-        {registering && <p className={css.authService}>{t.email === '邮箱' ? '使用受邀邮箱注册后，打开邀请链接即可加入组织。' : 'Register with the invited email, then open the invitation link to join.'}</p>}
         {service}
       </div>
     </div>

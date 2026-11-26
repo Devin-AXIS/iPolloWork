@@ -1,6 +1,7 @@
 import { FormButton, SettingSwitch, TextInput } from "../../../_shared/ui/controls.tsx";
 import { useState, type FormEvent } from "react";
-import { Button, Modal } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
 import type { EnterpriseMcp } from "../shared/enterprise.ts";
 import { AccessDialog, AudiencePill, RowMenu, type AssetProps } from "./enterprise-assets.tsx";
 import { format } from "./enterprise-locale.ts";
@@ -79,7 +80,7 @@ function McpDialog({ path, t, call, controller, close, item, language }: AssetPr
     });
   };
   return <Modal open title={zh ? "编辑 MCP" : "Edit MCP"} description={t.mcpEndpointHint} closeLabel={t.close}
-    className={css.enterpriseModal!} contentClassName={css.enterpriseModalContent!} onClose={() => { if (!task.busy) close(); }}>
+    className={css.enterpriseModal!} onClose={() => { if (!task.busy) close(); }}>
     <form onSubmit={submit} className={css.enterpriseForm}>
       <Field label={t.name}><TextInput required maxLength={120} value={title} onChange={event => setTitle(event.target.value)} /></Field>
       <Field label={t.skillDescription}><TextInput maxLength={1000} value={description} onChange={event => setDescription(event.target.value)} /></Field>

@@ -30,12 +30,15 @@ test('client transport preserves safe error codes and roster rows without exposi
 test('organization errors explain common failures and retain only safe diagnostic codes in both languages', () => {
   for (const language of ['zh', 'en']) {
     const t = enterpriseCopy({ locale: { getSnapshot: () => language } } as ClientContext)
-    for (const code of ['IPW_ACCOUNT_UNAVAILABLE', 'IPW_ACCOUNT_TIMEOUT', 'IPW_HOST_UNAVAILABLE', 'SERVICE_BUSY', 'SERVICE_QUEUE_TIMEOUT', 'SERVICE_DRAINING', 'DATABASE_UNAVAILABLE', 'IPW_INVALID_RESPONSE', 'INTERNAL_ERROR']) {
+    for (const code of ['IPW_ACCOUNT_UNAVAILABLE', 'IPW_ACCOUNT_TIMEOUT', 'IPW_ACCOUNT_CONNECTION_FAILED',
+      'IPW_ACCOUNT_DNS_FAILED', 'IPW_ACCOUNT_TLS_FAILED', 'IPW_ACCOUNT_HTTP_502', 'IPW_ACCOUNT_HTTP_503', 'IPW_ACCOUNT_HTTP_504',
+      'IPW_HOST_UNAVAILABLE', 'SERVICE_BUSY', 'SERVICE_QUEUE_TIMEOUT', 'SERVICE_DRAINING', 'DATABASE_UNAVAILABLE', 'IPW_INVALID_RESPONSE', 'INTERNAL_ERROR']) {
       const message = enterpriseError(code, t, t.organizationListLoadFailed)
       assert(message.includes(code))
       assert.notEqual(message, t.operationFailed)
       assert.notEqual(message, t.organizationListLoadFailed + ` (${code})`)
     }
+    assert.match(enterpriseError('IPW_ACCOUNT_HTTP_503', t), /HTTP 503/)
     assert.equal(enterpriseError('FUTURE_SERVICE_ERROR', t), t.operationFailed + ' (FUTURE_SERVICE_ERROR)')
     assert.equal(enterpriseError('private token: abc', t), t.operationFailed)
   }

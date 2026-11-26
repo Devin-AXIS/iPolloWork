@@ -1,7 +1,7 @@
 {
   "name": "@ipollo/dsh-workspace-tools",
   "version": "0.1.2",
-  "description": "Edit project documents, reuse conversations and prepare references in iPolloWork.",
+  "description": "Edit project documents and export conversations in iPolloWork.",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
@@ -40,9 +40,6 @@
     "check": "tsc --noEmit && npm test && npm run build",
     "test": "tsx --test tests/*.test.ts",
     "pack:check": "npm pack --dry-run"
-  },
-  "dependencies": {
-    "unpdf": "^1.4.0"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.8.1",

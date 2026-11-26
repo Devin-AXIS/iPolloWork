@@ -1,6 +1,6 @@
 /** Operator view of every app data store, and the consent step of signing in to an app with an iPollo account. */
 import { useState } from "react";
-import { api, count, date, text, type Row } from "./api.js";
+import { api, count, date, text, type DeletionReceipt, type Row } from "./api.js";
 import { Status, Table, useData } from "./components.js";
 
 const size = (value: unknown) => {
@@ -17,6 +17,9 @@ export function DataApps() {
   const [q, setQ] = useState(""),
     [sort, setSort] = useState("bytes"),
     [error, setError] = useState(""),
+    [deleting, setDeleting] = useState(false),
+    [history, setHistory] = useState(false),
+    [historyRevision, setHistoryRevision] = useState(0),
     list = useData<Listing>(`/api/v1/admin/data-apps?sort=${sort}&q=${encodeURIComponent(q)}`);
   const act = async (work: () => Promise<unknown>) => {
     setError("");
@@ -36,7 +39,9 @@ export function DataApps() {
           <option value="bytes">占用最多</option>
           <option value="updated">最近更新</option>
         </select>
+        <button type="button" className="ghost" onClick={() => setHistory(value => !value)}>清理记录</button>
       </div>
+      {history && <DeletionHistory key={historyRevision} />}
       {totals && (
         <p style={{ margin: "0 0 12px", fontSize: 12.5, color: "var(--muted)" }}>
           共 {count(totals.apps)} 个应用 · {count(totals.records)} 条记录 · 数据 {size(totals.bytes)} · 数据库实际占用 {size(totals.stored)}
@@ -83,12 +88,19 @@ export function DataApps() {
                       onClick={() => void act(() => api(`/api/v1/admin/data-apps/${text(r.id)}/suspend`, { suspended: !r.suspended }))}>
                       {r.suspended ? "恢复" : "暂停"}
                     </button>
-                    <button type="button" className="ghost"
+                    <button type="button" className="ghost" disabled={deleting}
                       onClick={() => {
-                        if (confirm(`永久删除「${text(r.name)}」和它的 ${count(r.records)} 条记录？使用它的插件和网页将无法再读写。`))
-                          void act(() => api(`/api/v1/admin/data-apps/${text(r.id)}`, undefined, "DELETE"));
+                        if (!confirm(`永久删除「${text(r.name)}」、它的 ${count(r.records)} 条记录和附件？使用它的插件和网页将失去访问权限。`)) return;
+                        setDeleting(true);
+                        void act(async () => {
+                          const result = await api<DeletionReceipt>(`/api/v1/admin/data-apps/${text(r.id)}`, undefined, "DELETE");
+                          if (result.status !== "pending" && result.status !== "completed")
+                            throw new Error("当前服务未提供永久删除的完成状态。");
+                          setHistoryRevision(value => value + 1);
+                          setHistory(true);
+                        }).finally(() => setDeleting(false));
                       }}>
-                      删除
+                      永久删除
                     </button>
                   </span>
                 ),
@@ -99,6 +111,18 @@ export function DataApps() {
       </section>
     </>
   );
+}
+
+function DeletionHistory() {
+  const history = useData<{ items: DeletionReceipt[] }>("/api/v1/deletions");
+  return <section className="panel">
+    <div className="toolbar"><strong>清理记录</strong><button type="button" className="ghost" onClick={history.reload}>刷新</button></div>
+    <Status error={history.error} loading={!history.data} />
+    {history.data && <Table rows={history.data.items} columns={[
+      { label: "清理编号", cell: row => text(row.deletionId) },
+      { label: "状态", cell: row => row.status === "completed" ? "已永久删除" : "清理中" },
+    ]} />}
+  </section>;
 }
 
 /** Ask the signed-in account whether an app may learn who they are, then return to the app's page with the sign-in. */

@@ -11,16 +11,38 @@ export function publicAddress(address: string): boolean {
     && !(a === 192 && (b === 168 || b === 0)) && !(a === 100 && b >= 64 && b <= 127)
     && !(a === 198 && (b === 18 || b === 19))
 }
-/** Pin each request to validated public DNS results and revalidate every redirect. */
+async function providerResultAddresses(host: string, signal: AbortSignal): Promise<{ address: string; family: number }[]> {
+  // Keep synthetic VPN addresses unusable. Only known Bailian result buckets
+  // can use the provider's public DNS endpoint before the normal IP validation.
+  const regionalBucket = /^dashscope-result(?:-[a-z0-9]+)?\.oss-[a-z0-9-]+\.aliyuncs\.com$/i.test(host)
+  const acceleratedBucket = /^dashscope-[a-f0-9]{4,16}\.oss-accelerate\.aliyuncs\.com$/i.test(host)
+  if (!regionalBucket && !acceleratedBucket) return []
+  const endpoint = new URL('https://dns.alidns.com/resolve')
+  endpoint.search = new URLSearchParams({ name: host, type: 'A' }).toString()
+  const response = await fetch(endpoint, { redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(5_000)]) })
+  if (!response.ok) return []
+  const dns: unknown = await response.json()
+  if (!dns || typeof dns !== 'object' || !('Answer' in dns) || !Array.isArray(dns.Answer)) return []
+  return dns.Answer.flatMap((record: unknown) =>
+    record && typeof record === 'object' && 'type' in record && record.type === 1
+      && 'data' in record && typeof record.data === 'string' && isIP(record.data) === 4
+      ? [{ address: record.data, family: 4 }] : [])
+}
+
+/** Verify the public destination and authenticate each HTTPS connection, including redirects. */
 export async function downloadMedia(source: string, signal: AbortSignal): Promise<Buffer> {
   let url = new URL(source)
   for (let redirects = 0; redirects < 4; redirects++) {
     if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) throw new Error('Invalid media URL')
     const addresses = await lookup(url.hostname, { all: true })
-    if (!addresses.length || addresses.some(item => !publicAddress(item.address))) throw new Error('Media endpoint is not public')
+    const usesVpnRouting = addresses.length > 0 && addresses.every(item => /^198\.(?:18|19)\./.test(item.address))
+    const verified = usesVpnRouting ? await providerResultAddresses(url.hostname, signal) : addresses
+    if (!verified.length || verified.some(item => !publicAddress(item.address))) throw new Error(`图片或视频域名未解析到公网地址（${url.hostname}）`)
+    // Preserve a VPN's routing for the independently verified provider bucket.
+    // TLS below authenticates the original HTTPS hostname on this connection.
     const address = addresses[0]!
     const result = await new Promise<{ redirect?: string; bytes?: Buffer }>((resolve, reject) => {
-      const req = request(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
+      const req = request(url, { rejectUnauthorized: true, signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
         lookup: (_host, options, done) => options.all ? done(null, [{ address: address.address, family: address.family }]) : done(null, address.address, address.family),
       }, res => {
         if ([301, 302, 303, 307, 308].includes(res.statusCode ?? 0) && res.headers.location) { res.resume(); resolve({ redirect: res.headers.location }); return }

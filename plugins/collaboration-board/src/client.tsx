@@ -9,7 +9,7 @@ import { copyFor, errorMessage, type Copy } from './copy.ts';
 import { TaskEditor, aiInstruction } from './editor.tsx';
 import { InboxBadge, InboxPanel, noticeMessage, projectInbox, type InboxRequest } from './inbox.tsx';
 import type { NotificationCenter } from '../../notification-center/src/contract.ts';
-import type { BoardNotice, ProjectTask, TaskStatusWrite, TaskWrite,TaskActionWrite,TaskListQuery,TaskPage as StoredPage } from '../../../services/ipollowork/src/project-board-contract.ts';
+import type { BoardNotice, ProjectTask, TaskStatusWrite, TaskWrite, TaskActionWrite, TaskPage as StoredPage } from '../../../services/ipollowork/src/project-board-contract.ts';
 import { cardFor, dateRange, dateValue, projectCards, shiftDay, shiftMonth, todayKey, views,
   assigneeName, currentAgent, type AgentChoice, type AgentPlan, type BoardNote, type Card, type NativeConversation, type Project, type ProjectRoster, type View } from './model.ts';
 import { Board, Calendar, TaskList, Timeline } from './views.tsx';
@@ -73,9 +73,7 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
   const [view,setView]=useState<View>('board');
   const [query,setQuery]=useState('');
   const [search,setSearch]=useState('');
-  const [taskScope,setTaskScope]=useState<TaskListQuery['scope']>('active');
-  const [selecting,setSelecting]=useState(false);
-  const [selected,setSelected]=useState<ReadonlySet<string>>(new Set());
+  const [taskScope,setTaskScope]=useState<'active'|'archived'>('active');
   const [anchor,setAnchor]=useState(todayKey);
   const [notes,setNotes]=useState<Notes>({});
   const [page,setPage]=useState<TaskPage>();
@@ -106,14 +104,14 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
     return ()=>window.clearInterval(timer);
   },[]);
   useEffect(()=>{const timer=window.setTimeout(()=>setSearch(query),250);return ()=>window.clearTimeout(timer);},[query]);
-  useEffect(()=>{loaded.current=0;setPage(undefined);setSelected(new Set());},[taskUrl]);
+  useEffect(()=>{loaded.current=0;setPage(undefined);},[taskUrl]);
   useEffect(()=>{
     let controller=new AbortController();
     scope.current=AbortSignal.any([controller.signal,lifetime]);
     const accountChanged=()=>{
       controller.abort();controller=new AbortController();scope.current=AbortSignal.any([controller.signal,lifetime]);
       sequence.current++;loaded.current=0;operation.current=null;setPending(false);setError(undefined);setLoadError(undefined);
-      setAgents([currentAgent]);setSuite(false);setEdit(undefined);setNotes({});setPage(undefined);setRoster(undefined);setSelected(new Set());setQuery('');setSearch('');setTaskScope('active');setScheduleFeedback(undefined);refresh(value=>value+1);
+      setAgents([currentAgent]);setSuite(false);setEdit(undefined);setNotes({});setPage(undefined);setRoster(undefined);setQuery('');setSearch('');setTaskScope('active');setScheduleFeedback(undefined);refresh(value=>value+1);
     };
     window.addEventListener('ipollo-account-identity-changed',accountChanged);
     window.addEventListener(projectBoardOwnershipEvent,accountChanged);
@@ -150,7 +148,6 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
         if (signal.aborted || version!==sequence.current) return;
         loaded.current=tasks.length;
         setPage({...result,tasks});
-        setSelected(current=>new Set([...current].filter(id=>tasks.some(task=>task.id===id))));
         setLoadError(undefined);
       } catch (error) {
         if (!signal.aborted && version===sequence.current) { if(initial)setPage(undefined);setLoadError(error); }
@@ -218,38 +215,21 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
     } catch(error) {if(!signal.aborted)setLoadError(error);}
     finally {if(operation.current===signal){operation.current=null;setPending(false);}}
   }
-  async function act(inputs:TaskActionWrite[]){
+  async function act(input:TaskActionWrite){
     if(!writable||!enhanced||operation.current)throw new Error('BOARD_WRITE_FORBIDDEN');
     const signal=scope.current;signal.throwIfAborted();operation.current=signal;sequence.current++;setPending(true);
-    const completed=new Set<string>();let failure:unknown;
-    try{
-      for(const input of inputs){
-        signal.throwIfAborted();
-        try{
-          await request<{task:ProjectTask}>(taskUrl,signal,input);signal.throwIfAborted();completed.add(input.id);
-        }catch(error){if(signal.aborted)throw error;failure=error;}
-      }
-      setSelected(current=>new Set([...current].filter(id=>!completed.has(id))));
-      refresh(value=>value+1);
-      if(failure){const error=new Error(t.batchPartial.replace('{done}',String(completed.size)).replace('{total}',String(inputs.length))+' '+errorMessage(failure,t));error.name='BoardBatchError';throw error;}
+    try {
+      await request<{task:ProjectTask}>(taskUrl,signal,input);
+      signal.throwIfAborted();
       setError(undefined);
-    }finally{if(operation.current===signal){operation.current=null;setPending(false);}}
+    } finally {
+      if(operation.current===signal){
+        operation.current=null;
+        setPending(false);
+        if(!signal.aborted)refresh(value=>value+1);
+      }
+    }
   }
-  function bulk(action:TaskActionWrite['action']){
-    const chosen=taskItems.filter(task=>selected.has(task.id)),ordered:ProjectTask[]=[],seen=new Set<string>();
-    const visit=(task:ProjectTask)=>{
-      if(seen.has(task.id))return;seen.add(task.id);
-      if(action==='delete')chosen.filter(other=>other.predecessorIds.includes(task.id)).forEach(visit);
-      if(action==='restore')chosen.filter(other=>task.predecessorIds.includes(other.id)).forEach(visit);
-      ordered.push(task);
-    };
-    chosen.forEach(visit);void act(ordered.map(task=>({id:task.id,revision:task.revision,action}))).catch(report);
-  }
-  const selection=selecting&&writable&&enhanced?{ids:selected,toggle(id:string){
-    if(!selected.has(id)&&selected.size>=100){setError(new Error('BOARD_BATCH_LIMIT'));return;}
-    setSelected(current=>{
-    const next=new Set(current);if(next.has(id))next.delete(id);else next.add(id);return next;
-  });}}:undefined;
   const range=view==='calendar'||view==='timeline' ? dateRange(view,anchor) : null;
   const month=new Intl.DateTimeFormat(locale,{year:'numeric',month:'long',timeZone:'UTC'});
   const date=new Intl.DateTimeFormat(locale,{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'});
@@ -296,18 +276,9 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
       <SearchBox value={query} change={setQuery} label={t.search} clear={t.clearSearch} />
     </div>
     <div className="cb-lifecycle-toolbar">
-      <FormSelect aria-label={t.taskScope} value={taskScope} disabled={!enhanced||pending} onChange={event=>setTaskScope(event.target.value as TaskListQuery['scope'])}>
-        <option value="active">{t.activeTasks}</option><option value="archived">{t.archivedTasks}</option><option value="trash">{t.trash}</option>
+      <FormSelect aria-label={t.taskScope} value={taskScope} disabled={!enhanced||pending} onChange={event=>setTaskScope(event.target.value==='archived'?'archived':'active')}>
+        <option value="active">{t.activeTasks}</option><option value="archived">{t.archivedTasks}</option>
       </FormSelect>
-      {enhanced&&writable&&<button type="button" className="cb-ghost" aria-pressed={selecting} disabled={pending} onClick={()=>{setSelecting(!selecting);setSelected(new Set());}}>{selecting?t.doneChoosing:t.batchSelect}</button>}
-      {selection&&<>
-        <button type="button" className="cb-ghost" disabled={pending||!taskItems.length} onClick={()=>setSelected(new Set(taskItems.slice(0,100).map(task=>task.id)))}>{t.selectLoaded}</button>
-        <span>{t.selectedTasks.replace('{count}',String(selected.size))}</span>
-        {selected.size>0&&<>
-          {taskScope!=='trash'&&<button type="button" disabled={pending} onClick={()=>bulk(taskScope==='archived'?'unarchive':'archive')}>{taskScope==='archived'?t.unarchive:t.archive}</button>}
-          <button type="button" disabled={pending} onClick={()=>bulk(taskScope==='trash'?'restore':'delete')}>{taskScope==='trash'?t.restore:t.deleteTask}</button>
-        </>}
-      </>}
     </div>
     {page?.remote&&!enhanced&&<p className="cb-inline-note">{t.serverUpgradeRequired}</p>}
     {visibleError!==undefined && <div className="cb-alert"><span role="alert">{errorMessage(visibleError,t)}</span>
@@ -318,18 +289,21 @@ function ProjectBoard({ project, sessionId, summaries, archived, loading, locale
     {(loading || !page && visibleError===undefined) && <p className="cb-empty" role="status">{t.loading}</p>}
     {!loading && page && !visible.length && <p className="cb-empty cb-board-message">{filter ? t.noMatches : t.empty}</p>}
     <div className="cb-content">
-      {view==='board' && <Board tasks={visible} t={t} locale={locale} roster={roster} agents={agents} selection={selection} open={details} clock={clock} writable={writable && !pending&&taskScope==='active'} searching={Boolean(filter)} add={status=>setEdit({status})} move={(card,status)=>{
+      {view==='board' && <Board tasks={visible} t={t} locale={locale} roster={roster} agents={agents} open={details} clock={clock} writable={writable && !pending&&taskScope==='active'} searching={Boolean(filter)} add={status=>setEdit({status})} move={(card,status)=>{
         if(card.task && writable && !pending)void save({id:card.id,revision:card.revision,status}).catch(report);
         else if(writable)setEdit({card,status});
       }} />}
-      {view==='list' && <TaskList tasks={visible} t={t} locale={locale} roster={roster} agents={agents} selection={selection} open={details} />}
+      {view==='list' && <TaskList tasks={visible} t={t} locale={locale} roster={roster} agents={agents} open={details} />}
       {view==='calendar' && range && <Calendar tasks={visible} t={t} open={details} range={range} anchor={anchor} locale={locale} />}
       {view==='timeline' && range && <Timeline tasks={visible} t={t} locale={locale} open={details} range={range} />}
       {page?.next && <button type="button" disabled={pending} onClick={()=>void more()}>{t.more}</button>}
     </div>
     {edit && <TaskEditor key={sessionId+':'+(edit.card?.id ?? 'new')} card={edit.card} roster={page?.remote ? roster : null} agents={agents} tasks={taskItems}
       refreshAgents={()=>refreshAgents(value=>value+1)}
-      writable={writable&&taskScope==='active'} manage={writable&&enhanced} act={async action=>{const task=edit.card?.task;if(task)await act([{id:task.id,revision:task.revision,action}]);}}
+      writable={writable&&taskScope==='active'} manage={writable&&enhanced} setArchived={async archived=>{
+        const task=edit.card?.task;
+        if(task)await act({id:task.id,revision:task.revision,action:archived?'archive':'unarchive'});
+      }}
       t={t} locale={locale} clock={clock} projectTitle={project.title} initialStatus={edit.status} report={report} close={()=>setEdit(undefined)} save={save}
       open={id=>{setEdit(undefined);open(id);}} sessions={project.sessionIds.filter(id=>!archived.includes(id))}
       conversation={session && shareConversation ? {

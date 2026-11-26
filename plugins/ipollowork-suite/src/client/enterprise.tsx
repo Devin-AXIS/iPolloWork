@@ -13,8 +13,8 @@ import {
   IconUsersOutlineRegular,
   IconWorkspaceTreeOutlineRegular,
   Menu,
-  Modal,
-} from "@deepseek-ai/dsh-client-ui-primitives";
+  } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
 import type {
   EnterpriseCatalog,
   EnterpriseDetail,

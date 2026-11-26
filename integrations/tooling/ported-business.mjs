@@ -77,6 +77,8 @@ export async function buildBusiness(slug, directory) {
       await build({ entryPoints: [join(app, 'src/server.ts')], outfile: join(business, 'runtime/dist/server.mjs'), bundle: true, format: 'esm', platform: 'node', target: 'node24',
         nodePaths: [join(legacyApp, 'node_modules')], external: ['sharp', 'bun:sqlite'], alias: { 'node:sqlite': join(business, 'scripts/sqlite-runtime.mjs') } })
       await cp(join(app, 'public'), join(business, 'runtime/public'), { recursive: true })
+      // npm pack excludes nested node_modules even when the parent directory is in files.
+      const vendor = join(business, 'runtime/vendor')
       const copied = new Set()
       async function copyDependency(name, resolver, optional = false) {
         if (isBuiltin(name)) return
@@ -87,16 +89,17 @@ export async function buildBusiness(slug, directory) {
         if (!source) { if (optional) return; throw Error('Missing build dependency: ' + name) }
         copied.add(name)
         const metadata = JSON.parse(await readFile(join(source, 'package.json'), 'utf8'))
-        await cp(source, join(business, 'runtime/node_modules', name), { recursive: true, dereference: true, filter: path => basename(path) !== 'node_modules' })
+        await cp(source, join(vendor, name), { recursive: true, dereference: true, filter: path => basename(path) !== 'node_modules' })
         const child = createRequire(join(source, 'package.json'))
         for (const key of Object.keys(metadata.dependencies ?? {})) await copyDependency(key, child)
         for (const key of Object.keys(metadata.optionalDependencies ?? {})) await copyDependency(key, child, true)
       }
       await copyDependency('sharp', dependency)
+      await access(join(vendor, '@img', `sharp-${process.platform}-${process.arch}`, 'lib', `sharp-${process.platform}-${process.arch}.node`))
       let iconRoot
       for (const directory of dependency.resolve.paths('@tabler/icons-webfont') ?? []) if (await exists(join(directory, '@tabler/icons-webfont/package.json'))) { iconRoot = await realpath(join(directory, '@tabler/icons-webfont')); break }
       if (!iconRoot) throw Error('Missing locked webfont dependency')
-      const iconTarget = join(business, 'runtime/node_modules/@tabler/icons-webfont')
+      const iconTarget = join(vendor, '@tabler/icons-webfont')
       for (const file of ['package.json', 'LICENSE', 'dist/tabler-icons.min.css', 'dist/fonts/tabler-icons.woff2']) { await mkdir(dirname(join(iconTarget, file)), { recursive: true }); await cp(join(iconRoot, file), join(iconTarget, file)) }
       await writeFile(join(business, 'runtime/package.json'), '{"type":"module"}\n')
       execFileSync(process.execPath, ['--check', join(business, 'runtime/dist/server.mjs')])

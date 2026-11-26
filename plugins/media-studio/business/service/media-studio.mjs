@@ -83,6 +83,10 @@ function promptWithVariables(input) {
 
 function hostResult(value) {
   if (!isRecord(value)) throw new Error("Image provider returned an invalid result");
+  if (value.ok === false) throw Object.assign(
+    new Error(text(value.message) || "图片模型暂不可用，请检查模型配置。"),
+    { code: "IPW_PORTED_MEDIA_FAILED" },
+  );
   const result = Reflect.get(value, "result");
   if (!isRecord(result)) throw new Error("Image provider returned an invalid result");
   return result;
@@ -182,6 +186,10 @@ export default async function createMediaStudioService(runtime) {
           size: field(input, "size") || "auto",
         },
       ),
+
+      "recover-image": async (input) => callProvider("openai-image-generation/image_recover", {
+        requestId: requiredField(input, "requestId", 36),
+      }),
 
       "edit-image": async (input) => callProvider(
         "openai-image-generation/image_edit",

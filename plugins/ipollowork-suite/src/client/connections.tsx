@@ -1,7 +1,8 @@
 import { FormButton, TextInput } from '../../../_shared/ui/controls.tsx'
 /** One suite-owned editor for every registered plugin's connection fields and its billing source. */
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { IconChevronLeftOutlineRegular, IconLinkOutlineRegular, IconSparkleRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconChevronLeftOutlineRegular, IconLinkOutlineRegular, IconSparkleRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
 import type { ConnectionProvider, ConnectionStatus, ConnectionText } from '../shared/connections.ts'
 import type { ClientContext } from './native.ts'
 import { labelSource, language } from './locale.ts'

@@ -316,6 +316,9 @@ function refresh() {
     .then((data) => {
       const priorAssets = model.data.assets;
       data.assets = data.assets.map((asset) => {
+        if (window.ipolloPortedHost && asset.previewUrl?.startsWith("/api/media/")) {
+          asset = { ...asset, previewUrl: new URL(asset.previewUrl.slice(1), location.href).href };
+        }
         const prior = priorAssets.find((item) => item.id === asset.id);
         return prior?.previewUrl &&
           Number(
@@ -396,6 +399,7 @@ async function openTarget(target) {
   });
   if (result?.isError)
     throw new Error("账号浏览器未打开，请从主软件重新打开运营台。");
+  return result;
 }
 async function connect(id) {
   await getHost();
@@ -408,8 +412,10 @@ async function connect(id) {
   const target = await action("connect-account", id ? { accountId: id } : {});
   await selectAccount(target.account.id);
   await refresh();
-  await openTarget(target);
-  notify("请在账号浏览器扫码登录，完成后会自动识别。");
+  const result = await openTarget(target);
+  notify(result?.browser === "external"
+    ? "请在系统浏览器打开的视频号页面扫码。当前工作台无法自动确认该浏览器中的登录。"
+    : "请在账号浏览器扫码登录，完成后会自动识别。");
 }
 const dispatchKey = (job, reconcile = false) =>
   reconcile ? `reconcile:${job.id}:${job.status}:${job.updatedAt}` : job.id;
@@ -470,6 +476,7 @@ async function upload(file, kind) {
   });
   editDraft(kind === "video" ? "assetId" : "coverId", asset.id);
   await saveDraft();
+  await refreshing?.catch(() => {});
   await refresh();
   notify("素材已上传并保存到草稿。");
 }
@@ -495,7 +502,9 @@ function Accounts() {
         h(
           ui.DialogDescription,
           null,
-          "每个账号使用独立的浏览器环境，扫码后自动识别。",
+          window.ipolloPortedHost
+            ? "在系统浏览器的视频号官方页面扫码，工作台会保留待核验的账号。"
+            : "每个账号使用独立的浏览器环境，扫码后自动识别。",
         ),
       ),
       model.notice &&
@@ -514,6 +523,8 @@ function Accounts() {
         h(ui.Icon, { name: "Plus" }),
         pending.has("connect") ? "正在打开…" : "扫码添加账号",
       ),
+      window.ipolloPortedHost &&
+        h("a", { href: "https://channels.weixin.qq.com/login.html", target: "_blank", rel: "noopener noreferrer" }, "手动打开视频号扫码页"),
       h(
         "div",
         { className: "stack compact" },

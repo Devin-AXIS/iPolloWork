@@ -5,7 +5,8 @@ import type {
   CredentialStore,
 } from "../shared/types.ts";
 import type { ResolvedConfig } from "./config.ts";
-import { AppDataRejection, InvitationRosterRejection, StageRejection, SuiteError } from "./errors.ts";
+import { setTimeout as delay } from "node:timers/promises";
+import { AppDataRejection, InvitationRosterRejection, ModelServiceError, StageRejection, SuiteError } from "./errors.ts";
 import { desktopEnterprise, hasEnterpriseDesktop } from "./desktop-enterprise.ts";
 
 const KEY = "ipollowork-suite/account";
@@ -18,6 +19,44 @@ export function publicAccountState({ origin: _origin, ...state }: HostAccountSta
 }
 const object = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const gatewayErrors: Readonly<Record<number, string>> = {
+  502: "IPW_ACCOUNT_HTTP_502",
+  503: "IPW_ACCOUNT_HTTP_503",
+  504: "IPW_ACCOUNT_HTTP_504",
+};
+const retryableAccountReads = new Set([
+  ...Object.values(gatewayErrors), "SERVICE_DRAINING", "SERVICE_BUSY", "SERVICE_QUEUE_TIMEOUT", "DATABASE_UNAVAILABLE",
+]);
+const catalogReads = new Set(["/api/auth/get-session", "/api/v1/enterprises", "/api/v1/projects"]);
+const socketCodes = new Set(["ECONNABORTED", "ECONNREFUSED", "ECONNRESET", "EHOSTUNREACH", "ENETDOWN",
+  "ENETUNREACH", "EPIPE", "UND_ERR_SOCKET"]);
+const timeoutCodes = new Set(["ETIMEDOUT", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT", "UND_ERR_BODY_TIMEOUT"]);
+
+function connectionFailure(cause: unknown) {
+  if (!(cause instanceof TypeError) || !["fetch failed", "terminated"].includes(cause.message)) return undefined;
+  const underlying = cause.cause;
+  if (underlying instanceof Error && underlying.message === "unexpected redirect")
+    return { code: "IPW_INVALID_RESPONSE", retry: false };
+  const failures = underlying instanceof AggregateError ? underlying.errors : [underlying];
+  const codes: string[] = failures.flatMap(error => error instanceof Error && "code" in error && typeof error.code === "string" ? [error.code] : []);
+  if (codes.length && codes.every(code => code === "ENOTFOUND" || code === "EAI_AGAIN"))
+    return { code: "IPW_ACCOUNT_DNS_FAILED", retry: codes.includes("EAI_AGAIN") };
+  if (codes.some(code => /^(?:CERT_|ERR_(?:TLS|SSL)_|DEPTH_ZERO_SELF_SIGNED_CERT$|SELF_SIGNED_CERT_IN_CHAIN$|UNABLE_TO_(?:GET_ISSUER_CERT|VERIFY_LEAF_SIGNATURE))/.test(code)))
+    return { code: "IPW_ACCOUNT_TLS_FAILED", retry: false };
+  if (codes.length && codes.every(code => timeoutCodes.has(code)))
+    return { code: "IPW_ACCOUNT_TIMEOUT", retry: true };
+  if (cause.message === "terminated" || codes.some(code => socketCodes.has(code)))
+    return { code: "IPW_ACCOUNT_CONNECTION_FAILED", retry: true };
+  return { code: "IPW_ACCOUNT_UNAVAILABLE", retry: codes.length === 0 };
+}
+
+function accountRetryDelay(response?: Response): number {
+  const header = response?.headers.get("retry-after");
+  if (!header) return 250;
+  const wait = /^\d+$/.test(header) ? Number(header) * 1000 : Date.parse(header) - Date.now();
+  return Number.isNaN(wait) ? 250 : Math.max(0, wait);
+}
 
 /** Bounded JSON reader shared by the upstream account calls. */
 export async function readJson(
@@ -82,28 +121,63 @@ export class AccountService {
     timeoutMs = this.config.requestTimeoutMs,
     maximum=this.config.maxResponseBytes,
   ): Promise<unknown> {
-    let response: Response;
+    const requestMethod = method ?? (body === undefined ? "GET" : "POST");
+    const read = requestMethod === "GET" && body === undefined;
+    const revision = this.revision;
+    const deadline = AbortSignal.timeout(timeoutMs);
     const requestSignal = AbortSignal.any([
-      this.signal, ...(signal ? [signal] : []), AbortSignal.timeout(timeoutMs),
+      this.signal, ...(signal ? [signal] : []), deadline,
     ]);
-    try {
-      response = await this.fetcher(this.config.accountOrigin + path, {
-        method: method ?? (body === undefined ? "GET" : "POST"),
-        redirect: "error",
-        headers: {
-          Accept: "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-        },
-        signal: requestSignal,
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
-    } catch (cause) {
+    const init: RequestInit = {
+      method: requestMethod,
+      redirect: "error",
+      headers: {
+        Accept: "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    };
+    for (let attempt = 0; ; attempt++) {
       if (signal?.aborted) throw signal.reason;
-      if (requestSignal.aborted && requestSignal.reason instanceof Error && requestSignal.reason.name === 'TimeoutError')
-        throw new SuiteError('IPW_ACCOUNT_TIMEOUT', 504, { cause });
-      throw new SuiteError("IPW_ACCOUNT_UNAVAILABLE", 502, { cause });
+      this.signal.throwIfAborted();
+      if (deadline.aborted) throw new SuiteError("IPW_ACCOUNT_TIMEOUT", 504, { cause: deadline.reason });
+      if (attempt && revision !== this.revision) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
+      // Reserve time for one fresh catalog read if the first connection hangs.
+      const first = read && attempt === 0 && timeoutMs >= 5000 && catalogReads.has(path)
+        ? AbortSignal.timeout(Math.min(10_000, Math.floor(timeoutMs / 2))) : undefined;
+      const attemptSignal = first ? AbortSignal.any([requestSignal, first]) : requestSignal;
+      let response: Response | undefined;
+      try {
+        response = await this.fetcher(this.config.accountOrigin + path, { ...init, signal: attemptSignal });
+        const result = await this.readResponse(path, response, maximum);
+        attemptSignal.throwIfAborted();
+        return result;
+      } catch (cause) {
+        if (signal?.aborted) throw signal.reason;
+        this.signal.throwIfAborted();
+        if (deadline.aborted) throw new SuiteError("IPW_ACCOUNT_TIMEOUT", 504, { cause });
+        const attemptTimedOut = first?.aborted && attemptSignal.reason === first.reason;
+        const connection = connectionFailure(cause);
+        if (read && attempt === 0 && (attemptTimedOut || connection?.retry
+          || (cause instanceof SuiteError && retryableAccountReads.has(cause.code)))) {
+          const wait = accountRetryDelay(response);
+          if (wait <= 2000) {
+            await delay(wait, undefined, { signal: requestSignal }).catch(error => {
+              if (!requestSignal.aborted) throw error;
+            });
+            continue;
+          }
+        }
+        if (attemptTimedOut || connection?.code === "IPW_ACCOUNT_TIMEOUT")
+          throw new SuiteError("IPW_ACCOUNT_TIMEOUT", 504, { cause });
+        if (cause instanceof SuiteError) throw cause;
+        throw new SuiteError(connection?.code ?? "IPW_ACCOUNT_UNAVAILABLE", 502, { cause });
+      }
     }
+  }
+
+  private async readResponse(path: string, response: Response, maximum: number): Promise<unknown> {
     if (!response.ok) {
       if (path.startsWith("/api/data/v1/")) {
         const data = await readJson(response, maximum);
@@ -112,7 +186,7 @@ export class AccountService {
             ? data.code
             : response.status === 401
               ? "IPW_SIGN_IN_REQUIRED"
-              : "IPW_ACCOUNT_UNAVAILABLE";
+              : gatewayErrors[response.status] ?? "IPW_ACCOUNT_UNAVAILABLE";
         const reason =
           object(data) && typeof data.error === "string" ? data.error.slice(0, 300) : code;
         throw new AppDataRejection(code, response.status, reason);
@@ -126,7 +200,7 @@ export class AccountService {
             ? data.code
             : response.status === 401 ? 'IPW_SIGN_IN_REQUIRED'
               : response.status === 403 ? 'RESOURCE_FORBIDDEN'
-                : response.status === 429 ? 'RATE_LIMITED' : 'IPW_ACCOUNT_UNAVAILABLE';
+                : response.status === 429 ? 'RATE_LIMITED' : gatewayErrors[response.status] ?? 'IPW_ACCOUNT_UNAVAILABLE';
         if(path.startsWith('/api/v1/stage/')&&object(data)&&typeof data.error==='string')throw new StageRejection(code,response.status,data.error.slice(0,500));
         if (path.endsWith("/join-codes/batch") && object(data) && typeof data.row === "number" && Number.isSafeInteger(data.row) && data.row > 0)
           throw new InvitationRosterRejection(code, response.status, data.row);
@@ -148,8 +222,8 @@ export class AccountService {
       throw new SuiteError(
         response.status === 401 || response.status === 403
           ? "IPW_SIGN_IN_REQUIRED"
-          : "IPW_ACCOUNT_UNAVAILABLE",
-        response.status === 401 || response.status === 403 ? 401 : 502,
+          : gatewayErrors[response.status] ?? "IPW_ACCOUNT_UNAVAILABLE",
+        response.status === 401 || response.status === 403 ? 401 : gatewayErrors[response.status] ? response.status : 502,
       );
     }
     return readJson(response, maximum);
@@ -363,7 +437,10 @@ export class AccountService {
         object(data) && typeof data.code === "string"
           ? data.code
           : "IPW_SERVICE_UNAVAILABLE";
-      throw new SuiteError(code, response.status);
+      const upstream = object(data) ? data.upstreamStatus : undefined;
+      const upstreamStatus = typeof upstream === "number" && Number.isInteger(upstream) && upstream >= 400 && upstream <= 599
+        ? upstream : undefined;
+      throw new ModelServiceError(code, response.status, upstreamStatus);
     }
     return response;
   }

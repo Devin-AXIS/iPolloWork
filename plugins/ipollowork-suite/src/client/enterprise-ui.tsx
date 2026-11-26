@@ -1,7 +1,8 @@
 import { FormButton, TextInput } from '../../../_shared/ui/controls.tsx'
 /** Shared enterprise-page building blocks over native DSH primitives. */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Button, IconRefreshOutlineRegular, MarkdownText, Modal, Toast, UserMessageBubble, useClipboardCopy, relativeTime, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconRefreshOutlineRegular, MarkdownText, Toast, UserMessageBubble, useClipboardCopy, relativeTime, type MarkdownLabels } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
 import type { MemberPage, MemberQuery, SharedMessage } from '../shared/enterprise.ts'
 import type { EnterpriseState } from './enterprise-controller.ts'
 import { enterpriseError, format, type EnterpriseLabels } from './enterprise-locale.ts'
@@ -148,10 +149,12 @@ export function Transcript({ messages, t, collapsed = 4 }: { messages: readonly 
   </div>
 }
 
-export function CopyLink({ url, t, onCopied, label = t.invitation }: { url: string; t: EnterpriseLabels; onCopied?: () => void; label?: string }) {
+export function CopyLink({ url, t, onCopied, label = t.invitation, copyLabel = t.copy }: {
+  url: string; t: EnterpriseLabels; onCopied?: () => void; label?: string; copyLabel?: string;
+}) {
   const { copied, onCopy } = useClipboardCopy(url)
   useEffect(() => { if (copied) onCopied?.() }, [copied])
-  return <div className={css.enterpriseLink}><TextInput aria-label={label} readOnly value={url} onFocus={e => e.currentTarget.select()}/><FormButton variant="outline" onClick={onCopy}>{copied ? t.copied : t.copy}</FormButton></div>
+  return <div className={css.enterpriseLink}><TextInput aria-label={label} readOnly value={url} onFocus={e => e.currentTarget.select()}/><FormButton variant="outline" onClick={onCopy}>{copied ? t.copied : copyLabel}</FormButton></div>
 }
 
 /** Destructive confirmation; the dialog stays open with its error when the action fails. */

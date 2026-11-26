@@ -2,13 +2,6 @@
   "format": 1,
   "plugins": [
     {
-      "name": "@ipollo/dsh-decision-intelligence",
-      "version": "1.0.3",
-      "file": "ipollo-dsh-decision-intelligence-1.0.3-a885fbc7aa71.tgz",
-      "sha256": "a885fbc7aa71983b53bc545f4c333dec81b42b5ad549c3a461be0414354cc72b",
-      "tag": "v1.0.16"
-    },
-    {
       "name": "@ipollo/dsh-data-annotation",
       "version": "0.1.4",
       "file": "ipollo-dsh-data-annotation-0.1.4-ea0913f16da1.tgz",
@@ -60,27 +53,9 @@
     },
     {
       "name": "@ipollo/dsh-conversation-export",
-      "version": "0.1.0",
-      "file": "ipollo-dsh-conversation-export-0.1.0-7cd7940ab0a0.tgz",
-      "sha256": "7cd7940ab0a0fa085f50b3c08a67d77c0f69aca676fc9150385ca2e6fafc5923"
-    },
-    {
-      "name": "@ipollo/dsh-task-templates",
       "version": "0.1.1",
-      "file": "ipollo-dsh-task-templates-0.1.1-0a441c722da5.tgz",
-      "sha256": "0a441c722da5baa80dd3c40a310d0c0527d30152729847a70d25750e089def5f"
-    },
-    {
-      "name": "@ipollo/dsh-reference-preparation",
-      "version": "0.1.1",
-      "file": "ipollo-dsh-reference-preparation-0.1.1-a4437fa3ef7f.tgz",
-      "sha256": "a4437fa3ef7f7bbfea2249d8c4785b48ecc7c720b66c0a56eb47df5e4af9d510"
-    },
-    {
-      "name": "@ipollo/dsh-legacy-workspace-import",
-      "version": "0.1.0",
-      "file": "ipollo-dsh-legacy-workspace-import-0.1.0-3ca0122d4ae4.tgz",
-      "sha256": "3ca0122d4ae427e22a5b84737355de86c2ded8ddad15952cb9b81d2daff6e6e0"
+      "file": "ipollo-dsh-conversation-export-0.1.1-2831edec7f7e.tgz",
+      "sha256": "2831edec7f7e470f40942e908234a989961967d98fae22258ce4d115538312cc"
     },
     {
       "name": "deepseek-idesign",
@@ -95,24 +70,10 @@
       "sha256": "819ee90e5d2bfc5eaf8ac1a1f90c1a9249976bd74c5840b698c79d518c1b6ddd"
     },
     {
-      "name": "@ipollo/dsh-acme-research",
-      "version": "0.1.6",
-      "file": "ipollo-dsh-acme-research-0.1.6-8ae47aad691a.tgz",
-      "sha256": "8ae47aad691a2650c694626f13ccecd3648aae3c8349ca0b70d545c00b4db88a",
-      "tag": "v1.0.20"
-    },
-    {
       "name": "@ipollo/dsh-context7",
       "version": "0.1.6",
       "file": "ipollo-dsh-context7-0.1.6-f6912613e6b9.tgz",
       "sha256": "f6912613e6b9307a5be40973b85f20c28c1bd4a0246ccd61b42231e81e0cc26c",
-      "tag": "v1.0.20"
-    },
-    {
-      "name": "@ipollo/dsh-douyin-ops",
-      "version": "0.1.6",
-      "file": "ipollo-dsh-douyin-ops-0.1.6-37e5b7db56e2.tgz",
-      "sha256": "37e5b7db56e289e863d10abc958d737bfb772b7cb0eef86561f23c97c85933e2",
       "tag": "v1.0.20"
     },
     {
@@ -150,13 +111,6 @@
       "tag": "v1.0.20"
     },
     {
-      "name": "@ipollo/dsh-media-studio",
-      "version": "0.1.8",
-      "file": "ipollo-dsh-media-studio-0.1.8-10278ac7bee7.tgz",
-      "sha256": "10278ac7bee744336d7b74d59e072fe88e534e437aec2b55024c2e2070693969",
-      "tag": "v1.0.20"
-    },
-    {
       "name": "@ipollo/dsh-notion",
       "version": "0.1.6",
       "file": "ipollo-dsh-notion-0.1.6-7fc1427a17c6.tgz",
@@ -185,13 +139,6 @@
       "tag": "v1.0.20"
     },
     {
-      "name": "@ipollo/dsh-wechat-channels-ops",
-      "version": "0.1.6",
-      "file": "ipollo-dsh-wechat-channels-ops-0.1.6-3eac10407254.tgz",
-      "sha256": "3eac104072540104843a901e2e3d2c75c9d31511f7a255eae533b76653709390",
-      "tag": "v1.0.20"
-    },
-    {
       "name": "@ipollo/dsh-wechat-official",
       "version": "0.1.8",
       "file": "ipollo-dsh-wechat-official-0.1.8-0c05b558efbf.tgz",
@@ -199,18 +146,39 @@
       "tag": "v1.0.20"
     },
     {
-      "name": "@ipollo/dsh-workspace-canvas",
+      "name": "@ipollo/dsh-douyin-ops",
       "version": "0.1.7",
-      "file": "ipollo-dsh-workspace-canvas-0.1.7-2bdc9a87efe6.tgz",
-      "sha256": "2bdc9a87efe61c4d541722e1ec5d3f15c5ce0a8a90125ee23f154dd8396d170f",
-      "tag": "v1.0.20"
+      "file": "ipollo-dsh-douyin-ops-0.1.7-eee19e6a3609.tgz",
+      "sha256": "eee19e6a3609bd49cf2d81110e1456dd388203ec4e875ab66114fca5be273b53",
+      "tag": "v1.0.22"
+    },
+    {
+      "name": "@ipollo/dsh-media-studio",
+      "version": "0.1.9",
+      "file": "ipollo-dsh-media-studio-0.1.9-322ebd259f48.tgz",
+      "sha256": "322ebd259f48cad8c2efd0b5681dc451eaefbf88a21f9d2f3f73e33e11a6c6a1",
+      "tag": "v1.0.22"
+    },
+    {
+      "name": "@ipollo/dsh-wechat-channels-ops",
+      "version": "0.1.7",
+      "file": "ipollo-dsh-wechat-channels-ops-0.1.7-654599bf34be.tgz",
+      "sha256": "654599bf34be8aa91baef1a3979ada95f88e70f3cd7afcc4ddc6d099a80770ac",
+      "tag": "v1.0.22"
     },
     {
       "name": "@ipollo/dsh-xiaohongshu-ops",
-      "version": "0.1.8",
-      "file": "ipollo-dsh-xiaohongshu-ops-0.1.8-5407117828c5.tgz",
-      "sha256": "5407117828c5328437562101d3d937a25e35e0d9f22ccc67f154a48a3967ab3b",
-      "tag": "v1.0.20"
+      "version": "0.1.9",
+      "file": "ipollo-dsh-xiaohongshu-ops-0.1.9-a2af2ee4f07b.tgz",
+      "sha256": "a2af2ee4f07b6d97241da6c4405071194181b375b7fbca554a33704c08cca82b",
+      "tag": "v1.0.22"
+    },
+    {
+      "name": "@ipollo/dsh-decision-intelligence",
+      "version": "1.0.4",
+      "file": "ipollo-dsh-decision-intelligence-1.0.4-7a5edde4f883.tgz",
+      "sha256": "7a5edde4f88354ac9823607945d2f5124014687004e4f76a81afb99312e22bd2",
+      "tag": "v1.0.22"
     }
   ]
 }

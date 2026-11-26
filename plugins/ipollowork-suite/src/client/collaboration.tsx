@@ -4,19 +4,23 @@ import { FilePicker } from "./file-picker.tsx";
 import {
   Button,
   IconChevronLeftOutlineRegular,
-  Modal,
   SegmentedTabs,
   Tag,
 } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
+import { FormSelect, SearchInput } from "../../../_shared/ui/controls.tsx";
+import { audienceReady } from "../../../../services/ipollowork/src/audience-scope.ts";
+import { waitForDeletion } from "./deletion.ts";
 import type {
   EnterpriseCatalog,
+  EnterpriseDetail,
   ProjectSpace,
   ProjectRole,
   ProjectChange,
 } from "../shared/enterprise.ts";
 import type { EnterpriseController } from "./enterprise-controller.ts";
 import { format, type EnterpriseLabels } from "./enterprise-locale.ts";
-import { RowMenu } from "./enterprise-assets.tsx";
+import { AudienceFields, RowMenu } from "./enterprise-assets.tsx";
 import {
   DirectoryStatus,
   EmptyState,
@@ -35,6 +39,7 @@ import {
 } from "./enterprise-ui.tsx";
 import { request } from "./api.ts";
 import { projectCopy } from "./project-copy.ts";
+import { projectAudience, projectScopeAccess, type ProjectAccess } from "../../../../services/ipollowork/src/project-audience.ts";
 import {
   ProjectDownload,
   ProjectFiles,
@@ -253,7 +258,7 @@ export function ProjectView({ id, view: sourceView }: { id: string; view: ViewPr
           </Button>
         )}
         {space.project.publishedAt && <Tag tone="outline">{c.published}</Tag>}
-        {maintain && (
+        {maintain && space.project.enterpriseId && (
           <Button variant="ghost" onClick={() => setDialog("access")}>
             {c.people}
           </Button>
@@ -264,12 +269,14 @@ export function ProjectView({ id, view: sourceView }: { id: string; view: ViewPr
           </Button>
         )}
         {space.project.canDelete && <RowMenu t={t}
-          items={[{ id: "delete", label: t.deleteProject, danger: true }]}
-          onSelect={() => controller.open({
-            kind: "confirm", title: format(t.deleteProjectTitle, { name: space.project.title }),
-            description: t.deleteProjectBody, confirmLabel: t.deleteProject,
+          items={[{ id: "remove", label: t.deleteProject }, { id: "purge", label: t.purgeProject, danger: true }]}
+          onSelect={action => controller.open({
+            kind: "confirm", title: format(action === "purge" ? t.purgeProjectTitle : t.deleteProjectTitle, { name: space.project.title }),
+            description: action === "purge" ? t.purgeProjectBody : t.deleteProjectBody,
+            confirmLabel: action === "purge" ? t.purgeProject : t.deleteProject,
             run: async () => {
-              await call("/projects/" + id, undefined, "DELETE");
+              if (action === "purge") await waitForDeletion(await call("/projects/" + id + "/permanent", undefined, "DELETE"));
+              else await call("/projects/" + id, undefined, "DELETE");
               controller.back();
               await controller.load();
             },
@@ -425,7 +432,6 @@ export function ProjectView({ id, view: sourceView }: { id: string; view: ViewPr
           title={review.title}
           closeLabel={c.close}
           className={css.enterpriseModal + " " + css.enterpriseWide}
-          contentClassName={css.enterpriseModalContent!}
           onClose={() => {
             if (!task.busy) setReview(null);
           }}
@@ -629,7 +635,6 @@ function SubmitDialog({
       title={c.submit}
       closeLabel={c.close}
       className={css.enterpriseModal + " " + css.enterpriseWide}
-      contentClassName={css.enterpriseModalContent!}
       onClose={() => {
         if (!task.busy) close();
       }}
@@ -726,17 +731,78 @@ function SubmitDialog({
     </Modal>
   );
 }
-function AccessDialog({
-  space,
-  view,
-  close,
-  done,
-}: {
+type AccessDialogProps = {
   space: ProjectSpace;
   view: ViewProps;
   close(): void;
   done(): Promise<void>;
+};
+
+function AccessDialog(props: AccessDialogProps) {
+  const { space, view, close } = props;
+  const { t, call, revision } = view;
+  const c = projectCopy(view.language);
+  const enterpriseId = space.project.enterpriseId;
+  const access = useRecord<ProjectAccess>("/projects/" + space.project.id + "/access", call, revision);
+  const organization = useRecord<EnterpriseDetail>(enterpriseId ? "/organizations/" + enterpriseId : null, call, revision);
+  const [byMember, setByMember] = useState(false);
+  if (byMember) return <MemberAccessDialog {...props}/>;
+  if (enterpriseId && access.data && organization.data) {
+    return <ProjectScopeDialog {...props} enterpriseId={enterpriseId}
+      access={access.data} detail={organization.data} editMembers={() => setByMember(true)}/>;
+  }
+  return <Modal open title={c.people} closeLabel={c.close} className={css.enterpriseModal!} onClose={close}>
+    <FormError message={access.error || organization.error}/>
+    {access.error || organization.error
+      ? <Button variant="outline" onClick={() => { access.reload(); organization.reload(); }}>{t.refresh}</Button>
+      : <ListSkeleton/>}
+  </Modal>;
+}
+
+function ProjectScopeDialog({ space, view, close, done, enterpriseId, access, detail, editMembers }: AccessDialogProps & {
+  enterpriseId: string;
+  access: ProjectAccess;
+  detail: EnterpriseDetail;
+  editMembers(): void;
 }) {
+  const { t, call, revision } = view;
+  const c = projectCopy(view.language);
+  const task = useTask(t);
+  const [draft, setDraft] = useState(() => projectAudience(access));
+  const [role, setRole] = useState<ProjectRole | "">("");
+  const original = projectAudience(access);
+  const changed = JSON.stringify(draft) !== JSON.stringify(original) || role !== "";
+  const targeted = draft.scope === "employees" || draft.scope === "departments" || draft.scope === "mixed";
+  const canEditMembers = original.scope === "employees";
+  return <Modal open title={c.people} closeLabel={c.close} className={css.enterpriseModal!}
+    onClose={() => { if (!task.busy) close(); }}
+    footer={<div className={css.dialogFooter}>
+      <Button variant="outline" disabled={task.busy} onClick={close}>{c.cancel}</Button>
+      <Button variant="primary" disabled={task.busy || !changed || !audienceReady(draft)} onClick={() => void task.run(async () => {
+        await call("/projects/" + space.project.id + "/access", projectScopeAccess(draft, role, access.grants), "PUT");
+        close();
+        await done();
+      })}>{c.save}</Button>
+    </div>}>
+    <div className={css.enterpriseForm}>
+      <AudienceFields enterpriseId={enterpriseId} detail={detail} t={t} call={call} revision={revision}
+        value={draft} change={next => { setDraft(next); if (next.scope !== draft.scope) setRole(""); }}
+        disabled={task.busy} includeDepartmentTree={false}/>
+      {targeted && <Field label={t.permission}>
+        <FormSelect value={role} disabled={task.busy} onChange={event => setRole(event.target.value as ProjectRole | "")}>
+          <option value="">{c.keepProjectRoles}</option>
+          {(["view", "participate", "maintain"] as const).map(value => <option key={value} value={value}>{c[value]}</option>)}
+        </FormSelect>
+      </Field>}
+      {canEditMembers && !changed && <div className={css.enterpriseActions}>
+        <Button variant="outline" onClick={editMembers}>{c.editMemberRoles}</Button>
+      </div>}
+      <FormError message={task.error}/>
+    </div>
+  </Modal>;
+}
+
+function MemberAccessDialog({ space, view, close, done }: AccessDialogProps) {
   const c = projectCopy(view.language);
   const task = useTask(view.t);
   const [query, setQuery] = useState("");
@@ -747,13 +813,13 @@ function AccessDialog({
   const roles = ["view", "participate", "maintain"] as const;
   const changes = Object.entries(edits).map(([subjectId, role]) => ({ subjectId, role }));
   return <Modal open title={c.people} closeLabel={c.close} className={css.enterpriseModal + " " + css.enterpriseWide}
-    contentClassName={css.enterpriseModalContent!} onClose={() => { if (!task.busy) close(); }}>
+    onClose={() => { if (!task.busy) close(); }}>
     <div className={css.enterpriseForm}>
-      <Field label={view.t.searchMembers}><input type="search" maxLength={120} value={query}
+      <Field label={view.t.searchMembers}><SearchInput maxLength={120} value={query}
         onChange={event => setQuery(event.target.value)} /></Field>
       <div className={css.enterpriseList}>
-        {directory.data?.items.map(member => <Row key={member.userId} title={member.name || member.email}
-          meta={[member.email, member.employeeNumber].filter(Boolean).join(" · ")}
+        {directory.data?.items.map(member => <Row key={member.userId} title={member.name}
+          meta={member.employeeNumber ?? undefined}
           actions={member.role === "owner" || member.role === "admin" ? <Tag tone="outline">{c.maintain}</Tag> :
             <select aria-label={c.member + " · " + member.name} disabled={task.busy}
               value={(Object.hasOwn(edits, member.userId) ? edits[member.userId] : member.projectRole) ?? "none"}

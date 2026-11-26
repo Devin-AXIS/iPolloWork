@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "private": true,
   "type": "module",
-  "description": "Join an existing iPolloOS enterprise through the iPolloWork plugin.",
+  "description": "Join an existing iPolloOS organization through the iPolloWork plugin.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

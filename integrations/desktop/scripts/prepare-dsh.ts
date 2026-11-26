@@ -35,7 +35,7 @@ import {
 } from './macos-runtime.ts'
 import { desktopTargetPlatform, resolveDesktopBuildTarget, resolveDesktopTargetBuildPaths } from './desktop-build-paths.mjs'
 import { desktopRuntimeFileExclusion } from './runtime-file-policy.ts'
-import { selectOfficeEngine } from '../../../scripts/libreoffice-packages.mjs'
+import { selectOfficeEngine } from '../../../.upstream/dsh/scripts/libreoffice-packages.mjs'
 import { desktopElectronExecutable } from './desktop-electron-executable.ts'
 import { readEnterprisePackageNames } from './pack-enterprise-plugins.ts'
 

@@ -9,20 +9,18 @@ const require = createRequire(join(root, 'plugins/ipollowork-suite/package.json'
 const { createElement } = require('react')
 const { renderToStaticMarkup } = require('react-dom/server')
 const colors = {
-  'acme-research': ['#e6f4ef', '#247556'], 'deepseek-harness': ['#e9edfa', '#425bc0'],
+  'deepseek-harness': ['#e9edfa', '#425bc0'],
   'ipollo-onto': ['#e5f3f8', '#217b94'], 'jev-decision-model': ['#eeebfa', '#7050ad'],
   'media-studio': ['#e5f1ff', '#356cb5'], 'reference-context': ['#fff1df', '#99612d'],
-  'short-video-studio': ['#fcebf2', '#b34270'], 'workspace-canvas': ['#e4f5f2', '#247b6b'],
+  'short-video-studio': ['#fcebf2', '#b34270'],
   'data-annotation': ['#edf4df', '#5d772c'], 'operation-recorder': ['#fff0e7', '#af5d30'],
   'markdown-editor': ['#e2efff', '#3c629e'], 'excel-editor': ['#e4f4e9', '#277554'],
-  'conversation-export': ['#efeafa', '#7259a7'], 'task-templates': ['#e8effa', '#3a598d'],
-  'reference-preparation': ['#fff1df', '#99612d'], 'legacy-workspace-import': ['#f9edeb', '#a34d46'],
+  'conversation-export': ['#efeafa', '#7259a7'],
 }
 
 // Product-authored plugins use their existing glyphs. Connectors with published
 // brand artwork keep the package image supplied by their manifest.
 const badgeColors = {
-  'acme-research': ['#138368', '#116049'],
   'conversation-export': ['#7651c9', '#5633a1'],
   'data-annotation': ['#68862c', '#49621a'],
   'decision-intelligence': ['#4174d8', '#2a51af'],
@@ -33,18 +31,14 @@ const badgeColors = {
   'excel-editor': ['#258c53', '#17673b'],
   'ipollo-onto': ['#0d83a4', '#09627b'],
   'jev-decision-model': ['#9754ce', '#7035ad'],
-  'legacy-workspace-import': ['#b76939', '#8b4726'],
   'markdown-editor': ['#3577ce', '#2458a6'],
   'media-studio': ['#2b83c9', '#1c629e'],
   'operation-recorder': ['#cc613c', '#a44124'],
   'plugin-workshop': ['#536bd1', '#3b4da6'],
   'reference-context': ['#aa772e', '#80551a'],
-  'reference-preparation': ['#936140', '#714629'],
   'short-video-studio': ['#bc4c95', '#963471'],
-  'task-templates': ['#5b64bc', '#424b97'],
   'wechat-channels-ops': ['#bd6822', '#924b18'],
   'wechat-official': ['#14845d', '#0f6646'],
-  'workspace-canvas': ['#167e85', '#0c6068'],
   'xiaohongshu-ops': ['#cd4459', '#a72d45'],
 }
 

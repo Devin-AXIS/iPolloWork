@@ -3,8 +3,13 @@
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["oss:GetObject", "oss:PutObject", "oss:DeleteObject"],
+      "Action": ["oss:GetObject", "oss:PutObject", "oss:DeleteObject", "oss:DeleteObjectVersion"],
       "Resource": ["acs:oss:*:*:ipollowork-published-cn-20261114/*"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["oss:ListObjectVersions"],
+      "Resource": ["acs:oss:*:*:ipollowork-published-cn-20261114"]
     }
   ]
 }

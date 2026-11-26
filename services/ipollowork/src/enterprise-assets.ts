@@ -1,6 +1,7 @@
 /** Department management and the enterprise file packages and skills that departments and members are granted. */
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import type { DeletionJobs } from "./deletion-jobs.js";
 import { checkDepartmentParent } from "./enterprise.js";
 import type { App } from "./http.js";
 import type { Store } from "./database.js";
@@ -129,14 +130,6 @@ async function removeResourceRecords(store: Store, storage: Storage, files: Reso
   return removed;
 }
 
-async function finishResourceRemoval(storage: Storage, keys: string[], requestId: string | undefined, resourceId: string) {
-  try {
-    await storage.removeMany(keys);
-  } catch (error) {
-    console.warn(JSON.stringify({ event: "organization_resource_cleanup_pending", requestId, resourceId }));
-    throw new ServiceError("PACKAGE_FILE_CLEANUP_PENDING", 503, "资源已移除，存储清理将在后台重试", { cause: error });
-  }
-}
 /** Kebab-case skill name for the native skill registry; non-ASCII titles fall back to a stable id-derived name. */
 export function skillName(titleText: string, id: string): string {
   const slug = titleText
@@ -154,6 +147,7 @@ export function mountEnterpriseAssets(
   store: Store,
   storage: Storage,
   config: Config,
+  jobs: DeletionJobs,
 ) {
   app.patch("/api/v1/enterprises/:id/departments/:departmentId", async (c) => {
     const id = c.req.param("id"),
@@ -278,15 +272,20 @@ export function mountEnterpriseAssets(
       })
       .parse(await c.req.json());
     await store.transaction(async () => {
-      const select = {
-        package: "SELECT 1 FROM file_packages WHERE id=? AND enterprise_id=?",
-        skill: "SELECT 1 FROM resources WHERE id=? AND enterprise_id=? AND kind='skill' UNION ALL SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='skill'",
-        mcp: "SELECT 1 FROM enterprise_mcp WHERE id=? AND enterprise_id=? UNION ALL SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='mcp'",
-        service: "SELECT 1 FROM enterprise_services WHERE service_id=? AND enterprise_id=?",
-        plugin: "SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='plugin' FOR UPDATE",
-        template: "SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind='template' FOR UPDATE",
+      const direct = {
+        package: "SELECT 1 FROM file_packages WHERE id=? AND enterprise_id=? FOR UPDATE",
+        skill: "SELECT 1 FROM resources WHERE id=? AND enterprise_id=? AND kind='skill' FOR UPDATE",
+        mcp: "SELECT 1 FROM enterprise_mcp WHERE id=? AND enterprise_id=? FOR UPDATE",
+        service: "SELECT 1 FROM enterprise_services WHERE service_id=? AND enterprise_id=? FOR UPDATE",
+        plugin: null,
+        template: null,
       }[input.kind];
-      if (!await store.one(select, input.assetId, id, ...(input.kind === "skill" || input.kind === "mcp" ? [input.assetId,id] : [])))
+      // Serialize grant edits with publication, which also locks its publication row first.
+      const publication = input.kind !== "package" && input.kind !== "service" && await store.one(
+        "SELECT 1 FROM organization_publications WHERE id=? AND enterprise_id=? AND kind=? FOR UPDATE",
+        input.assetId, id, input.kind,
+      );
+      if (!publication && !(direct && await store.one(direct, input.assetId, id)))
         throw new ServiceError("ASSET_NOT_FOUND", 404, "资源不存在");
       await replaceAudience(
         store,
@@ -358,7 +357,11 @@ export function mountEnterpriseAssets(
       packageId = c.req.param("packageId"),
       actor = c.get("actor");
     await requireEnterpriseManager(store, actor, id);
-    const keys = await store.transaction(async () => {
+    const target = id + "/" + packageId;
+    const job = await store.transaction(async () => {
+      await jobs.lock("package", target);
+      const existing = await jobs.existing("package", target, actor);
+      if (existing) return existing;
       const row = await packageOf(store, id, packageId, true);
       const files = await lockPackageFiles(store, id, row.id, null);
       const retained = await referencedFiles(store, row.id, files);
@@ -369,10 +372,10 @@ export function mountEnterpriseAssets(
       await store.run("DELETE FROM file_packages WHERE id=?", row.id);
       const cleanup = await removeResourceRecords(store, storage, files.filter(file => !retained.has(file.id)));
       await audit(store, actor, "package.remove", row.id, id);
-      return cleanup;
+      return jobs.enqueue("package", target, actor, cleanup);
     });
-    await finishResourceRemoval(storage, keys, c.get("requestId"), packageId);
-    return c.json({ ok: true });
+    const result = await jobs.receipt(job);
+    return c.json({ ok: result.status === "completed", ...result }, result.status === "completed" ? 200 : 202);
   });
   app.get("/api/v1/enterprises/:id/packages/:packageId", async (c) => {
     const id = c.req.param("id"),
@@ -466,7 +469,11 @@ export function mountEnterpriseAssets(
         fileId = c.req.param("fileId"),
         actor = c.get("actor");
       await requireEnterpriseManager(store, actor, id);
-      const keys = await store.transaction(async () => {
+      const target = id + "/" + c.req.param("packageId") + "/" + fileId;
+      const job = await store.transaction(async () => {
+        await jobs.lock("package-file", target);
+        const existing = await jobs.existing("package-file", target, actor);
+        if (existing) return existing;
         const row = await packageOf(store, id, c.req.param("packageId"), true);
         const files = await lockPackageFiles(store, id, row.id, fileId);
         if (!files.length) throw new ServiceError("FILE_NOT_FOUND", 404, "文件不存在");
@@ -480,10 +487,10 @@ export function mountEnterpriseAssets(
           row.id,
         );
         await audit(store, actor, "package.file.remove", fileId, id);
-        return cleanup;
+        return jobs.enqueue("package-file", target, actor, cleanup);
       });
-      await finishResourceRemoval(storage, keys, c.get("requestId"), fileId);
-      return c.json({ ok: true });
+      const result = await jobs.receipt(job);
+      return c.json({ ok: result.status === "completed", ...result }, result.status === "completed" ? 200 : 202);
     },
   );
   app.get(
@@ -558,7 +565,11 @@ export function mountEnterpriseAssets(
       skillId = c.req.param("skillId"),
       actor = c.get("actor");
     await requireEnterpriseManager(store, actor, id);
-    const keys = await store.transaction(async () => {
+    const target = id + "/" + skillId;
+    const job = await store.transaction(async () => {
+      await jobs.lock("skill", target);
+      const existing = await jobs.existing("skill", target, actor);
+      if (existing) return existing;
       const row = await skillOf(store, id, skillId);
       await store.run(
         "DELETE FROM enterprise_grants WHERE asset_kind='skill' AND asset_id=?",
@@ -566,10 +577,10 @@ export function mountEnterpriseAssets(
       );
       const cleanup = await removeResourceRecords(store, storage, [row]);
       await audit(store, actor, "skill.remove", row.id, id);
-      return cleanup;
+      return jobs.enqueue("skill", target, actor, cleanup);
     });
-    await finishResourceRemoval(storage, keys, c.get("requestId"), skillId);
-    return c.json({ ok: true });
+    const result = await jobs.receipt(job);
+    return c.json({ ok: result.status === "completed", ...result }, result.status === "completed" ? 200 : 202);
   });
 
   /** Skills the signed-in member may use across all enterprises, with bodies, for registration in the member's DSH. */

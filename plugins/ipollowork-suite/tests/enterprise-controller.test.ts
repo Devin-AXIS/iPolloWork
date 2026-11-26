@@ -35,6 +35,7 @@ test('the selected enterprise survives reloads and falls back when the member le
 
 test('record views form a stack that tabs and enterprise switches reset', () => {
   const controller = new EnterpriseController()
+  assert.equal(controller.getSnapshot().tab, 'departments')
   controller.open({ kind: 'continue', shareId: 'share' })
   controller.push({ kind: 'project', id: 'project' })
   assert.equal(controller.getSnapshot().dialog, null)
@@ -42,10 +43,15 @@ test('record views form a stack that tabs and enterprise switches reset', () => 
   controller.back()
   assert.deepEqual(controller.getSnapshot().views, [{ kind: 'project', id: 'project' }])
   controller.selectTab('members')
+  assert.equal(controller.getSnapshot().tab, 'members')
   assert.deepEqual(controller.getSnapshot().views, [])
   controller.show({ kind: 'share', id: 'share' })
   controller.selectEnterprise('other')
   assert.deepEqual(controller.getSnapshot().views, [])
+  controller.openNotice('other', 'projects', 'project')
+  assert.deepEqual(controller.getSnapshot().views, [{ kind: 'project', id: 'project' }])
+  controller.accountChanged(false)
+  assert.equal(controller.getSnapshot().tab, 'departments')
   controller.dispose()
 })
 

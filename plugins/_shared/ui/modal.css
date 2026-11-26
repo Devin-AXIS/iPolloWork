@@ -1,0 +1,17 @@
+/* Ported plugins can share the dialog adapter across installed versions. Its public
+   class and role give these rules priority over the native card's overflow. */
+.ipw-modal,
+.ipw-ported-overlay[role="dialog"] {
+  max-height: 100%;
+  overflow-wrap: anywhere;
+}
+
+.ipw-modal-content,
+.ipw-modal.ipw-modal-headless,
+.ipw-ported-overlay[role="dialog"] {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  --dsh-scrollbar-thumb: var(--dsw-alias-scrollbar-bg-l2);
+  --dsh-scrollbar-thumb-hover: var(--dsw-alias-scrollbar-hover-l2);
+}

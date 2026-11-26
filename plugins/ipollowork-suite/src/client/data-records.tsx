@@ -10,8 +10,8 @@ import {
   IconChevronRightOutlineRegular,
   IconCloseOutlineRegular,
   IconPlusOutlineRegular,
-  IconSearchOutlineRegular,
 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { SearchInput } from '../../../_shared/ui/controls.tsx'
 import type { DataCollectionInfo, DataFieldType, DataRecord, DataValue } from '../shared/app-data.ts'
 import { request } from './api.ts'
 import { format } from './enterprise-locale.ts'
@@ -109,10 +109,8 @@ export function RecordTable({ appId, info, t, changed }: { appId: string; info: 
     <>
       <div className={css.dataToolbar}>
         <div className={css.dataFilters}>
-          <label className={css.miniSearch}>
-            <IconSearchOutlineRegular size={13} />
-            <input value={typed} placeholder={t.searchRecords} aria-label={t.searchRecords} onChange={event => setTyped(event.target.value)} />
-          </label>
+          <SearchInput className={css.compactSearch!} value={typed} placeholder={t.searchRecords} aria-label={t.searchRecords}
+            onChange={event => setTyped(event.target.value)} />
           <button type="button" className={css.filterChip} aria-pressed={filtering || query.rules.length > 0} aria-expanded={filtering} onClick={() => setFiltering(value => !value)}>
             {t.filter}
             {query.rules.length > 0 && <small>{query.rules.length}</small>}

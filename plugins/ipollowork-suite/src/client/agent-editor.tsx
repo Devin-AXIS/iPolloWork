@@ -1,7 +1,7 @@
 /** Focused bot creation with optional, existing capabilities. */
 import { useEffect, useId, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
-import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
 import { FormButton, OptionMenu, TextArea, TextInput } from '../../../_shared/ui/controls.tsx'
 import type { AgentItem, AgentService, AgentModelChoice, AgentModelOption } from '../shared/agents.ts'
 import type { AgentLabels } from './agent-locale.ts'
@@ -42,7 +42,7 @@ export function AgentEditor({ t, draft, busy, error, services, skills, models, m
       ? [{ id: selectedModel, label: `${draft.model.model} · ${t.unavailable}` }] : []),
     ...models.map(model => ({ id: modelKey(model), label: `${model.providerName} · ${model.name}` })),
   ]
-  return <Modal open title={draft.id ? t.editTitle : t.createTitle} closeLabel={t.close} onClose={() => { if (!busy) onClose() }} className={`${css.page} ${css.agentDialog} ipw-frosted`} contentClassName={css.agentDialogContent!} description={t.basicsHint}
+  return <Modal open title={draft.id ? t.editTitle : t.createTitle} closeLabel={t.close} onClose={() => { if (!busy) onClose() }} className={`${css.page} ${css.agentDialog} ipw-frosted`} description={t.basicsHint}
     footer={<><FormButton variant="outline" disabled={busy} onClick={onClose}>{t.cancel}</FormButton><FormButton variant="primary" form={formId} type="submit" disabled={busy || avatarBusy || !draft.name.trim()}>{busy ? t.working : t.save}</FormButton></>}>
     <form id={formId} className={css.agentFields} onSubmit={event => { event.preventDefault(); if (!avatarBusy && !busy) onSave() }}>
       <AvatarPicker name={draft.name} value={draft.avatar} disabled={busy} t={t} onProcessing={setAvatarBusy} onChange={avatar => onChange(current => ({ ...current, avatar }))} />

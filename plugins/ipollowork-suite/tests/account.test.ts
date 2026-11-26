@@ -16,6 +16,10 @@ function credentials() {
 const user = { id: 'test-user', name: 'Test member', email: 'test@example.com' }
 const config = resolveConfig({ accountOrigin: 'https://account.example.com' })
 const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'Content-Type': 'application/json' } })
+const signedInStore: CredentialStore = {
+  readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: config.accountOrigin, token: 'private-token' } }),
+  modifyRecord: async () => undefined, deleteRecord: async () => {},
+}
 test('the default uses the production service and explicit deployments remain authoritative', () => {
   assert.equal(resolveConfig({}).accountOrigin, 'https://cloud.ipollo.net')
   assert.equal(resolveConfig({ accountOrigin: 'https://work.ipollo.net/' }).accountOrigin, 'https://work.ipollo.net')
@@ -34,12 +38,88 @@ test('business failures retain safe codes even when a gateway returns HTML', asy
     readRecord: async () => ({ kind: 'grant', payload: { version: 1, origin: config.accountOrigin, token: 'private-token' } }),
     modifyRecord: async () => undefined, deleteRecord: async () => {},
   }
-  for (const [status, code] of [[401, 'IPW_SIGN_IN_REQUIRED'], [403, 'RESOURCE_FORBIDDEN'], [429, 'RATE_LIMITED'], [503, 'IPW_ACCOUNT_UNAVAILABLE']] as const) {
+  for (const [status, code] of [[401, 'IPW_SIGN_IN_REQUIRED'], [403, 'RESOURCE_FORBIDDEN'], [429, 'RATE_LIMITED'],
+    [502, 'IPW_ACCOUNT_HTTP_502'], [503, 'IPW_ACCOUNT_HTTP_503'], [504, 'IPW_ACCOUNT_HTTP_504']] as const) {
     const account = new AccountService(store, config, new AbortController().signal, async () => new Response('<html>private proxy diagnostic</html>', { status }))
     await assert.rejects(account.request('/api/v1/enterprises'), { code, status })
   }
   const account = new AccountService(store, config, new AbortController().signal, async () => json({ code: 'SERVICE_QUEUE_TIMEOUT', error: 'private diagnostic' }, 503))
   await assert.rejects(account.request('/api/v1/enterprises'), { code: 'SERVICE_QUEUE_TIMEOUT', status: 503 })
+})
+
+test('organization reads retry a short outage or interrupted response once, without replaying writes', async () => {
+  const disconnected = new TypeError('fetch failed', { cause: Object.assign(new Error('socket'), { code: 'ECONNRESET' }) })
+  for (const outage of ['gateway', 'socket', 'body'] as const) {
+    let calls = 0
+    const account = new AccountService(signedInStore, config, new AbortController().signal, async (_url, init) => {
+      assert.equal(init?.method, 'GET')
+      if (++calls === 1) {
+        if (outage === 'gateway') return new Response('proxy temporary failure', { status: 502 })
+        if (outage === 'socket') throw disconnected
+        return new Response(new ReadableStream({ start(controller) { controller.error(new TypeError('terminated')) } }))
+      }
+      return json({ items: [] })
+    })
+    assert.deepEqual(await account.request('/api/v1/enterprises'), { items: [] })
+    assert.equal(calls, 2)
+  }
+  let writes = 0
+  const account = new AccountService(signedInStore, config, new AbortController().signal, async () => { writes++; throw disconnected })
+  await assert.rejects(account.request('/api/v1/enterprises', { name: 'test' }), { code: 'IPW_ACCOUNT_CONNECTION_FAILED' })
+  assert.equal(writes, 1)
+})
+
+test('account diagnostics distinguish DNS, secure connection, and timeout failures', async () => {
+  for (const [underlyingCode, errorCode, callsExpected] of [
+    ['ENOTFOUND', 'IPW_ACCOUNT_DNS_FAILED', 1],
+    ['ERR_TLS_CERT_ALTNAME_INVALID', 'IPW_ACCOUNT_TLS_FAILED', 1],
+    ['UND_ERR_HEADERS_TIMEOUT', 'IPW_ACCOUNT_TIMEOUT', 2],
+  ] as const) {
+    let calls = 0
+    const account = new AccountService(signedInStore, config, new AbortController().signal, async () => {
+      calls++
+      throw new TypeError('fetch failed', { cause: Object.assign(new Error('unsafe diagnostic'), { code: underlyingCode }) })
+    })
+    await assert.rejects(account.request('/api/v1/enterprises'), { code: errorCode, message: errorCode })
+    assert.equal(calls, callsExpected)
+  }
+})
+
+test('a stalled catalog attempt leaves time for one retry inside the original deadline', async () => {
+  const stalledConfig = resolveConfig({ accountOrigin: config.accountOrigin, requestTimeoutMs: 5000 })
+  let calls = 0
+  const account = new AccountService(signedInStore, stalledConfig, new AbortController().signal, async (_url, init) => {
+    if (++calls !== 1) return json({ items: [] })
+    return await new Promise<Response>((_resolve, reject) => {
+      const watchdog = setTimeout(() => reject(new Error('fixture did not cancel')), 5500)
+      init?.signal?.addEventListener('abort', () => { clearTimeout(watchdog); reject(init.signal?.reason) }, { once: true })
+    })
+  })
+  assert.deepEqual(await account.request('/api/v1/projects'), { items: [] })
+  assert.equal(calls, 2)
+})
+
+test('a cancelled or superseded account read never retries with the old grant', async () => {
+  for (const revoke of ['cancel', 'sign-out'] as const) {
+    let reads = 0
+    let firstRead!: () => void
+    const started = new Promise<void>(resolve => { firstRead = resolve })
+    const signal = new AbortController()
+    const account = new AccountService(signedInStore, config, new AbortController().signal, async (_url, init) => {
+      if (init?.method !== 'GET') return json({ ok: true })
+      reads++
+      firstRead()
+      throw new TypeError('fetch failed')
+    })
+    const request = account.request('/api/v1/enterprises', undefined, 'GET', signal.signal)
+    const failed = revoke === 'cancel' ? assert.rejects(request, { name: 'AbortError' })
+      : assert.rejects(request, { code: 'IPW_ACCOUNT_CHANGED' })
+    await started
+    if (revoke === 'cancel') signal.abort()
+    else await account.signOut()
+    await failed
+    assert.equal(reads, 1)
+  }
 })
 test('account timeouts are distinct from connection failures', async () => {
   const store: CredentialStore = {

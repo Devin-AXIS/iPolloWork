@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Button, IconEllipsisOutlineRegular, Menu, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconEllipsisOutlineRegular, Menu } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
 import { request } from './api.ts'
 import { language, labelSource, type Labels } from './locale.ts'
 import type { ClientContext } from './native.ts'

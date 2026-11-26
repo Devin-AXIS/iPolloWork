@@ -844,8 +844,13 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 json(response,201,await account.uploadAppFile(dataFile[1]!,String(request.headers['x-data-file']??'{}'),String(request.headers['content-type']??'application/octet-stream'),bytes,uploadBody(request),lifetime.signal));return;
               }
               if(request.method==='GET'&&dataFile[2]){await relayDownload(await account.transfer(base+'/'+dataFile[2]),response,config.maxArtifactBytes);return;}
-              if(request.method==='DELETE'&&dataFile[2]){await account.request(base+'/'+dataFile[2],undefined,'DELETE');json(response,200,{deleted:true});return;}
+              if(request.method==='DELETE'&&dataFile[2]){json(response,200,await account.request(base+'/'+dataFile[2],undefined,'DELETE'));return;}
               throw new SuiteError('IPW_NOT_FOUND',404);
+            }
+            if (request.method === "GET" && /^\/deletions(?:\/[0-9a-f-]{36})?$/.test(path)) {
+              if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);
+              json(response, 200, await account.request("/api/v1" + path, undefined, "GET", lifetime.signal));
+              return;
             }
             if (path === "/data/apps" || path.startsWith("/data/apps/")) {
               if (!config.account) throw new SuiteError("IPW_NOT_FOUND", 404);

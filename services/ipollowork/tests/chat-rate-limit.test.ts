@@ -34,3 +34,25 @@ test("cancellation and uncertain transport outcomes never cause another upstream
   await assert.rejects(fetchChatWithRateLimitRecovery(async()=>{calls++;throw new TypeError("fetch failed");},"https://provider.test",{},true));
   assert.equal(calls,1);
 });
+
+test("only confirmed pre-connection failures get a bounded upstream retry", async () => {
+  const connectError = new TypeError("fetch failed", { cause: Object.assign(new Error("connect"), { code: "ECONNREFUSED" }) });
+  let calls = 0;
+  const recovered = await fetchChatWithRateLimitRecovery(async () => {
+    if (++calls === 1) throw connectError;
+    return new Response("OK");
+  }, "https://provider.test", {}, true);
+  assert.equal(await recovered.text(), "OK");
+  assert.equal(calls, 2);
+
+  calls = 0;
+  await assert.rejects(fetchChatWithRateLimitRecovery(async () => { calls++; throw connectError; },
+    "https://provider.test", {}, true), { code: "SERVICE_UPSTREAM_CONNECTION_FAILED" });
+  assert.equal(calls, 2);
+
+  calls = 0;
+  const reset = new TypeError("fetch failed", { cause: Object.assign(new Error("socket reset"), { code: "ECONNRESET" }) });
+  await assert.rejects(fetchChatWithRateLimitRecovery(async () => { calls++; throw reset; },
+    "https://provider.test", {}, true), error => error === reset);
+  assert.equal(calls, 1);
+});

@@ -1,6 +1,5 @@
 .ipw-wt-editor-modal[role="dialog"] { width: min(980px, 100%); max-height: 100%; }
 .ipw-wt-editor-content { min-height: 0; overflow: auto; }
-.ipw-wt-workspace { height: 100%; overflow: auto; padding: 14px; }
 .ipw-wt-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-block: 4px 10px; }
 .ipw-wt-bar button[aria-pressed="true"] { background: var(--dsw-alias-surface-hover, color-mix(in srgb, currentColor 10%, transparent)); }
 .ipw-wt-format { display: flex; flex-wrap: wrap; gap: 2px; }
@@ -16,7 +15,7 @@
 .ipw-wt-error { margin: 5px 0; color: var(--dsw-alias-text-danger, #b7432a); }
 .ipw-wt-caption { margin-top: 8px; }
 .ipw-wt-fieldset { margin: 0; padding: 0; border: 0; min-width: 0; }
-.ipw-wt-bar select, .ipw-wt-form textarea { border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 7px; padding: 6px 8px; background: var(--dsw-alias-bg-layer-1, Canvas); color: inherit; font: inherit; }
+.ipw-wt-bar select { border: 1px solid color-mix(in srgb, currentColor 20%, transparent); border-radius: 7px; padding: 6px 8px; background: var(--dsw-alias-bg-layer-1, Canvas); color: inherit; font: inherit; }
 .ipw-wt-cell-form > input { flex: 1; min-width: min(145px, 100%); }
 .ipw-wt-grid { max-height: 40vh; overflow: auto; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); border-radius: 8px; }
 .ipw-wt-grid table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: max-content; min-width: 100%; }
@@ -26,12 +25,3 @@
 .ipw-wt-grid td button { display: block; width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: 27px; border: 0; text-align: start; padding: 2px 6px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; }
 .ipw-wt-grid td button[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--dsw-alias-focus-ring, Highlight); }
 .ipw-wt-grid td button[data-edited] { background: color-mix(in srgb, Highlight 16%, transparent); }
-.ipw-wt-form { display: grid; gap: 10px; min-width: 0; }
-.ipw-wt-form > button { justify-self: start; }
-.ipw-wt-form > label { display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
-.ipw-wt-form textarea { width: 100%; resize: vertical; box-sizing: border-box; }
-.ipw-wt-form input[type="file"] { max-width: 100%; }
-.ipw-wt-item { display: grid; gap: 5px; padding: 9px 0; border-bottom: 1px solid color-mix(in srgb, currentColor 15%, transparent); overflow-wrap: anywhere; }
-.ipw-wt-item strong { font-weight: 500; }
-.ipw-wt-item pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 15rem; overflow: auto; font-size: 12px; }
-.ipw-wt-excerpt { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; white-space: pre-wrap; margin: 0; font-size: 12px; opacity: .72; }

@@ -49,7 +49,7 @@
 @media (max-width:480px){.consumer-points{flex-wrap:wrap}.consumer-points>.consumer-button{width:100%}.consumer-row:not(.consumer-points){flex-wrap:wrap}.consumer-value{text-align:left}}
 
 /* Plan picker dialog; it renders outside the account page and uses the suite's global tokens. */
-.consumer-subscribe-dialog{width:calc(100vw - 28px);max-width:420px;max-height:calc(100dvh - 28px);overflow:auto;padding:24px;gap:16px;border-radius:16px}
+.consumer-subscribe-dialog{width:min(420px,100%);padding:24px;gap:16px;border-radius:16px}
 .consumer-subscribe-dialog [data-slot=dialog-title]{font-size:16px;font-weight:600}
 .consumer-subscribe-dialog label.consumer-note{display:flex;flex-direction:column;gap:6px;margin:0}
 .consumer-subscribe-dialog select{height:34px;padding:0 10px;border:0;border-radius:8px;font:inherit;color:inherit;background:var(--ipw-muted-surface,#f4f4f5)}

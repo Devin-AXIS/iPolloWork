@@ -12,7 +12,7 @@ import type { CredentialProvider, CredentialKey, CredentialRecord } from '@deeps
 import { applyBundle, packageFile } from '../src/ported/host.ts'
 import { bundleAuthorization } from '../src/ported/credentials.ts'
 import { manifestSchema } from '../src/ported/contracts.ts'
-import { workspaceFile } from '../src/ported/media.ts'
+import { capabilityActions, workspaceFile } from '../src/ported/media.ts'
 import { publicAddress } from '../src/ported/download.ts'
 import { Ajv2020 } from 'ajv/dist/2020.js'
 import yaml from 'js-yaml'
@@ -26,6 +26,46 @@ function credentialFixture() {
   }
   return { records, provider }
 }
+
+test('pending image generation uses the same receipt and saves a finished image after one submission', async () => {
+  const path = await mkdtemp(join(tmpdir(), 'ipw-ported-image-'))
+  const id = 'e63d2910-4474-4aeb-aad1-46c6a110052a'
+  const image = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/e8wAAAAASUVORK5CYII=', 'base64')
+  const calls: { route: string; body: unknown }[] = []
+  const ctx = { get: () => ({
+    async capability(route: string, body: unknown) {
+      calls.push({ route, body })
+      switch (route) {
+        case '/api/v1/capabilities?kind=image':
+          return { items: [{ id: 'test:image', kind: 'image', title: 'Test images' }] }
+        case '/api/v1/capabilities/test%3Aimage':
+          return { id: 'test:image', models: [{ id: 'test-model', name: 'Test model' }] }
+        case '/api/v1/capabilities/test%3Aimage/invoke':
+          return { requestId: id, state: 'pending' }
+        case '/api/v1/capability-tasks/' + id:
+          return { requestId: id, kind: 'image', state: 'succeeded', result: { data: [{ b64_json: image.toString('base64') }] } }
+        default:
+          throw new Error('Unexpected capability route')
+      }
+    },
+  }) } as unknown as Context
+  try {
+    const result = await capabilityActions(ctx, { id: 'w', path }, 'openai-image-generation/image_generate', {
+      model: 'test-model', prompt: 'test picture', requestId: id,
+    }, AbortSignal.timeout(10_000))
+    assert.equal(result.ok, true)
+    const output = result.result as { path: string; requestId: string }
+    assert.equal(output.requestId, id)
+    assert.deepEqual(await readFile(join(path, output.path)), image)
+    const recovered = await capabilityActions(ctx, { id: 'w', path }, 'openai-image-generation/image_recover', {
+      requestId: id,
+    }, AbortSignal.timeout(2_000))
+    assert.equal(recovered.ok, true)
+    assert.equal((recovered.result as { path: string }).path, output.path)
+    assert.equal(calls.filter(call => call.route.endsWith('/invoke')).length, 1)
+    assert.deepEqual(calls.at(-1), { route: '/api/v1/capability-tasks/' + id, body: undefined })
+  } finally { await rm(path, { recursive: true, force: true }) }
+})
 test('native credential records retain multi-account selection and isolate plugin owners', async () => {
   const { provider } = credentialFixture(), first = bundleAuthorization(provider, 'one'), second = bundleAuthorization(provider, 'two')
   await first.saveCredential('key', 'alice', { token: 'fixture-secret' })
@@ -40,7 +80,7 @@ test('native credential records retain multi-account selection and isolate plugi
   assert.equal(await first.readCredential('bob', 'key'), null)
 })
 
-test('all former plugin identities map to native packages with complete port metadata', async () => {
+test('all supported ported plugin identities map to native packages with complete metadata', async () => {
   const repository = fileURLToPath(new URL('../../..', import.meta.url))
   const inventory = JSON.parse(await readFile(join(repository, 'integrations/runtime/ported-plugins.json'), 'utf8')) as { plugins: { id: string; name: string; kind: string }[] }
   const archives = join(repository, 'plugins/ipollowork-suite/catalog/packages')
@@ -48,8 +88,8 @@ test('all former plugin identities map to native packages with complete port met
     plugins: { name: string; file: string; upgradeOnly?: true }[]
   }
   const retired = new Set<string>(JSON.parse(await readFile(join(archives, '../retired-plugins.json'), 'utf8')))
-  assert.equal(inventory.plugins.length, 24)
-  assert.equal(new Set(inventory.plugins.map(item => item.id)).size, 24)
+  assert.equal(inventory.plugins.length, 22)
+  assert.equal(new Set(inventory.plugins.map(item => item.id)).size, inventory.plugins.length)
   for (const item of inventory.plugins.filter(item => item.kind !== 'existing-native')) {
     const directory = join(repository, 'plugins', item.id)
     const manifest = manifestSchema.parse(JSON.parse(await readFile(join(directory, 'business/ipollowork.plugin.json'), 'utf8')))

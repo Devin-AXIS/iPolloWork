@@ -15,7 +15,7 @@ async function fixture(entry) {
   const saved = Object.fromEntries(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]))
   Object.assign(globalThis,globals)
   const primitives = new Proxy({Button, Input,
-    Modal:({title,children})=>React.createElement('div',{role:'dialog'},title,children),
+    Modal:({title,children,footer})=>React.createElement('div',{role:'dialog'},title,children,footer),
     SegmentedTabs:({items,onChange})=>React.createElement('div',{},items.map(item=>React.createElement('button',{key:item.value,onClick:()=>onChange(item.value)},item.label))),
   },{get:(target,key)=>target[key] ?? (({children})=>React.createElement('span',{},children))})
   const bundle = await build({ nodePaths: ['node_modules'],entryPoints:[entry],bundle:true,platform:'node',format:'cjs',write:false,
@@ -73,7 +73,7 @@ test('organization downloads request a save location and display the completed p
   } finally { await ui.close() }
 })
 
-test('project refresh updates overview and files, and access edits contain only named members',async()=>{
+test('project sharing offers all scopes and keeps individual permission edits',async()=>{
   const ui = await fixture('src/client/collaboration.tsx'), calls=[],writes=[]
   let outputs=1,interval
   ui.dom.window.setInterval = callback=>{interval=callback;return 1}
@@ -81,8 +81,10 @@ test('project refresh updates overview and files, and access edits contain only 
   const space={project:{id:'project',enterpriseId:'team',title:'Team project',role:'maintain',accessMode:'enterprise'},memory:{text:'',version:1},fileVersion:0,files:[],changes:[]}
   const call=async(path,data,method)=>{
     calls.push(path)
-    if(method==='PATCH'){writes.push(data);return {ok:true}}
+    if(method==='PATCH'||method==='PUT'){writes.push({method,data});return {ok:true}}
     if(path.endsWith('/space'))return space
+    if(path.endsWith('/access'))return {mode:'selected',grants:[{kind:'member',subjectId:'member',role:'participate'}]}
+    if(path==='/organizations/team')return {departments:[{id:'eng',name:'Engineering'}]}
     if(path.endsWith('/overview'))return {people:[{id:'me',name:'Tester',outputs,contributions:0,updated_at:0}],memoryVersion:1,outputs:{count:outputs}}
     if(path==='/organizations/team/member-directory')return {items:[{userId:'member',name:'Member',email:'member@example.test',
       departmentId:'eng',role:'member',projectRole:'participate'}],more:false}
@@ -108,17 +110,32 @@ test('project refresh updates overview and files, and access edits contain only 
     await act(async()=>ui.button('Access').click())
     const dialog=ui.dom.window.document.querySelector('[role="dialog"]')
     assert(!dialog.textContent.includes('Generate invitation'))
-    assert(!dialog.textContent.includes('Engineering'))
-    assert.equal(dialog.querySelectorAll('select').length,1)
-    assert.equal(dialog.querySelector('select').value,'participate')
+    assert.equal(Array.from(dialog.querySelectorAll('button')).some(button => button.textContent === 'Engineering'), false)
+    assert.deepEqual(Array.from(dialog.querySelector('select').options, option=>option.value),['admins','everyone','departments','employees'])
+    assert.equal(dialog.querySelector('select').value,'employees')
+    await act(async()=>ui.button('Edit individual permissions').click())
+    const individual=ui.dom.window.document.querySelector('[role="dialog"]')
+    assert.equal(individual.querySelector('select').value,'participate')
     assert.equal(ui.button('Save').disabled,true)
     await act(async()=>{
-      const picker=dialog.querySelector('select')
+      const picker=individual.querySelector('select')
       picker.value='maintain'
       picker.dispatchEvent(new ui.dom.window.Event('change',{bubbles:true}))
     })
     await act(async()=>ui.button('Save').click())
-    assert.deepEqual(JSON.parse(JSON.stringify(writes)),[[{subjectId:'member',role:'maintain'}]])
+    await act(async()=>ui.button('Access').click())
+    const scope=ui.dom.window.document.querySelector('[role="dialog"] select')
+    await act(async()=>{
+      scope.value='departments'
+      scope.dispatchEvent(new ui.dom.window.Event('change',{bubbles:true}))
+    })
+    assert.equal(ui.button('Save').disabled,true)
+    await act(async()=>ui.button('Engineering').click())
+    await act(async()=>ui.button('Save').click())
+    assert.deepEqual(JSON.parse(JSON.stringify(writes)),[
+      {method:'PATCH',data:[{subjectId:'member',role:'maintain'}]},
+      {method:'PUT',data:{mode:'selected',grants:[{kind:'department',subjectId:'eng',role:'view'}]}},
+    ])
   } finally {await ui.close()}
 })
 

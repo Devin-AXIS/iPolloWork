@@ -101,9 +101,10 @@ export class AppDataService implements IpolloData {
    * Delete an app; the account service purges its records.
    * @param id - the app id.
    */
-  async remove(id: string): Promise<void> {
-    await this.account.request(`${BASE}/${encodeURIComponent(id)}`, undefined, 'DELETE')
+  async remove(id: string): Promise<unknown> {
+    const receipt = await this.account.request(`${BASE}/${encodeURIComponent(id)}`, undefined, 'DELETE')
     this.forget(id)
+    return receipt
   }
   /**
    * Run one statement or `{batch}` against an app.
@@ -154,7 +155,11 @@ export class AppDataService implements IpolloData {
         return z.object({id:z.uuid(),name:z.string(),mime:z.string(),bytes:z.number(),sha256:z.string()}).parse(await this.account.uploadAppFile(id,encodeURIComponent(JSON.stringify({name,public:options.public??false})),options.mime??'application/octet-stream',bytes.byteLength,stream,new AbortController().signal));
       },
       download:async fileId=>z.object({url:z.url()}).parse(await this.account.request(`${BASE}/${id}/files/${encodeURIComponent(fileId)}`)),
-      remove:async fileId=>{await this.account.request(`${BASE}/${id}/files/${encodeURIComponent(fileId)}`,undefined,'DELETE')},
+      remove:async fileId=>{
+        const receipt = await this.account.request(`${BASE}/${id}/files/${encodeURIComponent(fileId)}`,undefined,'DELETE')
+        if (z.object({status:z.literal('pending')}).safeParse(receipt).success)
+          throw new AppDataRejection('IPW_DELETION_PENDING', 409, '附件访问已停止，存储清理仍在进行')
+      },
     })
   }
   private async organization(value: string, signal?: AbortSignal): Promise<string> {
@@ -187,10 +192,7 @@ export async function appDataRoute(service: AppDataService, method: string, path
   const id = match[1]!
   if (match[2] && method === 'POST') return service.run(id, await read())
   if (!match[2] && method === 'GET') return { app: await service.detail(id) }
-  if (!match[2] && method === 'DELETE') {
-    await service.remove(id)
-    return { deleted: true }
-  }
+  if (!match[2] && method === 'DELETE') return service.remove(id)
   throw new SuiteError('IPW_NOT_FOUND', 404)
 }
 
