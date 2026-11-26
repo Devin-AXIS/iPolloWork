@@ -1,6 +1,7 @@
 /** Project archives and versions use the same native rows and dialogs as project collaboration. */
 import { useState } from "react";
-import { Button, Modal, Tag } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Tag } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
 import type { ViewProps } from "./collaboration.tsx";
 import {
   EmptyState,

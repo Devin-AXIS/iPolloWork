@@ -1,6 +1,6 @@
 import { FormButton, FormSelect, TextArea, TextInput } from "../../../_shared/ui/controls.tsx"
 import { useId, useState, type FormEvent } from 'react'
-import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
 import type { MarketEntry } from '../shared/types.ts'
 import type { Labels } from './locale.ts'
 import css from './suite.module.css'
@@ -36,7 +36,7 @@ export function MarketAdd({ t, discover, save, close }: {
   }
   const update = (patch: Partial<MarketEntry>) => setEntries(items => items.map((item, index) => index === selected ? { ...item, ...patch } : item))
   return <Modal open title={t.marketAdd} description={t.marketImportHint} closeLabel={t.cancel}
-    className={`${css.page} ${css.marketDialog}`} contentClassName={css.marketDialogContent!}
+    className={`${css.page} ${css.marketDialog}`}
     onClose={() => { if (!busy) close() }} footer={<>
       <FormButton variant="outline" disabled={busy} onClick={close}>{t.cancel}</FormButton>
       <FormButton variant="primary" type="submit" form={formId} disabled={busy || (!entry && !source.trim())}>

@@ -3,6 +3,7 @@ import { parseFileAddress } from '@deepseek-ai/dsh-util-workspace-path';
 import type { FileActions } from '@deepseek-ai/dsh-client-ui-file-actions/types';
 import { assetPrefix, packageName } from './shared.ts';
 import type { Draft, RendererContent } from './view-contract.ts';
+import modalCss from '../../_shared/ui/modal.css';
 import css from './view.css';
 
 const documentSlot = 'sidebar.right.tab.document';
@@ -51,14 +52,14 @@ export function apply(ctx: Client) {
   ctx.effect(() => {
     style = document.createElement('style');
     style.dataset.ipolloWordEditor = '';
-    style.textContent = css;
+    style.textContent = modalCss + '\n' + css;
     document.head.append(style);
     return () => { style?.remove(); style = undefined; drafts.clear(); };
   }, 'Word editor styles');
   const Editor = lazy(async () => {
     const url = new URL('api/' + assetPrefix + '/engine.mjs', document.baseURI);
     const engine = await import(url.href) as typeof import('./editor.tsx');
-    if (style) style.textContent = engine.engineCss + '\n' + css;
+    if (style) style.textContent = [engine.engineCss, modalCss, css].join('\n');
     return { default: engine.Editor };
   });
 

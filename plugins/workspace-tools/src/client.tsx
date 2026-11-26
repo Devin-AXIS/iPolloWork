@@ -1,25 +1,18 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Button, MenuItemButton, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, MenuItemButton } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Modal } from '../../_shared/ui/modal.tsx';
 import type { FileActions } from '@deepseek-ai/dsh-client-ui-file-actions/types';
-import { sessionFileAddress } from '@deepseek-ai/dsh-util-workspace-path';
-import { documentPattern, endpoint, feature, hasFeature, packageName, type Message } from './api.ts';
+import { documentPattern, feature, hasFeature, type Message } from './api.ts';
 import { downloadMarkdown, errorText, label, request, type Language } from './browser.ts';
 import { Editor } from './editor.tsx';
-import { TemplateForm, WorkspaceTools, type TemplateDraft, type WorkspacePanel } from './workspace.tsx';
+import modalCss from '../../_shared/ui/modal.css';
 import css from './view.css';
 
-const tabKind = endpoint;
 const documentSlot = 'sidebar.right.tab.document.actions';
-const paneSlot = 'sidebar.right.pane.tab';
 const menuSlot = 'sidebar.workspaces.session.menu.item';
 const overlaySlot = 'shell.overlay';
-declare const __IPOLLO_WORKSPACE_KEEP_MOUNTED__: boolean;
 
 interface DocumentProps { sessionId: string; absolutePath: string }
-interface PaneProps {
-  sessionId: string;
-  useTabInfo(): { tab: { actions: { openResource(address: string): unknown } } };
-}
 interface SessionProps {
   sessionId: string;
   displayTitle: string;
@@ -27,16 +20,12 @@ interface SessionProps {
 }
 interface SlotProps {
   [documentSlot]: DocumentProps;
-  [paneSlot]: PaneProps;
   [menuSlot]: SessionProps;
   [overlaySlot]: object;
 }
 interface Client {
   fileActions: FileActions;
   locale: { subscribe(listener: () => void): () => void; getSnapshot(): { active: string } };
-  sidebarRightTabs: { register(definition: { id: string; kind: string; title(): string; keepMounted: boolean;
-    guide: readonly { id: string; order: number; title(): string; description(): string }[] }): () => void };
-  uiWorkspace: { startSession(id: undefined, options: { prompt: string; whenDraftExists: 'keep' }): void };
   slots: {
     inject(name: keyof SlotProps, install: () => () => void): () => void;
     register<K extends keyof SlotProps>(entry: { name: K; id?: string; key?: string; order?: number },
@@ -45,27 +34,13 @@ interface Client {
   effect(install: () => () => void, description?: string): unknown;
 }
 
-export const inject = ['slots', 'locale', 'sidebarRightTabs', 'uiWorkspace', 'fileActions'];
+export const inject = ['slots', 'locale', 'fileActions'];
 
-type SessionAction = { kind: 'export' | 'template'; sessionId: string; title: string };
-const workspacePanels = {
-  'workspace-tools': ['all', '工作区工具', 'Workspace tools', '任务模板、参考资料和旧版导入', 'Task templates, references, and legacy import'],
-  'task-templates': ['templates', '任务模板', 'Task templates', '保存和复用对话任务', 'Save and reuse conversation tasks'],
-  'reference-preparation': ['references', '参考资料整理', 'Prepare references', '提取文档内容并在项目保存参考索引', 'Extract document content and save a project reference index'],
-  'legacy-workspace-import': ['legacy', '旧版工作区导入', 'Import legacy workspace', '选择导入旧版命令和 Skill', 'Select legacy commands and skills to import'],
-} satisfies Partial<Record<typeof feature, [WorkspacePanel, string, string, string, string]>>;
-
-function panelForFeature() {
-  if (feature in workspacePanels) return workspacePanels[feature as keyof typeof workspacePanels];
-}
+type SessionAction = { sessionId: string; title: string };
 
 export function apply(ctx: Client) {
   if ('__DSH_LIVESHARE_VIEWER__' in globalThis) return;
-  const panel = panelForFeature();
-  const templates = hasFeature('task-templates');
-  const exportsConversations = hasFeature('conversation-export');
   const locale = () => ctx.locale.getSnapshot().active.startsWith('zh') ? 'zh' as const : 'en' as const;
-  const translate = (zh: string, en: string) => label(locale(), zh, en);
   const subscribeLocale = ctx.locale.subscribe.bind(ctx.locale);
   const useLanguage = (): Language => useSyncExternalStore(subscribeLocale, locale);
   let selected: SessionAction | null = null;
@@ -82,7 +57,7 @@ export function apply(ctx: Client) {
   ctx.effect(() => {
     const style = document.createElement('style');
     style.dataset.ipolloWorkspaceTools = '';
-    style.textContent = css;
+    style.textContent = modalCss + '\n' + css;
     document.head.append(style);
     return () => style.remove();
   }, 'workspace tools styles');
@@ -98,53 +73,31 @@ export function apply(ctx: Client) {
     </>;
   }
 
-  function WorkspaceTab({ sessionId, useTabInfo }: PaneProps) {
-    const language = useLanguage();
-    const { tab } = useTabInfo();
-    return <WorkspaceTools key={sessionId} session={sessionId} language={language} panel={panel?.[0] ?? 'all'}
-      start={prompt => ctx.uiWorkspace.startSession(undefined, { prompt, whenDraftExists: 'keep' })}
-      openFile={path => { tab.actions.openResource(sessionFileAddress(sessionId, path)); }} />;
-  }
-
   function SessionMenuEntry({ sessionId, displayTitle, useMenuOpenState }: SessionProps) {
     const language = useLanguage();
     const [, close] = useMenuOpenState();
-    const choose = (kind: SessionAction['kind']) => {
+    const choose = () => {
       close(false);
-      act({ kind, sessionId, title: displayTitle });
+      act({ sessionId, title: displayTitle });
     };
-    return <>
-      {templates && <MenuItemButton separatorBefore onSelect={() => choose('template')}>{label(language, '保存为任务模板', 'Save as task template')}</MenuItemButton>}
-      {exportsConversations && <MenuItemButton onSelect={() => choose('export')}>{label(language, '导出对话 Markdown', 'Export conversation as Markdown')}</MenuItemButton>}
-    </>;
+    return <MenuItemButton onSelect={choose}>{label(language, '导出对话 Markdown', 'Export conversation as Markdown')}</MenuItemButton>;
   }
 
   function SessionOverlay() {
     const action = useSyncExternalStore(subscribe, () => selected);
     const language = useLanguage();
-    return action && <SessionDocument key={action.kind + ':' + action.sessionId} action={action}
+    return action && <SessionDocument key={action.sessionId} action={action}
       language={language} fileActions={ctx.fileActions} close={() => act(null)} />;
   }
 
-  if (panel) {
-    const [, zh, en, descriptionZh, descriptionEn] = panel;
-    const title = () => translate(zh, en);
-    ctx.effect(() => ctx.sidebarRightTabs.register({
-      id: packageName, kind: tabKind, keepMounted: __IPOLLO_WORKSPACE_KEEP_MOUNTED__, title,
-      guide: [{ id: feature, order: 15, title, description: () => translate(descriptionZh, descriptionEn) }],
-    }), `${feature} tab`);
-    ctx.effect(() => ctx.slots.inject(paneSlot, () => ctx.slots.register({
-      name: paneSlot, key: packageName,
-    }, WorkspaceTab)), `${feature} tab body`);
-  }
   if (hasFeature('markdown-editor') || hasFeature('excel-editor')) {
     ctx.effect(() => ctx.slots.inject(documentSlot, () => ctx.slots.register({
       name: documentSlot, id: `ipollo.${feature}.edit`,
     }, DocumentAction)), `${feature} document action`);
   }
-  if (templates || exportsConversations) {
+  if (hasFeature('conversation-export')) {
     ctx.effect(() => ctx.slots.inject(menuSlot, () => ctx.slots.register({
-      name: menuSlot, id: `ipollo.${feature}.session`, order: templates ? 550 : 551,
+      name: menuSlot, id: `ipollo.${feature}.session`, order: 551,
     }, SessionMenuEntry)), `${feature} session menu`);
     ctx.effect(() => ctx.slots.inject(overlaySlot, () => ctx.slots.register({
       name: overlaySlot, id: `ipollo.${feature}.overlay`,
@@ -160,18 +113,12 @@ function SessionDocument({ action, language, fileActions, close }: {
   const [error, setError] = useState('');
   const [downloadError, setDownloadError] = useState(false);
   const [downloading, setDownloading] = useState(false);
-  const [draft, setDraft] = useState<TemplateDraft>();
   const [attempt, retry] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     void request<Message[]>('messages', { query: { session: action.sessionId }, signal: controller.signal }).then(value => {
       if (controller.signal.aborted) return;
       setMessages(value);
-      if (action.kind !== 'template' || !value.length) return;
-      const first = value.find(message => message.role === 'user')?.text ?? '';
-      const recent = value.filter(message => message.role === 'user').slice(-5).filter(message => message.text !== first);
-      setDraft({ title: action.title.slice(0, 180), prompt: [first, ...recent.map(message => message.text)]
-        .filter(Boolean).join('\n\n').slice(0, 50_000) });
     }).catch(cause => { if (!controller.signal.aborted) setError(errorText(cause, language)); });
     return () => controller.abort();
   }, [action, attempt, language]);
@@ -189,12 +136,11 @@ function SessionDocument({ action, language, fileActions, close }: {
     }
   }
 
-  if (draft) return <TemplateForm draft={draft} language={language} close={close} saved={() => undefined} />;
-  return <Modal open title={action.kind === 'export' ? t('导出对话 Markdown', 'Export conversation as Markdown') : t('保存为任务模板', 'Save as task template')}
+  return <Modal open title={t('导出对话 Markdown', 'Export conversation as Markdown')}
     closeLabel={t('关闭', 'Close')} onClose={() => { if (!downloading) close(); }} footer={<>
       <Button onClick={close} disabled={downloading}>{t('关闭', 'Close')}</Button>
       {error && <Button onClick={() => { setError(''); retry(attempt + 1); }}>{t('重试', 'Retry')}</Button>}
-      {action.kind === 'export' && !!messages?.length && <Button variant="primary" disabled={downloading} onClick={() => void download()}>
+      {!!messages?.length && <Button variant="primary" disabled={downloading} onClick={() => void download()}>
         {downloading ? t('正在下载…', 'Downloading…') : t('下载 Markdown', 'Download Markdown')}</Button>}
     </>}>
     {downloadError && <p role="alert" className="ipw-wt-error">{t('下载失败，请重试。', 'The download failed. Try again.')}</p>}

@@ -16,9 +16,19 @@ import type { Actor } from "../src/auth.js";
 const multi = "/api/v1/services/aigc/multimodal-generation/generation";
 test("typed capability requests translate inputs and reject guessed endpoints and unsupported references", () => {
   assert.equal(invocationPath("aliyun-bailian", { id: "qwen-image-3.0" }, [{ method: "POST", path: multi }]), multi);
+  assert.equal(invocationPath("aliyun-bailian", { id: "wan2.6-t2i" }, [
+    { method: "POST", path: multi }, { method: "POST", path: "/api/v1/services/aigc/text2image/image-synthesis" },
+  ]), multi);
   assert.equal(invocationPath("aliyun-bailian", { id: "unknown" }, [{ method: "POST", path: multi }, { method: "POST", path: "/other" }]), undefined);
   assert.equal(invocationPath("custom", { id: "declared", invocationPath: "/untrusted" }, [{ method: "POST", path: multi }]), undefined);
   assert.deepEqual(capabilityRequest("image", "dashscope", multi, "qwen-image-3.0", { prompt: "A mountain", images: ["https://media.test/in.png"] }), { model: "qwen-image-3.0", input: { messages: [{ role: "user", content: [{ image: "https://media.test/in.png" }, { text: "A mountain" }] }] }, parameters: { n: 1 } });
+  const messages = [{ role: "user", content: [{ text: "A mountain" }] }];
+  assert.deepEqual(capabilityRequest("image", "dashscope", multi, "wan2.6-t2i", { prompt: "A mountain" }),
+    { model: "wan2.6-t2i", input: { messages }, parameters: { n: 1 } });
+  assert.deepEqual(capabilityRequest("image", "dashscope", multi, "wan2.6-image", { prompt: "A mountain" }),
+    { model: "wan2.6-image", input: { messages }, parameters: { n: 1, enable_interleave: true } });
+  assert.throws(() => capabilityRequest("image", "dashscope", multi, "wan2.6-t2i",
+    { prompt: "A mountain", images: ["https://media.test/in.png"] }), { code: "CAPABILITY_INPUT_UNSUPPORTED" });
   assert.deepEqual(capabilityRequest("speech", "dashscope", multi, "tts", { text: "你好", voice: "Cherry" }), { model: "tts", input: { text: "你好", voice: "Cherry" } });
   assert.deepEqual(capabilityRequest("embedding", "openai", "/embeddings", "embed", { texts: ["hello"], dimensions: 256 }), { model: "embed", input: ["hello"], dimensions: 256 });
   assert.deepEqual(capabilityRequest("transcription", "dashscope", "/asr", "asr", { audio: "https://media.test/voice.wav" }), { model: "asr", input: { file_urls: ["https://media.test/voice.wav"] }, parameters: {} });

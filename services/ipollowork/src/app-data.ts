@@ -590,7 +590,7 @@ export class AppData {
       input.slug ??
       (slugify(input.name) ||
         "app-" + createHash("sha256").update(input.name).digest("hex").slice(0, 12));
-    const result = await this.data.transaction(async () => {
+    const ensure = () => this.data.transaction(async () => {
       await this.data.run(
         "SELECT pg_advisory_xact_lock(hashtext(?))",
         owner.kind + ":" + owner.id,
@@ -637,6 +637,13 @@ export class AppData {
       );
       return { id, created: true };
     });
+    const result = await this.accounts.transaction(async () => {
+      if (!await this.accounts.one('SELECT 1 FROM "user" WHERE id=? AND banned IS NOT TRUE FOR KEY SHARE', actor.id))
+        throw new ServiceError("SIGN_IN_REQUIRED", 401, "请先登录");
+      if (project && !await this.accounts.one("SELECT 1 FROM projects WHERE id=? AND deleted_at IS NULL FOR SHARE", project.id))
+        throw new ServiceError("PROJECT_NOT_FOUND", 404, "项目不存在");
+      return ensure();
+    });
     return {
       app: await this.detail({ kind: "member", actor,projectId:input.projectId }, result.id),
       created: result.created,
@@ -679,19 +686,21 @@ export class AppData {
     return this.detail(caller, id);
   }
 
-  /**
-   * Delete an app. Access stops at once; its records are purged in the background.
-   * @param caller - a signed-in manager.
-   * @param id - the app id.
-   */
-  async remove(caller: DataCaller, id: string): Promise<void> {
-    const access = await this.manage(caller, id);
-    await this.data.run(
-      "UPDATE data_apps SET deleted_at=? WHERE id=? AND deleted_at IS NULL",
-      Date.now(),
-      access.app.id,
-    );
-    this.schedulePurge();
+  async authorizeRemoval(caller: DataCaller, id: string): Promise<string | null> {
+    return (await this.manage(caller, id)).app.project_id;
+  }
+
+  /** Deletion receipts advance the target app without waiting for unrelated background purges. */
+  async purgeDeletedApp(id: string): Promise<boolean> {
+    return this.data.transaction(async () => {
+      const app = await this.data.one("SELECT id FROM data_apps WHERE id=? FOR UPDATE", id);
+      if (!app) return true;
+      await this.data.run("UPDATE data_apps SET deleted_at=COALESCE(deleted_at,?) WHERE id=?", Date.now(), id);
+      await this.chunk("app_id", id);
+      if (await this.data.one("SELECT 1 FROM data_records WHERE app_id=? LIMIT 1", id)) return false;
+      await this.data.run("DELETE FROM data_apps WHERE id=?", id);
+      return true;
+    });
   }
 
   /** Run `work` in one of the owner's slots, waiting for a free one; a full queue is refused instead of growing. */
@@ -1423,6 +1432,8 @@ export class AppData {
       ? await this.data.one<AppRow>("SELECT * FROM data_apps WHERE id=? AND deleted_at IS NULL", id)
       : undefined;
     if (!app) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
+    if (await this.accounts.one("SELECT 1 FROM deletion_jobs WHERE kind='data-app' AND target_id=?", app.id))
+      throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在或没有访问权限");
     if(caller.kind==='member'&&caller.projectId&&caller.projectId!==app.project_id)throw new ServiceError('DATA_APP_NOT_FOUND',404,'应用不属于当前项目');
     if (caller.kind === "anonymous") {
       if (caller.key !== app.public_key)
@@ -1611,15 +1622,6 @@ export class AppData {
       id,
     );
     if (!result.changes) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在");
-  }
-  /**
-   * Delete any app on the operator's decision; its records are purged in the background.
-   * @param id - the app id.
-   */
-  async discard(id: string): Promise<void> {
-    const result = await this.data.run("UPDATE data_apps SET deleted_at=? WHERE id=? AND deleted_at IS NULL", Date.now(), id);
-    if (!result.changes) throw new ServiceError("DATA_APP_NOT_FOUND", 404, "应用不存在");
-    this.schedulePurge();
   }
   private async organizations(actor: Actor) {
     const rows = await this.accounts.all<{ id: string; name: string; role: string }>(

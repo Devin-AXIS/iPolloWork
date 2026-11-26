@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Button, Input, MarkdownText, Modal } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Button, Input, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Modal } from '../../_shared/ui/modal.tsx';
 import { defaultKeymap, history, historyKeymap } from '@codemirror/commands';
 import { markdown } from '@codemirror/lang-markdown';
 import { EditorState } from '@codemirror/state';

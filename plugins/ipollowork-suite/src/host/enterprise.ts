@@ -607,9 +607,10 @@ export class EnterpriseService {
         throw new SuiteError(kind === 'plugin' ? 'PUBLICATION_VERSION_INVALID' : 'PUBLICATION_VERSION_LABEL_INVALID', 400);
       const version = decoded, path = item + "/versions/" + encodeURIComponent(version);
       if (method === "PUT")
-        return this.organizationCapability(path, z.object({
-          decision: z.enum(["approve", "reject", "publish"]), note: z.string().max(1000).optional(),
-        }).strict().parse(input), method);
+        return this.organizationCapability(path, z.discriminatedUnion("decision", [
+          z.strictObject({ decision: z.enum(["approve", "reject"]), note: z.string().max(1000).optional() }),
+          z.strictObject({ decision: z.literal("publish"), note: z.string().max(1000).optional(), audience: audience.optional() }),
+        ]).parse(input), method);
       if (method === "GET") {
         const result = await this.organizationCapability(path);
         if (kind === "template") return z.object({ html: z.string().max(512 * 1024) }).parse(result);
@@ -655,6 +656,8 @@ export class EnterpriseService {
     }
     if (method === "DELETE" && parts[0] === "projects" && parts.length === 2)
       return this.cloud("projects/" + id.parse(parts[1]), undefined, "DELETE");
+    if (method === "DELETE" && parts[0] === "projects" && parts.length === 3 && parts[2] === "permanent")
+      return this.cloud("projects/" + id.parse(parts[1]) + "/permanent", undefined, "DELETE");
     if (method === 'GET' && parts[0] === 'projects' && parts.length === 3 && parts[2] === 'local-workspaces') {
       const generation = this.account.generation;
       const projectId = id.parse(parts[1]);
@@ -774,13 +777,17 @@ export class EnterpriseService {
         }
         if (parts.length === 3 && method === "POST") {
           await this.signedIn();
-          const data = z.object({ requestId:z.uuid(), sessionId:id, title:name, recipients:z.array(id).min(1).max(100),
-            revision:z.string().regex(/^[a-f0-9]{64}$/) }).strict().parse(input);
+          const fields = { requestId:z.uuid(), sessionId:id, title:name, revision:z.string().regex(/^[a-f0-9]{64}$/) };
+          const data = z.union([
+            z.strictObject({...fields, recipients:z.array(id).min(1).max(100)}),
+            z.strictObject({...fields, audience}),
+          ]).parse(input);
           const current = await this.sessionTranscript(data.sessionId);
           if (current.revision !== data.revision) throw new SuiteError("IPW_SHARE_CHANGED", 409);
           if (!current.transcript.some(message => message.role === "user")) throw new SuiteError("IPW_SHARE_EMPTY", 409);
           return this.organizationCapability(route, { requestId:data.requestId, title:data.title,
-            recipients:data.recipients, transcript:current.transcript });
+            ...("recipients" in data ? {recipients:data.recipients} : {audience:data.audience}),
+            transcript:current.transcript });
         }
         if (parts.length === 4 && method === "GET") {
           const share = z.object({ id, title: name, transcript: z.array(z.object({
@@ -898,6 +905,8 @@ export class EnterpriseService {
           const data = z.object({ revision: z.number().int().nonnegative(), items: z.array(z.object({
             id: z.uuid(), label: z.string().trim().min(1).max(80), url: z.string().max(2048),
             departmentId: id.nullable(), role: z.enum(["owner", "admin", "member"]).nullable(),
+            memberIds: z.array(id).min(1).max(500).optional(),
+            audience: audience.optional(),
             cookieNames: z.array(z.string().min(1).max(128)).max(12).optional(),
           }).strict()).max(50) }).strict().parse(input);
           const items = data.items.map(({ cookieNames, ...item }) => cookieNames?.length ? { ...item, cookieNames } : item);

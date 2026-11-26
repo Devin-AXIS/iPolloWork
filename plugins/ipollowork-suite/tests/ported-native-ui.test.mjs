@@ -17,12 +17,14 @@ test('legacy dialogs have one named native heading, supported buttons and shared
       Input: props => React.createElement('input', props), Toast: () => null,
       Modal: ({ open, title, className, children }) => open ? React.createElement('section', { role: 'dialog', 'aria-label': title, className }, React.createElement('h2', null, title), children) : null,
     }
-    const output = buildSync({ entryPoints: [fileURLToPath(new URL('../src/ported/native-ui.tsx', import.meta.url))], bundle: true, platform: 'node', format: 'cjs', packages: 'external', tsconfigRaw: {}, write: false })
+    const output = buildSync({ entryPoints: [fileURLToPath(new URL('../src/ported/native-ui.tsx', import.meta.url))], bundle: true, platform: 'node', format: 'cjs', packages: 'external', loader: { '.css': 'text' }, tsconfigRaw: {}, write: false })
     const compiled = { exports: {} }
     const lucide = require(fileURLToPath(new URL('../node_modules/lucide-react/dist/cjs/lucide-react.js', import.meta.url)))
     new Function('require', 'module', 'exports', output.outputFiles[0].text)(id => id === '@deepseek-ai/dsh-client-ui-primitives' ? primitives : id === 'lucide-react' ? lucide : require(id), compiled, compiled.exports)
     const disposeA = compiled.exports.installFrameUi(), disposeB = compiled.exports.installFrameUi()
     assert.equal(document.querySelectorAll('[data-ipw-ported-overlay]').length, 1)
+    const rules = document.querySelector('[data-ipw-ported-overlay]').sheet.cssRules
+    assert.ok([...rules].some(rule => rule.selectorText?.includes('.ipw-ported-overlay[role="dialog"]') && rule.style.overflow === 'auto'))
     const ui = window.__ipolloPortedUi, el = React.createElement
     const markup = renderToStaticMarkup(el(ui.Dialog, { open: true, onOpenChange() {} }, el(ui.DialogContent, { closeLabel: '关闭' },
       el(ui.DialogHeader, null, el(ui.DialogTitle, null, '新建', el('span', null, '短片')), el(ui.DialogDescription, null, '每个项目独立保存。')),

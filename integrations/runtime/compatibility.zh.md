@@ -6,6 +6,14 @@ DSH 基准由[运行时固定记录](upstream.json)指定：`dsh-v0.2.3-alpha.2`
 
 ## 升级前复核的功能
 
+Windows 原生安装器从 `integrations/desktop/installer/assets` 加载明暗主题的产品图。NSIS 将随包交付的 DSH 运行时和应用一并解压，安装器品牌图不依赖 DSH 客户端界面。更换运行时固定版本后，复核普通和高 DPI 下的安装页与空桌面 profile 的首次启动。覆盖升级沿用现有 profile 的 DSH 凭据记录。Office 打包使用固定 DSH 源码中的 `scripts/libreoffice-packages.mjs` 提供的 `selectOfficeEngine` 和 `officePackageDirectories`，更换版本时一并复核。
+
+新客户端或切换账号后，组织空间默认打开「部门」。通知链接继续打开对应标签页。升级时从 DSH 侧栏验证默认入口和通知跳转。
+
+组织空间和 iPolloOS 连接器统一使用「组织」。套件成员和数据页隐藏邮箱邀请与按邮箱新增授权。升级时验证单个与 CSV 批量邀请码，以及已有邀请的撤销。账号服务继续使用原有账号标识完成登录。
+
+套件通过不同的账号接口处理「移出组织空间」和「永久删除云端项目」。经本机所有者授权的套件桥接把清理状态提供给「数据 → 清理记录」。复核重新打开页面后仍能查询清理进度，确认存储清理后才显示完成，并验证永久删除后仍可访问共享资源和原生工作区。
+
 Video `1.0.0-beta.27-ipollo.3` 将 FFmpeg 和 FFprobe 的设置传给实际处理导出的 HyperFrames 预览进程。[Studio 兼容补丁](studio-alpha2.patch)优先使用系统已有工具，缺失时在 DSH 下载缓存中核验固定版本的可执行文件。下次更换 pin 时，分别在 Windows 和 macOS 的新配置中验证桌面 `PATH` 不含两个工具时可导出带音频的 MP4，再离线验证缓存复用，并确认显式配置的路径仍可用。
 
 Design 1.0.0-beta.39-ipollo.4 使用文档激活返回的编辑入口，兼容 DSH 交付卡片或侧栏资源给出的 Windows 绝对路径。[Studio 兼容补丁](studio-alpha2.patch)让编辑器在 CSS 或脚本资源缺失时仍能打开 HTML，并在保存时保留原引用。下次升级运行时，在 Windows 工作区的新对话中生成 PPT，分别点击交付卡片的文件名和「编辑」，确认缺少主题样式表时仍可预览幻灯片、查看版本历史并保存。再用预选幻灯片模板及其现有素材复测。
@@ -15,6 +23,8 @@ Design 和 Video 各自携带相同的参考资料 Skill。[Studio 兼容补丁]
 桌面更新源附带打包时的目标 DSH 和已验收归档身份。桌面外壳在确认安装前通过 DSH 原生清单检查预检，并在锁定 Host 新请求后复查。仍启用且不兼容的第三方插件或本地链接阻止安装，已停用的不兼容项在确认时列出。从没有预检交接的旧客户端覆盖升级时，新版以实际随包清单重建交接，只替换已启用且确实不兼容的市场受管归档，并保留本地链接和较新版本。新版 Host 校验归档，在加载原有 profile 前运行带锁的原生包管理命令并保持启停状态。单个归档校验或安装失败时保留交接供重试，其余迁移和原生工作区启动继续执行。下次更换 pin 时复验从无交接旧版迁移、缓存来源、版本与哈希一致性、损坏归档后的启动和重试，以及用户配置和数据文件哈希。
 
 短片工作台预览缓存随视图释放，继续使用现有 `asset-read` 操作和 `ui/resource-teardown` 桥接消息。更换 DSH 版本时，从原生插件管理器打开实际发货工作台，复测图片预载、主动打开音视频、项目和视图切换、iframe 销毁及后台生成任务。
+
+[迁移插件弹窗适配层](../../plugins/ipollowork-suite/src/ported/native-ui.tsx)复用[共用弹窗样式](../../plugins/_shared/ui/modal.css)，通过 `.ipw-ported-overlay[role="dialog"]` 限定原生弹窗的高度和滚动。套件也对已安装的适配层版本提供同样的样式，避免原生样式后加载时覆盖滚动。升级 DSH 固定版本时，打开短片工作台的新建和重命名弹窗，复测短内容和长内容，并覆盖仍安装旧版迁移插件的配置。
 
 alpha.2 的 `skill-office` 提供方仅发布一个覆盖 Word、PowerPoint 和 Excel 的 `office` 技能，原有 `office-docx`、`office-pptx`、`office-xlsx` 条目已移除。桌面打包须通过原生注册表列出并加载合并后的技能；冒烟仍执行三类真实文档转 PDF、图片渲染、OpenDocument 转换及 XLSX 重算。后续升级同时复核提供方当前目录和这些真实操作。
 
@@ -44,6 +54,8 @@ alpha.2 的客户端聚合 remotes 类型不再自动引入 settings 命名空�
 
 旧版 UI 适配层将按钮变体映射为当前原生支持的类型，并将旧弹窗标题转入 `Modal.title`。限定范围的弹窗样式挂载到父文档，在最后一个插件释放时移除；升级时复测唯一且可访问的标题、确认与取消按钮、表单宽度和样式清理。本地批量安装可用 `-NoNativeHmr` 暂时停用生成的 HMR 条目，走原生插件管理器的重启生效流程，再正常重启恢复 HMR；不手工修改插件选择，不修改上游。
 
+Work 弹窗复用[共用 Modal](../../plugins/_shared/ui/modal.tsx)。通过 `className` 将弹窗限制在原生遮罩的可用高度内，并通过 `contentClassName` 让溢出内容滚动，原生底部操作区保持可见。自定义布局的无头弹窗超高时允许整体滚动。升级 DSH 固定版本时，在桌面宽度和 390 像素下切换两种主题，分别预览长、短共享会话，滚动到最后一条消息及复制按钮，检查 Escape 退出和焦点恢复。
+
 Suite `0.1.50` 与迁移包的新版本按功能复用现有 Lucide 图形，侧栏不再统一显示拼图；标注和录制使用公开的原生图标组件。市场在已安装版本落后时使用新目录图标，避免旧包遮盖新版图标。旧工作台的空状态、提示、对话框和进度兼容组件提供统一主题样式；Canvas 使用宿主主题及中文草稿提示。决策情报 `1.0.2` 在固定来源 `f95aaa5e185f` 上补充包元数据、图标与原生右栏引导图标，Host 和编辑器业务不变。升级 pin 时用真实归档核对市场、管理器、侧栏和右栏，覆盖 26 项入口、明暗主题、窄窗口及常用弹窗；已安装旧包需要更新并检查运行进程，不能只检查目录中是否有图标字段。
 
 Suite `0.1.49` 携带素材工作台 `0.1.3` 的页面接口别名适配：图片页的 `status` 对应 `image-status`，视频页的操作对应已声明的 `video-*` 服务。仍经过原有 owner 鉴权、工作区归属及输入校验，不扩展工具权限；未登录或未授权模型时显示配置提示。回归时检查两个页面的初始化以及真实授权后的模型与任务读取，付费生成另行按用户操作验证。
@@ -64,7 +76,7 @@ Suite `0.1.46` 将多引擎分支 24 个身份的对应清单和经校验的独�
 
 Desktop `1.0.10` 沿用 `initProfile`/`readProfileManifest` 和原生 `dsh.profile.bundles`，补齐已初始化配置缺失的私有 Host；备份原清单后移除重复的公开产品 Bundle 和产品直接依赖。`desktop-runtime.json.sharedPackages` 限定安装包拥有的 Suite/Stage/Host 副本，即使版本相同也恢复为安装包提供。最终原生 Include overlay 仅启用产品入口；Suite 根据 install-anchor 包身份固定该发行版的账号、主题及服务地址，保留其他插件配置和凭据。升级时复测旧 web-only profile、旧及相同版本 Suite、停用条目、已安装 Mac 的真实云端登录、错误密码分类和保持登录后再次进入。欢迎页进入工作区前核验 `/ipollowork-suite/info`，区分凭据错误、会话拒绝、服务异常、超时和限流。详见[升级诊断](../../docs/diagnostics/2026-11-20-mac-login-and-upgrade.md)。
 
-官方模型代理只在响应头返回前连接失败，或网关报告同一调用仍在执行时，复用原请求 ID 恢复连接。恢复有次数上限、支持取消并绑定账号代次；原生 pi-ai 自动重试仍关闭。已开始输出的流和上游结果不明的调用不重放。账号服务另行在同一计费调用内重试明确返回 HTTP 429 的聊天请求。下次升级 DSH 时复验原生流、预备调用、取消、切换账号及只结算一次。Design 编辑器在拖拽与缩放前将 CSS 单位解析为布局像素，按父容器缩放换算指针位移，并在实际移动后才启用吸附；复验 PPT 百分比、样式表定位、内容盒尺寸、右下角锚定和固定画布缩放。
+官方模型代理在收到响应头前使用原请求 ID 有限恢复。事件流断开后，可以读取已完成的响应，核对已输出的字节后接续剩余部分。上游结果未确认时不重新提交。账号服务在同一计费调用内重试明确返回 HTTP 429 或确认未能建立连接的聊天请求。下次升级 DSH 时复验原生流、预备调用、取消、切换账号及只结算一次。Design 编辑器在拖拽与缩放前将 CSS 单位解析为布局像素，按父容器缩放换算指针位移，并在实际移动后才启用吸附；复验 PPT 百分比、样式表定位、内容盒尺寸、右下角锚定和固定画布缩放。
 
 Desktop `1.0.9` 在官方 profile 启动前，使用现有锁和签名应用的 `desktop-runtime.json` 清单，将 profile 中版本不匹配的 DSH/Cordis 核心依赖备份到独立目录。DSH 原生解析保留 profile 优先级，插件停用后留下的旧依赖仍可能覆盖安装包。升级时复测旧 `dsh-llm`/`dsh-typert-protocol`、重复启动、数据保留、相同版本和外部链接；不修改解析器或 Agent。详见[诊断与验证](../../docs/desktop-startup-and-download-fix-2026-11-20.md)。
 
@@ -90,7 +102,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 | [组织会话副本](../../plugins/ipollowork-suite/src/host/session-copies.ts) | 对话标题区分享仅将 `sessionQuery.readSurface` 中的可见文字发给指定有效成员。接收端通过 `Session.create`、`SessionPersistence.create` 和 `Workspace.attachSession` 写入新会话，随后刷新原生会话列表，通过 `uiWorkspace.openSession` 打开。原工作区和工具记录不进入副本。 | 分享给两名同事中的一人，关闭分享者客户端，核对接收者可在软件内复制并续聊、再次打开复用现有副本，且新消息不改变原会话。 |
 | [IM 手动接入弹窗](../../plugins/ipollowork-suite/vendor/dsh-im/plugin-src/client/credential-binding.js) | 原生 `Modal` 挂载在页面顶层；表单、指引和操作区样式跟随弹窗内容。 | 在明暗主题和窄屏分别打开令牌、ID 加密钥、Slack、Matrix 和邮件表单，检查焦点与退出。 |
 | [组织资源审核和下发](../../plugins/ipollowork-suite/src/client/organization-publications.tsx) | 模板、插件、Skill 和 MCP 共用带版本的提交流程。PostgreSQL 迁移 `018` 把 MCP 纳入审核。已下发的 MCP 与审核记录使用相同的 ID 和授权范围，DSH Host 通过原有代理加载当前成员获授权的工具。 | 以普通成员提交，以管理员审核并指定接收者，分别检查已授权和未授权成员。下架后确认运行时撤销工具访问。 |
-| [iPolloWork 共用控件](../../plugins/_shared/ui/controls.tsx)与[产品主题](../../plugins/_shared/ui/theme.ts) | 套件通过 `ctx.theme.overrideTokens` 注册主题，表单复用原生公开的 `Button`、`Input`、`Switch`、`Menu` 和 `Modal`。[套件样式](../../plugins/ipollowork-suite/src/client/brand.css)在随包 Studio 的 `data-studio-editor`、`data-studio-overlay` 根节点映射主题变量。 | 更新 DSH 或 Studio 固定版本后，打开设置、项目和智能体创建、设计工作台。在两种主题和桌面、390 px 宽度下检查侧栏选中、菜单磨砂、开关和发送按钮对比度、组织空间标签和设置、焦点、原生下拉、编辑器与弹层颜色及作品预览隔离。将套件的 `theme` 设为 `false`，检查原生外观恢复后各插件仍可使用。 |
+| [iPolloWork 共用控件](../../plugins/_shared/ui/controls.tsx)与[产品主题](../../plugins/_shared/ui/theme.ts) | 套件通过 `ctx.theme.overrideTokens` 注册主题，表单复用原生公开的 `Button`、`Input`、`Switch`、`Menu` 和 `Modal`。搜索框使用公开的 `Input.icon` 和原生 `type="search"`，共用样式根据宿主的 `data-input-modality` 在控件外层显示焦点。[套件样式](../../plugins/ipollowork-suite/src/client/brand.css)在随包 Studio 的 `data-studio-editor`、`data-studio-overlay` 根节点映射主题变量。 | 更新 DSH 或 Studio 固定版本后，打开设置、项目和智能体创建、设计工作台。在两种主题和桌面、390 px 宽度下检查侧栏选中、菜单磨砂、开关和发送按钮对比度、组织空间标签和设置、焦点、原生下拉、编辑器与弹层颜色及作品预览隔离。在员工选择、成员、数据和智能体页面用鼠标和 Tab 聚焦搜索框，检查文字和图标对齐、单层焦点、输入及清空。将套件的 `theme` 设为 `false`，检查原生外观恢复后各插件仍可使用。 |
 | [品牌和 Windows 标题栏](../../plugins/ipollowork-suite/src/client/brand.css) | 使用套件 theme、原生 slot 及部分 DSH DOM 和 CSS token。工作区顶部的额外 Windows 标志通过移除 `body::before` 覆盖处理。 | 检查标题栏、折叠侧栏、全屏、浅色和暗色。品牌标志和原生窗口控制应各自正确显示。 |
 | [macOS 窗口拖拽](../../plugins/ipollowork-suite/src/client/suite.module.css) | DSH `dsh-v0.2.2-rc.3` 用 `data-global-panel` 标记主内容列，用 `data-window-drag` 标记原生拖拽栏，用 `data-shortcut-modal="settings"` 标记挂在页面根节点外的设置面板。套件按 `--dsh-frame-top-clearance` 设置顶部拖拽区，保留原生窗口控件。 | 在 macOS Electron 中从首页、会话、插件、组织空间、数据、机器人和设置顶部拖动窗口。收起侧栏和缩窄窗口后重试，检查滚动、按钮、弹窗和全屏。 |
 | [登录、profile 和桌面集成](../desktop-host)、[官方启动器接入](../tooling/start.mjs) | `profile-boot`、`app-boot`、Connection 与认证导出，以及 DSH profile 配置和桌面桥接。源码构建和公开 npm 包需要分别核对导出，即使版本号一致。 | 在隔离 home 中启动真实 Electron，打开已有 profile 的测试副本，验证登录注册、模型和 agent 模式、工作区与会话、浏览器和文件操作。 |
@@ -121,7 +133,7 @@ Design `1.0.0-beta.34` 将 HTML 交付约束应用于所有已激活的 Design �
 
 ## 工作区工具与 Word 编辑插件
 
-工作区工具使用文档预览工具栏、右侧标签、会话菜单和 `uiWorkspace.startSession`。独立的 Markdown、Excel、Word 插件通过 `documentPreviews` 及对应的 `sidebar.right.tab.document` 插槽注册编辑页面，沿用原生文件地址和其他查看方式。Host 路由通过 `workspaceFiles.scopeOf`、会话沙箱、文件系统和连接鉴权检查本地文件，依据文件内容版本保存。升级固定 DSH 时，复验从对话和文件树直接打开、Markdown/XLSX/CSV/DOCX 写回、外部修改冲突、模板草稿、项目隔离、明暗主题及窄面板。Word 的开源核心构建和静态资源由插件提供。
+工作区工具使用文档预览工具栏和会话菜单。对话导出通过会话菜单打开 `shell.overlay`，使用原生文件操作保存 Markdown。独立的 Markdown、Excel、Word 插件通过 `documentPreviews` 及对应的 `sidebar.right.tab.document` 插槽注册编辑页面，沿用原生文件地址和其他查看方式。Host 路由通过 `workspaceFiles.scopeOf`、会话沙箱、文件系统和连接鉴权检查本地文件，依据文件内容版本保存。升级固定 DSH 时，复验从对话和文件树直接打开、Markdown/XLSX/CSV/DOCX 写回、外部修改冲突、对话导出、项目隔离、明暗主题及窄面板。Word 的开源核心构建和静态资源由插件提供。
 
 Excel 将 XLS、ODS 注册为与 XLSX 相同的渲染器读取模式。[工作簿读取器](../../plugins/workspace-tools/src/workbook.ts)接受 OOXML 部件开头的 UTF-8 BOM。`plugins/workspace-tools/src/excel-host.ts` 将旧格式转换为 XLSX 副本，客户端通过原生 `fileActions.save` 保存，保留原文件。升级固定版本时，打开、保存并重新打开关系文件和工作表 XML 带 BOM 的 XLSX，复验区域粘贴、撤销、数字格式、已有公式结果、CSV 和两种旧格式。
 
@@ -144,6 +156,8 @@ Design 和 Video 使用相同的图标容器。[原生文案适配](../../plugin
 ## 更新和验证
 
 组织 MCP 同步直接调用已鉴权的授权目录，不再依赖额外的会话及积分查询。保留账号服务的安全错误码，以区分连接超时、登录失效与目录同步失败。验证已登录时仅请求目录、退出时不发出网络请求，以及目录故障时撤回连接。
+
+Suite Host 对瞬时失败的账户 GET 在原截止时间内重试一次，包括组织空间需要的会话、组织列表和项目列表。取消或切换账户后停止重试。原生页面分别显示 DNS、安全连接、连接失败、超时和 HTTP 网关故障，不展示原始传输详情。下次升级 DSH 时复验组织列表恢复、持续网关故障和重试期间退出账户。
 
 组织 MCP 代理保留上游 4xx 状态和 `mcp-method`、`mcp-name` 协议头。当前 pin 的 MCP SDK 会先发送 `server/discover`；2025 协议服务器拒绝探测时，客户端需要依据原始 4xx 回退到 `initialize`，不能将其改写成 503。认证失败、权限不足和限流使用脱敏的独立错误码，上游错误正文不外发。升级 pin 时验证原生协议探测、旧版握手、工具列表、会话失效，以及 401/403/429 和上游正文脱敏。
 
@@ -236,9 +250,9 @@ Suite 0.1.42 在安装包生成的 `@ipollo/desktop-runtime` 清单记录公开�
 
 ### 组织空间工作流
 
-项目看板归档恢复及全量搜索沿用 Suite `ipollowork.projectBoard` 桥接和已认证的账号路由（服务数据库版本 22）。`plugins/collaboration-board/src/host.ts`、`tasks.ts`、`reminders.ts` 通过公开 `storageDomain` 把 `ipollo_project_board` 从版本 2 升至 3，兼容 1/2，新增个人提醒表。原生 `schedules.entries()` 及所拥有定时的 `ended`／`paused` 状态支持每 15 秒检查延后启动。仅对已经投递、被前置任务阻塞的提醒，在原账号范围内用新投递校验值重新安排；队列中或手动暂停的提醒不重排。截止提醒沿用原有已授权的收件箱详情／已读路由及可选通知中心来源。下次更换固定版本时，用实际套件归档和独立配置验证版本 2 数据升级、归档／回收站／恢复、到期提醒重启已读状态、原生定时暂停和队列防重排、批量部分失败、超过 100 条任务的全量搜索，以及 390 px 下明暗主题的四个视图。账号服务单独复核接收权限并对截止提醒去重。
+项目看板归档恢复及全量搜索沿用 Suite `ipollowork.projectBoard` 桥接和已认证的账号路由（服务数据库版本 22）。`plugins/collaboration-board/src/host.ts`、`tasks.ts`、`reminders.ts` 通过公开 `storageDomain` 把 `ipollo_project_board` 从版本 2 升至 3，兼容 1/2，新增个人提醒表。原生 `schedules.entries()` 及所拥有定时的 `ended`／`paused` 状态支持每 15 秒检查延后启动。仅对已经投递、被前置任务阻塞的提醒，在原账号范围内用新投递校验值重新安排；队列中或手动暂停的提醒不重排。截止提醒沿用原有已授权的收件箱详情／已读路由及可选通知中心来源。下次更换固定版本时，用实际套件归档和独立配置验证版本 2 数据升级、单项归档和取消归档、「当前任务」和「已归档」筛选、到期提醒重启已读状态、原生定时暂停和队列防重排、超过 100 条任务的全量搜索，以及 390 px 下明暗主题的四个视图。账号服务单独复核接收权限并对截止提醒去重。
 
-Suite `src/host/model-request-recovery.ts` 保持原生模型 `retryPolicy.maxRetries = 0`。有限重试只对收到响应头前的传输错误、`IPW_INVALID_RESPONSE`、准入拒绝及 `SERVICE_CALL_RUNNING` 复用同一 Suite 调用 ID，保留账号切换取消和未知结果保护。原生 `llm` 请求、`SuiteError` 映射及 `conversation.chat.node` 的 `turn-error` 入口保持权威。下次更换固定版本时运行原生模型上下文测试，覆盖 502、503、仍在执行的响应，确认调用 ID 唯一、收到响应头后不重放，以及具体错误的本地化提示，不改写历史聊天事件。
+Suite `src/host/service-models.ts` 保持原生模型的 `retryPolicy.maxRetries = 0`。通过 `PiAiAdapter.prepareHeaders`、`stream` 和 `prepareCall` 公开接口关联 Work 请求 ID 与脱敏错误。`model-request-recovery.ts` 用原 ID 处理响应头前的有限重试，以及响应头后已完成输出的只读恢复。`conversation.chat.node` 的 `turn-error` 插槽显示已确认的原因和上游 HTTP 状态。升级 DSH 时运行 `service-models.test.ts`，覆盖 502、503、同调用仍在执行及 SSE 事件中途断开。复验仅使用一个调用 ID、输出不重复、取消和切换账号、未知结果不重新提交，以及新旧会话的错误提示。
 
 市场原生 `plugins.tab` 通过 `src/client/organization-market.tsx` 展示当前账号有权读取的组织插件发布记录。沿用 Suite 组织/发布接口及 `MarketInstallation.startManual`，由原生检查与安装进度接管安装。升级 pin 时复验组织切换、仅展示已发布版本、目录/版本读取中的账号切换、安装前撤权，以及原生安装弹窗；检查既有市场布局的明暗主题和窄容器。
 
@@ -254,3 +268,6 @@ Suite `src/host/model-request-recovery.ts` 保持原生模型 `retryPolicy.maxRe
 `plugins/ipollowork-suite/src/host/enterprise.ts` 在旧账号服务缺少桌面接口时，复用已有的网页地址授权接口，并用同一个桌面窗口打开临时会话。复验旧服务的组织设置打开入口和拒绝访问路径，同时确认新版授权仍能恢复获准的 Cookie。保存普通网页时省略空 Cookie 列表，以兼容旧服务的校验。
 
 升级 DSH 固定版本时，使用独立桌面 profile，在没有会话的情况下从「业务网页」打开已配置的站点。以相同 profile 冷启动，验证获准的 HTTPS Cookie 恢复。切换账号、取消组织成员资格和主动退出，验证权限和隔离。检查插件 Host 的组织接口，以及凭据库中账号授权记录的加密状态。
+### 移植工作台路由与模型任务
+
+[移植 Host](../../plugins/ipollowork-suite/src/ported/host.ts) 将 `workspaceRegistry` 校验后的工作区 ID 传给业务操作，并按所有者连接的生命周期管理请求。[移植客户端](../../plugins/ipollowork-suite/src/ported/client.tsx) 校验工作台消息来源，由桌面壳在系统浏览器打开对应的官方平台；系统浏览器登录无法提供独立账号环境与自动核验。升级 DSH 时复测官方登录链接可打开、跨平台链接会被拒绝、视频号封面通过工作台代理上传与预览，以及图片任务按原任务回执查询成功且只有一次提交。检查小红书安装包是否包含目标平台的本地依赖，并用全新配置验证冷启动。

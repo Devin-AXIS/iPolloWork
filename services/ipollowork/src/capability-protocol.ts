@@ -30,7 +30,7 @@ export const capabilityInputs = {
 const presetPaths: Readonly<Record<string, string>> = {
   "qwen-image-3.0": "/api/v1/services/aigc/multimodal-generation/generation",
   "wan2.6-image": "/api/v1/services/aigc/multimodal-generation/generation",
-  "wan2.6-t2i": "/api/v1/services/aigc/text2image/image-synthesis",
+  "wan2.6-t2i": "/api/v1/services/aigc/multimodal-generation/generation",
   "wan2.7-t2v": "/api/v1/services/aigc/video-generation/video-synthesis",
   "wan2.6-t2v": "/api/v1/services/aigc/video-generation/video-synthesis",
   "wan2.7-i2v": "/api/v1/services/aigc/image2video/video-synthesis",
@@ -77,8 +77,13 @@ export function capabilityRequest(kind: CapabilityKind, protocol: string, path: 
   if (kind === "image") {
     const value = capabilityInputs.image.parse(input);
     if (protocol === "dashscope") {
+      if (model === "wan2.6-t2i" && value.images?.length)
+        throw new ServiceError("CAPABILITY_INPUT_UNSUPPORTED", 400, "万相 2.6 文生图不接收参考图片");
       const parameters = { n: value.count, ...(value.size ? { size: value.size } : {}) };
-      if (path.endsWith("multimodal-generation/generation")) return { model, input: { messages: [{ role: "user", content: [...(value.images ?? []).map(image => ({ image })), { text: value.prompt }] }] }, parameters };
+      if (path.endsWith("multimodal-generation/generation")) return {
+        model, input: { messages: [{ role: "user", content: [...(value.images ?? []).map(image => ({ image })), { text: value.prompt }] }] },
+        parameters: { ...parameters, ...(model === "wan2.6-image" && !value.images?.length && { enable_interleave: true }) },
+      };
       if (value.images?.length) throw new ServiceError("CAPABILITY_INPUT_UNSUPPORTED", 400, "该接口不支持参考图片，请选择支持图片输入的模型");
       return { model, input: { prompt: value.prompt }, parameters };
     }

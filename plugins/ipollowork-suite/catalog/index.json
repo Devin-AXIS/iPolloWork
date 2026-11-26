@@ -136,40 +136,6 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzYiIGhlaWdodD0iMzYiIHZpZXdCb3g9IjAgMCAzNiAzNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8cmVjdCB4PSIxMS41IiB5PSI4IiB3aWR0aD0iMTciIGhlaWdodD0iMTQiIHJ4PSIyLjUiIGZpbGw9IiM3Q0I3RkYiIGZpbGwtb3BhY2l0eT0iMC41NSIgLz4KICA8cGF0aCBkPSJNMTAgMTJIMjNDMjQuMzgwNyAxMiAyNS41IDEzLjExOTMgMjUuNSAxNC41VjIzLjVDMjUuNSAyNC44ODA3IDI0LjM4MDcgMjYgMjMgMjZIMTQuNUwxMC40IDMwLjFRMTAgMzAuNSAxMCAyOS45M1YyNkM4LjYxOTI5IDI2IDcuNSAyNC44ODA3IDcuNSAyMy41VjE0LjVDNy41IDEzLjExOTMgOC42MTkyOSAxMiAxMCAxMloiIGZpbGw9InVybCgjc2Vzc2lvbi10aXRsZS1idWJibGUpIiAvPgogIDxwYXRoIGQ9Ik0xMyAxNkgyME0xNi41IDE2VjIyIiBzdHJva2U9IiNGRkZGRkYiIHN0cm9rZS13aWR0aD0iMS42IiAvPgogIDxkZWZzPgogICAgPGxpbmVhckdyYWRpZW50IGlkPSJzZXNzaW9uLXRpdGxlLWJ1YmJsZSIgeDE9IjkiIHkxPSIxMiIgeDI9IjI0IiB5Mj0iMjgiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHN0b3Agc3RvcC1jb2xvcj0iIzZGQjJFRSIgLz4KICAgICAgPHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjM0U1OEQ2IiAvPgogICAgPC9saW5lYXJHcmFkaWVudD4KICA8L2RlZnM+Cjwvc3ZnPgo="
     },
     {
-      "name": "@ipollo/dsh-acme-research",
-      "title": {
-        "zh": "Acme Research",
-        "en": "Acme Research"
-      },
-      "author": "Acme",
-      "description": {
-        "zh": "用于本地开发和测试的独立示例插件。",
-        "en": "Minimal independent plugin package for local development."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "acme-research",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.6",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlNmY0ZWYiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMjQ3NTU2IiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJtMTAuMDY1IDEyLjQ5My02LjE4IDEuMzE4YS45MzQuOTM0IDAgMCAxLTEuMTA4LS43MDJsLS41MzctMi4xNWExLjA3IDEuMDcgMCAwIDEgLjY5MS0xLjI2NWwxMy41MDQtNC40NCI+PC9wYXRoPjxwYXRoIGQ9Im0xMy41NiAxMS43NDcgNC4zMzItLjkyNCI+PC9wYXRoPjxwYXRoIGQ9Im0xNiAyMS0zLjEwNS02LjIxIj48L3BhdGg+PHBhdGggZD0iTTE2LjQ4NSA1Ljk0YTIgMiAwIDAgMSAxLjQ1NS0yLjQyNWwxLjA5LS4yNzJhMSAxIDAgMCAxIDEuMjEyLjcyN2wxLjUxNSA2LjA2YTEgMSAwIDAgMS0uNzI3IDEuMjEzbC0xLjA5LjI3MmEyIDIgMCAwIDEtMi40MjUtMS40NTV6Ij48L3BhdGg+PHBhdGggZD0ibTYuMTU4IDguNjMzIDEuMTE0IDQuNDU2Ij48L3BhdGg+PHBhdGggZD0ibTggMjEgMy4xMDUtNi4yMSI+PC9wYXRoPjxjaXJjbGUgY3g9IjEyIiBjeT0iMTMiIHI9IjIiPjwvY2lyY2xlPjwvc3ZnPjwvc3ZnPgo="
-    },
-    {
       "name": "@ipollo/dsh-context7",
       "title": {
         "zh": "Context7",
@@ -225,7 +191,7 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -463,7 +429,7 @@
       },
       "versions": [
         {
-          "version": "0.1.8",
+          "version": "0.1.9",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -667,7 +633,7 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -714,40 +680,6 @@
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlZGYwZjUiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNGM2MDdiIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMjEgMTVhMiAyIDAgMCAxLTIgMkg3bC00IDRWNWEyIDIgMCAwIDEgMi0yaDE0YTIgMiAwIDAgMSAyIDJ6Ij48L3BhdGg+PHBhdGggZD0iTTEzIDhINyI+PC9wYXRoPjxwYXRoIGQ9Ik0xNyAxMkg3Ij48L3BhdGg+PC9zdmc+PC9zdmc+Cg=="
     },
     {
-      "name": "@ipollo/dsh-workspace-canvas",
-      "title": {
-        "zh": "Workspace Canvas",
-        "en": "Workspace Canvas"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "在工作区使用画布，支持用户和智能体共同编辑。",
-        "en": "A minimal MCP App canvas that can be edited by people and agents."
-      },
-      "homepage": "https://github.com/Devin-AXIS/iPolloWork",
-      "metadata": {
-        "category": "creative",
-        "keywords": [
-          "workspace-canvas",
-          "dsh",
-          "ipollowork"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.7",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlNGY1ZjIiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMjQ3YjZiIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iMTgiIGhlaWdodD0iMTgiIHg9IjMiIHk9IjMiIHJ4PSIyIj48L3JlY3Q+PHBhdGggZD0iTTMgOWgxOCI+PC9wYXRoPjxwYXRoIGQ9Ik05IDIxVjkiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
-    },
-    {
       "name": "@ipollo/dsh-xiaohongshu-ops",
       "title": {
         "zh": "小红书运营台",
@@ -769,7 +701,7 @@
       },
       "versions": [
         {
-          "version": "0.1.8",
+          "version": "0.1.9",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -780,40 +712,6 @@
         }
       ],
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlZGYwZjUiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNGM2MDdiIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTYgOC4yQTIuMjIgMi4yMiAwIDAgMCAxMy44IDZjLS44IDAtMS40LjMtMS44LjktLjQtLjYtMS0uOS0xLjgtLjlBMi4yMiAyLjIyIDAgMCAwIDggOC4yYzAgLjYuMyAxLjIuNyAxLjZBMjI2LjY1MiAyMjYuNjUyIDAgMCAwIDEyIDEzYTQwNCA0MDQgMCAwIDAgMy4zLTMuMSAyLjQxMyAyLjQxMyAwIDAgMCAuNy0xLjciPjwvcGF0aD48cGF0aCBkPSJNNCAxOS41di0xNUEyLjUgMi41IDAgMCAxIDYuNSAySDE5YTEgMSAwIDAgMSAxIDF2MThhMSAxIDAgMCAxLTEgMUg2LjVhMSAxIDAgMCAxIDAtNUgyMCI+PC9wYXRoPjwvc3ZnPjwvc3ZnPgo="
-    },
-    {
-      "name": "@ipollo/dsh-decision-intelligence",
-      "title": {
-        "zh": "iPollo 决策情报",
-        "en": "iPollo Decision Intelligence"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "整理产业关系、关键指标和证据，生成可展开的决策图谱。",
-        "en": "Research a decision in an iPolloWork workspace, explore its evidence and publish a read-only atlas."
-      },
-      "homepage": "https://github.com/Devin-AXIS/ipollo-decision-intelligence",
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "decision",
-          "atlas",
-          "research"
-        ]
-      },
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlZGYwZjUiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNGM2MDdiIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMTZ2NSI+PC9wYXRoPjxwYXRoIGQ9Ik0xNiAxNHY3Ij48L3BhdGg+PHBhdGggZD0iTTIwIDEwdjExIj48L3BhdGg+PHBhdGggZD0ibTIyIDMtOC42NDYgOC42NDZhLjUuNSAwIDAgMS0uNzA4IDBMOS4zNTQgOC4zNTRhLjUuNSAwIDAgMC0uNzA3IDBMMiAxNSI+PC9wYXRoPjxwYXRoIGQ9Ik00IDE4djMiPjwvcGF0aD48cGF0aCBkPSJNOCAxNHY3Ij48L3BhdGg+PC9zdmc+PC9zdmc+Cg==",
-      "versions": [
-        {
-          "version": "1.0.3",
-          "publishTimestamp": 1795382400,
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          }
-        }
-      ]
     },
     {
       "name": "@ipollo/dsh-markdown-editor",
@@ -885,8 +783,8 @@
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "在左侧对话的右键菜单中，将用户和助手的消息导出为 Markdown。",
-        "en": "Right-click a conversation in the left sidebar to export user and assistant messages as Markdown."
+        "zh": "从会话菜单把用户和助手的消息导出为 Markdown。",
+        "en": "Export user and assistant messages as Markdown from the conversation menu."
       },
       "metadata": {
         "category": "productivity",
@@ -896,110 +794,51 @@
       },
       "versions": [
         {
-          "version": "0.1.0",
+          "version": "0.1.1",
           "source": {
             "type": "npm"
           },
           "engines": {
             "dsh": "0.2.3-alpha.2"
           },
-          "publishTimestamp": 1795515875
+          "publishTimestamp": 1795687815
         }
       ],
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlZmVhZmEiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzI1OWE3IiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTUgMkg2YTIgMiAwIDAgMC0yIDJ2MTZhMiAyIDAgMCAwIDIgMmgxMmEyIDIgMCAwIDAgMi0yVjdaIj48L3BhdGg+PHBhdGggZD0iTTE0IDJ2NGEyIDIgMCAwIDAgMiAyaDQiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTh2LTYiPjwvcGF0aD48cGF0aCBkPSJtOSAxNSAzIDMgMy0zIj48L3BhdGg+PC9zdmc+PC9zdmc+Cg=="
     },
     {
-      "name": "@ipollo/dsh-task-templates",
+      "name": "@ipollo/dsh-decision-intelligence",
       "title": {
-        "zh": "任务模板",
-        "en": "Task Templates"
+        "zh": "iPollo 决策情报",
+        "en": "iPollo Decision Intelligence"
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "右键对话保存为模板，在右侧工作区新建「任务模板」标签页来复用。",
-        "en": "Right-click a conversation to save it as a template. Open a Task Templates tab in the right sidebar to reuse it."
+        "zh": "整理产业关系、关键指标和证据，生成可展开的决策图谱。",
+        "en": "Research a decision in a DSH workspace, explore its evidence and publish a read-only atlas."
       },
+      "homepage": "https://github.com/Devin-AXIS/ipollo-decision-intelligence",
       "metadata": {
         "category": "productivity",
         "keywords": [
-          "task-templates"
+          "decision",
+          "atlas",
+          "research"
         ]
       },
+      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlZGYwZjUiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNGM2MDdiIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMTIgMTZ2NSI+PC9wYXRoPjxwYXRoIGQ9Ik0xNiAxNHY3Ij48L3BhdGg+PHBhdGggZD0iTTIwIDEwdjExIj48L3BhdGg+PHBhdGggZD0ibTIyIDMtOC42NDYgOC42NDZhLjUuNSAwIDAgMS0uNzA4IDBMOS4zNTQgOC4zNTRhLjUuNSAwIDAgMC0uNzA3IDBMMiAxNSI+PC9wYXRoPjxwYXRoIGQ9Ik00IDE4djMiPjwvcGF0aD48cGF0aCBkPSJNOCAxNHY3Ij48L3BhdGg+PC9zdmc+PC9zdmc+Cg==",
       "versions": [
         {
-          "version": "0.1.1",
+          "version": "1.0.4",
+          "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
           },
           "engines": {
             "dsh": "0.2.3-alpha.2"
-          },
-          "publishTimestamp": 1795516135
+          }
         }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlOGVmZmEiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjM2E1OThkIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSI0IiB4PSI4IiB5PSIyIiByeD0iMSIgcnk9IjEiPjwvcmVjdD48cGF0aCBkPSJNMTYgNGgyYTIgMiAwIDAgMSAyIDJ2MTRhMiAyIDAgMCAxLTIgMkg2YTIgMiAwIDAgMS0yLTJWNmEyIDIgMCAwIDEgMi0yaDIiPjwvcGF0aD48cGF0aCBkPSJNMTIgMTFoNCI+PC9wYXRoPjxwYXRoIGQ9Ik0xMiAxNmg0Ij48L3BhdGg+PHBhdGggZD0iTTggMTFoLjAxIj48L3BhdGg+PHBhdGggZD0iTTggMTZoLjAxIj48L3BhdGg+PC9zdmc+PC9zdmc+Cg=="
-    },
-    {
-      "name": "@ipollo/dsh-reference-preparation",
-      "title": {
-        "zh": "参考资料整理",
-        "en": "Reference Preparation"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "在右侧工作区新建「参考资料整理」标签页，在本地提取文档内容并将参考索引和素材保存到当前项目。",
-        "en": "Open a Prepare References tab in the right sidebar to extract document contents locally and save references and assets in the current project."
-      },
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "reference-preparation"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.1",
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          },
-          "publishTimestamp": 1795515956
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmZmYxZGYiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjOTk2MTJkIiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cmVjdCB3aWR0aD0iOCIgaGVpZ2h0PSIxOCIgeD0iMyIgeT0iMyIgcng9IjEiPjwvcmVjdD48cGF0aCBkPSJNNyAzdjE4Ij48L3BhdGg+PHBhdGggZD0iTTIwLjQgMTguOWMuMi41LS4xIDEuMS0uNiAxLjNsLTEuOS43Yy0uNS4yLTEuMS0uMS0xLjMtLjZMMTEuMSA1LjFjLS4yLS41LjEtMS4xLjYtMS4zbDEuOS0uN2MuNS0uMiAxLjEuMSAxLjMuNloiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"
-    },
-    {
-      "name": "@ipollo/dsh-legacy-workspace-import",
-      "title": {
-        "zh": "旧版工作区导入",
-        "en": "Legacy Workspace Import"
-      },
-      "author": "iPolloWork",
-      "description": {
-        "zh": "迁移旧工作区时，在右侧工作区新建「旧版工作区导入」标签页，从 JSON 预览并选择导入命令和 Skill。",
-        "en": "When migrating a legacy workspace, open an Import Legacy Workspace tab in the right sidebar to review and select commands and skills from a JSON backup."
-      },
-      "metadata": {
-        "category": "productivity",
-        "keywords": [
-          "legacy-workspace-import"
-        ]
-      },
-      "versions": [
-        {
-          "version": "0.1.0",
-          "source": {
-            "type": "npm"
-          },
-          "engines": {
-            "dsh": "0.2.3-alpha.2"
-          },
-          "publishTimestamp": 1795515878
-        }
-      ],
-      "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNmOWVkZWIiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYTM0ZDQ2IiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNMiA5VjVhMiAyIDAgMCAxIDItMmgzLjlhMiAyIDAgMCAxIDEuNjkuOWwuODEgMS4yYTIgMiAwIDAgMCAxLjY3LjlIMjBhMiAyIDAgMCAxIDIgMnYxMGEyIDIgMCAwIDEtMiAySDRhMiAyIDAgMCAxLTItMnYtMSI+PC9wYXRoPjxwYXRoIGQ9Ik0yIDEzaDEwIj48L3BhdGg+PHBhdGggZD0ibTkgMTYgMy0zLTMtMyI+PC9wYXRoPjwvc3ZnPjwvc3ZnPgo="
+      ]
     }
   ]
 }

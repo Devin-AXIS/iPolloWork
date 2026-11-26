@@ -52,7 +52,9 @@ export function createBrowserAppData(): IpolloData {
         download:async fileId=>({url:`/ipollowork-suite/data/apps/${id}/files/${encodeURIComponent(fileId)}`}),
         remove:async fileId=>{
           const response=await fetch(`/ipollowork-suite/data/apps/${id}/files/${encodeURIComponent(fileId)}`,{method:'DELETE',credentials:'same-origin'});
-          if(!response.ok)throw new AppDataError('IPW_FILE_TRANSFER_FAILED','Could not delete attachment');
+          const value=await response.json();
+          if(!response.ok)throw new AppDataError(value.error??'IPW_FILE_TRANSFER_FAILED',value.message??'Could not delete attachment');
+          if(value.status==='pending')throw new AppDataError('IPW_DELETION_PENDING','Attachment access has ended. Storage cleanup is in progress.');
         },
       })
     },

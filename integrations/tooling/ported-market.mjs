@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { join, resolve } from 'node:path'
 import { readFile, writeFile, cp, mkdir } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
+import { packNativeArchive } from './native-package.mjs'
 const root = fileURLToPath(new URL('../..', import.meta.url))
 const suite = join(root, 'plugins/ipollowork-suite')
 const product=JSON.parse(await readFile(join(root,'package.json'),'utf8'))
@@ -34,7 +35,7 @@ for (const item of ports) {
       if (!source.equals(shipped)) throw Error(`Stale xiaohongshu-ops runtime/${file}; rebuild business assets before packaging`)
     }
   }
-  const packed = JSON.parse(execFileSync(process.execPath, [npm, 'pack', '--ignore-scripts', '--json', '--pack-destination', output], { cwd: directory, encoding: 'utf8', maxBuffer: 8_000_000 }))[0]
+  const packed = await packNativeArchive(directory, output, npm)
   const bytes = await readFile(join(output, packed.filename)), sha256 = createHash('sha256').update(bytes).digest('hex')
   const file = packed.filename.replace(/\.tgz$/, '-' + sha256.slice(0, 12) + '.tgz')
   await cp(join(output, packed.filename), join(suite, 'catalog/packages', file))
@@ -43,7 +44,7 @@ for (const item of ports) {
   const source = item.kind === 'existing-native'
     ? JSON.parse(execFileSync('git', ['show', `${inventory.sourceRevision}:${item.source}/ipollowork.plugin.json`], { cwd: root, encoding: 'utf8', maxBuffer: 2_000_000 }))
     : JSON.parse(await readFile(join(directory, 'business/ipollowork.plugin.json'), 'utf8'))
-  const creative = ['media-studio', 'short-video-studio', 'workspace-canvas'].includes(item.id)
+  const creative = ['media-studio', 'short-video-studio'].includes(item.id)
   const communication = /(?:xiaohongshu|douyin|wechat)/.test(item.id)
   const title = source.name
   const entry = { name: manifest.name, title: { zh: title, en: source.localization?.translations?.en?.name ?? title },

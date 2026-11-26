@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, type ReactNode, type HTMLAttributes } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Button as NativeButton, Input, Modal, Toast } from '@deepseek-ai/dsh-client-ui-primitives'
+import modalCss from '../../../_shared/ui/modal.css'
 import { Puzzle, Plus, X, Trash2, Search, RefreshCw, ChevronDown, Settings } from 'lucide-react'
 
 const SelectState = createContext({ value: '', options: [] as { value: string; label: string }[], disabled: false, change: (_value: string) => {} })
@@ -34,7 +35,7 @@ function modalBody(children: ReactNode): { title: string; content: ReactNode } {
   const content = visit(children)
   return { title, content }
 }
-const overlayStyle = `.ipw-ported-overlay{font:13px/1.5 var(--dsw-font-family,system-ui);color:var(--dsw-alias-label-primary);max-height:calc(100dvh - 48px);overflow:auto}
+const overlayStyle = `.ipw-ported-overlay{font:13px/1.5 var(--dsw-font-family,system-ui);color:var(--dsw-alias-label-primary)}
 .ipw-ported-overlay form,.ipw-ported-overlay [role=form],.ipw-ported-overlay [data-slot=field]{display:grid;gap:12px;min-width:0}.ipw-ported-overlay [data-slot=field]{gap:6px}
 .ipw-ported-overlay [data-slot=dialog-header]{display:grid;gap:6px}.ipw-ported-overlay [data-slot=dialog-description]{font-size:13px;line-height:1.6;color:var(--dsw-alias-label-secondary);margin:0 0 16px}
 .ipw-ported-overlay [data-slot=dialog-footer]{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:8px}.ipw-ported-overlay input{width:100%;min-width:0}
@@ -74,7 +75,7 @@ export function installFrameUi(): () => void {
     return () => { owners.delete(owner); if (!owners.size) dispose() }
   }
   const previous: unknown = Reflect.get(window, '__ipolloPortedUi')
-  const style = document.createElement('style'); style.dataset.ipwPortedOverlay = ''; style.textContent = overlayStyle; document.head.append(style)
+  const style = document.createElement('style'); style.dataset.ipwPortedOverlay = ''; style.textContent = modalCss + '\n' + overlayStyle; document.head.append(style)
   const owners = new Set([owner]), roots = new Map<Document, Set<Root>>()
   const disposeDocument = (document: Document) => { for (const root of roots.get(document) ?? []) root.unmount(); roots.delete(document) }
   const toast = (text: string, success: boolean) => window.dispatchEvent(new CustomEvent('ipollo-ported-toast', { detail: { text, success } }))

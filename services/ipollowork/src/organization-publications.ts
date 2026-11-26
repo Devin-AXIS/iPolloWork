@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { App } from "./http.js";
 import type { Store, Row } from "./database.js";
 import { audit, enterpriseAccess, isEnterpriseManager, now, uid } from "./domain.js";
-import { audienceOf, audiencesOf, grantedTo, replaceAudience, requireUse } from "./grants.js";
+import { audienceOf, audienceSchema, audiencesOf, grantedTo, replaceAudience, requireUse } from "./grants.js";
 import { ServiceError } from "./errors.js";
 import { isSharedMcpEndpoint, publishEnterpriseMcp } from "./enterprise-mcp.js";
 import { organizationNotice } from "./organization-notice.js";
@@ -35,10 +35,11 @@ const mcp = z.object({
   id: publicationId, title, description, version: versionLabel,
   endpoint: z.string().trim().max(2048).refine(isSharedMcpEndpoint, "需要公开的 HTTPS MCP 地址"),
 }).strict();
-const review = z.object({
-  decision: z.enum(["approve", "reject", "publish"]),
-  note: z.string().trim().max(1000).default(""),
-}).strict();
+const reviewNote = z.string().trim().max(1000).default("");
+const review = z.discriminatedUnion("decision", [
+  z.strictObject({ decision: z.enum(["approve", "reject"]), note: reviewNote }),
+  z.strictObject({ decision: z.literal("publish"), note: reviewNote, audience: audienceSchema.optional() }),
+]);
 type Publication = Row & { id: string; submitted_by: string; resource_key: string; published_version: string | null };
 const resourceTab = { template:"templates", plugin:"plugins", skill:"skills", mcp:"mcp" } as const;
 const versionFields = "version,status,note,created_at,title,description";
@@ -191,6 +192,7 @@ export function mountOrganizationPublications(app: App, store: Store) {
       if (!previous) throw new ServiceError("PUBLICATION_NOT_FOUND", 404);
       if (input.decision === "publish") {
         if (previous.status !== "approved") throw new ServiceError("PUBLICATION_REVIEW_REQUIRED", 409, "先审核通过该版本");
+        if (input.audience) await replaceAudience(store, id, kind, publication.id, input.audience);
         const releaseTitle = String(previous.title ?? publication.title);
         const releaseDescription = String(previous.description ?? publication.description);
         if (kind === "mcp")

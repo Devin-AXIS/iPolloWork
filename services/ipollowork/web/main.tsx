@@ -58,9 +58,8 @@ import { Connect, DataApps } from "./data-apps.js";
 
 function Auth({ done }: { done: () => void }) {
   const inviteToken = location.pathname.startsWith("/invite/") ? location.pathname.split("/")[2] : null;
-  const invitation = useData<{ organization: string; space: string | null; emailBound?:boolean }>(inviteToken ? "/api/invitations/" + encodeURIComponent(inviteToken) : "/api/health");
+  const invitation = useData<{ organization: string; space: string | null }>(inviteToken ? "/api/invitations/" + encodeURIComponent(inviteToken) : "/api/health");
   const [register, setRegister] = useState(false);
-  const [recover, setRecover] = useState(false), [sent, setSent] = useState(false);
   const [reveal, setReveal] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -71,11 +70,6 @@ function Auth({ done }: { done: () => void }) {
     setBusy(true);
     setError("");
     try {
-      if (recover) {
-        await api('/api/auth/request-password-reset', { email, redirectTo: location.origin + '/reset-password' });
-        setSent(true);
-        return;
-      }
       // Registration needs a display name; the email's local part is the default and can be changed later.
       await api("/api/auth/" + (register ? "sign-up" : "sign-in") + "/email", {
         name: email.split("@")[0] || email,
@@ -97,17 +91,15 @@ function Auth({ done }: { done: () => void }) {
         <span className="auth-mark">
           <img src="/mark.svg" alt="iPollo" width="22" />
         </span>
-        <h1>{recover ? '找回密码' : register ? "创建你的账号" : "欢迎回来"}</h1>
-        <p>{inviteToken ? invitation.data?.organization ? `加入「${invitation.data.organization}」${invitation.data.space ? "的「" + invitation.data.space + "」空间" : ""}。${invitation.data.emailBound === false ? "请用自己的 iPolloWork 账号接受邀请。" : "请使用受邀邮箱登录或注册。"}` : invitation.error ? "邀请已失效，请联系管理员获取新链接。" : "正在检查组织邀请…" : "一个账号，连接官方模型、组织空间和积分"}</p>
+        <h1>{register ? "创建你的账号" : "欢迎回来"}</h1>
+        <p>{inviteToken ? invitation.data?.organization ? `加入「${invitation.data.organization}」${invitation.data.space ? "的「" + invitation.data.space + "」空间" : ""}。请使用受邀的 iPolloWork 账号接受邀请。` : invitation.error ? "邀请已失效，请联系管理员获取新链接。" : "正在检查组织邀请…" : "一个账号，连接官方模型、组织空间和积分"}</p>
         <Status error={invitation.error} />
-        {register && inviteToken && invitation.data?.emailBound !== false && <p>使用受邀邮箱注册后，即可接受邀请，无需发送邮件。</p>}
         <div className="segmented" role="group" aria-label="账号">
           <button
             type="button"
             aria-pressed={!register}
             onClick={() => {
               setRegister(false);
-              setRecover(false); setSent(false);
               setError("");
             }}
           >
@@ -118,7 +110,6 @@ function Auth({ done }: { done: () => void }) {
             aria-pressed={register}
             onClick={() => {
               setRegister(true);
-              setRecover(false); setSent(false);
               setError("");
             }}
           >
@@ -137,7 +128,7 @@ function Auth({ done }: { done: () => void }) {
               aria-label="邮箱"
             />
           </label>
-          {!recover && <label className="icon-field">
+          <label className="icon-field">
             <Lock size={15} />
             <input
               name="password"
@@ -156,15 +147,13 @@ function Auth({ done }: { done: () => void }) {
             >
               {reveal ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
-          </label>}
-          {sent && <p role="status">如果该邮箱对应已注册账号，重置邮件已发送，请检查收件箱和垃圾邮件。</p>}
+          </label>
           <Status error={error} />
           <button className="primary submit" disabled={busy}>
-            {busy ? "处理中…" : recover ? '发送重置邮件' : register ? "注册并登录" : "登录"}
+            {busy ? "处理中…" : register ? "注册并登录" : "登录"}
             <ArrowRight size={15} />
           </button>
         </form>
-        {!register && <button type="button" className="link" onClick={() => { setRecover(!recover); setSent(false); setError(''); }}>{recover ? '返回登录' : '忘记密码？'}</button>}
       </div>
     </main>
   );
@@ -211,8 +200,8 @@ function ResetPassword() {
 function InvitationJoin({ user, invite, done }: { user: User; invite: string; done: () => void }) {
   const [joined, setJoined] = useState(false);
   return <section className="panel invite">
-    <h2>加入组织空间</h2>
-    <p>当前账号：{user.email}。请确认使用接收此邀请的账号。</p>
+    <h2>加入组织</h2>
+    <p>当前账号：{user.name}。请确认使用接收此邀请的账号。</p>
     {joined ? <p role="status">已加入，可以返回 iPolloWork 刷新组织列表。</p> : <ActionForm label="接受邀请" submit={async () => {
       await api("/api/v1/invitations/" + encodeURIComponent(invite) + "/accept", {});
       setJoined(true); done();
@@ -575,5 +564,6 @@ function App() {
   );
 }
 createRoot(document.getElementById("root")!).render(
-  location.pathname === "/reset-password" ? <ResetPassword /> : <App />,
+  location.pathname === "/reset-password" && new URLSearchParams(location.search).get("token")
+    ? <ResetPassword /> : <App />,
 );

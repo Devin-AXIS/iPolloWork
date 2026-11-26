@@ -80,12 +80,12 @@ test('Chinese market copy covers all bundled entries and earlier English-only se
   assert(current.items.length > 0)
   for (const item of current.items) assert.match(item.description, /\p{Script=Han}/u, item.name)
   const index = JSON.parse(await readFile('catalog/index.json', 'utf8'))
-  const acme = index.plugins.find((entry: { name: string }) => entry.name === '@ipollo/dsh-acme-research')
-  const serviceRecords = [{ ...acme, description: 'Minimal independent plugin package for local development.' }]
+  const recorder = index.plugins.find((entry: { name: string }) => entry.name === '@ipollo/dsh-operation-recorder')
+  const serviceRecords = [{ ...recorder, description: 'Record actions for reuse.' }]
   const zh = await readMarket('catalog/index.json', manager, runtimeVersion, 'zh', 1048576, { curated: serviceRecords })
   const en = await readMarket('catalog/index.json', manager, runtimeVersion, 'en', 1048576, { curated: serviceRecords })
-  assert.match(zh.items.find(item => item.name === acme.name)!.description, /本地开发和测试/)
-  assert.equal(en.items.find(item => item.name === acme.name)!.description, serviceRecords[0]!.description)
+  assert.match(zh.items.find(item => item.name === recorder.name)!.description, /记录页面/)
+  assert.equal(en.items.find(item => item.name === recorder.name)!.description, serviceRecords[0]!.description)
 })
 
 test('the default market shows Design and Video first without installing or enabling them', async () => {
@@ -104,8 +104,7 @@ test('the default market shows Design and Video first without installing or enab
 
 test('workspace features each resolve to a distinct, verified market archive', async () => {
   const installAndEnable = new Set(['@ipollo/dsh-markdown-editor', '@ipollo/dsh-excel-editor', '@ipollo/dsh-conversation-export'])
-  const names = ['markdown-editor', 'excel-editor', 'conversation-export', 'task-templates',
-    'reference-preparation', 'legacy-workspace-import'].map(id => `@ipollo/dsh-${id}`)
+  const names = [...installAndEnable]
   const releases = JSON.parse(await readFile('catalog/bundled-releases.json', 'utf8')) as {
     plugins: { name: string; version: string; sha256: string }[]
   }
@@ -298,7 +297,7 @@ test('live catalog can replace a bundled listing in place and use its pinned ins
   const manager = { listBundles: async () => [] };
   const read = (entries: unknown[] = []) => readMarket('catalog/index.json', manager, runtimeVersion, 'en', 1048576, { curated: entries });
   const baseline = await read();
-  const target = baseline.items.findIndex(item => item.name === '@ipollo/dsh-acme-research');
+  const target = baseline.items.findIndex(item => item.name === '@ipollo/dsh-operation-recorder');
   const first = baseline.items[target]!;
   const entry = { name: first.name, title: 'Online introduction', metadata: { category: 'creative' }, versions: [{ version: first.version, publishTimestamp: 2, source: { type: 'git', url: 'https://github.com/example/bundle', commit: 'b'.repeat(40) } }] };
   const state = await read([entry]);

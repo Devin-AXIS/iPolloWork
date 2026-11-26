@@ -34,6 +34,8 @@ export async function createAuth(config: Config, store: Store) {
     secret: config.secret,
     database: store.db,
     trustedOrigins: [config.origin],
+    // The service-facing endpoint performs database and identity cleanup in one transaction.
+    disabledPaths: ["/admin/remove-user"],
     emailAndPassword: {
       enabled: true,
       minPasswordLength: 10,

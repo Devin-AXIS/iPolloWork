@@ -18,6 +18,8 @@ OSS_INTERNAL=true
 
 使用 `oss-role-trust.json` 和 `oss-role-policy.json` 创建并绑定 ECS 角色。策略仅允许读写和删除指定发布 Bucket 内的对象；其他部署需替换资源名称。在服务的统一 OSS 设置中填写地域和 Bucket。官方 SDK 通过 IMDSv2 获取并续期临时凭证，无需长期 AccessKey。在 ECS 之外使用已保存的密钥时，将 `OSS_RAM_ROLE` 留空。
 
+对启用或暂停版本控制的 Bucket，启用永久删除前需要为对应 Bucket 配置 `oss:ListObjectVersions`，并为对象配置 `oss:DeleteObjectVersion`。使用包含历史版本的临时对象验证。权限或保留策略阻止清理时，任务保持在清理中。
+
 ~~~sh
 chmod 600 .env
 docker compose -p ipollowork -f compose.yml -f deploy/compose.production.yml up -d --build
@@ -34,6 +36,6 @@ curl --fail http://127.0.0.1:4785/api/health
 
 百人内测的配置与已验证边界见[容量说明](../docs/capacity.zh.md)。可选的 `-f deploy/compose.beta-2c4g.yml` 增加同机内存预算；应用到已有部署会重启 PostgreSQL，应在备份后安排维护窗口并先演练。`/api/health` 检查进程存活，`/api/ready` 检查数据库可用性。应用停机前会排空请求，Compose 留有 40 秒宽限期。仍需站外可用性监测和异机备份。
 
-`deploy/update-existing.sh` 为现有 Compose 安装暂存精确源码提交，切换前备份 PostgreSQL、认证密钥及配置。目标数据库版本从候选镜像导出的 `SERVICE_SCHEMA_VERSION` 读取（当前为 22），并检查对应 SQL 已打包；构建也按同一版本复制迁移文件。向前迁移后禁止自动回退仅支持旧数据库版本的代码。Docker Hub 不可达时，运维可通过 `ROLLOUT_NODE_IMAGE` 选用服务器上已信任且带有 Node 24.22.3 的现有服务镜像；构建和运行阶段仍重新安装本次锁定依赖并替换编译产物，不复用旧服务代码。
+`deploy/update-existing.sh` 为现有 Compose 安装暂存精确源码提交，切换前备份 PostgreSQL、认证密钥及配置。目标数据库版本从候选镜像导出的 `SERVICE_SCHEMA_VERSION` 读取，并检查对应 SQL 已打包；构建也按同一版本复制迁移文件。向前迁移后禁止自动回退仅支持旧数据库版本的代码。Docker Hub 不可达时，运维可通过 `ROLLOUT_NODE_IMAGE` 选用服务器上已信任且带有 Node 24.22.3 的现有服务镜像；构建和运行阶段仍重新安装本次锁定依赖并替换编译产物，不复用旧服务代码。
 
 切换时仅停止应用写入，备份账号数据库、单独配置的应用数据数据库、`/data`、认证密钥及所有生效的 Compose 配置层。两份数据库归档均须通过 `pg_restore -l`。备份失败会重新启动原应用；PostgreSQL、代理及数据卷保留。这些私有备份仅留在服务器，不打印内容，也不附加到 Release。

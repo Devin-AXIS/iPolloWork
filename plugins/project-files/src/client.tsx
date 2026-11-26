@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { classifyFileType, fileSizeText, FileTypeIcon, ImageLightbox, Menu, Modal,
-  type FileType, type MenuItem } from '@deepseek-ai/dsh-client-ui-primitives';
+import { classifyFileType, fileSizeText, FileTypeIcon, ImageLightbox, Menu, type FileType, type MenuItem } from '@deepseek-ai/dsh-client-ui-primitives';
+import { Modal } from '../../_shared/ui/modal.tsx';
 import { fileMediaUrl, resolveWorkspacePath, sessionFileAddress } from '@deepseek-ai/dsh-util-workspace-path';
 import { ArrowDownToLine, ChevronRight, ClipboardPaste, Copy as CopyIcon, ExternalLink, FileText, Folder,
   LayoutGrid, List, MoreHorizontal, Pencil, Plus, RefreshCw, Scissors, Search, Trash2, X } from 'lucide-react';
@@ -8,6 +8,7 @@ import { FormButton, SegmentedControl, TextInput } from '../../_shared/ui/contro
 import { endpoint, inputKey, pluginName, rasterMediaType, type Entry, type FileAction, type Input, type Snapshot } from './API.ts';
 import { en, zh } from './copy.ts';
 import common from '../../_shared/ui/controls.css';
+import modalCss from '../../_shared/ui/modal.css';
 import css from './view.css';
 
 const tabKind = 'ipollo-project-files';
@@ -40,7 +41,7 @@ export function apply(ctx: Client) {
   ctx.effect(() => {
     const style = document.createElement('style');
     style.dataset.ipolloProjectFiles = '';
-    style.textContent = common + '\n' + css;
+    style.textContent = [common, modalCss, css].join('\n');
     document.head.append(style);
     return () => style.remove();
   }, 'project files styles');

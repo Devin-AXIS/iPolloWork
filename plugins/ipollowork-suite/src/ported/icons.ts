@@ -1,26 +1,25 @@
 import {
-  Telescope, BookOpen, Bot, Music2, Figma, Github, Network, BrainCircuit,
+  BookOpen, Bot, Music2, Figma, Github, Network, BrainCircuit,
   ListTodo, Images, NotebookPen, Blocks, LibraryBig, Radar, Clapperboard,
-  CreditCard, Video, MessageSquareText, PanelsTopLeft, BookHeart,
+  CreditCard, Video, MessageSquareText, BookHeart,
   Tags, MousePointer2, TextCursorInput, ChartNoAxesCombined,
-  FileText, Table2, FileDown, ClipboardList, FolderInput, Palette, Film,
+  FileText, Table2, FileDown, Palette, Film,
   type LucideIcon,
 } from 'lucide-react'
 
 /** Existing Lucide artwork, shared by each native navigation entry and package artwork. */
 export const portedIcons: Readonly<Record<string, LucideIcon>> = {
   'deepseek-idesign': Palette, 'deepseek-ivideo': Film,
-  'acme-research': Telescope, context7: BookOpen, 'deepseek-harness': Bot,
+  context7: BookOpen, 'deepseek-harness': Bot,
   'douyin-ops': Music2, figma: Figma, github: Github, 'ipollo-onto': Network,
   'jev-decision-model': BrainCircuit, linear: ListTodo, 'media-studio': Images,
   notion: NotebookPen, 'plugin-workshop': Blocks, 'reference-context': LibraryBig,
   sentry: Radar, 'short-video-studio': Clapperboard, stripe: CreditCard,
   'wechat-channels-ops': Video, 'wechat-official': MessageSquareText,
-  'workspace-canvas': PanelsTopLeft, 'xiaohongshu-ops': BookHeart,
+  'xiaohongshu-ops': BookHeart,
   'data-annotation': Tags, 'operation-recorder': MousePointer2,
   'experimental-session-titles-bundle': TextCursorInput, 'decision-intelligence': ChartNoAxesCombined,
   'markdown-editor': FileText, 'excel-editor': Table2, 'conversation-export': FileDown,
-  'task-templates': ClipboardList, 'reference-preparation': LibraryBig, 'legacy-workspace-import': FolderInput,
 }
 
 export function pluginGlyph(id: string): LucideIcon {

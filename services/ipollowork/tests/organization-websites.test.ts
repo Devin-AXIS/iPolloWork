@@ -41,6 +41,8 @@ test("only members open approved websites and exchange organization credentials 
     const owner = (await signup("owner")).data;
     const admin = (await signup("platform")).data;
     const member = (await signup("member")).data;
+    const bystander = (await signup("bystander")).data;
+    const outsider = (await signup("outsider")).data;
     await service.store.run('UPDATE "user" SET role=? WHERE id=?', "admin", admin.user.id);
     const organization = (await send("/api/v1/enterprises", owner.token, { name: "Example organization" })).data;
     const organizationId = organization.id;
@@ -50,12 +52,22 @@ test("only members open approved websites and exchange organization credentials 
     const item = { id: websiteId, label: "Business site", url: "https://business.example.com/", departmentId: null,
       role: "member", cookieNames: ["__Host-work"] };
     await service.store.run("INSERT INTO members VALUES(?,?,?,NULL,?)", organizationId, member.user.id, "member", Date.now());
+    await service.store.run("INSERT INTO members VALUES(?,?,?,NULL,?)", organizationId, bystander.user.id, "member", Date.now());
     assert.deepEqual((await send("/api/v1/me/organizations", admin.token)).data, { organizations: [] });
     assert.deepEqual((await send("/api/v1/me/organizations", member.token)).data, {
       organizations: [{ id: organizationId, name: "Example organization", role: "member" }],
     });
     assert.equal((await send(base + "/manage", owner.token, { revision: 0, items: [{ ...item, url: "http://business.example.com/" }] }, "PUT")).status, 400);
     assert.equal((await send(base + "/manage", owner.token, { revision: 0, items: [item] }, "PUT")).status, 200);
+    assert.equal((await send(path, bystander.token)).status, 200);
+    const restrict = (memberIds: string[]) => ({revision: 1, items: [{ ...item, memberIds }]});
+    assert.equal((await send(base + "/manage", owner.token, restrict([outsider.user.id]), "PUT")).data.code, "MEMBER_NOT_FOUND");
+    assert.equal((await send(path, bystander.token)).status, 200);
+    assert.equal((await send(base + "/manage", owner.token, restrict([member.user.id]), "PUT")).status, 200);
+    assert.deepEqual((await send(base, member.token)).data.items, [{id: websiteId, label: item.label}]);
+    assert.deepEqual((await send(base, bystander.token)).data.items, []);
+    assert.equal((await send(path, bystander.token)).status, 404);
+    assert.equal((await send(path + "/desktop", bystander.token)).status, 404);
     assert.equal((await send(path + "/ticket-config", member.token)).status, 403);
     assert.equal((await send(path + "/ticket-config", owner.token, { endpoint, credential: secret }, "PUT")).status, 200);
     assert.deepEqual((await send(path + "/ticket-config", owner.token)).data, { endpoint, configured: true });
@@ -68,6 +80,7 @@ test("only members open approved websites and exchange organization credentials 
     });
     assert.equal((await send(path + "/desktop", admin.token)).status, 404);
     assert.equal((await send(path + "/ticket", owner.token, undefined, "POST")).status, 404);
+    assert.equal((await send(path + "/ticket", bystander.token, undefined, "POST")).status, 404);
     assert.equal(called, 0);
     expected = { organizationId, websiteId, userId: member.user.id };
     assert.deepEqual((await send(path + "/ticket", member.token, undefined, "POST")).data, { ticket: upstreamTicket, expiresIn: 45 });
@@ -75,10 +88,35 @@ test("only members open approved websites and exchange organization credentials 
     assert.equal((await send(path + "/ticket", member.token, undefined, "POST")).status, 503);
     upstreamStatus = 302;
     assert.equal((await send(path + "/ticket", member.token, undefined, "POST")).status, 503);
+
+    const parent = (await send("/api/v1/enterprises/" + organizationId + "/departments", owner.token, { name: "Product" })).data.id;
+    const child = (await send("/api/v1/enterprises/" + organizationId + "/departments", owner.token, { name: "Design", parentId: parent })).data.id;
+    await service.store.run("UPDATE members SET department_id=? WHERE enterprise_id=? AND user_id=?", child, organizationId, member.user.id);
+    let revision = 2;
+    const publish = (audience: { all: boolean; departments: string[]; members: string[]; includeSubdepartments?: boolean }) =>
+      send(base + "/manage", owner.token, { revision, items: [{ ...item, role: null, audience }] }, "PUT");
+    const managers = { all: false, departments: [], members: [] };
+    assert.equal((await publish({ ...managers, members: [outsider.user.id] })).status, 400);
+    assert.equal((await publish(managers)).status, 200); revision++;
+    assert.equal((await send(path, owner.token)).status, 200);
+    await service.store.run("UPDATE members SET role='admin' WHERE enterprise_id=? AND user_id=?", organizationId, bystander.user.id);
+    assert.equal((await send(path, bystander.token)).status, 200);
+    assert.equal((await send(path + "/desktop", member.token)).status, 404);
+    await service.store.run("UPDATE members SET role='member' WHERE enterprise_id=? AND user_id=?", organizationId, bystander.user.id);
+    assert.equal((await publish({ ...managers, all: true })).status, 200); revision++;
+    assert.equal((await send(path, member.token)).status, 200);
+    assert.equal((await send(path, bystander.token)).status, 200);
+    assert.equal((await send(path, outsider.token)).status, 403);
+    assert.equal((await publish({ ...managers, departments: [parent], includeSubdepartments: true })).status, 200); revision++;
+    assert.equal((await send(path + "/desktop", member.token)).status, 200);
+    assert.equal((await send(path, bystander.token)).status, 404);
+    assert.equal((await publish({ ...managers, members: [bystander.user.id] })).status, 200); revision++;
+    assert.equal((await send(path, bystander.token)).status, 200);
+    assert.equal((await send(path + "/desktop", member.token)).status, 404);
     await service.store.run("UPDATE members SET status='suspended' WHERE enterprise_id=? AND user_id=?", organizationId, member.user.id);
     assert.deepEqual((await send("/api/v1/me/organizations", member.token)).data, { organizations: [] });
     assert.equal((await send(path + "/ticket", member.token, undefined, "POST")).status, 403);
-    assert.equal((await send(base + "/manage", owner.token, { revision: 1, items: [] }, "PUT")).status, 200);
+    assert.equal((await send(base + "/manage", owner.token, { revision, items: [] }, "PUT")).status, 200);
     assert.equal((await send(path + "/ticket-config", owner.token)).data.configured, false);
   } finally {
     await service.close();

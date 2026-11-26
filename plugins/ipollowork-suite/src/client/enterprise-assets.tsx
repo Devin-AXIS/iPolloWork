@@ -1,4 +1,5 @@
-import { FormButton, TextInput } from "../../../_shared/ui/controls.tsx";
+import { FormButton, FormSelect, SearchInput, TextInput } from "../../../_shared/ui/controls.tsx";
+import { audienceDraft, audienceInput, audienceReady, audienceScopes, type AudienceDraft, type AudienceScope } from "../../../../services/ipollowork/src/audience-scope.ts";
 import {
   serviceCategories,
   categoryLabel,
@@ -18,13 +19,13 @@ import {
   IconCheckOutlineRegular,
   IconEllipsisOutlineRegular,
   IconPlusOutlineRegular,
-  IconSearchOutlineRegular,
   IconSkillOutlineRegular,
   IconSparkleRegular,
   IconTrashOutlineRegular,
   Menu,
-  Modal,
-} from "@deepseek-ai/dsh-client-ui-primitives";
+  } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
+import { waitForDeletion } from "./deletion.ts";
 import type {
   Audience,
   EnterpriseAssets,
@@ -55,6 +56,7 @@ import {
   type Call,
 } from "./enterprise-ui.tsx";
 import { KeyGlyph, Monogram } from "./glyphs.tsx";
+import { EmployeeRecipients } from "./organization-recipients.tsx";
 import css from "./suite.module.css";
 
 type Kind = "skill" | "service" | "mcp" | "package";
@@ -130,7 +132,7 @@ export function AudiencePill({
     .map((id) => detail.departments.find((d) => d.id === id)?.name)
     .filter((name): name is string => !!name);
   const label = audience.all
-    ? t.everyoneAccess
+    ? t.allEmployees
     : !names.length && !audience.members.length
       ? t.managersOnly
       : [
@@ -173,186 +175,92 @@ export function AudiencePill({
   );
 }
 
-/** Choose everyone, or departments and individual members, for one asset. */
-export function AccessDialog({
-  kind,
-  assetId,
-  title,
-  audience,
-  detail,
-  t,
-  enterpriseId,
-  call,
-  revision,
-  controller,
-  close,
-}: AssetProps & {
+export function AudienceFields({
+  enterpriseId, detail, t, call, revision, value, change, disabled, legacy, onLegacy,
+  includeDepartmentTree = true, managersHaveAccess = true, excludeUserId, scopes = audienceScopes,
+}: Pick<AssetProps, "enterpriseId" | "t" | "call" | "revision"> & {
+  detail: Pick<EnterpriseDetail, "departments">;
+  value: AudienceDraft; change(next: AudienceDraft): void; disabled: boolean;
+  legacy?: boolean; onLegacy?(): void;
+  includeDepartmentTree?: boolean; managersHaveAccess?: boolean; excludeUserId?: string | undefined;
+  scopes?: readonly Exclude<AudienceScope, "mixed">[];
+}) {
+  const { audience, scope } = value;
+  const labels: Record<AudienceScope, string> = {
+    admins: t.managersOnly, everyone: t.allEmployees, departments: t.departmentRecipients,
+    employees: t.employeeRecipients, mixed: t.combinedAudience,
+  };
+  return <div className={css.accessDialog}>
+    {scopes.length > 1 && <Field label={t.sharingScope}>
+      <FormSelect value={legacy ? "legacy" : scope} disabled={disabled} onChange={event => {
+        if (event.target.value === "legacy") { onLegacy?.(); return; }
+        const nextScope = event.target.value as AudienceScope;
+        change({ scope: nextScope, audience: audienceInput({ scope: nextScope, audience }) });
+      }}>
+        {onLegacy && <option value="legacy">{t.previousAudience}</option>}
+        {scopes.map(option => <option key={option} value={option}>{labels[option]}</option>)}
+        {scope === "mixed" && <option value="mixed">{labels.mixed}</option>}
+      </FormSelect>
+    </Field>}
+    {!legacy && (scope === "employees" || scope === "mixed") &&
+      <EmployeeRecipients enterpriseId={enterpriseId} detail={detail} t={t} call={call} revision={revision}
+        selected={audience.members} change={members => change({ scope, audience: { ...audience, members } })}
+        disabled={disabled} managersHaveAccess={managersHaveAccess} excludeUserId={excludeUserId}/>}
+    {!legacy && (scope === "departments" || scope === "mixed") &&
+      <section>
+        {detail.departments.length ? <div className={css.chipRow}>
+          {detail.departments.map(department => {
+            const checked = audience.departments.includes(department.id);
+            return <button key={department.id} type="button" className={css.filterChip}
+              aria-pressed={checked} disabled={disabled || (!checked && audience.departments.length >= 200)}
+              onClick={() => change({
+                scope, audience: { ...audience, departments: checked ? audience.departments.filter(id => id !== department.id)
+                  : [...audience.departments, department.id] },
+              })}>
+              {checked && <IconCheckOutlineRegular size={12} aria-hidden="true"/>}
+              {department.name}
+            </button>;
+          })}
+        </div> : <p className={css.quietLine}>{t.noDepartments}</p>}
+        {includeDepartmentTree && !!audience.departments.length && <label><input type="checkbox" checked={audience.includeSubdepartments ?? false}
+          disabled={disabled} onChange={event => change({ scope, audience: { ...audience, includeSubdepartments: event.target.checked } })}/> {t.includeSubdepartments}</label>}
+      </section>}
+  </div>;
+}
+
+/** Edit an existing grant or publish a reviewed version and its grant together. */
+export function AccessDialog(props: AssetProps & {
   kind: Kind | "plugin" | "template";
   assetId: string;
   title: string;
   audience: Audience;
+  publishPath?: string;
   close(): void;
 }) {
+  const { kind, assetId, title, audience, publishPath, t, enterpriseId, call, controller, close } = props;
   const task = useTask(t);
-  const [all, setAll] = useState(audience.all),
-    [departments, setDepartments] = useState(new Set(audience.departments)),
-    [members, setMembers] = useState(new Set(audience.members)),
-    [includeSubdepartments, setIncludeSubdepartments] = useState(audience.includeSubdepartments ?? false);
-  const coveredDepartments = new Set(departments);
-  if (includeSubdepartments) {
-    let size = 0;
-    while (coveredDepartments.size !== size) {
-      size = coveredDepartments.size;
-      for (const department of detail.departments) {
-        if (department.parentId && coveredDepartments.has(department.parentId))
-          coveredDepartments.add(department.id);
-      }
+  const [value, setValue] = useState(() => audienceDraft(audience));
+  const save = () => void task.run(async () => {
+    const audience = audienceInput(value);
+    if (publishPath) {
+      await call(publishPath, { decision: "publish", audience }, "PUT");
+    } else {
+      await call("/organizations/" + enterpriseId + "/grants", { kind, assetId, audience }, "PUT");
     }
-  }
-  const isCovered = (departmentId: string | null) =>
-    departmentId !== null && coveredDepartments.has(departmentId);
-  const [query, setQuery] = useState("");
-  const directory = useMemberDirectory(all ? null : enterpriseId, call, revision, { query, active: true });
-  const people = directory.data?.items.filter(member => member.role !== "owner" && member.role !== "admin") ?? [];
-  const flip = <T,>(set: Set<T>, value: T) => {
-    const next = new Set(set);
-    if (next.has(value)) next.delete(value);
-    else next.add(value);
-    return next;
-  };
-  const save = () =>
-    void task.run(async () => {
-      await call(
-        "/organizations/" + enterpriseId + "/grants",
-        {
-          kind,
-          assetId,
-          audience: {
-            all,
-            departments: all ? [] : [...departments],
-            members: all ? [] : [...members],
-            ...(!all && includeSubdepartments && departments.size ? {includeSubdepartments:true} : {}),
-          },
-        },
-        "PUT",
-      );
-      controller.notify(t.accessSaved);
-      close();
-      await controller.load();
-    });
-  return (
-    <Modal
-      open
-      title={t.accessTitle}
-      description={title}
-      closeLabel={t.close}
-      className={css.enterpriseModal!}
-      onClose={() => {
-        if (!task.busy) close();
-      }}
-      footer={
-        <div className={css.dialogFooter}>
-          <span className={css.footerNote}>{t.accessHint}</span>
-          <Button variant="outline" disabled={task.busy} onClick={close}>
-            {t.cancel}
-          </Button>
-          <Button variant="primary" disabled={task.busy} onClick={save}>
-            {t.save}
-          </Button>
-        </div>
-      }
-    >
-      <div className={css.accessDialog}>
-        <div className={css.accessAll}>
-          <span>
-            <strong>{all ? t.everyoneAccess : departments.size || members.size ? t.restrictedAccess : t.managersOnly}</strong>
-          </span>
-          <Toggle checked={all} label={t.everyoneAccess} onChange={setAll} />
-        </div>
-        {!all && (
-          <>
-            <section>
-              <h3>{t.departmentsLabel}</h3>
-              {!!departments.size && <label><input type="checkbox" checked={includeSubdepartments}
-                onChange={event=>setIncludeSubdepartments(event.target.checked)}/> {t.includeSubdepartments}</label>}
-              {detail.departments.length ? (
-                <div className={css.chipRow}>
-                  {detail.departments.map((d) => (
-                    <button
-                      key={d.id}
-                      type="button"
-                      className={css.filterChip}
-                      aria-pressed={departments.has(d.id)}
-                      onClick={() => setDepartments((v) => flip(v, d.id))}
-                    >
-                      {departments.has(d.id) && (
-                        <IconCheckOutlineRegular size={12} />
-                      )}
-                      {d.name}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <p className={css.quietLine}>{t.noDepartments}</p>
-              )}
-            </section>
-            <section>
-              <h3>{t.peopleLabel}</h3>
-              <label className={css.miniSearch} data-wide="">
-                <IconSearchOutlineRegular size={14} />
-                <input
-                  placeholder={t.searchPeople}
-                  aria-label={t.searchPeople}
-                  maxLength={120}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-              </label>
-              <div className={css.pickList}>
-                {people.map((m) => {
-                  const inDepartment =
-                      isCovered(m.departmentId),
-                    selected = members.has(m.userId) || inDepartment;
-                  return (
-                    <button
-                      key={m.userId}
-                      type="button"
-                      className={css.pickRow}
-                      aria-pressed={selected}
-                      disabled={inDepartment}
-                      onClick={() => setMembers((v) => flip(v, m.userId))}
-                    >
-                      <Monogram
-                        id={m.email}
-                        label={m.name || m.email}
-                        size={24}
-                        round
-                      />
-                      <span>
-                        <strong>{m.name}</strong>
-                        <small>
-                          {inDepartment
-                            ? detail.departments.find(
-                                (d) => d.id === m.departmentId,
-                              )?.name
-                            : m.email}
-                        </small>
-                      </span>
-                      <i className={css.pickCheck}>
-                        {selected && <IconCheckOutlineRegular size={12} />}
-                      </i>
-                    </button>
-                  );
-                })}
-              </div>
-              <DirectoryStatus directory={directory} t={t}/>
-            </section>
-          </>
-        )}
-        <FormError message={task.error} />
-      </div>
-    </Modal>
-  );
+    controller.notify(publishPath ? t.resourcePublished : t.accessSaved);
+    close();
+    await controller.load();
+  });
+  return <Modal open title={publishPath ? t.publishResource : t.accessTitle} description={title}
+    closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close(); }}
+    footer={<div className={css.dialogFooter}>
+      <span className={css.footerNote}>{t.accessHint}</span>
+      <Button variant="outline" disabled={task.busy} onClick={close}>{t.cancel}</Button>
+      <Button variant="primary" disabled={task.busy || !audienceReady(value)} onClick={save}>{publishPath ? t.publishResource : t.save}</Button>
+    </div>}>
+    <AudienceFields {...props} value={value} change={setValue} disabled={task.busy}/>
+    <FormError message={task.error}/>
+  </Modal>;
 }
 
 export function RowMenu({
@@ -437,6 +345,7 @@ export function DepartmentsTab(props: AssetProps) {
   );
   const [renaming, setRenaming] = useState(false),
     [draft, setDraft] = useState("");
+  const [access, setAccess] = useState<{ kind: Kind; id: string; title: string; audience: Audience }>();
   const task = useTask(t);
   const department =
     detail.departments.find((d) => d.id === selected) ?? detail.departments[0];
@@ -575,8 +484,8 @@ export function DepartmentsTab(props: AssetProps) {
               });
             }}
           >
-            <IconPlusOutlineRegular size={13} />
-            <input
+            <TextInput
+              icon={<IconPlusOutlineRegular size={13} aria-hidden="true" />}
               name="name"
               placeholder={t.addDepartment}
               aria-label={t.addDepartment}
@@ -698,8 +607,8 @@ export function DepartmentsTab(props: AssetProps) {
               {people.map((m) => (
                 <span key={m.userId} className={css.avatarChip}>
                   <Monogram
-                    id={m.email}
-                    label={m.name || m.email}
+                    id={m.userId}
+                    label={m.name}
                     size={22}
                     round
                   />
@@ -759,14 +668,11 @@ export function DepartmentsTab(props: AssetProps) {
                             {item.audience.all ? t.viaEveryone : item.meta}
                           </small>
                         </span>
-                        <Toggle
-                          checked={on}
-                          label={item.title}
+                        {manage && <AudiencePill audience={item.audience} detail={detail} t={t}
+                          onEdit={() => setAccess({ ...item, kind: group.kind })}/>}
+                        <Toggle checked={on} label={item.title}
                           disabled={!manage || item.audience.all || task.busy}
-                          onChange={(next) =>
-                            void grant(group.kind, item.id, item.audience, next)
-                          }
-                        />
+                          onChange={next => void grant(group.kind, item.id, item.audience, next)}/>
                       </div>
                     );
                   })}
@@ -775,6 +681,8 @@ export function DepartmentsTab(props: AssetProps) {
           )}
         </section>
       </div>
+      {access && <AccessDialog {...props} kind={access.kind} assetId={access.id}
+        title={access.title} audience={access.audience} close={() => setAccess(undefined)}/>}
     </div>
   );
 }
@@ -790,9 +698,9 @@ function AddMember({ t, enterpriseId, revision, call, departmentId, onAdd }: Ass
   return <>
     <Button size="sm" variant="outline" onClick={() => { setQuery(""); setOpen(true); }}>{t.addToDepartment}</Button>
     {open && <Modal open title={t.addToDepartment} closeLabel={t.close} onClose={() => setOpen(false)}>
-      <Field label={t.searchMembers}><input type="search" maxLength={120} value={query}
+      <Field label={t.searchMembers}><SearchInput maxLength={120} value={query}
         onChange={event => setQuery(event.target.value)}/></Field>
-      <div className={css.pickList}>{people?.map(member => <Row key={member.userId} title={member.name} meta={member.email}
+      <div className={css.pickList}>{people?.map(member => <Row key={member.userId} title={member.name} meta={member.employeeNumber ?? undefined}
         actions={<Button size="sm" variant="outline" onClick={() => { setOpen(false); void onAdd(member); }}>{t.addToDepartment}</Button>}/>)}</div>
       {people?.length === 0 && <p>{t.noMembersMatch}</p>}
       <DirectoryStatus directory={directory} t={t}/>
@@ -870,14 +778,14 @@ export function SkillsTab(props: AssetProps) {
                         description: t.deleteSkillBody,
                         confirmLabel: t.deleteAction,
                         run: async () => {
-                          await call(
+                          await waitForDeletion(await call(
                             "/organizations/" +
                               enterpriseId +
                               "/skills/" +
                               s.id,
                             undefined,
                             "DELETE",
-                          );
+                          ), true);
                           await controller.load();
                         },
                       })
@@ -906,13 +814,16 @@ export function SkillsTab(props: AssetProps) {
 
 function SkillDialog({
   enterpriseId,
+  detail,
   t,
   call,
+  revision,
   controller,
   close,
 }: AssetProps & { close(): void }) {
   const task = useTask(t),
     file = useRef<HTMLInputElement>(null);
+  const [audience, setAudience] = useState(() => audienceDraft(everyone));
   const [title, setTitle] = useState(""),
     [description, setDescription] = useState(""),
     [content, setContent] = useState("");
@@ -934,11 +845,13 @@ function SkillDialog({
   };
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (!audienceReady(audience)) return;
     void task.run(async () => {
       await call("/organizations/" + enterpriseId + "/skills", {
         title: title.trim(),
         description: description.trim(),
         content: content.trim(),
+        audience: audienceInput(audience),
       });
       controller.notify(t.skillCreated);
       close();
@@ -1005,6 +918,8 @@ function SkillDialog({
           hidden
           onChange={(e) => void importFile(e.target.files?.[0])}
         />
+        <AudienceFields enterpriseId={enterpriseId} detail={detail} t={t} call={call} revision={revision}
+          value={audience} change={setAudience} disabled={task.busy}/>
         <FormError message={task.error} />
         <div className={css.dialogFooter}>
           <Button
@@ -1020,6 +935,7 @@ function SkillDialog({
             type="submit"
             disabled={
               task.busy ||
+              !audienceReady(audience) ||
               !title.trim() ||
               !description.trim() ||
               !content.trim()
@@ -1327,8 +1243,10 @@ function MemberKeyDialog({ enterpriseId, t, call, controller, model, close }: As
 
 function ModelDialog({
   enterpriseId,
+  detail,
   t,
   call,
+  revision,
   controller,
   model,
   close,
@@ -1336,6 +1254,7 @@ function ModelDialog({
 }: AssetProps & { model: EnterpriseModel | null; close(): void }) {
   const formId = useId();
   const task = useTask(t);
+  const [audience, setAudience] = useState(() => audienceDraft(everyone));
   const [mode, setMode] = useState<"shared" | "member">(model?.credentialMode ?? "shared");
   const [category, setCategory] = useState<ServiceCategory>(
     model?.category ?? "language",
@@ -1414,6 +1333,7 @@ function ModelDialog({
     );
   const save = (e: FormEvent) => {
     e.preventDefault();
+    if (!model && !audienceReady(audience)) return;
     void task.run(async () => {
       await call(
         "/organizations/" + enterpriseId + "/services",
@@ -1428,6 +1348,7 @@ function ModelDialog({
           vendor: preset,
           routes: JSON.parse(routes),
           enabled: model?.enabled ?? true,
+          ...(!model ? { audience: audienceInput(audience) } : {}),
         },
         "PUT",
       );
@@ -1448,10 +1369,9 @@ function ModelDialog({
       title={model ? model.title : t.newModel}
       closeLabel={t.close}
       className={css.enterpriseModal!}
-      contentClassName={css.enterpriseModalContent!}
       footer={<>
         <Button variant="outline" type="button" disabled={task.busy} onClick={close}>{t.cancel}</Button>
-        <Button variant="primary" type="submit" form={formId} disabled={task.busy || !title.trim() || !baseUrl || (mode === "shared" && !model && !key) || (category !== "tool" && !chosen.length)}>{t.save}</Button>
+        <Button variant="primary" type="submit" form={formId} disabled={task.busy || (!model && !audienceReady(audience)) || !title.trim() || !baseUrl || (mode === "shared" && !model && !key) || (category !== "tool" && !chosen.length)}>{t.save}</Button>
       </>}
       onClose={() => {
         if (!task.busy) close();
@@ -1596,6 +1516,8 @@ function ModelDialog({
             onChange={(e) => setRoutes(e.target.value)}
           />
         </details>
+        {!model && <AudienceFields enterpriseId={enterpriseId} detail={detail} t={t} call={call} revision={revision}
+          value={audience} change={setAudience} disabled={task.busy}/>}
         <FormError message={task.error} />
       </form>
     </Modal>

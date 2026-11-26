@@ -1,5 +1,6 @@
 export interface User { id: string; name: string; email: string; role: string; emailVerified: boolean }
 export type Row = Record<string, string | number | boolean | null>;
+export type DeletionReceipt = { deletionId: string; status: "pending" | "completed"; kind: string };
 export async function api<T>(path: string, body?: unknown, method = body === undefined ? "GET" : "POST", signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
@@ -25,12 +26,19 @@ export async function api<T>(path: string, body?: unknown, method = body === und
   }
   return result as T;
 }
+export async function deletePermanently(path: string): Promise<void> {
+  const result = await api<DeletionReceipt>(path, undefined, "DELETE");
+  if (result.status === "completed") return;
+  if (result.status === "pending")
+    throw new Error("访问已关闭，存储清理将在后台继续。请到「应用数据 → 清理记录」查看进度。");
+  throw new Error("当前服务未提供永久删除的完成状态。");
+}
 export const date = (v: unknown) => v ? new Date(Number(v)).toLocaleString("zh-CN", { hour12: false }) : "—";
 export const count = (v: unknown) => Number(v ?? 0).toLocaleString("zh-CN");
 export const text = (v: unknown) => String(v ?? "");
 export const operation = (v: unknown) => ({
-  "enterprise.create": "创建企业", "department.create": "添加部门", "member.update": "调整成员", "member.remove": "移除成员",
-  "invitation.create": "邀请成员", "invitation.accept": "加入企业", "invitation.revoke": "撤销邀请",
+  "enterprise.create": "创建组织", "department.create": "添加部门", "member.update": "调整成员", "member.remove": "移除成员",
+  "invitation.create": "邀请成员", "invitation.accept": "加入组织", "invitation.revoke": "撤销邀请",
   "enterprise.update": "更新组织设置", "department.update": "更新部门", "department.remove": "移除部门",
   "publication.submit": "提交资源版本", "publication.approve": "通过审核", "publication.reject": "驳回审核",
   "publication.publish": "发布资源", "publication.archive": "下架资源", "grant.update": "更新访问范围",

@@ -4,7 +4,7 @@ import type { AccountState } from '../shared/types.ts'
 import type { MembershipState } from '../shared/membership.ts'
 import type { Labels } from './locale.ts'
 import { request } from './api.ts'
-import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
 import './membership.css'
 
 /** Keep purchase and usage in the existing account page; secrets stay in the Host.

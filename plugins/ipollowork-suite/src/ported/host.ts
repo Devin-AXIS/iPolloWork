@@ -120,7 +120,7 @@ export async function applyBundle(ctx: Context, raw: unknown, root: string): Pro
       if (args.action === 'describe') return z.json().parse(JSON.parse(JSON.stringify({ actions: toolActions.filter(item => item.resource === args.resource).map(({ id, title, description, effect, inputSchema }) => ({ id, title, description, effect, inputSchema })) })))
       const action = toolActions.find(item => item.resource === args.resource && item.id === args.action)
       if (!action || (action.effect !== 'read' && ctx.sandboxPolicy.resolve({ session }).mode === 'read-only')) throw new Error('Action is not available in this session')
-      const value = await invoke(current.id, args.resource, args.action, args.input ?? {}, { directory: current.path, sessionId: session.id, signal: AbortSignal.any([exec.signal, lifetime.signal]) })
+      const value = await invoke(current.id, args.resource, args.action, args.input ?? {}, { directory: current.path, workspaceId: current.id, sessionId: session.id, signal: AbortSignal.any([exec.signal, lifetime.signal]) })
       // Workbench URLs can contain service tokens: only the owner HTTP flow may receive them.
       if (value && typeof value === 'object' && 'url' in value) { const { url: _url, ...safe } = value; return z.json().parse(safe) }
       return z.json().parse(JSON.parse(JSON.stringify(value ?? null)))
@@ -152,7 +152,16 @@ export async function applyBundle(ctx: Context, raw: unknown, root: string): Pro
       if (path === '/call' && req.method === 'POST') {
         const input = callSchema.parse(await body(req)), current = workspace(input.workspace)
         if (input.sessionId && !current.sessionIds.some(id => id === input.sessionId)) throw new Error('Session does not belong to this workspace')
-        const result = await invoke(current.id, input.resource, input.action, input.input, { directory: current.path, ...(input.sessionId ? { sessionId: input.sessionId } : {}), signal: lifetime.signal })
+        const requestLifetime = new AbortController()
+        const onClose = () => { if (!res.writableEnded) requestLifetime.abort() }
+        res.once('close', onClose)
+        let result: unknown
+        try {
+          result = await invoke(current.id, input.resource, input.action, input.input, {
+            directory: current.path, workspaceId: current.id, ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+            signal: AbortSignal.any([lifetime.signal, requestLifetime.signal]),
+          })
+        } finally { res.off('close', onClose) }
         if (/^(open-workbench|open-studio)$/.test(input.action) && result && typeof result === 'object' && 'url' in result && typeof result.url === 'string') {
           const launch = new URL(result.url)
           if (launch.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(launch.hostname)) throw new Error('Invalid local workbench')
@@ -210,6 +219,14 @@ export async function applyBundle(ctx: Context, raw: unknown, root: string): Pro
         pending.add(upstream); upstream.on('close', () => pending.delete(upstream)); upstream.on('error', reject)
         upstream.setTimeout(120_000, () => upstream.destroy(new Error('Workbench timeout'))); req.pipe(upstream)
       })
-    } catch { if (!res.headersSent) json(res, 400, { error: 'plugin_action_failed' }); else res.destroy() }
+    } catch (cause) {
+      if (res.destroyed) return
+      if (res.headersSent) { res.destroy(); return }
+      if (cause instanceof Error && 'code' in cause
+          && (cause.code === 'IPW_PORTED_MEDIA_FAILED' || cause.code === 'IPW_PORTED_RUNTIME_MISSING')) {
+        json(res, 422, { error: cause.code, message: cause.message.slice(0, 500) }); return
+      }
+      json(res, 400, { error: 'plugin_action_failed' })
+    }
   } }), 'ported plugin: owner workbench')
 }

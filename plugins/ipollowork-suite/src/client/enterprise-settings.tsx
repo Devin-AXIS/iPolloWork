@@ -77,7 +77,7 @@ export function EnterpriseSettings({ detail, t, call, controller, serviceAddress
     </div>
     {canManage && <div className={css.organizationSettingsCard}>
       <Section title={t.serviceAddress}>
-        <CopyLink url={serviceAddress} t={t} label={t.serviceAddress}/>
+        <CopyLink url={serviceAddress} t={t} label={t.serviceAddress} copyLabel={t.copyServiceAddress}/>
       </Section>
     </div>}
     <OrganizationWebsites detail={detail} t={t} call={call} onChange={controller.refreshWebsiteNavigation}/>

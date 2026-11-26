@@ -80,6 +80,7 @@
         "action:load-image",
         "action:import-image",
         "action:generate-image",
+        "action:recover-image",
         "action:edit-image",
         "action:video-status",
         "action:video-jobs",
@@ -232,6 +233,18 @@
               "prompt",
               "model"
             ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "recover-image",
+          "title": "找回已生成的图片",
+          "description": "按当前账户原任务编号获取结果并保存到工作区，不重新提交生图请求。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "requestId": { "type": "string" } },
+            "required": ["requestId"],
             "additionalProperties": false
           }
         },

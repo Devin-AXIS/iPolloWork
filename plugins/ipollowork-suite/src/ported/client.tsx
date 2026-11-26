@@ -13,6 +13,11 @@ interface NativeClient {
   uiWorkspace: { startSession(workspace: string, input: { prompt: string; whenDraftExists: 'append' }): void; connectWorkspace(workspace: string): Promise<string> };
 }
 interface DisplayManifest { id: string; name: string; description: string; localization?: { translations?: Record<string, { name?: string; description?: string }> } }
+const workbenchLinkOrigins: Readonly<Record<string, readonly string[]>> = {
+  'douyin-ops': ['https://www.douyin.com', 'https://creator.douyin.com', 'https://open.douyin.com'],
+  'wechat-channels-ops': ['https://channels.weixin.qq.com'],
+  'xiaohongshu-ops': ['https://www.xiaohongshu.com', 'https://creator.xiaohongshu.com'],
+}
 const styles = `
 .ipw-ported{height:100%;min-width:0;display:flex;flex-direction:column;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font:var(--dsw-font-body,13px/1.5 system-ui)}
 .ipw-ported header{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:16px;padding-top:max(16px,var(--dsh-frame-top-clearance,0px));border-bottom:1px solid var(--dsw-alias-border-l1)}
@@ -27,6 +32,13 @@ const styles = `
 `
 async function request<T>(base: string, path: string, signal: AbortSignal, body?: unknown): Promise<T> {
   const response = await fetch(base + path, { signal, ...(body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }) })
+  if (response.status === 422) {
+    const data: unknown = await response.json().catch(() => undefined)
+    if (data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'
+      && 'error' in data && (data.error === 'IPW_PORTED_MEDIA_FAILED' || data.error === 'IPW_PORTED_RUNTIME_MISSING')) {
+      throw new Error(data.message)
+    }
+  }
   if (!response.ok) throw new Error(response.status === 401 ? '请重新连接 iPolloWork / Reconnect to iPolloWork' : response.status === 403 ? '当前连接没有操作权限 / Permission denied' : '操作未完成，请检查插件配置后重试 / Check plugin settings and retry')
   return response.json()
 }
@@ -104,7 +116,16 @@ function Panel({ ctx, manifest }: { ctx: NativeClient; manifest: DisplayManifest
           if (!workspace || !text || text.length > 65_536) throw new Error(t('消息内容无效', 'Invalid message'))
           ctx.uiWorkspace.startSession(workspace, { prompt: text + (context.current ? '\n\n' + context.current : ''), whenDraftExists: 'append' }); respond({ isError: false }); return
         }
-        if (value.method === 'ui/open-link') throw new Error(t('请在浏览器中打开平台，或使用平台 API 授权。', 'Open the platform in your browser or use its API authorization.'))
+        if (value.method === 'ui/open-link') {
+          const href = value.params?.url
+          const url = typeof href === 'string' ? URL.parse(href) : null
+          if (!url || url.username || url.password || !workbenchLinkOrigins[manifest.id]?.includes(url.origin))
+            throw new Error(t('该地址不属于此插件支持的平台', 'This link is outside the supported platform'))
+          // The Desktop shell sends external windows to the system browser.
+          window.open(url.href, '_blank', 'noopener,noreferrer')
+          respond({ isError: false, browser: 'external', automaticRecognition: false })
+          return
+        }
         if (value.method === 'tools/call') {
           const name = value.params?.name
           const action = state?.actions.find(item => item.id === name)

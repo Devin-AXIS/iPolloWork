@@ -13,13 +13,12 @@ const fileEditor = feature === 'markdown-editor' || feature === 'excel-editor';
 const hostEntry = feature === 'excel-editor' ? 'src/excel-host.ts' : fileEditor ? 'src/file-host.ts' : 'src/host.ts';
 const define = {
   __IPOLLO_WORKSPACE_FEATURE__: JSON.stringify(feature),
-  __IPOLLO_WORKSPACE_KEEP_MOUNTED__: String(feature !== 'task-templates'),
 };
 await mkdir(output, { recursive: true });
 
 await build({
   absWorkingDir: base, entryPoints: [hostEntry], outfile: join(output, 'host.js'), bundle: true, define,
-  platform: 'node', format: 'esm', target: 'node22', external: ['unpdf'], legalComments: 'eof',
+  platform: 'node', format: 'esm', target: 'node22', legalComments: 'eof',
 });
 const browser = await build({
   absWorkingDir: base, entryPoints: [fileEditor ? 'src/file-client.tsx' : 'src/client.tsx'], outfile: join(output, 'client.js'), bundle: true, define,

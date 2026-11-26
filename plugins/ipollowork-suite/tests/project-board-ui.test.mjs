@@ -11,7 +11,7 @@ const require=createRequire(import.meta.url);
 // Render the production controller; replace presentation only to inspect its data and actions.
 const presentation={
   views:`import React from 'react';
-    export function Board({tasks,move}) {return <div>{tasks.map(card=><div key={card.id} data-task={card.id} data-status={card.status}>{card.title}<button onClick={()=>move(card,'done')}>finish</button></div>)}</div>}
+    export function Board({tasks,move,open}) {return <div>{tasks.map(card=><div key={card.id} data-task={card.id} data-status={card.status}><button onClick={()=>open(card)}>{card.title}</button><button onClick={()=>move(card,'done')}>finish</button></div>)}</div>}
     export const TaskList=Board, Calendar=Board, Timeline=Board;`,
   editor:`export const aiInstruction=()=>'';export const TaskEditor=props=>{globalThis.editorActions=props;return null;};`,
   ui:`import React from 'react'; export const viewIcons={board:()=>null,list:()=>null,calendar:()=>null,timeline:()=>null};export const SearchBox=({value,change,label})=><input aria-label={label} value={value} onInput={e=>change(e.currentTarget.value)}/>;`,
@@ -141,25 +141,45 @@ test('global task search and progress use server totals instead of the currently
   }finally{await app.close();}
 });
 
-test('bulk lifecycle actions retain failed selections and their diagnostic after refresh',async()=>{
-  const tasks=[task(1),task(2),task(3)],writes=[];
+test('board offers current and archived tasks with individual archive and unarchive actions',async()=>{
+  const tasks=[task(1),{...task(2),archived:true}],writes=[];
   const app=await setup((url,options)=>{
     if(options.method==='PATCH'){
       const input=JSON.parse(options.body);writes.push(input);
-      if(input.id===task(3).id)throw new Error('BOARD_CONFLICT');
-      const saved=tasks.find(task=>task.id===input.id);saved.archived=true;saved.revision++;
+      const saved=tasks.find(task=>task.id===input.id);
+      saved.archived=input.action==='archive';saved.revision++;
       return {task:saved};
     }
     const scope=url.searchParams.get('scope');const items=tasks.filter(task=>Boolean(task.archived)===(scope==='archived'));
     return {tasks:items,next:null,remote:false,version:2,totals:{total:items.length,done:0}};
   });
   try{
-    await app.click('批量操作');await app.click('选择已加载任务（最多100项）');await app.click('归档');
-    assert.equal(writes.length,3);
-    assert.equal(app.dom.window.document.querySelectorAll('[data-task]').length,1);
-    assert.match(app.dom.window.document.querySelector('[role="alert"]').textContent,/已处理 2\/3/);
-    assert.match(app.dom.window.document.body.textContent,/已选 1 项/);
-    await act(async()=>{const select=app.dom.window.document.querySelector('select[aria-label="任务范围"]');select.value='archived';select.dispatchEvent(new app.dom.window.Event('change',{bubbles:true}));});
-    assert.equal(app.dom.window.document.querySelectorAll('[data-task]').length,2);
+    const {document,Event}=app.dom.window;
+    const scope=document.querySelector('select[aria-label="任务范围"]');
+    assert.equal(scope.value,'active');
+    assert.deepEqual([...scope.options].map(option=>option.textContent),['当前任务','已归档']);
+    assert.doesNotMatch(document.body.textContent,/批量操作|回收站/);
+    const visibleTasks=()=>[...document.querySelectorAll('[data-task]')].map(card=>card.dataset.task);
+    const changeScope=value=>act(async()=>{scope.value=value;scope.dispatchEvent(new Event('change',{bubbles:true}));});
+    assert.deepEqual(visibleTasks(),[tasks[0].id]);
+
+    await app.click('Task 1');
+    const editor=app.editor();
+    await act(async()=>{await editor.setArchived(true);editor.close();});
+    assert.deepEqual(visibleTasks(),[]);
+
+    await changeScope('archived');
+    assert.deepEqual(visibleTasks(),tasks.map(task=>task.id));
+    await app.click('Task 1');
+    const archivedEditor=app.editor();
+    assert.equal(archivedEditor.writable,false);
+    await act(async()=>{await archivedEditor.setArchived(false);archivedEditor.close();});
+    assert.deepEqual(visibleTasks(),[tasks[1].id]);
+    await changeScope('active');
+    assert.deepEqual(visibleTasks(),[tasks[0].id]);
+    assert.deepEqual(writes,[
+      {id:tasks[0].id,revision:1,action:'archive'},
+      {id:tasks[0].id,revision:2,action:'unarchive'},
+    ]);
   }finally{await app.close();}
 });

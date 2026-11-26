@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { IconLinkOutlineRegular, IconSparkleRegular } from '@deepseek-ai/dsh-client-ui-primitives';
 import { ChoiceIcon, ChoicePicker, type Choice } from './ui.tsx';
-import { agentKey, type BoardAgent, type ProjectTask, type TaskDraft, type TaskWrite,type TaskActionWrite } from '../../../services/ipollowork/src/project-board-contract.ts';
+import { agentKey, type BoardAgent, type ProjectTask, type TaskDraft, type TaskWrite } from '../../../services/ipollowork/src/project-board-contract.ts';
 import { errorMessage, type Copy } from './copy.ts';
 import { displayAgent, statuses, taskCollaborators, taskDefaults, updateCollaborator,
   type AgentChoice, type AgentPlan, type Card, type ProjectRoster } from './model.ts';
@@ -39,12 +39,12 @@ export function aiInstruction(id: string, t: Copy, plan?: AgentPlan) {
     ...(plan.external.length ? [t.aiExternal.replace('{tools}', JSON.stringify(plan.external))] : []),
   ].join('\n');
 }
-export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writable,manage=false,act, t, locale, clock, initialStatus, projectTitle, close, save, open, sessions, delegate, report, conversation }: {
+export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writable, manage=false, setArchived, t, locale, clock, initialStatus, projectTitle, close, save, open, sessions, delegate, report, conversation }: {
   card: Card | undefined; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[]; tasks: readonly ProjectTask[]; writable: boolean; t: Copy; locale: string;
   clock: number; projectTitle: string; initialStatus: TaskDraft['status'] | undefined; sessions: readonly string[];
   close(): void; save(input:TaskWrite):Promise<void>; open(sessionId:string):void; delegate(taskId:string):Promise<void>; report(error: unknown):void;
   refreshAgents(): void;
-  manage?:boolean;act?(action:TaskActionWrite['action']):Promise<void>;
+  manage?:boolean;setArchived?(archived:boolean):Promise<void>;
   conversation?: { title: string; grant(userIds: string[], signal: AbortSignal): Promise<{ link: string }> } | undefined;
 }) {
   const dialog=useRef<HTMLDialogElement>(null);
@@ -80,9 +80,18 @@ export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writabl
     dialog.current?.close();
     close();
   }
-  async function lifecycle(action:TaskActionWrite['action']){
-    if(!act||busy||granting)return;setBusy(true);setError(undefined);
-    try{await act(action);dismiss();}catch(error){setError(error);}finally{setBusy(false);}
+  async function toggleArchive() {
+    if (!setArchived || busy || granting) return;
+    setBusy(true);
+    setError(undefined);
+    try {
+      await setArchived(!card?.task?.archived);
+      dismiss();
+    } catch (error) {
+      setError(error);
+    } finally {
+      setBusy(false);
+    }
   }
   function field<K extends keyof TaskDraft>(key:K,value:TaskDraft[K]) {setDraft(current=>({...current,[key]:value}));}
   const aiOptions = agents.map(({ id, name }): BoardAgent => ({ id, name, ownerId: roster?.viewerId ?? null }));
@@ -282,10 +291,10 @@ export function TaskEditor({ card, roster, agents, refreshAgents, tasks, writabl
         {error!==undefined && <p role="alert" className="cb-alert">{errorMessage(error,t)}</p>}
         <div className="cb-sheet-actions">
           <div className="cb-sheet-links">
-            {card?.task&&manage&&act&&<>
-              {card.task.deletedAt==null&&<button type="button" className="cb-ghost" disabled={busy||granting} onClick={()=>void lifecycle(card.task?.archived?'unarchive':'archive')}>{card.task.archived?t.unarchive:t.archive}</button>}
-              <button type="button" className="cb-ghost" disabled={busy||granting} onClick={()=>void lifecycle(card.task?.deletedAt!=null?'restore':'delete')}>{card.task.deletedAt!=null?t.restore:t.deleteTask}</button>
-            </>}
+            {card?.task && card.task.deletedAt == null && manage && setArchived &&
+              <button type="button" className="cb-ghost" disabled={busy || granting} onClick={()=>void toggleArchive()}>
+                {card.task.archived ? t.unarchive : t.archive}
+              </button>}
             {linkedSession && <button type="button" className="cb-ghost" disabled={granting} title={t.open} onClick={()=>open(linkedSession)}>
               <IconLinkOutlineRegular size={15} aria-hidden="true" />{t.open}
             </button>}

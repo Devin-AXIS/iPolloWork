@@ -53,6 +53,7 @@ export interface EnterpriseState {
 }
 const SELECTED_KEY = "ipollowork.enterprise.selected";
 const FOCUS_REFRESH_MS = 30_000;
+const DEFAULT_TAB: EnterpriseTab = "departments";
 function remembered(): string | null {
   try {
     return localStorage.getItem(SELECTED_KEY);
@@ -79,7 +80,7 @@ export class EnterpriseController {
     signedIn: false,
     enterpriseId: remembered(),
     websiteOrganizationId: null,
-    tab: "projects",
+    tab: DEFAULT_TAB,
     views: [],
     toast: null,
     memberNotices: null,
@@ -125,6 +126,7 @@ export class EnterpriseController {
       dialog: null,
       signedIn,
       websiteOrganizationId: null,
+      tab: DEFAULT_TAB,
       views: [],
       toast: null,
       memberNotices: null,

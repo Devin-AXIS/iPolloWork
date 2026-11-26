@@ -35,7 +35,6 @@ export function errorText(error: unknown, language: Language) {
     'read-only': ['当前会话是只读的。', 'This conversation is read-only.'],
     'too-large': ['所选数据超出编辑或导入大小上限。', 'The selected data exceeds the editor or import limit.'],
     'file-busy': ['文件正被其他应用使用。关闭文件后重试。', 'Another app is using this file. Close it there and try again.'],
-    'invalid-reference': ['有资料无法解析。请检查文件格式或密码保护。', 'A reference could not be parsed. Check its format or password protection.'],
     'invalid-request': ['请检查文件格式和必填内容。', 'Check the file format and required fields.'],
     missing: ['找不到所选文件或会话。', 'The selected file or conversation could not be found.'],
     unauthorized: ['当前账号没有执行此操作的权限。', 'Your account is not permitted to do this.'],

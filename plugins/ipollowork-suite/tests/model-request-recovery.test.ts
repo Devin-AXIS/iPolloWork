@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recoverModelRequest } from "../src/host/model-request-recovery.ts";
+import { readModelResponse, recoverModelRequest } from "../src/host/model-request-recovery.ts";
 import { SuiteError } from "../src/host/errors.ts";
 
 test("a lost gateway connection replays the same invocation until its saved response is ready", async () => {
@@ -53,15 +53,28 @@ test("rejections, unknown outcomes and programming errors never start another re
   }
 });
 
-test("an interrupted response stream is not replayed after output has begun", async () => {
-  let calls=0, reads=0;
-  const response=await recoverModelRequest(async()=>{
-    calls++;
-    return new Response(new ReadableStream({pull(controller){
-      if(reads++===0) controller.enqueue(new TextEncoder().encode("partial output"));
-      else controller.error(new TypeError("fetch failed"));
-    }}));
-  },new AbortController().signal);
-  await assert.rejects(response.text(),/fetch failed/);
-  assert.equal(calls,1);
+test("interrupted streams stop on unknown results, mismatched output or user cancellation", async () => {
+  const headers = { "content-type": "text/event-stream", "x-ipollo-call-id": "invocation" };
+  for (const scenario of ["unknown", "mismatch", "cancel", "unidentified"] as const) {
+    let calls = 0;
+    let reads = 0;
+    const controller = new AbortController();
+    const response = new Response(new ReadableStream({ pull(stream) {
+      if (reads++ === 0) stream.enqueue(new TextEncoder().encode("partial output"));
+      else stream.error(new TypeError("terminated"));
+    } }), { headers: scenario === "unidentified" ? { "content-type": "text/event-stream" } : headers });
+    const stream = readModelResponse(response, "invocation", async () => {
+      calls++;
+      if (scenario === "unknown") throw new SuiteError("SERVICE_CALL_UNKNOWN", 409);
+      return new Response("different output", { headers });
+    }, controller.signal);
+    assert.equal(new TextDecoder().decode((await stream.next()).value), "partial output");
+    if (scenario === "cancel") controller.abort();
+    const expected = {
+      unknown: { code: "SERVICE_CALL_UNKNOWN" }, mismatch: { code: "IPW_MODEL_REPLAY_MISMATCH" },
+      cancel: { name: "AbortError" }, unidentified: /terminated/,
+    };
+    await assert.rejects(stream.next(), expected[scenario]);
+    assert.equal(calls, scenario === "cancel" || scenario === "unidentified" ? 0 : 1);
+  }
 });

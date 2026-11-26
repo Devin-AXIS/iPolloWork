@@ -6,6 +6,7 @@ import { ServiceError } from "./errors.js";
 import type { App } from "./http.js";
 import type { Settings } from "./settings.js";
 import { connectPublicHttps, isSharedMcpEndpoint } from "./enterprise-mcp.js";
+import { audienceSchema } from "./grants.js";
 
 const webUrl = z.string().trim().max(2048).refine(value => {
   const url = URL.parse(value);
@@ -20,8 +21,10 @@ const entry = z.object({
   url: webUrl,
   departmentId: z.string().min(1).max(200).nullable(),
   role: z.enum(["owner", "admin", "member"]).nullable(),
+  memberIds: z.array(z.string().min(1).max(200)).min(1).max(500).optional(),
+  audience: audienceSchema.optional(),
   cookieNames: cookieNames.optional(),
-}).strict();
+}).strict().refine(item => !item.audience || (!item.departmentId && !item.role && !item.memberIds));
 const input = z.object({
   revision: z.number().int().nonnegative(),
   items: z.array(entry).max(50).refine(items => new Set(items.map(item => item.id)).size === items.length),
@@ -52,9 +55,22 @@ export function mountOrganizationWebsites(app: App, store: Store, settings: Sett
       "SELECT role,department_id FROM members WHERE enterprise_id=? AND user_id=? AND status='active'", id, actor.id,
     );
     if (!member) return [];
-    return (await read(id)).items.filter(item =>
-      (item.departmentId === null || item.departmentId === member.department_id)
-      && (item.role === null || item.role === member.role));
+    const { items } = await read(id);
+    const manager = member.role === "owner" || member.role === "admin";
+    const ancestors = !manager && member.department_id && items.some(item => item.audience?.includeSubdepartments)
+      ? await store.all<{id:string}>(`WITH RECURSIVE parents(id,parent_id) AS (
+          SELECT id,parent_id FROM departments WHERE enterprise_id=? AND id=?
+          UNION SELECT d.id,d.parent_id FROM departments d JOIN parents p ON d.id=p.parent_id WHERE d.enterprise_id=?
+        ) SELECT id FROM parents`, id, member.department_id, id) : [];
+    return items.filter(item => {
+      const audience = item.audience;
+      if (audience) return manager || audience.all || audience.members.includes(actor.id) ||
+        (member.department_id !== null && audience.departments.includes(member.department_id)) ||
+        (audience.includeSubdepartments === true && ancestors.some(department => audience.departments.includes(department.id)));
+      return (item.departmentId === null || item.departmentId === member.department_id)
+        && (item.role === null || item.role === member.role)
+        && (item.memberIds === undefined || item.memberIds.includes(actor.id));
+    });
   }
   async function accessible(id: string, website: string, actor: Actor) {
     const found = (await visible(id, actor)).find(item => item.id === website);
@@ -96,14 +112,28 @@ export function mountOrganizationWebsites(app: App, store: Store, settings: Sett
       const current = await read(id);
       if (current.revision !== update.revision)
         throw new ServiceError("ORGANIZATION_WEBSITES_CONFLICT", 409, "网页入口已经更新，请重新加载");
-      const existingDepartments = new Map(current.items.map(item => [item.id, item.departmentId]));
-      const departmentIds = [...new Set(update.items.flatMap(({ id, departmentId }) =>
-        departmentId && departmentId !== existingDepartments.get(id) ? [departmentId] : []))];
+      const departmentTargets = (item: z.infer<typeof entry>) =>
+        item.audience?.departments ?? (item.departmentId ? [item.departmentId] : []);
+      const existingDepartments = new Map(current.items.map(item => [item.id, new Set(departmentTargets(item))]));
+      const departmentIds = [...new Set(update.items.flatMap(item =>
+        departmentTargets(item).filter(departmentId => !existingDepartments.get(item.id)?.has(departmentId))))];
       if (departmentIds.length) {
         const placeholders = departmentIds.map(() => "?").join(",");
         const choices = await store.all(`SELECT id FROM departments WHERE enterprise_id=? AND id IN (${placeholders})`, id, ...departmentIds);
         if (choices.length !== departmentIds.length)
           throw new ServiceError("DEPARTMENT_MISMATCH", 400, "部门不属于该组织");
+      }
+      const memberTargets = (item: z.infer<typeof entry>) => item.audience?.members ?? item.memberIds ?? [];
+      const existingMembers = new Map(current.items.map(item => [item.id, new Set(memberTargets(item))]));
+      const memberIds = [...new Set(update.items.flatMap(item =>
+        memberTargets(item).filter(memberId => !existingMembers.get(item.id)?.has(memberId))))];
+      if (memberIds.length) {
+        const choices = await store.all(
+          "SELECT user_id FROM members WHERE enterprise_id=? AND status='active' AND user_id=ANY(?::text[])",
+          id, memberIds,
+        );
+        if (choices.length !== memberIds.length)
+          throw new ServiceError("MEMBER_NOT_FOUND", 400, "成员不属于该组织或已停用");
       }
       const value = { revision: current.revision + 1, items: update.items };
       for (const item of current.items) {
@@ -163,7 +193,7 @@ export function mountOrganizationWebsites(app: App, store: Store, settings: Sett
     const site = await accessible(id, z.uuid().parse(c.req.param("website")), actor);
     const { endpoint, credential } = await settings.get(ticketKey(id, site.id));
     if (!endpoint || !credential || !isSharedMcpEndpoint(endpoint))
-      throw new ServiceError("ORGANIZATION_TICKET_UNAVAILABLE", 404, "此网页未启用企业换票");
+      throw new ServiceError("ORGANIZATION_TICKET_UNAVAILABLE", 404, "此网页未启用组织换票");
     const body = Buffer.from(JSON.stringify({ organizationId: id, websiteId: site.id, userId: actor.id }));
     const signal = AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(8000)]);
     try {

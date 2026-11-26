@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { randomUUID, createHash } from 'node:crypto'
 import { lstat, realpath, mkdir, readFile, writeFile, rename } from 'node:fs/promises'
 import { join, dirname, relative, resolve, isAbsolute, extname, sep } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import type { ServiceCenter } from '../shared/services.ts'
 import { downloadMedia } from './download.ts'
 
@@ -10,7 +11,7 @@ declare module '@deepseek-ai/cordis' { interface Context { ipolloServices: Servi
 const object = z.record(z.string(), z.unknown())
 const catalog = z.object({ items: z.array(z.object({ id: z.string(), kind: z.string(), title: z.string() })) })
 const detail = z.object({ id: z.string(), models: z.array(z.object({ id: z.string(), name: z.string(), inputModalities: z.array(z.string()).optional() })) })
-const receipt = z.object({ requestId: z.uuid(), state: z.string(), result: object })
+const receipt = z.object({ requestId: z.uuid(), kind: z.string().optional(), state: z.string(), result: object.optional() })
 
 /** Real paths, including every existing parent, must stay inside the selected native workspace. */
 export async function workspaceFile(root: string, path: string, create = false): Promise<string> {
@@ -41,6 +42,8 @@ export async function capabilityActions(ctx: Context, workspace: { id: string; p
     const values = catalog.parse(await call('/api/v1/capabilities?kind=' + kind, undefined, signal))
     return (await Promise.all(values.items.slice(0, 20).map(async item => ({ item, details: detail.parse(await call('/api/v1/capabilities/' + encodeURIComponent(item.id), undefined, signal)) })))).flatMap(({ item, details }) => details.models.map(model => ({ ...model, capability: item.id, provider: item.title,
       operations: kind === 'video' ? model.inputModalities?.includes('image') ? ['text', 'first'] : ['text'] : ['generate', ...(model.inputModalities?.includes('image') ? ['edit'] : [])],
+      ...(kind === 'image' ? { label: model.name, available: true, parameters: {},
+        capabilities: { generate: true, edit: model.inputModalities?.includes('image') ?? false } } : {}),
       ratios: ['adaptive'], durations: [5, 10], resolutions: ['720p', '1080p'], configured: true })))
   }
   const operation = name.split('/')[1]
@@ -70,7 +73,7 @@ export async function capabilityActions(ctx: Context, workspace: { id: string; p
       if (data.byteLength > 256 * 1024 * 1024) throw new Error('文件超过 256 MB')
       return { ok: true, result: { path, sourcePath: path, mimeType: mimeOf(path), dataUrl: `data:${mimeOf(path)};base64,${data.toString('base64')}`, bytes: data.length } }
     }
-    const saveOutput = async (raw: unknown, outputKind = kind): Promise<Record<string, unknown>> => {
+    const saveOutput = async (raw: unknown, outputKind = kind, outputId?: string): Promise<Record<string, unknown>> => {
       const value = object.parse(raw)
       const output = value.output && typeof value.output === 'object' ? object.parse(value.output) : value
       const entries = Array.isArray(value.data) ? value.data : []
@@ -87,10 +90,22 @@ export async function capabilityActions(ctx: Context, workspace: { id: string; p
       const bytes = encoded ? Buffer.from(encoded, 'base64') : await downloadMedia(remote, signal)
       if (!bytes.length || bytes.length > 256 * 1024 * 1024) throw new Error('生成结果为空或过大')
       const extension = outputKind === 'speech' ? '.mp3' : outputKind === 'video' ? '.mp4' : '.png'
-      const path = text(input, 'outputPath', `artifacts/${outputKind}/${randomUUID()}${extension}`)
+      const path = text(input, 'outputPath', `artifacts/${outputKind}/${outputId ?? randomUUID()}${extension}`)
       const file = await workspaceFile(workspace.path, path, true)
-      await writeFile(file, bytes, { flag: 'wx' })
+      await writeFile(file, bytes, { flag: 'wx' }).catch(async (error: NodeJS.ErrnoException) => {
+        if (!outputId || error.code !== 'EEXIST') throw error
+        const existing = await lstat(file)
+        if (!existing.isFile() || existing.size !== bytes.length || !(await readFile(file)).equals(bytes))
+          throw new Error('同名图片已有修改，请先另存现有文件')
+      })
       return { path, sourcePath: path, mimeType: mimeOf(path), bytes: bytes.length, revision: createHash('sha256').update(bytes).digest('hex') }
+    }
+    if (operation === 'image_recover') {
+      const requestId = z.uuid().parse(input.requestId)
+      const value = receipt.parse(await call('/api/v1/capability-tasks/' + requestId, undefined, signal))
+      if (value.kind !== 'image' || value.requestId !== requestId) throw new Error('该任务编号不属于图片生成')
+      if (value.state !== 'succeeded') throw new Error(value.state === 'pending' ? '图片仍在生成，请稍后再查询' : '该图片任务未成功完成，无法找回结果')
+      return { ok: true, result: { ...await saveOutput(value.result, 'image', requestId), requestId } }
     }
     if (operation === 'recover') {
       const requestId = z.uuid().parse(input.requestId ?? input.jobId ?? input.id)
@@ -123,16 +138,38 @@ export async function capabilityActions(ctx: Context, workspace: { id: string; p
       if (input.firstFrame) { const source = text(input, 'firstFrame'), bytes = await readFile(await workspaceFile(workspace.path, source)); payload.image = `data:${mimeOf(source)};base64,${bytes.toString('base64')}` }
       await saveJob({ id: requestId, requestId, status: 'submitting', model: model.id })
     }
-    const value = receipt.parse(await call(`/api/v1/capabilities/${encodeURIComponent(model.capability)}/invoke`, { requestId, model: model.id, input: payload }, signal))
+    let value = receipt.parse(await call(`/api/v1/capabilities/${encodeURIComponent(model.capability)}/invoke`, { requestId, model: model.id, input: payload }, signal))
     if (kind === 'video') {
       const job: Record<string, unknown> = { id: requestId, requestId, status: value.state === 'pending' ? 'running' : value.state, model: model.id, result: value.result }
       if (value.state === 'succeeded') job.output = await saveOutput(value.result)
       await saveJob(job); return { ok: true, result: { job } }
     }
-    if (value.state !== 'succeeded') throw new Error('任务尚未完成，请在原生 AI 能力中按 requestId 查询，避免重复提交')
-    const output = await saveOutput(value.result)
+    if (kind === 'image' && value.state === 'pending') {
+      // Poll the existing receipt. Submitting the generation request again can incur a second charge.
+      const pollSignal = AbortSignal.any([signal, AbortSignal.timeout(90_000)])
+      try {
+        while (value.state === 'pending') {
+          await delay(3_000, undefined, { signal: pollSignal })
+          value = receipt.parse(await call('/api/v1/capability-tasks/' + requestId, undefined, pollSignal))
+        }
+      } catch (error) {
+        if (signal.aborted) throw error
+        throw new Error(`暂时无法确认图片生成结果，请按任务编号 ${requestId} 查询`, { cause: error })
+      }
+    }
+    if (value.state !== 'succeeded') {
+      if (['failed', 'canceled', 'cancelled', 'expired'].includes(value.state))
+        throw new Error(`图片或语音生成任务已失败（任务编号 ${requestId}）`)
+      throw new Error(`暂时无法确认生成结果，请按任务编号 ${requestId} 查询`)
+    }
+    const output = await saveOutput(value.result, kind, kind === 'image' ? requestId : undefined).catch(error => {
+      const reason = error instanceof Error ? error.message : '下载失败'
+      throw new Error(`生成已完成，但未能保存产物（任务编号 ${requestId}）：${reason}`, { cause: error })
+    })
     return { ok: true, result: kind === 'speech' ? { output } : { ...output, provider: model.provider, model: model.id, requestId } }
   } catch (error) {
+    if (error instanceof Error && error.message === 'SERVICE_UPSTREAM_REJECTED')
+      return { ok: false, message: '模型供应商拒绝了本次请求（SERVICE_UPSTREAM_REJECTED）' }
     return { ok: false, message: error instanceof Error && !/token|secret|password|Bearer|sk-/i.test(error.message) ? error.message.slice(0, 500) : 'AI 能力暂不可用，请检查登录和模型配置' }
   }
 }

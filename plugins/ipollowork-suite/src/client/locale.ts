@@ -23,7 +23,7 @@ const en = {
   search: "Search plugins",
   all: "All categories",
   public: "Public",
-  enterprise: "Enterprise",
+  enterprise: "Organization",
   enterpriseEmpty: "No published plugins are available to your account in this organization.",
   enterpriseSignIn: "Sign in using the account menu at the bottom left to view organization plugins.",
   enterpriseNoMembership: "Join an organization to view its published plugins.",
@@ -90,7 +90,7 @@ const en = {
   requires: "Plugin runtime requirement",
   account: "iPolloWork account",
   accountIntro:
-    "One account for official models, enterprise spaces and points.",
+    "One account for official models, organization spaces and points.",
   email: "Email",
   password: "Password",
   signIn: "Sign in",

@@ -9,7 +9,7 @@ import type { Store } from "./database.js";
 import type { Settings } from "./settings.js";
 import type { Config } from "./config.js";
 import { ServiceError } from "./errors.js";
-import { OssClients } from "./oss-client.js";
+import { deleteOssObject, OssClients } from "./oss-client.js";
 
 type Scope = "personal" | "organization";
 interface Owner {
@@ -25,6 +25,7 @@ const GIB = 1024 ** 3;
 export class Storage {
   private timer?: ReturnType<typeof setInterval>;
   private cleaning?: Promise<void>;
+  private readonly removing = new Map<string, Promise<void>>();
   private readonly oss: OssClients;
   constructor(
     private store: Store,
@@ -131,15 +132,13 @@ export class Storage {
       created = Date.now();
     let permanent = scope === "organization" || placement.permanent;
     await this.store.transaction(async () => {
-      if (placement.projectId)
-        permanent ||= Boolean(
-          (
-            await this.store.one(
-              "SELECT published_at FROM projects WHERE id=? FOR SHARE",
-              placement.projectId,
-            )
-          )?.published_at,
+      if (placement.projectId) {
+        const project = await this.store.one(
+          "SELECT published_at FROM projects WHERE id=? AND deleted_at IS NULL FOR SHARE", placement.projectId,
         );
+        if (!project) throw new ServiceError("PROJECT_NOT_FOUND", 404);
+        permanent ||= Boolean(project.published_at);
+      }
       await this.ensureQuota(scope, ownerId);
       const quota = await this.store.one(
         "SELECT * FROM storage_quotas WHERE scope=? AND owner_id=? FOR UPDATE",
@@ -383,7 +382,7 @@ export class Storage {
       throw new Error("Storage removal requires the metadata transaction");
     if (!keys.length) return;
     const result = await this.store.run(
-      "UPDATE storage_objects SET state='deleting' WHERE storage_key=ANY(?::text[]) AND state IN ('ready','deleting')",
+      "UPDATE storage_objects SET state=CASE WHEN state='deleted' THEN state ELSE 'deleting' END WHERE storage_key=ANY(?::text[]) AND state<>'reserved'",
       keys,
     );
     if (result.changes !== keys.length)
@@ -392,8 +391,18 @@ export class Storage {
 
   /** Only service-owned cloud/cache copies are removed. Native workspace paths are never accepted. */
   async remove(key: string): Promise<void> {
+    const current = this.removing.get(key);
+    if (current) return current;
+    const removal = this.removeObject(key).finally(() => this.removing.delete(key));
+    this.removing.set(key, removal);
+    return removal;
+  }
+
+  private async removeObject(key: string): Promise<void> {
+    const current = await this.store.one("SELECT physical_deleted FROM storage_objects WHERE storage_key=?", key);
+    if (current?.physical_deleted === true) return;
     if (key.startsWith("oss/"))
-      await (await this.client()).delete(key.slice(4));
+      await deleteOssObject(await this.client(), key.slice(4));
     else {
       if (!/^local\/[a-f0-9-]{36}$/.test(key))
         throw new ServiceError("INVALID_STORAGE_KEY", 409);
@@ -415,15 +424,16 @@ export class Storage {
         "SELECT * FROM storage_objects WHERE storage_key=? FOR UPDATE",
         key,
       );
-      if (!row || row.state === "deleted") return;
+      if (!row) return;
+      if (row.state !== "deleted")
+        await this.store.run(
+          `UPDATE storage_quotas SET ${row.charged ? "used_bytes" : "reserved_bytes"}=${row.charged ? "used_bytes" : "reserved_bytes"}-? WHERE scope=? AND owner_id=?`,
+          row.bytes,
+          row.scope,
+          row.owner_id,
+        );
       await this.store.run(
-        `UPDATE storage_quotas SET ${row.charged ? "used_bytes" : "reserved_bytes"}=${row.charged ? "used_bytes" : "reserved_bytes"}-? WHERE scope=? AND owner_id=?`,
-        row.bytes,
-        row.scope,
-        row.owner_id,
-      );
-      await this.store.run(
-        "UPDATE storage_objects SET state='deleted' WHERE storage_key=?",
+        "UPDATE storage_objects SET state='deleted',physical_deleted=true WHERE storage_key=?",
         key,
       );
     });
@@ -432,7 +442,10 @@ export class Storage {
   async cleanup(): Promise<void> {
     const keys = await this.store.transaction(async () => {
       const rows = await this.store.all(
-        "SELECT storage_key FROM storage_objects WHERE state='deleting' OR (state IN ('ready','reserved') AND expires_at<=? AND published_at IS NULL) ORDER BY (state='deleting') DESC, expires_at, storage_key LIMIT 50 FOR UPDATE SKIP LOCKED",
+        `SELECT storage_key FROM storage_objects o WHERE (state='deleting' OR
+          (state IN ('ready','reserved') AND expires_at<=? AND published_at IS NULL))
+          AND NOT EXISTS (SELECT 1 FROM deletion_jobs j WHERE j.completed_at IS NULL AND o.storage_key=ANY(j.storage_keys))
+          ORDER BY (state='deleting') DESC, expires_at, storage_key LIMIT 50 FOR UPDATE SKIP LOCKED`,
         Date.now(),
       );
       for (const row of rows)

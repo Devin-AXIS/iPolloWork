@@ -6,7 +6,6 @@
 
 | 旧条目 | 当前原生包 |
 | --- | --- |
-| Acme Research | `@ipollo/dsh-acme-research`（原仓库中的示例服务） |
 | Context7 | `@ipollo/dsh-context7` |
 | DeepSeek Harness | `@ipollo/dsh-deepseek-harness`（复用当前宿主） |
 | iPollo Design | `deepseek-idesign` |
@@ -28,7 +27,6 @@
 | iPollo Video | `deepseek-ivideo` |
 | 视频号运营台 | `@ipollo/dsh-wechat-channels-ops` |
 | 微信公众号 | `@ipollo/dsh-wechat-official` |
-| Workspace Canvas | `@ipollo/dsh-workspace-canvas` |
 | 小红书运营台 | `@ipollo/dsh-xiaohongshu-ops` |
 
 默认市场保留 Design、Video 在前，连同原有会话标题共 25 个条目。展示不会自动安装或启用插件。每个迁移包有独立的 Cordis patch、Host/Client 入口和 `.tgz`，由原生 Plugin Manager 安装、启停及卸载。市场随 Suite 携带实际安装包，`catalog/bundled-releases.json` 固定 SHA-256；不会要求安装尚未公开发布的 npm 版本。

@@ -9,6 +9,12 @@ export async function packNativeArchive(directory,output,npm){
   const staging=await mkdtemp(join(tmpdir(),'ipollo-plugin-pack-'))
   try{
     await cp(directory,staging,{recursive:true,filter:path=>!['node_modules','.git'].includes(basename(path))})
-    return JSON.parse(execFileSync(process.execPath,[npm,'pack','--ignore-scripts','--json','--pack-destination',output],{cwd:staging,encoding:'utf8',maxBuffer:8_000_000,timeout:120_000}))[0]
+    const packed = JSON.parse(execFileSync(process.execPath,[npm,'pack','--ignore-scripts','--json','--pack-destination',output],{cwd:staging,encoding:'utf8',maxBuffer:8_000_000,timeout:120_000}))[0]
+    if (packed.name === '@ipollo/dsh-xiaohongshu-ops') {
+      const binary = `sharp-${process.platform}-${process.arch}`
+      const required = `business/runtime/vendor/@img/${binary}/lib/${binary}.node`
+      if (!packed.files.some(file => file.path === required)) throw new Error(`Xiaohongshu plugin archive is missing ${required}`)
+    }
+    return packed
   }finally{await rm(staging,{recursive:true,force:true})}
 }

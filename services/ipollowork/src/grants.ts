@@ -3,15 +3,10 @@ import { z } from "zod";
 import type { Store } from "./database.js";
 import type { Actor } from "./auth.js";
 import { ServiceError } from "./errors.js";
+import type { Audience } from "./audience-scope.js";
 
 export type AssetKind = "package" | "skill" | "service" | "mcp" | "plugin" | "template";
-/** `all` covers every member; otherwise the listed departments and members are allowed. */
-export interface Audience {
-  all: boolean;
-  departments: string[];
-  members: string[];
-  includeSubdepartments?: boolean;
-}
+export type { Audience } from "./audience-scope.js";
 export const audienceSchema = z
   .object({
     all: z.boolean(),
@@ -93,7 +88,8 @@ export async function replaceAudience(
     )
       throw new ServiceError("MEMBER_NOT_FOUND", 400, "成员不属于该组织");
   await store.run(
-    "DELETE FROM enterprise_grants WHERE asset_kind=? AND asset_id=?",
+    "DELETE FROM enterprise_grants WHERE enterprise_id=? AND asset_kind=? AND asset_id=?",
+    enterpriseId,
     kind,
     assetId,
   );

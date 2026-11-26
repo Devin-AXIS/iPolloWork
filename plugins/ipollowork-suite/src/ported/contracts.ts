@@ -20,7 +20,7 @@ export const manifestSchema = z.object({
 }).passthrough()
 export type Manifest = z.infer<typeof manifestSchema>
 export type Action = z.infer<typeof actionSchema>
-export interface ActionContext { directory: string; sessionId?: string; signal: AbortSignal; trusted?: boolean }
+export interface ActionContext { directory: string; workspaceId: string; sessionId?: string; signal: AbortSignal; trusted?: boolean }
 export interface BusinessRuntime {
   plugin: { id: string; version: string }; workspace: { root: string }; storage: { dataDir: string };
   authorization: {

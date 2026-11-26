@@ -1,7 +1,0 @@
-lib/
-*.tgz
-node_modules/
-business/runtime/
-business/service/*.js
-NOTICE.dependencies.txt
-business/THIRD-PARTY-LICENSES.txt

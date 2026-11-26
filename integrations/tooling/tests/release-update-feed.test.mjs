@@ -27,19 +27,23 @@ test('release feed requires numeric versions and complete Mac/Windows assets', (
   assert.throws(() => updateFeeds('1.0.2', assets.map(asset => ({ ...asset, sha512: 'bad' }))), /invalid/)
 })
 
-test('retired market entries keep verified archives available to existing installations', () => {
+test('market removals omit bundles and preserve designated compatibility archives', () => {
   const catalog = 'plugins/ipollowork-suite/catalog/'
   const retired = readRepositoryJson(catalog + 'retired-plugins.json')
   const { plugins: market } = readRepositoryJson(catalog + 'index.json')
   const { plugins: archives } = readRepositoryJson(catalog + 'bundled-releases.json')
   const metadata = pluginUpdateMetadata(readRepositoryJson)
   assert.ok(retired.length > 0)
-  for (const name of retired) {
-    assert.ok(!market.some(entry => entry.name === name))
-    const archive = archives.find(entry => entry.name === name)
-    assert.equal(archive?.upgradeOnly, true)
-    assert.deepEqual(metadata.plugins.find(entry => entry.name === name),
-      { name, version: archive.version, sha256: archive.sha256 })
+  for (const name of retired) assert.ok(!market.some(entry => entry.name === name))
+  for (const {name,version,sha256} of archives.filter(entry => entry.upgradeOnly)) {
+    assert.ok(retired.includes(name))
+    assert.deepEqual(metadata.plugins.find(entry => entry.name === name), {name,version,sha256})
+  }
+  for (const id of ['acme-research', 'legacy-workspace-import', 'reference-preparation', 'task-templates', 'workspace-canvas']) {
+    const name = '@ipollo/dsh-' + id
+    assert.ok(retired.includes(name))
+    assert.ok(!archives.some(entry => entry.name === name))
+    assert.ok(!metadata.plugins.some(entry => entry.name === name))
   }
   assert.throws(() => pluginUpdateMetadata(path => path.endsWith('retired-plugins.json') ? [] : readRepositoryJson(path)),
     /Unreviewed desktop plugin archive/)

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { Button, Modal, Tooltip } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Button, Tooltip } from "@deepseek-ai/dsh-client-ui-primitives";
+import { Modal } from "../../../_shared/ui/modal.tsx";
+import { SearchInput } from "../../../_shared/ui/controls.tsx";
 import type { MemberNotice, OrganizationActivity, OrganizationPublication, PublicationKind, PublicationVersion } from "../shared/enterprise.ts";
 import { AccessDialog, AudiencePill, type AssetProps } from "./enterprise-assets.tsx";
 import { EmptyState, Field, FormError, ListSkeleton, Notice, PageButtons, Row, Section, When, roleName, useRecord, useTask, type Call } from "./enterprise-ui.tsx";
@@ -72,7 +74,7 @@ function PublicationForm({ publication, path, close, kind, language, t, call, co
   const task = useTask(t);
   const zh = language.startsWith("zh");
   return <Modal open title={publication ? (zh ? "提交新版本" : "Submit a new version") : (zh ? "提交资源" : "Submit resource")}
-    closeLabel={t.close} className={css.enterpriseModal!} contentClassName={css.enterpriseModalContent!} onClose={() => { if (!task.busy) close(); }}>
+    closeLabel={t.close} className={css.enterpriseModal!} onClose={() => { if (!task.busy) close(); }}>
     <form className={css.enterpriseForm} onSubmit={event => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);
@@ -152,7 +154,7 @@ function PublicationDetails(props: PublicationProps & {
 }) {
   const { publication, call, revision, t, path, kind, language, controller, canManage } = props;
   const versions = useRecord<{ items: PublicationVersion[] }>(path + "/versions", call, revision);
-  const [access, setAccess] = useState(false);
+  const [access, setAccess] = useState<"edit" | { version: string }>();
   const [preview, setPreview] = useState<string>();
   const [review, setReview] = useState<{ version: string; decision: "approve" | "reject" }>();
   const task = useTask(t);
@@ -173,16 +175,12 @@ function PublicationDetails(props: PublicationProps & {
       setPreview(markdown);
     }
   });
-  const publish = (version: string) => void task.run(async () => {
-    await call(release(version), { decision: "publish" }, "PUT");
-    await controller.load();
-  });
   return <div className={css.enterpriseForm}>
     {publication.description && kind === "plugin" && <p>{publication.description}</p>}
     <div className={css.enterpriseActions}>
       {publication.canSubmit && <Button size="sm" variant="outline" onClick={props.edit}>{zh ? "提交新版本" : "Submit a new version"}</Button>}
       {canManage && publication.audience && <AudiencePill audience={publication.audience} t={t}
-        detail={props.detail} onEdit={() => setAccess(true)}/>}
+        detail={props.detail} onEdit={() => setAccess("edit")}/>}
       {canManage && publication.publishedVersion && <Button size="sm" variant="ghost" disabled={task.busy}
         onClick={() => controller.open({ kind:"confirm", title:zh ? "下架资源" : "Unpublish resource",
           description:zh ? "已提交的版本会保留，组织成员将无法获取此资源。" : "Versions stay in history. Members lose access to the publication.",
@@ -201,7 +199,10 @@ function PublicationDetails(props: PublicationProps & {
           {(published || kind !== "plugin") && <Button size="sm" variant="outline" disabled={task.busy} onClick={() => read(row.version)}>
             {kind === "plugin" ? (zh ? "在 iPolloWork 中安装" : "Install in iPolloWork") : (zh ? "预览" : "Preview")}
           </Button>}
-          {canManage && !published && row.status === "approved" && <Button size="sm" variant="primary" disabled={task.busy} onClick={() => publish(row.version)}>{zh ? "下发" : "Publish"}</Button>}
+          {canManage && publication.audience && !published && row.status === "approved" &&
+            <Button size="sm" variant="primary" disabled={task.busy} onClick={() => setAccess({ version: row.version })}>
+              {t.publishResource}
+            </Button>}
           {canManage && !published && row.status === "pending" && <>
             <Button size="sm" variant="outline" onClick={() => setReview({version:row.version,decision:"approve"})}>{zh ? "通过" : "Approve"}</Button>
             <Button size="sm" variant="ghost" onClick={() => setReview({version:row.version,decision:"reject"})}>{zh ? "驳回" : "Reject"}</Button>
@@ -209,7 +210,8 @@ function PublicationDetails(props: PublicationProps & {
         </>}/>;
       })}
     {access && publication.audience && <AccessDialog {...props} kind={kind} assetId={publication.id}
-      title={publication.title} audience={publication.audience} close={() => setAccess(false)}/>}
+      title={publication.title} audience={publication.audience} close={() => setAccess(undefined)}
+      {...(access === "edit" ? {} : { publishPath: release(access.version) })}/>}
     {review && <Modal open title={zh ? "版本审核" : "Review version"} closeLabel={t.close} onClose={() => { if (!task.busy) setReview(undefined); }}>
       <form className={css.enterpriseForm} onSubmit={event => {
         event.preventDefault();
@@ -295,7 +297,7 @@ export function OrganizationActivityTab({ enterpriseId, call, revision, t, langu
   const state = useRecord<{items:OrganizationActivity[];next?:string | null}>("/organizations/" + enterpriseId + "/activity", filtered, revision);
   return <Section title={t.activityTab} actions={
     <form className={css.activitySearch} onSubmit={event=>{event.preventDefault(); setActor(search.trim()); setCursors([]);}}>
-      <input type="search" aria-label={zh ? "操作人" : "Operator"} maxLength={120} value={search}
+      <SearchInput aria-label={zh ? "操作人" : "Operator"} maxLength={120} value={search}
         placeholder={zh ? "姓名或工号" : "Name or employee number"}
         onChange={event=>{setSearch(event.currentTarget.value); if (!event.currentTarget.value) { setActor(""); setCursors([]); }}}/>
       <Button type="submit" size="sm" variant="outline">{zh ? "搜索" : "Search"}</Button>
@@ -362,7 +364,7 @@ export function MemberNoticeDialog({ controller, state, t, language, close, noti
   const zh = language.startsWith("zh");
   const items = noticeId ? feed?.items.filter(row => row.id === noticeId) : feed?.items;
   return <Modal open title={t.memberNotices} closeLabel={t.close} className={css.enterpriseModal!}
-    contentClassName={css.enterpriseModalContent + " " + css.memberNoticeContent} onClose={close}>
+    contentClassName={css.memberNoticeContent!} onClose={close}>
     <Notice error={error} t={t} retry={() => void controller.openNotices()}/>
     <FormError message={task.error}/>
     {!feed && !error && <ListSkeleton/>}

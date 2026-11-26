@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-wechat-channels-ops",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "管理视频号本地草稿、视频封面素材与运营任务，在原生会话中继续工作。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

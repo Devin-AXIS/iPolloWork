@@ -1,6 +1,8 @@
 /** Bot library: create once, then open a project conversation directly. */
 import { useEffect, useState } from 'react'
-import { Button, IconUsersOutlineRegular, Modal } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, IconUsersOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Modal } from '../../../_shared/ui/modal.tsx'
+import { SearchInput } from '../../../_shared/ui/controls.tsx'
 import type { AgentCatalog, AgentItem, AgentMemory, AgentModelCatalog, AgentModelOption } from '../shared/agents.ts'
 import type { ClientContext } from './native.ts'
 import { request } from './api.ts'
@@ -113,7 +115,8 @@ export function AgentsPanel({ useAgentLabels, useAgentState, load, call, removeA
   const skillOptions = [...new Map([...skills, ...(state.agents.find(item => item.id === draft.id)?.skills ?? [])].map(skill => [skill.name, skill])).values()]
   return <section className={`${css.page} ${css.agentPage}`}>
     <div className={css.heading}><div><h1>{t.title}</h1><p>{t.intro}</p></div><button className={css.primary} onClick={() => { setDraft(newDraft()); setEditing(true); setError('') }}>{t.create}</button></div>
-    <div className={css.agentSearch}><input type="search" placeholder={t.search} aria-label={t.search} value={query} onChange={event => setQuery(event.target.value)} /></div>
+    <SearchInput className={css.agentSearch!} placeholder={t.search} aria-label={t.search} value={query}
+      onChange={event => setQuery(event.target.value)} />
     {state.error && <p className={css.error} role="alert">{t.IPOLLO_OPERATION_FAILED} <button className={css.textAction} onClick={() => void load()}>{t.refresh}</button></p>}
     {notice && !target && <p role="status" className={css.muted}>{notice}</p>}
     {state.loading && !state.agents.length ? <div className={css.agentGrid} aria-label={t.loading}>{[0,1,2].map(index => <div key={index} className={css.agentSkeleton} />)}</div>
@@ -149,7 +152,7 @@ export function AgentsPanel({ useAgentLabels, useAgentState, load, call, removeA
       <div className={css.botIdentity}><BotAvatar name={deleting.name} avatar={deleting.avatar} /><h2>{deleting.name}</h2></div>
       {errorText && <p className={css.error} role="alert">{error === 'IPOLLO_STALE_REVISION' ? t.removeStale : errorText}</p>}
     </Modal>}
-    {target && <Modal open title={target.kind === 'start' ? t.startTitle : t.memory} closeLabel={t.close} description={target.kind === 'start' ? t.startHint : t.memoryHint} className={`${css.page} ${css.agentDialog}`} contentClassName={css.agentDialogContent!} onClose={() => { if (!busy) setTarget(null) }} footer={<>
+    {target && <Modal open title={target.kind === 'start' ? t.startTitle : t.memory} closeLabel={t.close} description={target.kind === 'start' ? t.startHint : t.memoryHint} className={`${css.page} ${css.agentDialog}`} onClose={() => { if (!busy) setTarget(null) }} footer={<>
       <button className={css.secondary} disabled={busy} onClick={() => setTarget(null)}>{t.cancel}</button>
       <button className={css.primary} disabled={busy || !projectId || (target.kind === 'memory' && (!memory || memoryLoading))} onClick={() => void run(async () => {
         if (target.kind === 'memory' && memory) { setMemory(await call<AgentMemory>('/memory', memory)); setNotice(t.saved) }

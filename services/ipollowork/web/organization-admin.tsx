@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { api, date, operation, text, type Row } from "./api.js";
+import { audienceDraft, audienceInput, audienceReady, audienceScopes, type Audience, type AudienceScope } from "../src/audience-scope.js";
+import { projectAudience, projectScopeAccess, type ProjectAccess } from "../src/project-audience.js";
+import { api, date, deletePermanently, operation, text, type Row } from "./api.js";
 import { ActionForm, Field, Modal, Status, Table, useData, value } from "./components.js";
 
 export function OrganizationSettings({ path, enterprise, canManage, reload }: {
@@ -96,7 +98,147 @@ export function OrganizationDepartments({ path, departments, canManage, reload }
 }
 
 type Kind = "plugin" | "template" | "skill";
-type Audience = { all:boolean; departments:string[]; members:string[]; includeSubdepartments?:boolean };
+const scopeLabels: Record<AudienceScope, string> = {
+  admins: "仅管理员", everyone: "全体员工", departments: "选定部门", employees: "选定员工", mixed: "部门和员工",
+};
+
+function readAudience(form: FormData): Audience {
+  const scope = form.get("sharingScope") as AudienceScope;
+  const selected = (name: string) => form.getAll(name).filter((item): item is string => typeof item === "string");
+  const draft = { scope, audience: {
+    all: scope === "everyone", departments: selected("department"), members: selected("member"),
+    includeSubdepartments: form.has("includeSubdepartments"),
+  }};
+  if (!audienceReady(draft)) throw new Error("请先选择共享对象");
+  return audienceInput(draft);
+}
+
+function OrganizationAudienceFields({ path, departments, initial, legacy = false, project = false }: {
+  path: string; departments: Row[]; initial?: Audience | undefined; legacy?: boolean; project?: boolean;
+}) {
+  const draft = audienceDraft(initial);
+  const [scope, setScope] = useState<AudienceScope | "legacy">(legacy ? "legacy" : draft.scope);
+  return <div className="organization-audience">
+    <Field label="共享范围"><select name="sharingScope" value={scope} onChange={event => setScope(event.target.value as typeof scope)}>
+      {legacy && <option value="legacy">原有范围</option>}
+      {audienceScopes.map(option => <option key={option} value={option}>{scopeLabels[option]}</option>)}
+      {draft.scope === "mixed" && <option value="mixed">{scopeLabels.mixed}</option>}
+    </select></Field>
+    {(scope === "departments" || scope === "mixed") && <fieldset>
+      <legend>选定部门</legend>
+      {departments.length === 0 && <p>暂无可选部门</p>}
+      {departments.map(row => <label className="check" key={text(row.id)}>
+        <input type="checkbox" name="department" value={text(row.id)} defaultChecked={draft.audience.departments.includes(text(row.id))}/>
+        {text(row.name)}
+      </label>)}
+      {!project && departments.length > 0 && <label className="check">
+        <input type="checkbox" name="includeSubdepartments" defaultChecked={draft.audience.includeSubdepartments}/>包含下级部门
+      </label>}
+    </fieldset>}
+    {(scope === "employees" || scope === "mixed") &&
+      <OrganizationMemberOptions path={path} initial={draft.audience.members} name="member"/>}
+    {project && (scope === "departments" || scope === "employees" || scope === "mixed") &&
+      <Field label="权限"><select name="projectRole">
+        <option value="">保留已有权限（新增对象可查看）</option>
+        <option value="view">查看</option>
+        <option value="participate">参与</option>
+        <option value="maintain">维护</option>
+      </select></Field>}
+  </div>;
+}
+
+export function ProjectAudienceFields({ organizationId, access }: { organizationId: string; access?: ProjectAccess }) {
+  const path = "/api/v1/enterprises/" + encodeURIComponent(organizationId);
+  const detail = useData<{departments: Row[]}>(path);
+  return <>
+    <Status error={detail.error} loading={!detail.data}/>
+    {detail.error && <button type="button" onClick={detail.reload}>重试</button>}
+    {detail.data && <OrganizationAudienceFields path={path} departments={detail.data.departments}
+      initial={access ? projectAudience(access).audience : undefined} project/>}
+  </>;
+}
+
+export function readProjectAudience(form: FormData, previous?: ProjectAccess): ProjectAccess {
+  if (!form.has("sharingScope")) throw new Error("请等待共享范围加载完成");
+  const draft = audienceDraft(readAudience(form));
+  const role = (["view", "participate", "maintain"] as const).find(option => option === value(form, "projectRole")) ?? "";
+  if (previous && !role) {
+    const prior = audienceInput(projectAudience(previous));
+    const sameSubjects = (left: string[], right: string[]) => left.length === right.length && left.every(id => right.includes(id));
+    if (prior.all === draft.audience.all && sameSubjects(prior.departments, draft.audience.departments) &&
+      sameSubjects(prior.members, draft.audience.members)) return previous;
+  }
+  return projectScopeAccess(draft, role, previous?.grants);
+}
+type ResourceAccess = { id: string; title: string; audience: Audience };
+export function OrganizationResourceGrants({ path, departments, kind }: {
+  path: string; departments: Row[]; kind: "service" | "skill";
+}) {
+  const status = useData<{items?: ResourceAccess[]; skills?: ResourceAccess[]}>(
+    path + (kind === "service" ? "/services" : "/assets"),
+  );
+  const [editing, setEditing] = useState<ResourceAccess>();
+  const rows = kind === "service" ? status.data?.items : status.data?.skills;
+  if (kind === "skill" && rows?.length === 0) return null;
+  return <section className="panel">
+    <h2>{kind === "service" ? "模型与工具" : "直接创建的 Skill"}</h2>
+    <Status error={status.error} loading={!rows}/>
+    {status.error && <button onClick={status.reload}>重试</button>}
+    {rows?.length === 0 && <p className="empty">暂无模型与工具</p>}
+    {rows?.map(row => <div className="toolbar" key={row.id}>
+      <span>{row.title}</span>
+      <button type="button" onClick={() => setEditing(row)}>{scopeLabels[audienceDraft(row.audience).scope]}</button>
+    </div>)}
+    {editing && <Modal title={editing.title + " · 共享范围"} close={() => setEditing(undefined)}>
+      <ActionForm submit={async form => {
+        await api(path + "/grants", { kind, assetId: editing.id, audience: readAudience(form) }, "PUT");
+        setEditing(undefined);
+        status.reload();
+      }}><OrganizationAudienceFields path={path} departments={departments} initial={editing.audience}/></ActionForm>
+    </Modal>}
+  </section>;
+}
+
+type OrganizationWebsite = {
+  id: string; label: string; url: string; departmentId: string | null; role: string | null;
+  memberIds?: string[]; audience?: Audience; cookieNames?: string[];
+};
+export function OrganizationWebsites({ path, departments }: {path: string; departments: Row[]}) {
+  const endpoint = path + "/websites/manage";
+  const status = useData<{revision: number; items: OrganizationWebsite[]}>(endpoint);
+  const [editing, setEditing] = useState<OrganizationWebsite | "new">();
+  const item = editing === "new" ? undefined : editing;
+  const legacy = Boolean(item && !item.audience && (item.departmentId || item.role || item.memberIds));
+  const initial = item?.audience ?? (item && !legacy ? {all:true, departments:[], members:[]} : undefined);
+  return <section className="panel">
+    <div className="toolbar"><h2>组织网页入口</h2>
+      {status.data && status.data.items.length < 50 && <button onClick={() => setEditing("new")}>添加网页入口</button>}
+    </div>
+    <Status error={status.error} loading={!status.data}/>
+    {status.error && <button onClick={status.reload}>重试</button>}
+    {status.data?.items.length === 0 && <p className="empty">暂无网页入口</p>}
+    {status.data?.items.map(row => <div className="toolbar" key={row.id}>
+      <span>{row.label}</span><button onClick={() => setEditing(row)}>编辑</button>
+    </div>)}
+    {editing && status.data && <Modal title={item ? "编辑网页入口" : "添加网页入口"} close={() => setEditing(undefined)}>
+      <ActionForm submit={async form => {
+        const identity = {id:item?.id ?? crypto.randomUUID(), label:value(form,"label"), url:value(form,"url"),
+          ...(item?.cookieNames ? {cookieNames:item.cookieNames} : {})};
+        const updated = item && legacy && form.get("sharingScope") === "legacy" ? {...item, ...identity}
+          : {...identity, departmentId:null, role:null, audience:readAudience(form)};
+        const { revision, items } = status.data!;
+        await api(endpoint, { revision, items: item ? items.map(row => row.id === item.id ? updated : row) : [...items, updated] }, "PUT");
+        setEditing(undefined);
+        status.reload();
+      }}>
+        <Field label="名称"><input name="label" required maxLength={80} defaultValue={item?.label}/></Field>
+        <Field label="网页地址"><input name="url" type="url" required maxLength={2048} defaultValue={item?.url}/></Field>
+        <OrganizationAudienceFields path={path} departments={departments} initial={initial} legacy={legacy}/>
+      </ActionForm>
+    </Modal>}
+  </section>;
+}
+
 type Publication = { id:string; title:string; description:string; packageName?:string; publishedVersion:string|null; canSubmit:boolean; audience?:Audience };
 type Version = { version:string; status:"pending"|"approved"|"rejected"; note:string; created_at:number; title?:string; description?:string };
 
@@ -158,7 +300,7 @@ function PublicationDetails({ root,item,kind,canManage,enterprisePath,department
   const [error,setError] = useState("");
   const [pending,setPending] = useState(false);
   const [preview,setPreview] = useState<string>();
-  const [modal,setModal] = useState<"access"|"archive">();
+  const [modal,setModal] = useState<"access"|"archive"|{ version: string }>();
   const [review,setReview] = useState<{ version: string; decision: "approve"|"reject" }>();
   const release = (version:string) => root + "/versions/" + encodeURIComponent(version);
   const run = async (action:()=>Promise<void>) => {
@@ -192,10 +334,8 @@ function PublicationDetails({ root,item,kind,canManage,enterprisePath,department
               <button onClick={() => setReview({version:row.version,decision:"approve"})}>通过</button>
               <button onClick={() => setReview({version:row.version,decision:"reject"})}>驳回</button>
             </>}
-            {canManage && !published && row.status === "approved" && <button disabled={pending} onClick={() => void run(async () => {
-              await api(release(row.version),{decision:"publish"},"PUT");
-              refresh();
-            })}>发布</button>}
+            {canManage && item.audience && !published && row.status === "approved" &&
+              <button disabled={pending} onClick={() => setModal({ version: row.version })}>下发资源</button>}
           </div></td>
         </tr>;
       })}</tbody>
@@ -207,22 +347,16 @@ function PublicationDetails({ root,item,kind,canManage,enterprisePath,department
         versions.reload();
       }}><Field label="审核说明"><textarea name="note" rows={3} maxLength={1000}/></Field></ActionForm>
     </Modal>}
-    {modal === "access" && item.audience && <Modal title="访问权限" close={() => setModal(undefined)}>
-      <ActionForm submit={async form => {
-        const all = form.get("all") === "on";
-        await api(enterprisePath + "/grants", { kind,assetId:item.id,audience:{
-          all,departments:all ? [] : form.getAll("department"),members:all ? [] : form.getAll("member"),
-          includeSubdepartments:!all && form.get("includeSubdepartments") === "on",
-        }},"PUT");
+    {(modal === "access" || typeof modal === "object") && item.audience && <Modal
+      title={modal === "access" ? "访问权限" : "下发资源"} close={() => setModal(undefined)}>
+      <ActionForm label={modal === "access" ? "保存" : "下发资源"} submit={async form => {
+        const audience = readAudience(form);
+        if (modal === "access") await api(enterprisePath + "/grants", { kind, assetId:item.id, audience }, "PUT");
+        else await api(release(modal.version), { decision:"publish", audience }, "PUT");
         setModal(undefined);
         refresh();
       }}>
-        <Field label="全部成员"><input name="all" type="checkbox" defaultChecked={item.audience.all}/></Field>
-        <Field label="允许访问的部门"><select multiple name="department" defaultValue={item.audience.departments}>
-          {departments.map(row=><option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
-        </select></Field>
-        <Field label="包含下级部门"><input name="includeSubdepartments" type="checkbox" defaultChecked={item.audience.includeSubdepartments}/></Field>
-        <OrganizationMemberOptions path={enterprisePath} initial={item.audience.members} name="member"/>
+        <OrganizationAudienceFields path={enterprisePath} departments={departments} initial={item.audience}/>
       </ActionForm>
     </Modal>}
     {modal === "archive" && <Modal title="下架资源" close={() => setModal(undefined)}>
@@ -283,8 +417,8 @@ export function OrganizationMemberOptions({ path, initial, name }: { path: strin
   const [selected, setSelected] = useState(() => new Set(initial));
   const directory = useData<{items: Row[]; more: boolean}>(path + "/members?" + new URLSearchParams({ query, page: String(page), active: "true" }));
   return <fieldset>
-    <legend>允许访问的成员 · 已选 {selected.size} 人</legend>
-    <input type="search" aria-label="搜索成员" placeholder="姓名、邮箱或工号" maxLength={120} value={query}
+    <legend>选定员工 · 已选 {selected.size} 人</legend>
+    <input type="search" aria-label="搜索成员" placeholder="姓名或工号" maxLength={120} value={query}
       onChange={event => { setQuery(event.target.value); setPage(1); }}/>
     <Status error={directory.error} loading={!directory.data}/>
     {directory.error && <button type="button" onClick={directory.reload}>重试</button>}
@@ -298,7 +432,7 @@ export function OrganizationMemberOptions({ path, initial, name }: { path: strin
             if (checked) next.add(id); else next.delete(id);
             return next;
           });
-        }}/>{text(row.name)} · {text(row.employee_number) || text(row.email)}</label>;
+        }}/>{[row.name, row.employee_number].filter(Boolean).map(text).join(" · ")}</label>;
     })}
     {[...selected].map(id => <input key={id} type="hidden" name={name} value={id}/>)}
     <OrganizationPager previous={page > 1 ? () => setPage(page - 1) : undefined}
@@ -388,20 +522,11 @@ export function OrganizationMcp({path,departments}: {path:string;departments:Row
     </Modal>}
     {access && <Modal title="MCP 访问权限" close={()=>setAccess(undefined)}>
       <ActionForm submit={async form=>{
-        const all=form.get("all")==="on";
-        await api(path+"/grants",{kind:"mcp",assetId:access.id,audience:{
-          all,departments:all?[]:form.getAll("departments"),members:all?[]:form.getAll("members"),
-          includeSubdepartments:!all&&form.get("includeSubdepartments")==="on",
-        }},"PUT");
+        await api(path+"/grants",{kind:"mcp",assetId:access.id,audience:readAudience(form)},"PUT");
         setAccess(undefined);
         list.reload();
       }}>
-        <Field label="全部成员"><input type="checkbox" name="all" defaultChecked={access.audience.all}/></Field>
-        <Field label="允许访问的部门"><select name="departments" multiple defaultValue={access.audience.departments}>
-          {departments.map(row=><option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
-        </select></Field>
-        <Field label="包含下级部门"><input type="checkbox" name="includeSubdepartments" defaultChecked={access.audience.includeSubdepartments}/></Field>
-        <OrganizationMemberOptions path={path} initial={access.audience.members} name="members"/>
+        <OrganizationAudienceFields path={path} departments={departments} initial={access.audience}/>
       </ActionForm>
     </Modal>}
     {remove && <Modal title="移除 MCP" close={()=>setRemove(undefined)}>
@@ -442,35 +567,27 @@ export function OrganizationPackages({ path, departments, canManage }: { path: s
         const data = {title:value(form,"title"),description:value(form,"description")};
         if (item) await api(root + "/" + item.id, data, "PATCH");
         else {
-          const created = await api<{id:string}>(root, {...data, audience:{all:false,departments:[],members:[]}});
+          const created = await api<{id:string}>(root, {...data, audience:readAudience(form)});
           setSelected(created.id);
         }
         setEditing(undefined); list.reload();
       }}>
         <Field label="名称"><input name="title" required maxLength={120} defaultValue={item?.title}/></Field>
         <Field label="说明"><textarea name="description" maxLength={2000} defaultValue={item?.description}/></Field>
+        {!item && <OrganizationAudienceFields path={path} departments={departments}/>}
       </ActionForm>
     </Modal>}
     {grant && <Modal title="文件包访问权限" close={() => setGrant(undefined)}>
       <ActionForm submit={async form => {
-        const all = form.has("all");
-        await api(path + "/grants", {kind:"package",assetId:grant.id,audience:{
-          all,departments:all ? [] : form.getAll("department"), members:all ? [] : form.getAll("member"),
-          includeSubdepartments:!all && form.has("includeSubdepartments"),
-        }}, "PUT");
+        await api(path + "/grants", {kind:"package",assetId:grant.id,audience:readAudience(form)}, "PUT");
         setGrant(undefined); list.reload();
       }}>
-        <label className="check"><input type="checkbox" name="all" defaultChecked={grant.audience.all}/>全部成员</label>
-        <Field label="允许访问的部门"><select multiple name="department" defaultValue={grant.audience.departments}>
-          {departments.map(row => <option key={text(row.id)} value={text(row.id)}>{text(row.name)}</option>)}
-        </select></Field>
-        <label className="check"><input type="checkbox" name="includeSubdepartments" defaultChecked={grant.audience.includeSubdepartments}/>包含下级部门</label>
-        <OrganizationMemberOptions path={path} initial={grant.audience.members} name="member"/>
+        <OrganizationAudienceFields path={path} departments={departments} initial={grant.audience}/>
       </ActionForm>
     </Modal>}
     {removing && <Modal title="移除文件包" close={() => setRemoving(undefined)}>
       <p>{removing.title}</p>
-      <ActionForm label="确认移除" submit={async () => {await api(root + "/" + removing.id, undefined, "DELETE"); setRemoving(undefined); list.reload();}}/>
+      <ActionForm label="确认移除" submit={async () => {await deletePermanently(root + "/" + removing.id); setRemoving(undefined); list.reload();}}/>
     </Modal>}
   </section>;
 }
@@ -498,7 +615,7 @@ function PackageFiles({ path, canManage }: { path: string; canManage: boolean })
     {removing && <Modal title="移除文件" close={() => setRemoving(undefined)}>
       <p>{text(removing.name)}</p>
       <ActionForm label="确认移除" submit={async () => {
-        await api(path + "/files/" + encodeURIComponent(text(removing.id)), undefined, "DELETE");
+        await deletePermanently(path + "/files/" + encodeURIComponent(text(removing.id)));
         setRemoving(undefined); listing.reload();
       }}/>
     </Modal>}

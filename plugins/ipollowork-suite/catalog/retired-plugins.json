@@ -1,5 +1,10 @@
 [
+  "@ipollo/dsh-acme-research",
   "@ipollo/dsh-deepseek-harness",
+  "@ipollo/dsh-legacy-workspace-import",
   "@ipollo/dsh-plugin-workshop",
-  "@ipollo/dsh-reference-context"
+  "@ipollo/dsh-reference-context",
+  "@ipollo/dsh-reference-preparation",
+  "@ipollo/dsh-task-templates",
+  "@ipollo/dsh-workspace-canvas"
 ]

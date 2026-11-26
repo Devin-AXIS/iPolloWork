@@ -156,6 +156,7 @@ test("account model calls use their private token and report insufficient points
   await ctx.plugin(LlmRuntime);
   let calls = 0;
   let proxyAuthorization: string | undefined;
+  let rejection: { code: string; upstreamStatus?: number } = { code: "INSUFFICIENT_POINTS" };
   const credentials: CredentialStore = {
     readRecord: async key => key === "ipollowork-suite/account" ? { kind: "grant", payload: { version: 1, origin: "https://accounts.test", token: "account-secret" } } : undefined,
     modifyRecord: async () => undefined,
@@ -169,7 +170,7 @@ test("account model calls use their private token and report insufficient points
         models: [{ id: "test-model", name: "Test model", contextWindow: 32768, maxTokens: 2048 }],
       }], points: 0 });
       calls++;
-      return Response.json({ code: "INSUFFICIENT_POINTS" }, { status: 409 });
+      return Response.json({ ...rejection, error: "private upstream diagnostics" }, { status: rejection.upstreamStatus ? 503 : 409 });
     });
   const center = new Services(account, credentials, new AbortController().signal);
   let refresh = async () => {};
@@ -206,24 +207,54 @@ test("account model calls use their private token and report insufficient points
     assert.equal(oversized.status, 413);
     assert.equal((await oversized.json()).error.code, "IPW_MODEL_REQUEST_TOO_LARGE");
     assert.equal(calls, 1);
+
+    rejection = { code: "SERVICE_UPSTREAM_REJECTED", upstreamStatus: 401 };
+    const rejected = [];
+    for await (const chunk of ctx.llm.stream({ provider: "ipollo-chat", model: "test-model", messages: [] })) rejected.push(chunk);
+    const failed = rejected.find(chunk => chunk.type === "finish");
+    if (failed?.reason.kind !== "error") assert.fail("Expected a model rejection");
+    assert.equal(failed.reason.failure.code, "SERVICE_UPSTREAM_REJECTED");
+    const diagnostic = JSON.parse(failed.reason.failure.message);
+    assert.match(diagnostic.requestId, /^[\da-f-]{36}$/);
+    assert.equal(diagnostic.upstreamStatus, 401);
+    assert.doesNotMatch(failed.reason.failure.message, /private upstream diagnostics|account-secret/);
+    assert.equal(calls, 2);
   } finally { await ctx.fiber.dispose(); }
 });
 
-test("the native model stream recovers lost, malformed and draining gateway responses using one invocation id", async () => {
+test("the native model stream recovers gateway and midstream interruptions using one invocation id", async () => {
   const {default:WebServer}=await import("@deepseek-ai/dsh-host-webserver");
   const ctx=new Context();
   await ctx.plugin(WebServer,{host:"127.0.0.1",port:0});
   await ctx.plugin(LlmRuntime);
   const ids:string[]=[];
+  let interrupted = false;
+  let uncertain = false;
   const credentials:CredentialStore={readRecord:async key=>key==="ipollowork-suite/account"?{kind:"grant",payload:{version:1,origin:"https://accounts.test",token:"test-account"}}:undefined,modifyRecord:async()=>undefined,deleteRecord:async()=>{}};
   const account=new AccountService(credentials,resolveConfig({accountOrigin:"https://accounts.test"}),new AbortController().signal,async(url,init)=>{
     if(String(url).endsWith("/services"))return Response.json({items:[{id:"chat",title:"Chat",provider:"fixture",capabilities:["chat"],origin:"https://provider.test",basePath:"/v1",available:true,routes:[],models:[{id:"fixture",name:"Fixture",contextWindow:32768,maxTokens:2048}]}],points:10});
-    ids.push(JSON.parse(String(init?.body)).requestId);
+    const input = JSON.parse(String(init?.body));
+    ids.push(input.requestId);
     if(ids.length===1)throw new TypeError("fetch failed");
     if(ids.length===2)return new Response('<html>Bad gateway</html>',{status:502});
     if(ids.length===3)return Response.json({code:"SERVICE_DRAINING"},{status:503});
     if(ids.length===4)return Response.json({code:"SERVICE_CALL_RUNNING"},{status:409});
-    return new Response('data: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{role:"assistant",content:"Recovered"},finish_reason:null}]})+'\n\ndata: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{},finish_reason:"stop"}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2}})+'\n\ndata: [DONE]\n\n',{headers:{"Content-Type":"text/event-stream"}});
+    const first = 'data: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{role:"assistant",content:"Recovered"},finish_reason:null}]})+'\n\n';
+    const rest = 'data: '+JSON.stringify({id:"fixture",object:"chat.completion.chunk",created:1,model:"fixture",choices:[{index:0,delta:{},finish_reason:"stop"}],usage:{prompt_tokens:1,completion_tokens:1,total_tokens:2}})+'\n\ndata: [DONE]\n\n';
+    const headers = { "content-type": "text/event-stream", "x-ipollo-call-id": input.requestId };
+    if (ids.length === (uncertain ? 7 : 5)) {
+      assert.equal(input.replayOnly, undefined);
+      return new Response(new ReadableStream({ pull(controller) {
+        if (interrupted) controller.error(new TypeError("terminated"));
+        else {
+          interrupted = true;
+          controller.enqueue(new TextEncoder().encode(first + rest.slice(0, 10)));
+        }
+      } }), { headers });
+    }
+    assert.equal(input.replayOnly, true);
+    if (uncertain) return Response.json({ code: "SERVICE_CALL_UNKNOWN" }, { status: 409 });
+    return new Response(first + rest, { headers });
   });
   let refresh=async()=>{};
   await ctx.plugin({inject:["llm","webServer"],apply(scope:Context){refresh=mountServiceModels(scope,{getOrigin:()=>scope.webServer.getOrigin(),register:route=>scope.webServer.register(route)},new Services(account,credentials,new AbortController().signal),account);}});
@@ -233,8 +264,22 @@ test("the native model stream recovers lost, malformed and draining gateway resp
     for await(const chunk of ctx.llm.stream({provider:"ipollo-chat",model:"fixture",messages:[]}))chunks.push(chunk);
     const finish=chunks.find(chunk=>chunk.type==="finish");
     assert.equal(finish?.reason.kind,"stop");
-    assert.equal(ids.length,5);
+    assert.equal(chunks.filter(chunk => chunk.type === "text-delta").map(chunk => chunk.text).join(""), "Recovered");
+    assert.equal(ids.length,6);
     assert.equal(new Set(ids).size,1);
+
+    uncertain = true;
+    interrupted = false;
+    const failedChunks = [];
+    for await (const chunk of ctx.llm.stream({ provider: "ipollo-chat", model: "fixture", messages: [] })) failedChunks.push(chunk);
+    const failed = failedChunks.find(chunk => chunk.type === "finish");
+    if (failed?.reason.kind !== "error") assert.fail("Expected an unconfirmed stream to stop");
+    assert.equal(failed.reason.failure.code, "SERVICE_CALL_UNKNOWN");
+    assert.equal(failed.reason.failure.status, undefined);
+    assert.equal(JSON.parse(failed.reason.failure.message).requestId, ids[6]);
+    assert.equal(ids.length, 8);
+    assert.equal(ids[6], ids[7]);
+    assert.notEqual(ids[0], ids[6]);
   } finally {await ctx.fiber.dispose();}
 });
 

@@ -4,13 +4,6 @@
   "sourceRevision": "05f917145cd320a93e514dbd01178133891bc4c6",
   "plugins": [
     {
-      "id": "acme-research",
-      "name": "@ipollo/dsh-acme-research",
-      "sourceVersion": "1.0.1",
-      "kind": "ported",
-      "source": "examples/plugin-packages/acme-research"
-    },
-    {
       "id": "context7",
       "name": "@ipollo/dsh-context7",
       "sourceVersion": "1.0.2",
@@ -156,13 +149,6 @@
       "sourceVersion": "0.3.2",
       "kind": "ported",
       "source": "examples/plugin-packages/wechat-official"
-    },
-    {
-      "id": "workspace-canvas",
-      "name": "@ipollo/dsh-workspace-canvas",
-      "sourceVersion": "1.0.0",
-      "kind": "ported",
-      "source": "examples/plugin-packages/workspace-canvas"
     },
     {
       "id": "xiaohongshu-ops",

@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { featureArtwork } from './ported-artwork.mjs'
 import { officialSdkVersions } from './runtime-contract.mjs'
+import { packNativeArchive } from './native-package.mjs'
 const root = resolve('.'), directory = resolve(process.argv[2] ?? '.ipollowork-dev/plugin-unify-decision-intelligence')
 const product=JSON.parse(await readFile(join(root,'package.json'),'utf8'))
 const pin = JSON.parse(await readFile(join(root, 'integrations/runtime/upstream.json'), 'utf8'))
@@ -14,7 +15,7 @@ const revision = 'f95aaa5e185f69489b3bf8cebb87aa9cec8b3b1e'
 if (execFileSync('git', ['rev-parse', 'HEAD'], { cwd: directory, encoding: 'utf8' }).trim() !== revision) throw Error('Decision plugin source revision changed')
 const file = join(directory, 'package.json'), pkg = JSON.parse(await readFile(file, 'utf8'))
 if (pkg.name !== '@ipollo/dsh-decision-intelligence') throw Error('Unexpected package identity')
-pkg.version = '1.0.3'; pkg.icon = './icon.svg'
+pkg.version = '1.0.4'; pkg.icon = './icon.svg'
 pkg.engines = { ...pkg.engines, node: suiteManifest.engines.node, dsh: pin.npmVersion }
 for (const section of ['dependencies', 'peerDependencies', 'devDependencies']) for (const name of Object.keys(pkg[section] ?? {})) {
   const version = sdkVersions.get(name)
@@ -35,9 +36,23 @@ let client = await readFile(join(directory, 'src/client.js'), 'utf8')
 if (!client.includes('IconGaugeOutlineRegular')) {
   client = client.replace("const React = require('react');", "const React = require('react');\n    const { IconGaugeOutlineRegular } = require('@deepseek-ai/dsh-client-ui-primitives');")
   client = client.replace('order: 13, title, description:', 'order: 13, title, icon: IconGaugeOutlineRegular, description:')
-  await writeFile(join(directory, 'src/client.js'), client)
 }
+client = client.replace("new URL('ipollo-decision-intelligence/editor', document.baseURI)", "new URL('/ipollo-decision-intelligence/editor', location.href)")
+await writeFile(join(directory, 'src/client.js'), client)
 await cp(join(directory, 'src/client.js'), join(directory, 'dist/client.js'))
+const viewerPath = join(directory, 'viewer/report.html')
+let viewer = await readFile(viewerPath, 'utf8')
+if (!viewer.includes('id="closeFinder"')) {
+  // The embedded viewer is deliberately sandboxed without form submission.
+  viewer = viewer
+    .replace('<dialog id="finder"><form method="dialog" class="dlghead"><b>查找节点、数据或来源</b><button aria-label="关闭">×</button></form>',
+      '<dialog id="finder" aria-labelledby="finderTitle"><div class="dlghead"><b id="finderTitle">查找节点、数据或来源</b><button id="closeFinder" type="button" aria-label="关闭">×</button></div>')
+    .replace('<dialog id="figure"><form method="dialog" class="dlghead"><b id="figtitle"></b><button aria-label="关闭图片">×</button></form>',
+      '<dialog id="figure" aria-labelledby="figtitle"><div class="dlghead"><b id="figtitle"></b><button id="closeFigure" type="button" aria-label="关闭图片">×</button></div>')
+    .replace("el('findText').oninput=findNodes;", "el('findText').oninput=findNodes;\nel('closeFinder').onclick=()=>el('finder').close();\nel('closeFigure').onclick=()=>el('figure').close();")
+  if (!viewer.includes('id="closeFinder"') || !viewer.includes("el('closeFigure').onclick")) throw Error('Pinned viewer dialog markup changed')
+  await writeFile(viewerPath, viewer)
+}
 const note = '\nNative display metadata and guide icon adapted by iPolloWork from ' + revision + '. Host and editor behavior remain at that immutable source revision.\n'
 const notice = await readFile(join(directory, 'NOTICE.txt'), 'utf8')
 if (!notice.includes('Native display metadata and guide icon')) await writeFile(join(directory, 'NOTICE.txt'), notice + note)
@@ -45,7 +60,7 @@ if (process.argv.includes('--prepare-only')) process.exit(0)
 const npm = process.env.npm_execpath
 if (!npm) throw Error('The current npm CLI must be supplied')
 const destination = join(root, 'dist/ported-plugins'); await mkdir(destination, { recursive: true })
-const packed = JSON.parse(execFileSync(process.execPath, [npm, 'pack', '--ignore-scripts', '--json', '--pack-destination', destination], { cwd: directory, encoding: 'utf8', maxBuffer: 8_000_000 }))[0]
+const packed = await packNativeArchive(directory, destination, npm)
 const bytes = await readFile(join(destination, packed.filename)), sha256 = createHash('sha256').update(bytes).digest('hex')
 const archive = packed.filename.replace(/\.tgz$/, '-' + sha256.slice(0, 12) + '.tgz')
 const suite = join(root, 'plugins/ipollowork-suite')

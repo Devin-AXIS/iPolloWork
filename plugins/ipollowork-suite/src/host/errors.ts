@@ -3,6 +3,9 @@ import { HarnessError } from '@deepseek-ai/dsh-error'
 export class SuiteError extends HarnessError {
   constructor(code: string, readonly status = 400, options?: ErrorOptions) { super(code, code, options) }
 }
+export class ModelServiceError extends SuiteError {
+  constructor(code: string, status: number, readonly upstreamStatus?: number) { super(code, status) }
+}
 export class InvitationRosterRejection extends SuiteError {
   constructor(code: string, status: number, readonly row: number) { super(code, status) }
 }

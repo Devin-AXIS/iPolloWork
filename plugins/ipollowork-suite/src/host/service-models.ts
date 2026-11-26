@@ -1,11 +1,12 @@
 /** Official chat services mount through DSH's existing pi-ai adapter. */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { LlmError, resolveImageAttachmentAccess, resolveRetryPolicy, ACCOUNT_QUOTA_EXCEEDED_CODE, type GenerateOptions, type StreamChunk, type PreparedAdapterCall } from "@deepseek-ai/dsh-llm";
 import type {} from "@deepseek-ai/dsh-agent";
 import type {} from "@deepseek-ai/dsh-session";
 import type {} from "@deepseek-ai/dsh-workspace";
-import { SuiteError } from "./errors.ts";
-import { recoverModelRequest } from "./model-request-recovery.ts";
+import { ModelServiceError, SuiteError } from "./errors.ts";
+import { isModelTransportError, readModelResponse, recoverModelRequest } from "./model-request-recovery.ts";
 import {
   createProvider,
   envApiKeyAuth,
@@ -30,6 +31,24 @@ export interface ModelWebServer {
     handler(req: IncomingMessage, res: ServerResponse): Promise<void>;
   }): () => void;
 }
+type ModelDiagnostic = { code: string; requestId: string; status: number | undefined; upstreamStatus: number | undefined };
+type ModelAttempt = { id: string; failure?: ModelDiagnostic };
+type ModelStream = () => AsyncIterable<StreamChunk>;
+
+function modelDiagnostic(error: unknown, phase: "request" | "gateway" | "response", requestId: string): ModelDiagnostic {
+  if (error instanceof SuiteError && /^[A-Z][A-Z0-9_/-]{0,63}$/.test(error.code)) {
+    const code = phase === "response" && ["INVALID_INPUT", "SERVICE_CALL_NOT_FOUND", "SERVICE_REPLAY_UNSUPPORTED"].includes(error.code)
+      ? "IPW_MODEL_STREAM_INTERRUPTED" : error.code;
+    return { code, requestId, status: phase === "response" ? undefined : error.status,
+      upstreamStatus: error instanceof ModelServiceError ? error.upstreamStatus : undefined };
+  }
+  const code = phase === "response" ? "IPW_MODEL_STREAM_INTERRUPTED"
+    : phase === "gateway" && isModelTransportError(error) ? "IPW_MODEL_GATEWAY_CONNECTION_FAILED"
+    : phase === "gateway" && error instanceof Error && error.name === "TimeoutError" ? "IPW_MODEL_GATEWAY_TIMEOUT"
+    : "IPW_MODEL_PROXY_FAILED";
+  return { code, requestId, status: phase === "response" ? undefined : 503, upstreamStatus: undefined };
+}
+
 async function* officialModelStream(stream: AsyncIterable<StreamChunk>, cloudOnly=false): AsyncIterable<StreamChunk> {
   for await (const chunk of stream) {
     if (chunk.type === "finish" && chunk.reason.kind === "error"
@@ -43,12 +62,14 @@ async function* officialModelStream(stream: AsyncIterable<StreamChunk>, cloudOnl
 }
 class OfficialModelAdapter extends pi.PiAiAdapter {
   cloudOnly=false;
+  constructor(config: ConstructorParameters<typeof pi.PiAiAdapter>[0],
+    private readonly track: (open: ModelStream) => AsyncIterable<StreamChunk>) { super(config); }
   override stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
-    return officialModelStream(super.stream(options),this.cloudOnly);
+    return this.track(() => officialModelStream(super.stream(options), this.cloudOnly));
   }
   override async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
     const prepared = await super.prepareCall(provider, model, signal);
-    return { ...prepared, stream: options => officialModelStream(prepared.stream(options),this.cloudOnly) };
+    return { ...prepared, stream: options => this.track(() => officialModelStream(prepared.stream(options), this.cloudOnly)) };
   }
 }
 /** Mount account channels without exposing the upstream key.
@@ -75,10 +96,41 @@ export function mountServiceModels(
     serial = Promise.resolve();
   let personalSourceProviders = new Set<string>();
   let pendingRefresh: Promise<void> | undefined;
+  // pi-ai flattens HTTP and stream errors. Correlate only this invocation's safe facts
+  // through the public header hook, and release them when its adapter stream closes.
+  const attempts = new Map<string, ModelAttempt>();
+  const current = new AsyncLocalStorage<ModelAttempt>();
+  async function* track(open: ModelStream): AsyncIterable<StreamChunk> {
+    const attempt: ModelAttempt = { id: randomUUID() };
+    attempts.set(attempt.id, attempt);
+    let iterator: AsyncIterator<StreamChunk> | undefined;
+    try {
+      iterator = open()[Symbol.asyncIterator]();
+      const source = iterator;
+      for (;;) {
+        const next = await current.run(attempt, () => source.next());
+        if (next.done) return;
+        const chunk = next.value;
+        const failure = attempt.failure;
+        if (failure && chunk.type === "finish" && chunk.reason.kind === "error"
+          && chunk.reason.failure.code !== ACCOUNT_QUOTA_EXCEEDED_CODE) {
+          yield { ...chunk, reason: { ...chunk.reason, failure: {
+            code: failure.code, ...(failure.status === undefined ? {} : { status: failure.status }),
+            message: JSON.stringify(failure),
+          } } };
+        } else yield chunk;
+      }
+    } finally {
+      attempts.delete(attempt.id);
+      await iterator?.return?.();
+    }
+  }
   const adapter = new OfficialModelAdapter({
     profiles: () => profiles,
     prepareHeaders: (request, headers) => {
       if (request.sessionId) headers.set("X-iPollo-Session", request.sessionId);
+      const attempt = current.getStore();
+      if (attempt) headers.set("X-iPollo-Model-Call", attempt.id);
       return headers;
     },
     resolveApiKey: async () => token,
@@ -92,7 +144,7 @@ export function mountServiceModels(
       credentials: new InMemoryCredentialStore(),
       authContext: defaultProviderAuthContext(),
     },
-  });
+  }, track);
   adapter.cloudOnly=account.cloudOnly;
   let registration: ReturnType<Context["llm"]["registerAdapter"]> | undefined;
   ctx.effect(() =>
@@ -108,8 +160,21 @@ export function mountServiceModels(
         }
         const controller = new AbortController();
         res.on("close", () => controller.abort());
-        const requestId = randomUUID();
-        let phase = "request";
+        const signal = AbortSignal.any([controller.signal, lifetime.signal]);
+        const call = req.headers["x-ipollo-model-call"];
+        const attempt = typeof call === "string" ? attempts.get(call) : undefined;
+        const requestId = attempt?.id ?? randomUUID();
+        let phase: "request" | "gateway" | "response" = "request";
+        const report = (error: unknown) => {
+          const failure = modelDiagnostic(error, phase, requestId);
+          if (attempt) attempt.failure = failure;
+          const cause = error instanceof Error ? error.cause : undefined;
+          const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
+          const reason = typeof code === "string" && /^(?:E|UND_ERR_)[A-Z0-9_]{1,48}$/.test(code) ? code : failure.code;
+          if (phase === "response" || (failure.status ?? 0) >= 500)
+            ctx.logger.warn("Official model proxy failed: request %s, phase %s, reason %s", requestId, phase, reason);
+          return failure;
+        };
         try {
           const url = new URL(req.url ?? "/", "http://localhost");
           const match =
@@ -142,8 +207,8 @@ export function mountServiceModels(
             if (!projectId) throw new SuiteError("SERVICE_ORGANIZATION_CONTEXT_REQUIRED", 403);
           }
           const generation = account.generation;
-          const signal = AbortSignal.any([controller.signal, lifetime.signal]);
-          const response = await recoverModelRequest(async () => {
+          const body = Buffer.concat(chunks).toString("base64");
+          const invoke = async (replayOnly?: true) => {
             if (generation !== account.generation) throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
             const response = await account.execute(
               match[1]!,
@@ -151,8 +216,9 @@ export function mountServiceModels(
                 requestId,
                 path: "/chat/completions",
                 method: "POST",
-                body: Buffer.concat(chunks).toString("base64"),
+                body,
                 contentType: "application/json",
+                ...(replayOnly ? { replayOnly } : {}),
               },
               signal,
               projectId,
@@ -162,7 +228,8 @@ export function mountServiceModels(
               throw new SuiteError("IPW_ACCOUNT_CHANGED", 409);
             }
             return response;
-          }, signal);
+          };
+          const response = await recoverModelRequest(invoke, signal);
           phase = "response";
           res.writeHead(response.status, {
             "Content-Type":
@@ -173,15 +240,11 @@ export function mountServiceModels(
             await pipeline(
               Readable.from(
                 (async function* () {
-                  const reader = response.body!.getReader();
                   try {
-                    while (true) {
-                      const value = await reader.read();
-                      if (value.done) return;
-                      yield value.value;
-                    }
-                  } finally {
-                    reader.releaseLock();
+                    yield* readModelResponse(response, requestId, () => invoke(true), signal);
+                  } catch (error) {
+                    if (!signal.aborted) report(error);
+                    throw error;
                   }
                 })(),
               ),
@@ -189,19 +252,11 @@ export function mountServiceModels(
             );
           else res.end();
         } catch (error) {
-          if (!controller.signal.aborted && !lifetime.signal.aborted && !(error instanceof SuiteError)) {
-            const cause = error instanceof Error ? error.cause : undefined;
-            const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
-            const reason = typeof code === "string" && /^(?:E|UND_ERR_)[A-Z0-9_]{1,48}$/.test(code) ? code : "unknown";
-            ctx.logger.warn("Official model proxy failed: request %s, phase %s, reason %s", requestId, phase, reason);
-          }
-          if (res.headersSent) res.destroy();
+          if (res.headersSent || signal.aborted) res.destroy();
           else {
-            res.writeHead(error instanceof SuiteError ? error.status : 503, { "Content-Type": "application/json" });
-            res.end(JSON.stringify({ error: {
-              code: error instanceof SuiteError ? error.code : "IPW_SERVICE_UNAVAILABLE",
-              message: error instanceof SuiteError ? error.code : "Official model service unavailable",
-            } }));
+            const failure = report(error);
+            res.writeHead(failure.status ?? 503, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: { ...failure, message: failure.code } }));
           }
         }
       },

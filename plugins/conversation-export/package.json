@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-conversation-export",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Export user and assistant messages as Markdown from the conversation menu.",
   "type": "module",
   "license": "SEE LICENSE IN lib/LICENSE",

@@ -10,7 +10,6 @@ import { assigneeProfile, dateOf, dayOffset, displayAgent, shiftDay, span, statu
   type AgentChoice, type DateRange, type ProjectRoster, type Status, type Card } from './model.ts';
 
 type Open = (task: Card) => void;
-type Selection={ids:ReadonlySet<string>;toggle(id:string):void};
 const shortDate = (key: string) => key.slice(5).replace('-', '/');
 const timeFormatter = (locale: string) => new Intl.DateTimeFormat(locale, {
   hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
@@ -37,11 +36,10 @@ function schedule(task: Card, t: Copy, time: Intl.DateTimeFormat) {
   return from + ' – ' + to;
 }
 
-export function Board({ tasks, t, locale, roster, agents, open, move, writable, clock, add, searching,selection }: {
+export function Board({ tasks, t, locale, roster, agents, open, move, writable, clock, add, searching }: {
   tasks: Card[]; t: Copy; locale: string; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[];
   open: Open; writable:boolean; clock:number; searching:boolean;
   move(task: Card, status: Status): void; add(status: Status): void;
-  selection?:Selection|undefined;
 }) {
   const [dragging, setDragging] = useState<Card | null>(null);
   const [over, setOver] = useState<Status | null>(null);
@@ -96,7 +94,6 @@ export function Board({ tasks, t, locale, roster, agents, open, move, writable, 
                   event.dataTransfer.effectAllowed='move'; event.dataTransfer.setData('text/plain',task.id); setDragging(task);
                 }}
                 onDragEnd={()=>{setDragging(null);setOver(null);}}>
-                {selection&&data&&<label className="cb-card-selection"><input type="checkbox" checked={selection.ids.has(task.id)} onChange={()=>selection.toggle(task.id)} aria-label={t.selectNamed.replace('{name}',task.title)}/>{t.selectTask}</label>}
                 <button type="button" className="cb-card-open" onClick={()=>open(task)} aria-label={task.title}>
                   <strong>{task.title}</strong>
                   {data?.description && <span className="cb-card-description">{data.description}</span>}
@@ -136,17 +133,15 @@ export function Board({ tasks, t, locale, roster, agents, open, move, writable, 
   </>;
 }
 
-export function TaskList({ tasks, t, locale, roster, agents, open,selection }: {
+export function TaskList({ tasks, t, locale, roster, agents, open }: {
   tasks: Card[]; t: Copy; locale: string; roster: ProjectRoster | null | undefined; agents: readonly AgentChoice[]; open: Open;
-  selection?:Selection|undefined;
 }) {
   const time = timeFormatter(locale);
   return <div className="cb-overflow"><table className="cb-table">
-    <thead><tr>{selection&&<th scope="col">{t.selectTask}</th>}{[t.name, t.status, t.assignee, t.dates].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
+    <thead><tr>{[t.name, t.status, t.assignee, t.dates].map(label => <th key={label} scope="col">{label}</th>)}</tr></thead>
     <tbody>{tasks.map(task => {
       const person = assigneeFor(task, roster, agents, t);
       return <tr key={task.id}>
-        {selection&&<td>{task.task&&<input type="checkbox" checked={selection.ids.has(task.id)} onChange={()=>selection.toggle(task.id)} aria-label={t.selectNamed.replace('{name}',task.title)}/>}</td>}
         <td><button type="button" className="cb-task-link" onClick={() => open(task)}>{task.title}</button></td>
         <td><Tag className="cb-status" tone="neutral">{t[task.status]}</Tag></td>
         <td>{person ? <span className="cb-list-person" title={person.name}>
