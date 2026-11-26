@@ -176,6 +176,8 @@ async function completeSetup(b: Binding, db: Pool) {
   ])
 }
 async function projectPool(b: Binding): Promise<Pool> {
+  if (b.summary.engine === 'highgo')
+    throw new DataError('瀚高连接已停用，请将项目数据库迁移到 PostgreSQL。', 409)
   if ((failures.get(b.project_id) ?? 0) > Date.now())
     throw new DataError('项目数据库暂时无法连接，可在项目管理中重新检查')
   let pending = pools.get(b.project_id)
@@ -200,6 +202,12 @@ async function projectPool(b: Binding): Promise<Pool> {
     })
   }
   return pending
+}
+function unavailableSummary(b: Binding): DatabaseSummary {
+  return {
+    ...b.summary,
+    status: b.ready || b.summary.engine === 'highgo' ? 'unavailable' : 'pending',
+  }
 }
 export async function withProject<T>(id: string, work: () => Promise<T>): Promise<T> {
   const b = await binding(id)
@@ -252,10 +260,7 @@ export async function listProjects(): Promise<Project[]> {
       } catch {
         return {
           ...b.project_snapshot,
-          storage: {
-            ...b.summary,
-            status: b.ready ? ('unavailable' as const) : ('pending' as const),
-          },
+          storage: unavailableSummary(b),
         }
       }
     }),
@@ -342,7 +347,7 @@ export async function projectDatabase(id: string): Promise<DatabaseSummary> {
       await probe(await projectPool(b))
       return { ...b.summary, status: 'connected' }
     } catch {
-      return { ...b.summary, status: b.ready ? 'unavailable' : 'pending' }
+      return unavailableSummary(b)
     }
   }
   if (!(await defaultPool.query('SELECT id FROM iw_data.projects WHERE id=$1', [id])).rowCount)

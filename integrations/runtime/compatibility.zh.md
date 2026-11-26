@@ -96,8 +96,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 | [登录、profile 和桌面集成](../desktop-host)、[官方启动器接入](../tooling/start.mjs) | `profile-boot`、`app-boot`、Connection 与认证导出，以及 DSH profile 配置和桌面桥接。源码构建和公开 npm 包需要分别核对导出，即使版本号一致。 | 在隔离 home 中启动真实 Electron，打开已有 profile 的测试副本，验证登录注册、模型和 agent 模式、工作区与会话、浏览器和文件操作。 |
 | [桌面首页账号表单](../desktop/src/client/WelcomePage.tsx) | 桌面使用经过认证的本地 Host 账号路由，原生 preload 向表单传递明确允许的登录和注册错误。 | 验证错误密码、邮箱已注册，检查登录页没有忘记密码控件，确认成功登录后进入工作区。 |
 | [桌面会话分享](../desktop/src/web-document.ts)与[中继](../../services/ipollowork/src/liveshare.ts) | LiveShare 在 `ownerLoginStart` 和 `ownerLoginRedeem` 校验 Web 来源，桌面转发已认证的宿主 HTTP 来源。DSH v1 中继在修改权限时用原 ID 重新注册；服务端核对所有者、来源会话、运行实例和网关令牌后更新分享。 | 用另一账号打开分享，再由所有者修改权限和部门范围。确认原链接保持在线，移除的成员和作废链接仍不能访问。 |
-| [桌面项目文件下载](../desktop/src/file-actions.ts) | 现有 `dshDesktop.fileActions.save` 桥接接受套件同源的项目制品和记忆版本下载地址。桌面将鉴权后的 Host 响应流式写入磁盘；签名 HTTPS 对象单独下载，不转发 Host 凭据。 | 普通成员提交文件，管理员接纳后下载该版本，核对文件名和字节，并分别验证两种存储模式。 |
-| [桌面组织文件包下载](../desktop/src/file-actions.ts)与[套件文件包](../../plugins/ipollowork-suite/src/client/organization-file-packages.tsx) | 桌面向可信应用页面公开 `organizationPackageSaveAs`。套件对已授权的文件包下载地址调用现有 `dshDesktop.fileActions.save` 的 `saveAs` 模式并显示实际保存路径。旧桌面桥接使用自动下载模式。 | 选择其他目录并改名保存，核对显示的路径和原始字节。验证取消、覆盖中断、两种存储模式及旧桥接。 |
+| [桌面下载位置](../desktop/src/file-actions.ts) | `dshDesktop.fileActions.save` 的两种模式都打开系统另存为窗口，主应用窗口里的插件下载链接和 Blob 导出也使用同一个窗口。套件的项目制品、记忆版本和组织文件包仅允许从已授权路由下载。桌面流式读取经过鉴权的 Host 响应，下载签名 HTTPS 对象时不转发 Host 凭据。 | 从对话附件、插件 Blob 导出、组织文件包和项目交付物选择其他目录并改名保存，核对原始字节。复验取消、覆盖中断、两种存储方式和两种桥接模式，并检查访客窗口下载限制及 Web 端下载。 |
 | [通用设置版本行](../../plugins/ipollowork-suite/src/client/desktop-version.tsx)与[桌面 preload](../desktop/src/preload-app.ts) | DSH `dsh-v0.2.2-rc.3` 提供 `settings.general.item` 插槽、`current-version` 条目和 `general.currentVersion` 翻译。产品用 Electron 包版本覆盖该条目。 | 使用版本号与 DSH 固定版本不同的安装包，核对通用设置和关于界面。检查浏览器仍显示 DSH 版本，使用旧 preload 的桌面客户端仍能通过 IPC 取得版本。 |
 | [发行打包](../../.github/workflows/ipollo-release-packages.yml)与[公开更新清单](../tooling/release-publication.mjs) | 打包入口执行 DSH `build:official` 并校验固定版本构建记录。Intel macOS 用 pnpm 单工作进程批量打包同一组 DSH 包，随后执行上游的归档内容和清单校验。公开的 Windows 安装包和 blockmap 使用同一文件名主干。 | 分别用全新和已恢复的依赖缓存检查 Intel 归档清单和打包运行时。发布草稿前检查两个 macOS 更新 ZIP、Windows 安装包和 blockmap，以及四种官网安装包。 |
 | [插件组合](../../plugins/ipollowork-suite/cordis.patch.yml)、[Studio 市场](../../plugins/ipollowork-suite/catalog/index.json)与[桌面资源打包](../desktop/scripts/prepare-dsh.ts) | Cordis 插入项和依赖、原生插件加载器、DSH ASAR 布局、Host/CLI 启动入口和电脑操作资源路径。官网安装包和 Office 回退在产品打包层。 | 用各平台打包客户端验证启动、市场按需安装、打开已有 Design/Video 项目、Office 打开和电脑操作辅助程序。 |
@@ -124,15 +123,23 @@ Design `1.0.0-beta.34` 将 HTML 交付约束应用于所有已激活的 Design �
 
 工作区工具使用文档预览工具栏、右侧标签、会话菜单和 `uiWorkspace.startSession`。独立的 Markdown、Excel、Word 插件通过 `documentPreviews` 及对应的 `sidebar.right.tab.document` 插槽注册编辑页面，沿用原生文件地址和其他查看方式。Host 路由通过 `workspaceFiles.scopeOf`、会话沙箱、文件系统和连接鉴权检查本地文件，依据文件内容版本保存。升级固定 DSH 时，复验从对话和文件树直接打开、Markdown/XLSX/CSV/DOCX 写回、外部修改冲突、模板草稿、项目隔离、明暗主题及窄面板。Word 的开源核心构建和静态资源由插件提供。
 
-Excel 将 XLS、ODS 注册为与 XLSX 相同的渲染器读取模式。`plugins/workspace-tools/src/excel-host.ts` 将旧格式转换为 XLSX 副本，客户端通过原生 `fileActions.save` 保存，保留原文件。升级固定版本时复验大表滚动后的区域粘贴和撤销、数字格式和已有公式结果，以及两种旧格式的原生另存流程。
+Excel 将 XLS、ODS 注册为与 XLSX 相同的渲染器读取模式。[工作簿读取器](../../plugins/workspace-tools/src/workbook.ts)接受 OOXML 部件开头的 UTF-8 BOM。`plugins/workspace-tools/src/excel-host.ts` 将旧格式转换为 XLSX 副本，客户端通过原生 `fileActions.save` 保存，保留原文件。升级固定版本时，打开、保存并重新打开关系文件和工作表 XML 带 BOM 的 XLSX，复验区域粘贴、撤销、数字格式、已有公式结果、CSV 和两种旧格式。
 
-对话导出和 Word 副本使用 Web App Bundle 的 `fileActions.save` 客户端服务。升级固定版本后，验证桌面端将生成的 Blob 写入下载目录，Web 端发起浏览器下载，并核对下载文件中的对话和 DOCX 副本内容。
+对话导出、表格转换和 Word 副本使用 Web App Bundle 的 `fileActions.save` 客户端服务。升级固定版本后，验证桌面端打开系统另存为窗口、Web 端发起浏览器下载，并核对保存的文件内容。
 
 六个工作区市场插件各自注册路由和原生入口。任务模板和旧版工作区导入串行使用原有 `ipollo_workspace_tools` 存储域，因为 DSH 每个域只允许打开一个句柄。复验独立启用、同时编辑和导入模板、从旧合集切换后加载原有模板，以及默认市场提供各自锁定的安装包。
 
 从市场首次安装经过哈希校验的 Markdown 编辑、Excel 编辑和对话导出归档时，以 `enabled: true` 调用 DSH 原生 `installBundle`。下次更新 DSH 时，在启用热更新且已运行的配置中安装三款插件，确认均返回 `applied`、插件处于启用状态，且客户端入口在同一 Host 进程中出现。归档升级沿用原来的启用状态。
 
 [开发运行时项目](../desktop/scripts/development-project.ts)将已映射的 DSH `OPTIONAL_BUNDLES` 声明为安装版组件。复验「会话标题」使用运行时随附的包，可在同一 Host 进程中启停，并由原生管理器保护安装版组件。
+
+[市场](../../plugins/ipollowork-suite/src/client/market.tsx)通过原生 `setBundleEnabled` 启用已有的「会话标题」。运行时未随附此包时，首次市场安装通过 `installBundle` 传入 `enabled: true`。原生管理器在关闭时将该官方扩展放在「更多」，启用后显示在「已安装」主列表。市场优先使用原生 `listBundles` 提供的本地化标题。下次升级固定版本时复验两个市场入口、标题一致及启用后打开原生详情。[图标构建](../tooling/ported-artwork.mjs)按已知包名匹配市场图标标记与原生 `data-plugin-package` 和 `data-plugin-detail` 的图标容器。复验旧版已装插件、独立包默认图标、连接器品牌图标，以及明暗主题和窄窗口。上游提供原生图标插槽后使用该插槽。
+
+Design 和 Video 使用相同的图标容器。[原生文案适配](../../plugins/ipollowork-suite/src/client/native-brand-copy.ts)通过 `data-plugin-package`、`data-plugin-detail` 和 `data-plugin-row-detail` 下的插件和组件介绍节点，为仍携带英文元数据的已知归档提供中文介绍。下次升级固定版本时，用这些旧归档在中文模式打开卡片和详情，再切换英文，核对组件名、包标识和其他插件的介绍仍按原生逻辑显示。
+
+[插件详情文档](../../plugins/ipollowork-suite/src/client/plugin-document.tsx)跟随客户端语言，使用原生 `plugins.detail.section` 和 `DetailDocument`。仅所有者可访问的套件路由通过原生包解析和包内文件读取，从旧包读取未声明的 `README.zh.md` 或 `README.en.md`。原生 `meta.detail` 优先。显示位置依赖 `data-plugin-detail` 和 `data-detail-document`。下次升级固定版本时，打开同时含有中英文 README 的旧包，在详情页切换语言，复验显式文档、包目录边界及缺少翻译时的原生回退。
+
+[市场](../../plugins/ipollowork-suite/src/host/market.ts)先展示随包的目录，再补齐原生 `listBundles` 安装状态和在线内容。复验安装操作等待状态核对、迟到的首屏响应不会覆盖完整目录，以及原生 `installBundle` 只收到本次选择并校验过的归档。Studio 在已安装区的名称沿用原生文案适配，并限定在插件卡片和详情标题。复验中英文及原包标识。
 
 ## 更新和验证
 

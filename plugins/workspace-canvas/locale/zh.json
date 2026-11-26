@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Workspace Canvas",
-    "description": "A minimal MCP App canvas that can be edited by people and agents."
+    "description": "在工作区使用画布，支持用户和智能体共同编辑。",
+    "detail": "README.zh.md"
   }
 }

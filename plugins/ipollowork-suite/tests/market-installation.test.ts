@@ -47,6 +47,31 @@ test('reviewed workspace market installs request native activation in the same o
   assert.equal(installation.getSnapshot().task?.result?.enabled, true)
 })
 
+test('a runtime-provided market plugin uses the native switch without installing it again', async () => {
+  const activation = Promise.withResolvers<RemoteResult<ChangeResult>>()
+  const toggles: [string, boolean][] = []
+  const manager: ConstructorParameters<typeof MarketInstallation>[0] = {
+    inspect: async () => assert.fail('activation should not inspect an install source'),
+    installBundle: async () => assert.fail('activation should not install the provided package'),
+    cancelInstall: async () => assert.fail('activation should not create an install request'),
+    waitForInstall: async () => assert.fail('activation should not wait for an install request'),
+    setBundleEnabled: async (name, enabled) => {
+      toggles.push([name, enabled])
+      return activation.promise
+    },
+  }
+  const installation = new MarketInstallation(manager, new AbortController().signal)
+  const enabling = installation.activate(target)
+  assert.equal(installation.getSnapshot().task?.enabling, true)
+  installation.hide()
+  await installation.activate(target)
+  assert.deepEqual(toggles, [[target.name, true]])
+  activation.resolve({ ok: true, value: { ...applied, enabled: true } })
+  await enabling
+  assert.equal(installation.getSnapshot().task?.result?.enabled, true)
+  assert.equal(installation.getSnapshot().task?.enabling, false)
+})
+
 test('archive update confirms both versions and installs only the prepared target', async () => {
   const fromVersion = '1.2.2'
   const spec = 'file:/cache/example.tgz'

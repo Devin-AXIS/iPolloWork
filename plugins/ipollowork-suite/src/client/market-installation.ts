@@ -12,6 +12,7 @@ interface Task {
   target: Target
   requestId: PluginInstallRequestId
   phase: Phase
+  activationOnly?: boolean
   result?: ChangeResult
   completedRevision?: number
   enabling?: boolean
@@ -151,17 +152,28 @@ export class MarketInstallation {
     else this.publish({ task: { ...current, phase: answer?.ok && answer.value.status === 'too-late' ? 'applying' : 'installing' } })
   }
 
+  activate = async (target: MarketTarget) => {
+    if (this.hasActiveTask()) { this.show(); return }
+    if (this.signal.aborted) return
+    this.publish({
+      task: { target, requestId: crypto.randomUUID() as PluginInstallRequestId, phase: 'done', activationOnly: true },
+      open: true, manual: false, notice: false,
+    })
+    await this.enable()
+  }
+
   enable = async () => {
     const task = this.snapshot.task
     if (task?.phase !== 'done' || task.target.archive?.fromVersion || task.enabling || task.result?.enabled) return
-    this.publish({ task: { ...task, enabling: true, enableFailed: false } })
-    const name = task.result?.bundle
+    const name = task.activationOnly ? task.target.name : task.result?.bundle
     if (!name) return
+    this.publish({ task: { ...task, enabling: true, enableFailed: false } })
     const answer = await this.manager.setBundleEnabled(name, true).catch(() => null)
     if (this.snapshot.task?.requestId !== task.requestId) return
     const applied = answer?.ok && (answer.value.application === 'applied' || answer.value.application === 'restart-required')
     this.publish({
-      task: { ...task, enabling: false, enableFailed: !applied, ...(applied ? { result: answer.value } : {}) },
+      task: { ...task, enabling: false, enableFailed: !applied,
+        ...(applied ? { result: answer.value, completedRevision: this.snapshot.revision + 1 } : {}) },
       notice: !this.snapshot.open,
       revision: this.snapshot.revision + 1,
     })

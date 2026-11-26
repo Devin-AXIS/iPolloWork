@@ -997,7 +997,8 @@ async function main(): Promise<void> {
       return Promise.resolve(new Response(null, { status: 503 }))
     }
     return forwardWebRequest(request, hostUrl, hostCookie)
-  })
+  }, contents => mainWindow !== undefined && !mainWindow.isDestroyed() && contents === mainWindow.webContents
+    && contents.mainFrame.url.startsWith('dsh-app://app/'))
   ipcMain.on(PLATFORM_IPC.bootstrap, (event) => {
     try { event.returnValue = platformView.bootstrap(event) }
     catch { event.returnValue = null }

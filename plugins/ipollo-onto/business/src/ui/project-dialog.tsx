@@ -110,7 +110,7 @@ export function ProjectDialog({
                   <dl>
                     <div>
                       <dt>{tr('类型')}</dt>
-                      <dd>{storage.engine === 'sqlite' ? 'SQLite' : storage.engine === 'highgo' ? tr('瀚高 · 兼容连接') : 'PostgreSQL'}</dd>
+                      <dd>{storage.engine === 'sqlite' ? 'SQLite' : storage.engine === 'highgo' ? tr('瀚高') : 'PostgreSQL'}</dd>
                     </div>
                     <div>
                       <dt>{tr('数据库')}</dt>
@@ -129,7 +129,9 @@ export function ProjectDialog({
                     <div>
                       <dt>{tr('状态')}</dt>
                       <dd>
-                        {storage.status === 'connected'
+                        {storage.engine === 'highgo'
+                          ? tr('需要迁移')
+                          : storage.status === 'connected'
                           ? tr('已连接')
                           : storage.status === 'pending'
                             ? tr('等待完成初始化')
@@ -138,10 +140,16 @@ export function ProjectDialog({
                     </div>
                   </dl>
                   <p className="form-hint">
-                    {storage.mode === 'independent'
-                      ? tr('表、记录、关联及扩展配置保存在这个数据库中。')
-                      : tr('使用当前服务的数据库，同库项目之间可以直接关联。')}{' '}
-                    {tr('更换存储需要迁移，当前版本不直接切换。')}
+                    {storage.engine === 'highgo' ? (
+                      tr('瀚高连接已停用，请将项目数据库迁移到 PostgreSQL。')
+                    ) : (
+                      <>
+                        {storage.mode === 'independent'
+                          ? tr('表、记录、关联及扩展配置保存在这个数据库中。')
+                          : tr('使用当前服务的数据库，同库项目之间可以直接关联。')}{' '}
+                        {tr('更换存储需要迁移，当前版本不直接切换。')}
+                      </>
+                    )}
                   </p>
                 </>
               ) : (
@@ -155,6 +163,7 @@ export function ProjectDialog({
                   size="1"
                   onClick={test}
                   loading={checking}
+                  disabled={storage?.engine === 'highgo'}
                 >
                   {tr('检查连接')}
                 </Button>

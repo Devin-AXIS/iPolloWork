@@ -29,41 +29,56 @@ function harness(root: string, projectRequest?: (request: Request) => Promise<Re
   owners.push(owner)
   const assertOwner = vi.fn(() => owner as never)
   electron.app.getPath.mockReturnValue(root)
-  installFileActions(assertOwner, undefined, projectRequest)
+  installFileActions(assertOwner, undefined, projectRequest, contents => contents === owner.webContents)
+  electron.dialog.showSaveDialog.mockImplementation(async (_owner, options) => ({
+    canceled: false, filePath: options.defaultPath,
+  }))
   const event = {} as IpcMainInvokeEvent
   const invoke = async (channel: string, value: unknown): Promise<unknown> => {
     const handler = electron.ipcMain.handle.mock.calls.find(([name]) => name === channel)?.[1] as
       (event: IpcMainInvokeEvent, value: unknown) => Promise<unknown>
     return handler(event, value)
   }
-  const item = (mime = 'image/gif', url = owner.webContents.downloadURL.mock.lastCall![0]) => {
+  const item = (mime = 'image/gif', url = owner.webContents.downloadURL.mock.lastCall![0], contents: object = owner.webContents) => {
     let destination = ''
     const download = Object.assign(new EventEmitter(), {
       getURLChain: () => [url],
       getFilename: () => 'original.gif', getMimeType: () => mime, getSavePath: () => destination,
-      setSavePath: vi.fn((path: string) => { destination = path }),
+      choose: (path: string) => { destination = path }, setSavePath: vi.fn(),
       setSaveDialogOptions: vi.fn(), cancel: vi.fn(),
     })
     const willDownload = electron.session.defaultSession.on.mock.calls[0]![1] as
       (event: object, item: object, contents: object) => void
-    willDownload({}, download, owner.webContents)
+    willDownload({}, download, contents)
     return download
   }
-  const save = async (mode: 'download' | 'saveAs' = 'download') => {
-    const pending = invoke(DESKTOP_IPC.fileSave, { url: 'https://images.example/original.gif', name: 'image.gif', mode })
-    const download = item()
-    if (mode === 'download') await writeFile(download.getSavePath(), new Uint8Array([0, 128, 255]))
-    download.emit('done', {}, 'completed')
-    return pending
-  }
-  return { owner, assertOwner, invoke, item, save }
+  return { owner, assertOwner, invoke, item }
 }
 
-it('returns the completed destination and releases download listeners', async () => {
+it.each(['download', 'saveAs'])('uses the destination selected by the user for %s requests', async (mode) => {
   const root = await directory(), f = harness(root)
-  await expect(f.save()).resolves.toEqual({ status: 'saved', path: join(root, 'image.gif') })
+  const folder = join(root, 'selected-folder')
+  const selected = join(folder, 'different-name.gif')
+  await mkdir(folder)
+  const pending = f.invoke(DESKTOP_IPC.fileSave, { url: 'https://images.example/original.gif', name: 'image.gif', mode })
+  const item = f.item()
+  expect(item.setSavePath).not.toHaveBeenCalled()
+  expect(item.setSaveDialogOptions).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: join(root, 'image.gif') }))
+  expect(await readdir(root)).toEqual(['selected-folder'])
+  item.choose(selected)
+  item.emit('done', {}, 'completed')
+  await expect(pending).resolves.toEqual({ status: 'saved', path: selected })
   expect(f.owner.listenerCount('closed')).toBe(0)
   expect(f.owner.webContents.listenerCount('did-start-navigation')).toBe(0)
+})
+
+it('applies the save dialog to in-app download links without changing other window policies', async () => {
+  const root = await directory(), f = harness(root)
+  const url = 'dsh-app://app/ipollowork-suite/resource'
+  const attachment = f.item('application/octet-stream', url)
+  expect(attachment.setSaveDialogOptions).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: join(root, 'original.gif') }))
+  expect(attachment.setSavePath).not.toHaveBeenCalled()
+  expect(f.item('application/octet-stream', url, {}).setSaveDialogOptions).not.toHaveBeenCalled()
 })
 
 it.each(['file:///private/data', 'dsh-app://app/api/private', 'javascript:alert(1)'])('rejects unsupported URL %s', async (url) => {
@@ -77,13 +92,18 @@ it('streams original bytes from only allowlisted application routes and preserve
   const projectRequest = vi.fn(async (_request: Request) => new Response(bytes, { headers: { 'Content-Type': 'application/octet-stream' } }))
   const root = await directory(), f = harness(root, projectRequest)
   const url = 'dsh-app://app/ipollowork-suite/enterprise/download/resource-id'
-  const request = { name: '项目交付.txt', mode: 'download' }
+  const request = { name: '项目交付.txt', mode: 'saveAs' }
+  const folder = join(root, '选中的目录')
+  await mkdir(folder)
+  const selected = join(folder, '实际文件名.txt')
+  electron.dialog.showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: selected })
   await expect(f.invoke(DESKTOP_IPC.fileSave, { ...request, url: url + '?redirect=evil' })).rejects.toThrow('Unsupported')
-  await expect(f.invoke(DESKTOP_IPC.fileSave, { ...request, url })).resolves.toEqual({ status: 'saved', path: join(root, request.name) })
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { ...request, url })).resolves.toEqual({ status: 'saved', path: selected })
   expect(projectRequest).toHaveBeenCalledOnce()
   expect(projectRequest.mock.calls[0]![0].url).toBe(url)
   expect(f.owner.webContents.downloadURL).not.toHaveBeenCalled()
-  expect(await readFile(join(root, request.name))).toEqual(Buffer.from(bytes))
+  expect(await readFile(selected)).toEqual(Buffer.from(bytes))
+  expect(await readdir(root)).toEqual(['选中的目录'])
 })
 
 it('retrieves a signed project attachment without forwarding the Host credentials', async () => {
@@ -119,7 +139,7 @@ it('allows only the package download route and honors a Host permission denial',
   await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name, mode: 'download' })).rejects.toThrow('Unsupported file source')
   await expect(f.invoke(DESKTOP_IPC.fileSave, { url: url + '/download?redirect=1', name, mode: 'saveAs' })).rejects.toThrow('Unsupported file source')
   await expect(f.invoke(DESKTOP_IPC.fileSave, {
-    url: 'dsh-app://app/ipollowork-suite/enterprise/download/resource-id', name, mode: 'saveAs',
+    url: 'dsh-app://app/ipollowork-suite/enterprise/download/resource-id/preview', name, mode: 'saveAs',
   })).rejects.toThrow('Unsupported file source')
   expect(electron.dialog.showSaveDialog).not.toHaveBeenCalled()
   expect(request).not.toHaveBeenCalled()
@@ -134,9 +154,9 @@ it('asks where to save an organization file and returns the selected path', asyn
   await mkdir(folder)
   const selected = join(folder, '改名后的文件.txt')
   await writeFile(selected, 'old content')
-  electron.dialog.showSaveDialog.mockResolvedValue({ canceled: false, filePath: selected })
   const authorized = vi.fn(async (_request: Request) => new Response('organization file'))
   const f = harness(root, authorized)
+  electron.dialog.showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: selected })
   const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id/download'
   await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name: '组织文件.txt', mode: 'saveAs' })).resolves.toEqual({ status: 'saved', path: selected })
   expect(electron.dialog.showSaveDialog).toHaveBeenCalledWith(f.owner, expect.objectContaining({ defaultPath: join(root, '组织文件.txt') }))
@@ -145,13 +165,13 @@ it('asks where to save an organization file and returns the selected path', asyn
   expect(await readdir(folder)).toEqual(['改名后的文件.txt'])
 })
 
-it('cancels the organization save dialog without fetching or writing a file', async () => {
+it.each(['download', 'saveAs'])('cancels an organization %s without fetching or writing a file', async (mode) => {
   const root = await directory()
-  electron.dialog.showSaveDialog.mockResolvedValue({ canceled: true, filePath: '' })
   const authorized = vi.fn(async (_request: Request) => new Response('organization file'))
   const f = harness(root, authorized)
+  electron.dialog.showSaveDialog.mockResolvedValueOnce({ canceled: true, filePath: '' })
   const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id/download'
-  await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name: '组织文件.txt', mode: 'saveAs' })).resolves.toEqual({ status: 'cancelled' })
+  await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name: '组织文件.txt', mode })).resolves.toEqual({ status: 'cancelled' })
   expect(authorized).not.toHaveBeenCalled()
   expect(await readdir(root)).toEqual([])
   expect(f.owner.listenerCount('closed')).toBe(0)
@@ -161,12 +181,12 @@ it('preserves an existing selected file if an organization download fails', asyn
   const root = await directory()
   const selected = join(root, '已有文件.txt')
   await writeFile(selected, 'old content')
-  electron.dialog.showSaveDialog.mockResolvedValue({ canceled: false, filePath: selected })
   const stream = new ReadableStream<Uint8Array>({
     start(controller) { controller.enqueue(new Uint8Array([1])) },
     pull(controller) { controller.error(new Error('Attachment stream failed')) },
   })
   const f = harness(root, async () => new Response(stream))
+  electron.dialog.showSaveDialog.mockResolvedValueOnce({ canceled: false, filePath: selected })
   const url = 'dsh-app://app/ipollowork-suite/enterprise/organizations/org-id/packages/package-id/files/file-id/download'
   await expect(f.invoke(DESKTOP_IPC.fileSave, { url, name: '组织文件.txt', mode: 'saveAs' })).rejects.toThrow('Attachment stream failed')
   expect(await readFile(selected, 'utf8')).toBe('old content')
@@ -183,19 +203,12 @@ it('discards partial project downloads after a stream failure', async () => {
   expect(await readdir(root)).toEqual([])
 })
 
-it('retains original downloads and reserves distinct paths until Chromium finishes', async () => {
-  const root = await directory(), f = harness(root)
-  await writeFile(join(root, 'image.gif'), 'previous')
-  await f.save()
-  expect(await readFile(join(root, 'image.gif'), 'utf8')).toBe('previous')
-  expect(await readFile(join(root, 'image (1).gif'))).toEqual(Buffer.from([0, 128, 255]))
-})
-
 it.each(['cancelled', 'interrupted'] as const)('reports native %s without a completed path', async (state) => {
   const root = await directory(), f = harness(root)
   const pending = f.invoke(DESKTOP_IPC.fileSave, { url: 'https://images.example/a', name: 'wrong.png', mode: 'download' })
   const download = f.item('image/webp')
-  expect(download.setSavePath).toHaveBeenCalledWith(join(root, 'wrong.webp'))
+  expect(download.setSaveDialogOptions).toHaveBeenCalledWith(expect.objectContaining({ defaultPath: join(root, 'wrong.webp') }))
+  expect(download.setSavePath).not.toHaveBeenCalled()
   download.emit('done', {}, state)
   if (state === 'cancelled') await expect(pending).resolves.toEqual({ status: 'cancelled' })
   else await expect(pending).rejects.toThrow('interrupted')
@@ -232,9 +245,10 @@ it('matches overlapping downloads of the same source to their captured requests'
   const second = f.invoke(DESKTOP_IPC.fileSave, { url: 'https://images.example/a', name: 'second.gif', mode: 'saveAs' })
   const secondItem = f.item()
   const firstItem = f.item('image/gif', firstUrl)
-  expect(firstItem.setSavePath).toHaveBeenCalledWith(join(root, 'first.gif'))
+  expect(firstItem.setSaveDialogOptions.mock.lastCall?.[0]).toMatchObject({ defaultPath: join(root, 'first.gif') })
   expect(secondItem.setSaveDialogOptions.mock.lastCall?.[0]).toMatchObject({ defaultPath: join(root, 'second.gif') })
   secondItem.emit('done', {}, 'cancelled')
+  firstItem.choose(join(root, 'first.gif'))
   firstItem.emit('done', {}, 'completed')
   await expect(first).resolves.toMatchObject({ status: 'saved' })
   await expect(second).resolves.toEqual({ status: 'cancelled' })
@@ -302,7 +316,7 @@ it('preserves pending downloads across iframe and same-document navigation', asy
   const download = f.item()
   f.owner.webContents.emit('did-start-navigation', {}, 'https://example.org', false, false)
   f.owner.webContents.emit('did-start-navigation', {}, 'dsh-app://app/#tab', true, true)
-  download.setSavePath(join(root, 'chosen.gif'))
+  download.choose(join(root, 'chosen.gif'))
   download.emit('done', {}, 'completed')
   await expect(pending).resolves.toEqual({ status: 'saved', path: join(root, 'chosen.gif') })
   expect(download.cancel).not.toHaveBeenCalled()

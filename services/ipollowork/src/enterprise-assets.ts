@@ -58,14 +58,16 @@ type SkillRow = {
   storage_key: string;
   created_at: number;
 };
+type ResourceBody = { id: string; storage_key: string };
 
 async function packageOf(
   store: Store,
   enterpriseId: string,
   packageId: string,
+  lock = false,
 ): Promise<PackageRow> {
   const row = await store.one<PackageRow>(
-    "SELECT * FROM file_packages WHERE id=? AND enterprise_id=?",
+    "SELECT * FROM file_packages WHERE id=? AND enterprise_id=?" + (lock ? " FOR UPDATE" : ""),
     packageId,
     enterpriseId,
   );
@@ -78,12 +80,62 @@ async function skillOf(
   skillId: string,
 ): Promise<SkillRow> {
   const row = await store.one<SkillRow>(
-    "SELECT * FROM resources WHERE id=? AND enterprise_id=? AND kind='skill'",
+    "SELECT * FROM resources WHERE id=? AND enterprise_id=? AND kind='skill' FOR UPDATE",
     skillId,
     enterpriseId,
   );
   if (!row) throw new ServiceError("SKILL_NOT_FOUND", 404, "Skill 不存在");
   return row;
+}
+
+async function lockPackageFiles(store: Store, enterpriseId: string, packageId: string, fileId: string | null) {
+  return store.all<ResourceBody>(
+    `SELECT r.id,r.storage_key FROM package_files f JOIN resources r ON r.id=f.resource_id
+     WHERE f.package_id=? AND (?::text IS NULL OR r.id=?) AND r.enterprise_id=? AND r.kind='attachment'
+     ORDER BY r.id FOR UPDATE OF r`,
+    packageId, fileId, fileId, enterpriseId,
+  );
+}
+
+async function referencedFiles(store: Store, packageId: string, files: ResourceBody[]) {
+  const ids = files.map(file => file.id);
+  if (!ids.length) return new Set<string>();
+  const rows = await store.all<{ id: string }>(
+    `WITH candidates AS (SELECT unnest(?::text[]) AS id)
+     SELECT c.id FROM candidates c JOIN package_files f ON f.resource_id=c.id WHERE f.package_id<>?
+     UNION SELECT c.id FROM candidates c JOIN project_artifacts a ON a.resource_id=c.id
+     UNION SELECT c.id FROM projects p CROSS JOIN LATERAL jsonb_array_elements(p.files::jsonb) AS f
+       JOIN candidates c ON c.id=f->>'resourceId'
+     UNION SELECT c.id FROM project_changes p CROSS JOIN LATERAL jsonb_array_elements(p.content::jsonb->'files') AS f
+       JOIN candidates c ON c.id=f->>'resourceId' WHERE p.kind='files' AND p.status<>'withdrawn'`,
+    ids, packageId,
+  );
+  return new Set(rows.map(row => row.id));
+}
+
+/** The resource rows are locked first. Serialize last-reference checks for legacy shared objects. */
+async function removeResourceRecords(store: Store, storage: Storage, files: ResourceBody[]) {
+  if (!files.length) return [];
+  const keys = [...new Set(files.map(file => file.storage_key))];
+  await store.all("SELECT storage_key FROM storage_objects WHERE storage_key=ANY(?::text[]) ORDER BY storage_key FOR UPDATE", keys);
+  await store.run("DELETE FROM resources WHERE id=ANY(?::text[])", files.map(file => file.id));
+  const shared = await store.all<{ storage_key: string }>(
+    "SELECT DISTINCT storage_key FROM resources WHERE storage_key=ANY(?::text[])",
+    keys,
+  );
+  const retained = new Set(shared.map(row => row.storage_key));
+  const removed = keys.filter(key => !retained.has(key));
+  await storage.markForRemoval(removed);
+  return removed;
+}
+
+async function finishResourceRemoval(storage: Storage, keys: string[], requestId: string | undefined, resourceId: string) {
+  try {
+    await storage.removeMany(keys);
+  } catch (error) {
+    console.warn(JSON.stringify({ event: "organization_resource_cleanup_pending", requestId, resourceId }));
+    throw new ServiceError("PACKAGE_FILE_CLEANUP_PENDING", 503, "资源已移除，存储清理将在后台重试", { cause: error });
+  }
 }
 /** Kebab-case skill name for the native skill registry; non-ASCII titles fall back to a stable id-derived name. */
 export function skillName(titleText: string, id: string): string {
@@ -303,17 +355,23 @@ export function mountEnterpriseAssets(
   });
   app.delete("/api/v1/enterprises/:id/packages/:packageId", async (c) => {
     const id = c.req.param("id"),
+      packageId = c.req.param("packageId"),
       actor = c.get("actor");
     await requireEnterpriseManager(store, actor, id);
-    const row = await packageOf(store, id, c.req.param("packageId"));
-    await store.transaction(async () => {
+    const keys = await store.transaction(async () => {
+      const row = await packageOf(store, id, packageId, true);
+      const files = await lockPackageFiles(store, id, row.id, null);
+      const retained = await referencedFiles(store, row.id, files);
       await store.run(
         "DELETE FROM enterprise_grants WHERE asset_kind='package' AND asset_id=?",
         row.id,
       );
       await store.run("DELETE FROM file_packages WHERE id=?", row.id);
+      const cleanup = await removeResourceRecords(store, storage, files.filter(file => !retained.has(file.id)));
       await audit(store, actor, "package.remove", row.id, id);
+      return cleanup;
     });
+    await finishResourceRemoval(storage, keys, c.get("requestId"), packageId);
     return c.json({ ok: true });
   });
   app.get("/api/v1/enterprises/:id/packages/:packageId", async (c) => {
@@ -405,27 +463,26 @@ export function mountEnterpriseAssets(
     "/api/v1/enterprises/:id/packages/:packageId/files/:fileId",
     async (c) => {
       const id = c.req.param("id"),
+        fileId = c.req.param("fileId"),
         actor = c.get("actor");
       await requireEnterpriseManager(store, actor, id);
-      const row = await packageOf(store, id, c.req.param("packageId"));
-      await store.transaction(async () => {
-        if (
-          !(
-            await store.run(
-              "DELETE FROM package_files WHERE package_id=? AND resource_id=?",
-              row.id,
-              c.req.param("fileId"),
-            )
-          ).changes
-        )
-          throw new ServiceError("FILE_NOT_FOUND", 404, "文件不存在");
+      const keys = await store.transaction(async () => {
+        const row = await packageOf(store, id, c.req.param("packageId"), true);
+        const files = await lockPackageFiles(store, id, row.id, fileId);
+        if (!files.length) throw new ServiceError("FILE_NOT_FOUND", 404, "文件不存在");
+        if ((await referencedFiles(store, row.id, files)).has(fileId))
+          throw new ServiceError("PACKAGE_FILE_IN_USE", 409, "此文件仍被其他文件包或项目使用");
+        await store.run("DELETE FROM package_files WHERE package_id=? AND resource_id=?", row.id, fileId);
+        const cleanup = await removeResourceRecords(store, storage, files);
         await store.run(
           "UPDATE file_packages SET updated_at=? WHERE id=?",
           now(),
           row.id,
         );
-        await audit(store, actor, "package.file.remove", c.req.param("fileId"), id);
+        await audit(store, actor, "package.file.remove", fileId, id);
+        return cleanup;
       });
+      await finishResourceRemoval(storage, keys, c.get("requestId"), fileId);
       return c.json({ ok: true });
     },
   );
@@ -498,21 +555,20 @@ export function mountEnterpriseAssets(
   });
   app.delete("/api/v1/enterprises/:id/skills/:skillId", async (c) => {
     const id = c.req.param("id"),
+      skillId = c.req.param("skillId"),
       actor = c.get("actor");
     await requireEnterpriseManager(store, actor, id);
-    const row = await skillOf(store, id, c.req.param("skillId"));
-    await store.transaction(async () => {
+    const keys = await store.transaction(async () => {
+      const row = await skillOf(store, id, skillId);
       await store.run(
         "DELETE FROM enterprise_grants WHERE asset_kind='skill' AND asset_id=?",
         row.id,
       );
-      // The stored body stays referenced by the resource row; detaching it from the enterprise removes it from every listing.
-      await store.run(
-        "UPDATE resources SET enterprise_id=NULL,visibility='private' WHERE id=?",
-        row.id,
-      );
+      const cleanup = await removeResourceRecords(store, storage, [row]);
       await audit(store, actor, "skill.remove", row.id, id);
+      return cleanup;
     });
+    await finishResourceRemoval(storage, keys, c.get("requestId"), skillId);
     return c.json({ ok: true });
   });
 

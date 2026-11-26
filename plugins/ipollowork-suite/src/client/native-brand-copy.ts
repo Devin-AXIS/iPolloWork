@@ -1,5 +1,7 @@
 import type { ClientContext } from './native.ts'
 import { language } from './locale.ts'
+import { chinesePluginIntroductions } from '../shared/plugin-introductions.ts'
+import { studioPluginTitle } from '../shared/studio-plugin-titles.ts'
 
 const pluginUi = '[data-plugin-panel], [data-install-phase], [data-plugin-update]'
 const notices = '[role="dialog"], [role="alert"], [role="status"], [role="tooltip"]'
@@ -43,6 +45,28 @@ const restartReasons = [
 ]
 const placeholders = /({[a-zA-Z]\w*})/g
 type Rule = { scope: string; replace(value: string): string | undefined }
+
+const packageDescription = [
+  '[data-plugin-package] > div:first-child > div:nth-child(2) > span[id]',
+  '[data-plugin-detail] > div:has(> p > [data-plugin-name]) > p:last-child:not(:has(> code))',
+  '[data-plugin-detail] [data-plugin-row] > div > div > span:nth-child(2)',
+  '[data-plugin-row-detail] > div:has(> p > code) > p:last-child:not(:has(> code))',
+].join(', ')
+
+function pluginIntroduction(parent: Element): string | undefined {
+  if (!parent.matches(packageDescription)) return
+  const owner = parent.closest('[data-plugin-package], [data-plugin-detail], [data-plugin-row-detail]')
+  const name = owner?.getAttribute('data-plugin-package') ?? owner?.getAttribute('data-plugin-detail')
+    ?? owner?.getAttribute('data-plugin-row-detail')?.split('#', 1)[0]
+  return name === undefined || name === null ? undefined : chinesePluginIntroductions.get(name)
+}
+
+function visibleStudioTitle(parent: Element, locale: 'zh' | 'en'): string | undefined {
+  if (!parent.matches('[data-plugin-package] > div:first-child > div:nth-child(2) > div:first-child > button, [data-plugin-detail] > div:has(> p > [data-plugin-name]) > div:first-child > h3')) return
+  const owner = parent.closest('[data-plugin-package], [data-plugin-detail]')
+  const name = owner?.getAttribute('data-plugin-package') ?? owner?.getAttribute('data-plugin-detail')
+  return name ? studioPluginTitle(name, locale) : undefined
+}
 
 function copyRules(ctx: ClientContext): Rule[] {
   const locale = language(ctx)
@@ -102,15 +126,26 @@ export function mountNativeBrandCopy(ctx: ClientContext): void {
     const root = document.body
     const changed = new Map<Text, { original: string; replacement: string }>()
     let rules = copyRules(ctx)
+    let locale = language(ctx)
+    const replace = (node: Text, replacement: string) => {
+      if (node.data === replacement) return
+      changed.set(node, { original: node.data, replacement })
+      node.data = replacement
+    }
     const update = (node: Text) => {
       const parent = node.parentElement
-      if (!parent || parent.closest('pre, code, [contenteditable="true"]') || !/DeepSeek Harness|\bDSH\b/.test(node.data)) return
+      if (!parent || parent.closest('pre, code, [contenteditable="true"]')) return
+      const pluginCopy = visibleStudioTitle(parent, locale) ?? (locale === 'zh' ? pluginIntroduction(parent) : undefined)
+      if (pluginCopy !== undefined) {
+        replace(node, pluginCopy)
+        return
+      }
+      if (!/DeepSeek Harness|\bDSH\b/.test(node.data)) return
       for (const rule of rules) {
         if (!parent.closest(rule.scope)) continue
         const replacement = rule.replace(node.data)
         if (replacement === undefined) continue
-        changed.set(node, { original: node.data, replacement })
-        node.data = replacement
+        replace(node, replacement)
         break
       }
     }
@@ -136,6 +171,7 @@ export function mountNativeBrandCopy(ctx: ClientContext): void {
     const unsubscribe = ctx.locale.subscribe(() => {
       restore()
       rules = copyRules(ctx)
+      locale = language(ctx)
       visit(root)
     })
     visit(root)

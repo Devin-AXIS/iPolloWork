@@ -326,7 +326,7 @@ export function mountProjectSpace(
             paths.add(file.path);
             if (file.resourceId) {
               const resource = await store.one(
-                "SELECT * FROM resources WHERE id=? AND owner_id=? AND kind='attachment'",
+                "SELECT * FROM resources WHERE id=? AND owner_id=? AND kind='attachment' FOR SHARE",
                 file.resourceId,
                 actor.id,
               );

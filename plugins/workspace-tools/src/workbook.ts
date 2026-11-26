@@ -32,7 +32,8 @@ export function parts(bytes: Uint8Array) {
 
 export function parseXml(bytes: Uint8Array | undefined) {
   if (!bytes) throw new Failure('unsupported-file', 415);
-  const text = decodeText(bytes);
+  // XML parts can start with a UTF-8 BOM. The decoder keeps it for text files.
+  const text = decodeText(bytes).replace(/^\uFEFF/u, '');
   if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(text)) throw new Failure('unsupported-file', 415);
   try {
     return new DOMParser({ onError(level, message) {

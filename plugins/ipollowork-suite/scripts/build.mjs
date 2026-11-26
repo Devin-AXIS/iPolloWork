@@ -2,6 +2,7 @@ import { resolve } from 'node:path'
 import { build } from 'esbuild'
 import { mkdir, readFile, rename, writeFile, rm } from 'node:fs/promises'
 import { larkSdkHandshakePatch } from '../vendor/dsh-im/plugin-src/host/lark-sdk-handshake-patch.mjs'
+import { pluginArtworkStyles } from '../../../integrations/tooling/ported-artwork.mjs'
 
 await mkdir('lib', { recursive: true })
 await writeFile('lib/stage.d.ts', await readFile('src/shared/stage.ts', 'utf8'))
@@ -41,6 +42,6 @@ async function publishClientFile(filename, contents) {
   finally { await rm(temporary, { force: true }) }
 }
 await import('./bundle-subplugins.mjs')
-await publishClientFile('lib/client.css', css.contents)
+await publishClientFile('lib/client.css', css.text + '\n' + pluginArtworkStyles() + '\n')
 await publishClientFile('lib/client.js', `window.__ModuleLoader__.load({id:'@ipollo/dsh-suite',factory(require){const module={exports:{}};const exports=module.exports;\n${js.text}\nreturn module.exports;}});\n`)
 JSON.parse(await readFile('catalog/index.json', 'utf8'))

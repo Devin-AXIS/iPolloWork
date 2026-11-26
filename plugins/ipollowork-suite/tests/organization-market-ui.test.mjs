@@ -12,7 +12,7 @@ const bundle=await build({nodePaths:['node_modules'],entryPoints:['src/client/ma
 const publication={id:'release',title:'Organization release',description:'Shared by the organization',packageName:'@team/plugin',publishedVersion:'1.2.3',canSubmit:false}
 const catalog={enterprises:[{id:'one',name:'Team one'},{id:'two',name:'Team two'}]}
 
-async function setup(call) {
+async function setup(call, language = 'en', { load, startInEnterprise = true } = {}) {
   const dom=new JSDOM('<div id="root"></div>')
   const globals={window:dom.window,document:dom.window.document,IS_REACT_ACT_ENVIRONMENT:true}
   const saved=Object.fromEntries(Object.keys(globals).map(key=>[key,Object.getOwnPropertyDescriptor(globalThis,key)]))
@@ -30,13 +30,31 @@ async function setup(call) {
     invalidate:()=>{snapshot={...snapshot,revision:snapshot.revision+1};for(const listener of listeners)listener()},
     startManual:async(...args)=>{installs.push(args)}}
   const root=createRoot(dom.window.document.getElementById('root'))
-  await act(async()=>root.render(React.createElement(module.exports.MarketPanel,{organizationCall:call,installation,useLabels:selector=>selector(labels),
-    load:async()=>({categories:[],items:[]}),openPackage(){}})))
+  await act(async()=>root.render(React.createElement(module.exports.MarketPanel,{organizationCall:call,installation,language:()=>language,useLabels:selector=>selector(labels),
+    load:load??(async()=>({categories:[],items:[]})),openPackage(){}})))
   const click=text=>act(async()=>{const button=[...dom.window.document.querySelectorAll('button')].find(button=>button.textContent===text);assert(button,text);button.click()})
-  await click('enterprise')
+  if(startInEnterprise) await click('enterprise')
   return {dom,installs,click,changeAccount:()=>act(async()=>dom.window.dispatchEvent(new dom.window.Event('ipollo-account-identity-changed'))),
     async close(){await act(async()=>root.unmount());dom.window.close();for(const [key,descriptor] of Object.entries(saved)){if(descriptor)Object.defineProperty(globalThis,key,descriptor);else delete globalThis[key]}}}
 }
+
+test('the bundled preview paints before the full catalog without exposing unchecked install actions',async()=>{
+  const local=Promise.withResolvers()
+  const online=Promise.withResolvers()
+  const bundled={name:'bundled',title:'Bundled plugin',description:'Built-in archive',author:'',version:'1.0.0',compatible:true}
+  const external={...bundled,name:'external',title:'Online plugin'}
+  const app=await setup(undefined,'en',{startInEnterprise:false,load:(_signal,preview)=>preview?local.promise:online.promise})
+  try {
+    const document=app.dom.window.document
+    await act(async()=>local.resolve({categories:[],items:[bundled],inventoryPending:true}))
+    assert.match(document.body.textContent,/Bundled plugin/)
+    const loadingInstall=[...document.querySelectorAll('article > button')].find(button=>button.textContent==='loading')
+    assert.equal(loadingInstall?.disabled,true)
+    await act(async()=>online.resolve({categories:[],items:[bundled,external]}))
+    assert.match(document.body.textContent,/Online plugin/)
+    assert.equal([...document.querySelectorAll('article > button')].filter(button=>button.textContent==='install'&&!button.disabled).length,2)
+  }finally{await app.close()}
+})
 
 test('organization market loads authorized published plugins, switches organizations and reauthorizes the pinned install',async()=>{
   const calls=[];let revoked=false
@@ -56,6 +74,17 @@ test('organization market loads authorized published plugins, switches organizat
     assert.match(app.dom.window.document.body.textContent,/Second team plugin/)
     assert(!app.dom.window.document.body.textContent.includes('Organization release'))
     const reads=calls.length;await app.click('refresh');assert(calls.length>reads)
+  }finally{await app.close()}
+})
+
+test('the Chinese organization market localizes known packages with English introductions',async()=>{
+  const app=await setup(async path=>path==='/enterprise'?catalog:{items:[
+    {...publication,packageName:'dsh-codex',description:'Connect ChatGPT and use Codex models.'},
+    {...publication,id:'other',description:'团队编写的中文介绍'},
+  ]},'zh')
+  try {
+    assert.match(app.dom.window.document.body.textContent,/通过 ChatGPT 授权使用 Codex 模型/)
+    assert.match(app.dom.window.document.body.textContent,/团队编写的中文介绍/)
   }finally{await app.close()}
 })
 

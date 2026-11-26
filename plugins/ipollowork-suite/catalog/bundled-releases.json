@@ -54,9 +54,9 @@
     },
     {
       "name": "@ipollo/dsh-excel-editor",
-      "version": "0.2.3",
-      "file": "ipollo-dsh-excel-editor-0.2.3-1c81cb2e4af8.tgz",
-      "sha256": "1c81cb2e4af8989e1142eff8e29ca985dacd6f4539692885c824c21b2dab059d"
+      "version": "0.2.4",
+      "file": "ipollo-dsh-excel-editor-0.2.4-0d34c8cd1516.tgz",
+      "sha256": "0d34c8cd1516f1faa76d066a73c8658d72910ecb9bc8b0c9f3217216955f12f0"
     },
     {
       "name": "@ipollo/dsh-conversation-export",
@@ -131,10 +131,9 @@
     },
     {
       "name": "@ipollo/dsh-ipollo-onto",
-      "version": "0.1.6",
-      "file": "ipollo-dsh-ipollo-onto-0.1.6-1667889b19cd.tgz",
-      "sha256": "1667889b19cd58d0448e81ce2a4a6d90036e4083e05cfe7c4cbf28129db23d00",
-      "tag": "v1.0.20"
+      "version": "0.1.7",
+      "file": "ipollo-dsh-ipollo-onto-0.1.7-c99789b96814.tgz",
+      "sha256": "c99789b968140e368af6057f257fb426273e61fc7f03905ba337998e6aacc441"
     },
     {
       "name": "@ipollo/dsh-jev-decision-model",

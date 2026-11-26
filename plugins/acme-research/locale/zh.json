@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Acme Research",
-    "description": "Minimal independent plugin package for local development."
+    "description": "用于本地开发和测试的独立示例插件。",
+    "detail": "README.zh.md"
   }
 }

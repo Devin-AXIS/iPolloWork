@@ -224,11 +224,85 @@ test("organization assets enforce member and department grants, and project owne
     assert.equal((await http<{files:unknown[]}>(base + `/packages/${pack}`,owner.token)).data.files.length,1);
     const temporary = new FormData();
     temporary.set('file',new File(['remove-me'],'temporary.txt',{type:'text/plain'}));
+    const quotaBefore = Number((await service.storage.quota("organization", enterprise)).used_bytes);
     const temporaryFile = await http<{id:string}>(base + `/packages/${pack}/files`,owner.token,temporary);
     const temporaryPath = base + `/packages/${pack}/files/${temporaryFile.data.id}`;
     assert.equal((await http(temporaryPath,design.token,undefined,'DELETE')).status,403);
+    assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), quotaBefore + 9);
     assert.equal((await http(temporaryPath,owner.token,undefined,'DELETE')).status,200);
     assert.equal((await http(temporaryPath+'/download',owner.token)).status,404);
+    const resourceDownload = "/api/v1/resources/" + temporaryFile.data.id + "/download";
+    assert.equal((await http(resourceDownload, owner.token)).status, 404);
+    assert.doesNotMatch(JSON.stringify((await http("/api/v1/resources?kind=attachment", owner.token)).data), /temporary\.txt/);
+    assert.equal((await service.store.one("SELECT state FROM storage_objects WHERE id=?", temporaryFile.data.id))?.state, "deleted");
+    assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), quotaBefore);
+
+    const failedFile = await http<{ id: string }>(base + `/packages/${pack}/files`, owner.token, temporary);
+    const failedRemoval = t.mock.method(service.storage, "remove", async () => { throw new Error("storage temporarily offline"); });
+    try {
+      const result = await http<{ code: string }>(base + `/packages/${pack}/files/${failedFile.data.id}`, owner.token, undefined, "DELETE");
+      assert.equal(result.status, 503);
+      assert.equal(result.data.code, "PACKAGE_FILE_CLEANUP_PENDING");
+    } finally {
+      failedRemoval.mock.restore();
+    }
+    assert.equal(await service.store.one("SELECT id FROM resources WHERE id=?", failedFile.data.id), undefined);
+    assert.equal((await service.store.one("SELECT state FROM storage_objects WHERE id=?", failedFile.data.id))?.state, "deleting");
+    assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), quotaBefore + 9);
+    await service.storage.cleanup();
+    assert.equal((await service.store.one("SELECT state FROM storage_objects WHERE id=?", failedFile.data.id))?.state, "deleted");
+    assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), quotaBefore);
+
+    const change = await http<{ id: string }>(securedPath + "/changes", owner.token, {
+      kind: "files", title: "Use the package file", requestId: randomUUID(), baseVersion: 0,
+      files: [{ path: "logo.svg", resourceId: file, baseResourceId: null }],
+    });
+    assert.equal(change.status, 201);
+    const referencedRemoval = await http<{ code: string }>(base + `/packages/${pack}/files/${file}`, owner.token, undefined, "DELETE");
+    assert.equal(referencedRemoval.status, 409);
+    assert.equal(referencedRemoval.data.code, "PACKAGE_FILE_IN_USE");
+    assert.equal((await http(securedPath + "/changes/" + change.data.id, owner.token, undefined, "DELETE")).status, 200);
+
+    const disposablePackage = (await http<{ id: string }>(base + "/packages", owner.token, {
+      title: "Bulk removal fixture", audience: { all: false, departments: [], members: [] },
+    })).data.id;
+    const disposablePath = base + "/packages/" + disposablePackage;
+    const uploadToPackage = async (name: string, content: string) => {
+      const body = new FormData();
+      body.set("file", new File([content], name));
+      const result = await http<{ id: string }>(disposablePath + "/files", owner.token, body);
+      assert.equal(result.status, 201);
+      return result.data.id;
+    };
+    const removed = await uploadToPackage("first.xx", "remove this");
+    const stored = await uploadToPackage("project-reference.xx", "keep this");
+    const shared = await uploadToPackage("shared-with-other-package.xx", "keep shared");
+    await service.store.run("INSERT INTO package_files VALUES(?,?,?,?,?)", pack, shared,
+      "shared-with-other-package.xx", owner.id, Date.now());
+    const projectReference = await http<{ id: string }>(securedPath + "/changes", owner.token, {
+      kind: "files", title: "Keep this reference", requestId: randomUUID(), baseVersion: 0,
+      files: [{ path: "project-reference.xx", resourceId: stored, baseResourceId: null }],
+    });
+    assert.equal(projectReference.status, 201);
+    const beforePackageRemoval = Number((await service.storage.quota("organization", enterprise)).used_bytes);
+    assert.equal((await http(disposablePath, design.token, undefined, "DELETE")).status, 403);
+    assert.equal((await http(disposablePath, owner.token, undefined, "DELETE")).status, 200);
+    assert.equal((await http(disposablePath, owner.token)).status, 404);
+    assert.equal((await http("/api/v1/resources/" + removed + "/download", owner.token)).status, 404);
+    assert.equal((await service.store.one("SELECT state FROM storage_objects WHERE id=?", removed))?.state, "deleted");
+    assert.equal((await http("/api/v1/resources/" + stored + "/download", owner.token)).data, "keep this");
+    assert.equal((await http(base + `/packages/${pack}/files/${shared}/download`, design.token)).data, "keep shared");
+    assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), beforePackageRemoval - 11);
+
+    const oldSkill = await http<{ id: string }>(base + "/skills", owner.token, {
+      title: "Disposable skill", description: "Deletion fixture", content: "legacy skill body",
+    });
+    assert.equal(oldSkill.status, 201);
+    const beforeSkillRemoval = Number((await service.storage.quota("organization", enterprise)).used_bytes);
+    assert.equal((await http(base + "/skills/" + oldSkill.data.id, owner.token, undefined, "DELETE")).status, 200);
+    assert.equal((await http("/api/v1/resources/" + oldSkill.data.id + "/content", owner.token)).status, 404);
+    assert.equal((await service.store.one("SELECT state FROM storage_objects WHERE id=?", oldSkill.data.id))?.state, "deleted");
+    assert.equal(Number((await service.storage.quota("organization", enterprise)).used_bytes), beforeSkillRemoval - 17);
 
     const listed = async (token: string) =>
       (

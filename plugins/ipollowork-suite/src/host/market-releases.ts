@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { mkdir, readFile, rename, rm } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import semver from 'semver'
@@ -33,16 +33,12 @@ export function githubArchive(release: z.infer<typeof archive>) {
   return { spec: `${releaseBase}${release.tag}/${release.file}`, archiveSha256: release.sha256 }
 }
 
-/** Unpublished product bundles stay local; only explicitly published optional archives may download. */
-export async function readBundledArchive(release:z.infer<typeof bundledReleases>['plugins'][number],file:string):Promise<{bytes:Buffer}|{target:ReturnType<typeof githubArchive>} >{
-  let bytes:Buffer
-  try{bytes=await readFile(file)}catch(error){
-    if((error as NodeJS.ErrnoException).code!=='ENOENT')throw error
-    if(release.name.startsWith('@ipollo/dsh-')||!release.tag)throw new Error('A bundled product plugin is missing from this installation')
-    return {target:githubArchive({...release,tag:release.tag})}
+/** Slim builds may omit published Studio archives. Integrity is checked on selection. */
+export async function bundledArchiveOffer(release: z.infer<typeof bundledReleases>['plugins'][number], file: string) {
+  if (!release.name.startsWith('@ipollo/dsh-') && release.tag && !await stat(file).then(info => info.isFile(), () => false)) {
+    return githubArchive({ ...release, tag: release.tag })
   }
-  verifyArchive(bytes,release.sha256)
-  return {bytes}
+  return { spec: `file:${file}`, archiveSha256: release.sha256 }
 }
 
 /** One bounded check across list refreshes and installation requests. The bundled catalog works offline. */
@@ -73,6 +69,29 @@ export function verifyArchive(bytes: Uint8Array, sha256: string) {
 
 function hasDigest(bytes: Uint8Array, sha256: string): boolean {
   return createHash('sha256').update(bytes).digest('hex') === sha256
+}
+
+/** Prepare only the local archive selected by the Host. DSH receives a verified cache file. */
+export async function cacheBundledArchive(target: { spec: string; archiveSha256: string }, directory: string, signal: AbortSignal) {
+  const destination = join(directory, `${target.archiveSha256}.tgz`)
+  const temporary = `${destination}.${randomUUID()}.tmp`
+  try {
+    const cached = await readFile(destination, { signal }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return undefined
+      throw error
+    })
+    if (cached && hasDigest(cached, target.archiveSha256)) return `file:${destination}`
+    const bytes = await readFile(target.spec.slice('file:'.length), { signal })
+    verifyArchive(bytes, target.archiveSha256)
+    await mkdir(directory, { recursive: true })
+    await writeFile(temporary, bytes, { flag: 'wx', signal })
+    await rename(temporary, destination)
+    return `file:${destination}`
+  } catch (cause) {
+    throw new SuiteError('IPW_MARKET_ARCHIVE_UNAVAILABLE', 502, { cause })
+  } finally {
+    await rm(temporary, { force: true })
+  }
 }
 
 /** Download a Host-selected asset and expose it to DSH only after verifying its digest. */

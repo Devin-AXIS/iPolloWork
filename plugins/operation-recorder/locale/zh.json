@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "操作录制",
-    "description": "Independent semantic operation recorder and portable Agent Skill compiler for iPolloWork."
+    "description": "记录页面、区域和控件的操作，将操作步骤整理为可复用的智能体技能。",
+    "detail": "README.zh.md"
   }
 }

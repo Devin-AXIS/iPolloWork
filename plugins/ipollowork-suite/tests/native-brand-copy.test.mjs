@@ -65,3 +65,46 @@ test('native brand copy is scoped, keeps compatibility values, and restores exis
     dom.window.close()
   }
 })
+
+test('older English plugin descriptions are localized only in matching native descriptions', async () => {
+  const original = 'Native Design and PPT editor for DeepSeek Harness.'
+  const dom = new JSDOM(`<li data-plugin-package="deepseek-idesign"><div><span></span><div>
+    <div><button aria-describedby="summary">Design</button></div><span id="summary">${original}</span>
+  </div></div></li>
+  <div data-plugin-detail="deepseek-idesign">
+    <div><div><h3>Design</h3></div><p><code data-plugin-name>deepseek-idesign</code></p><p id="detail">${original}</p></div>
+    <ul><li data-plugin-row="deepseek-design"><div><span></span><div><span>Design</span><span id="component">${original}</span><code>deepseek-design</code></div></div></li></ul>
+  </div>
+  <aside>${original}</aside>`)
+  const globals = Object.fromEntries(['document', 'Text', 'NodeFilter', 'MutationObserver'].map(key => [key, dom.window[key]]))
+  const previous = Object.fromEntries(Object.keys(globals).map(key => [key, globalThis[key]]))
+  Object.assign(globalThis, globals)
+  let active = 'zh'
+  let dispose
+  let refresh
+  try {
+    mountNativeBrandCopy({
+      effect: setup => { dispose = setup() },
+      locale: {
+        getSnapshot: () => ({ active }),
+        bind: () => key => key,
+        subscribe: listener => { refresh = listener; return () => {} },
+      },
+    })
+    const { document } = dom.window
+    for (const id of ['summary', 'detail', 'component']) assert.match(document.getElementById(id).textContent, /演示文稿/)
+    assert.equal(document.querySelector('button').textContent, '设计工作台')
+    assert.equal(document.querySelector('h3').textContent, '设计工作台')
+    assert.equal(document.querySelector('code[data-plugin-name]').textContent, 'deepseek-idesign')
+    assert.equal(document.querySelector('aside').textContent, original)
+    active = 'en'
+    refresh()
+    assert.equal(document.querySelector('button').textContent, 'Design Studio')
+    assert.equal(document.querySelector('h3').textContent, 'Design Studio')
+    for (const id of ['summary', 'detail', 'component']) assert.equal(document.getElementById(id).textContent, original)
+  } finally {
+    dispose?.()
+    Object.assign(globalThis, previous)
+    dom.window.close()
+  }
+})

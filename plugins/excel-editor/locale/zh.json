@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Excel 编辑",
-    "description": "在右侧工作区编辑表格，支持连续滚动、区域复制粘贴、查找和撤销，可打开 XLS 与 ODS。"
+    "description": "在右侧工作区编辑表格，支持连续滚动、区域复制粘贴、查找和撤销，可打开 XLS 与 ODS。",
+    "detail": "README.zh.md"
   }
 }

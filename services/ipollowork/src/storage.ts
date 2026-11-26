@@ -38,7 +38,7 @@ export class Storage {
       this.cleaning ??= this.cleanup()
         .catch(() =>
           console.error(
-            "Expired cloud files could not be removed; storage remains charged",
+            "Cloud storage cleanup failed; affected files remain charged",
           ),
         )
         .finally(() => {
@@ -377,6 +377,19 @@ export class Storage {
       },
     );
   }
+  /** Schedule cleanup in the same transaction that removes the last resource reference. */
+  async markForRemoval(keys: string[]): Promise<void> {
+    if (!this.store.inTransaction)
+      throw new Error("Storage removal requires the metadata transaction");
+    if (!keys.length) return;
+    const result = await this.store.run(
+      "UPDATE storage_objects SET state='deleting' WHERE storage_key=ANY(?::text[]) AND state IN ('ready','deleting')",
+      keys,
+    );
+    if (result.changes !== keys.length)
+      throw new ServiceError("STORAGE_OBJECT_UNAVAILABLE", 409, "文件存储记录暂不可用");
+  }
+
   /** Only service-owned cloud/cache copies are removed. Native workspace paths are never accepted. */
   async remove(key: string): Promise<void> {
     if (key.startsWith("oss/"))
@@ -419,7 +432,7 @@ export class Storage {
   async cleanup(): Promise<void> {
     const keys = await this.store.transaction(async () => {
       const rows = await this.store.all(
-        "SELECT storage_key FROM storage_objects WHERE state='deleting' OR (state IN ('ready','reserved') AND expires_at<=? AND published_at IS NULL) ORDER BY expires_at LIMIT 50 FOR UPDATE SKIP LOCKED",
+        "SELECT storage_key FROM storage_objects WHERE state='deleting' OR (state IN ('ready','reserved') AND expires_at<=? AND published_at IS NULL) ORDER BY (state='deleting') DESC, expires_at, storage_key LIMIT 50 FOR UPDATE SKIP LOCKED",
         Date.now(),
       );
       for (const row of rows)
@@ -429,6 +442,20 @@ export class Storage {
         );
       return rows.map((row) => String(row.storage_key));
     });
-    for (const key of keys) await this.remove(key);
+    await this.removeMany(keys);
+  }
+
+  async removeMany(keys: string[]): Promise<void> {
+    const pending = keys.values(), errors: unknown[] = [];
+    await Promise.all(Array.from({ length: Math.min(4, keys.length) }, async () => {
+      for (const key of pending) {
+        try {
+          await this.remove(key);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+    }));
+    if (errors.length) throw new AggregateError(errors, "Cloud storage cleanup failed");
   }
 }
