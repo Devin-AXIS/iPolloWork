@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "小红书运营台",
-    "description": "管理小红书本地账号记录、草稿、素材与运营任务。"
+    "description": "管理小红书本地账号记录、草稿、素材与运营任务。",
+    "detail": "README.zh.md"
   }
 }

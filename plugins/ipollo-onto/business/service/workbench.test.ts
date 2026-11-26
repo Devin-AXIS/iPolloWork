@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { Database } from 'bun:sqlite'
 import { mkdtemp, access } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { spawn } from 'node:child_process'
@@ -12,7 +13,7 @@ import createService from './workbench.mjs'
 
 test('closed package starts without PostgreSQL or package managers and preserves exact data on restart', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ipollowork-onto-runtime-'))
-  const runtime = { storage: { dataDir }, plugin: { id: 'ipollo-onto', version: '0.1.6' } }
+  const runtime = { storage: { dataDir }, plugin: { id: 'ipollo-onto', version: '0.1.7' } }
   const originalPath = process.env.PATH
   process.env.PATH = ''
   let service = createService(runtime)
@@ -33,6 +34,20 @@ test('closed package starts without PostgreSQL or package managers and preserves
     try { await expect(other.actions['open-workbench']()).rejects.toThrow('端口') }
     finally { await other.dispose() }
     expect((await request('/health')).ok).toBe(true)
+    const retiredConnection = {
+      engine: 'highgo', host: '127.0.0.1', port: 5432, database: 'legacy', user: 'legacy',
+    }
+    for (const [path, body, issuePath] of [
+      ['/databases/test', retiredConnection, ['engine']],
+      ['/projects', { name: 'Retired', database: { mode: 'independent', connection: retiredConnection } },
+        ['database', 'connection', 'engine']],
+    ] as const) {
+      const rejected = await fetch('http://127.0.0.1:5711/api' + path, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+      })
+      expect(rejected.status).toBe(400)
+      expect((await rejected.json()).issues[0].path).toEqual(issuePath)
+    }
     const project = await request('/projects', { name: '安装即用验证' })
     expect(project.storage.engine).toBe('sqlite')
     const table = await request(`/projects/${project.id}/tables`, { name: '客户' })
@@ -50,9 +65,31 @@ test('closed package starts without PostgreSQL or package managers and preserves
       expect(context.isError).not.toBe(true)
     } finally { await client.close() }
     await service.dispose()
-    await access(join(dataDir, 'onto.sqlite'))
+    const databasePath = join(dataDir, 'onto.sqlite')
+    await access(databasePath)
+    const legacyId = crypto.randomUUID()
+    const legacyProject = { ...project, id: legacyId, name: 'Existing database project' }
+    const legacySummary = { ...retiredConnection, mode: 'independent', status: 'connected', ssl: 'disable' }
+    const database = new Database(databasePath)
+    try {
+      database.prepare(`INSERT INTO project_databases
+        (project_id, database_id, connection_secret, summary, project_snapshot)
+        VALUES (?, ?, ?, ?, ?)`).run(legacyId, crypto.randomUUID(), 'legacy-credentials',
+        JSON.stringify(legacySummary), JSON.stringify(legacyProject))
+    } finally { database.close() }
     service = createService(runtime)
     await service.actions['open-workbench']()
+    expect((await request('/projects')).find((item: { id: string }) => item.id === legacyId)).toMatchObject({
+      name: legacyProject.name, storage: { engine: 'highgo', status: 'unavailable' },
+    })
+    expect(await request(`/projects/${legacyId}/database`)).toMatchObject({
+      engine: 'highgo', status: 'unavailable',
+    })
+    const retired = await fetch(`http://127.0.0.1:5711/api/projects/${legacyId}/database/test`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+    })
+    expect(retired.status).toBe(409)
+    expect((await retired.json()).error).toContain('PostgreSQL')
     const retained = await request(`/tables/${table.id}/records`)
     expect(retained.records[0].values[amount.id]).toBe('99999999999999.9999')
     expect(retained.records[0].values[schema.fields[0].id]).toBe('SQLite 客户')
@@ -66,7 +103,7 @@ let electron = process.env.IPOLLOWORK_ONTO_TEST_ELECTRON ?? ''
 if (!electron) { try { electron = desktopRequire('electron') } catch {} }
 test.skipIf(!electron || !existsSync(electron))('Electron host starts the closed SQLite package with an empty PATH', async () => {
   const dataDir = await mkdtemp(join(tmpdir(), 'ipollowork-onto-electron-'))
-  const serviceUrl = pathToFileURL(resolve(import.meta.dir, '../dist/package/service/workbench.mjs')).href
+  const serviceUrl = pathToFileURL(resolve(import.meta.dir, 'workbench.mjs')).href
   const script = `
     import createService from ${JSON.stringify(serviceUrl)};
     delete process.env.ELECTRON_RUN_AS_NODE;

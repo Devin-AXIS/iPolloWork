@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "数据标注实训云",
-    "description": "数据标注工作台"
+    "description": "数据标注工作台",
+    "detail": "README.zh.md"
   }
 }

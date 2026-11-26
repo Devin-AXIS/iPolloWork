@@ -33,11 +33,14 @@
   "plugins": [
     {
       "name": "deepseek-idesign",
-      "title": "Design",
+      "title": {
+        "zh": "设计工作台",
+        "en": "Design Studio"
+      },
       "author": "iPolloWork",
       "description": {
         "en": "Original iPolloWork Design editor with native right-panel and left-navigation settings.",
-        "zh": "原版 Design 编辑器，可独立配置右侧白板与左侧导航。"
+        "zh": "创建和编辑演示文稿、网页和设计稿。可在工作区调整版式和内容，并将演示文稿导出为 PowerPoint。"
       },
       "homepage": "https://github.com/Devin-AXIS/deepseek-design",
       "repository": {
@@ -68,11 +71,14 @@
     },
     {
       "name": "deepseek-ivideo",
-      "title": "Video",
+      "title": {
+        "zh": "视频工作台",
+        "en": "Video Studio"
+      },
       "author": "iPolloWork",
       "description": {
         "en": "Original iPolloWork Video editor with native right-panel and left-navigation settings.",
-        "zh": "原版 Video 编辑器，可独立配置右侧白板与左侧导航。"
+        "zh": "在工作区制作和编辑视频。可在时间轴上编排画面、音频和字幕，并预览和导出成片。"
       },
       "homepage": "https://github.com/Devin-AXIS/deepseek-design",
       "repository": {
@@ -137,7 +143,7 @@
       },
       "author": "Acme",
       "description": {
-        "zh": "Minimal independent plugin package for local development.",
+        "zh": "用于本地开发和测试的独立示例插件。",
         "en": "Minimal independent plugin package for local development."
       },
       "homepage": "https://github.com/Devin-AXIS/iPolloWork",
@@ -321,7 +327,7 @@
       },
       "versions": [
         {
-          "version": "0.1.6",
+          "version": "0.1.7",
           "publishTimestamp": 1795382400,
           "source": {
             "type": "npm"
@@ -511,7 +517,7 @@
       },
       "author": "Smart Future School",
       "description": {
-        "zh": "统一 Node.js 录制器，记录页面、区域和控件，将详细操作步骤编译成可复用 Skill。",
+        "zh": "记录页面、区域和控件的操作，将操作步骤整理为可复用的智能体技能。",
         "en": "Turn a demonstration into an editable, parameterized, portable Skill."
       },
       "homepage": "https://github.com/Devin-AXIS/iPolloWork",
@@ -715,7 +721,7 @@
       },
       "author": "iPolloWork",
       "description": {
-        "zh": "A minimal MCP App canvas that can be edited by people and agents.",
+        "zh": "在工作区使用画布，支持用户和智能体共同编辑。",
         "en": "A minimal MCP App canvas that can be edited by people and agents."
       },
       "homepage": "https://github.com/Devin-AXIS/iPolloWork",
@@ -859,14 +865,14 @@
       },
       "versions": [
         {
-          "version": "0.2.3",
+          "version": "0.2.4",
           "source": {
             "type": "npm"
           },
           "engines": {
             "dsh": "0.2.3-alpha.2"
           },
-          "publishTimestamp": 1795519396
+          "publishTimestamp": 1795669557
         }
       ],
       "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCI+PHJlY3Qgd2lkdGg9IjQ4IiBoZWlnaHQ9IjQ4IiByeD0iMTEiIGZpbGw9IiNlNGY0ZTkiLz48c3ZnIHg9IjExIiB5PSIxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB3aWR0aD0iMjYiIGhlaWdodD0iMjYiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMjc3NTU0IiBzdHJva2Utd2lkdGg9IjEuNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48cGF0aCBkPSJNOSAzSDVhMiAyIDAgMCAwLTIgMnY0bTYtNmgxMGEyIDIgMCAwIDEgMiAydjRNOSAzdjE4bTAgMGgxMGEyIDIgMCAwIDAgMi0yVjlNOSAyMUg1YTIgMiAwIDAgMS0yLTJWOW0wIDBoMTgiPjwvcGF0aD48L3N2Zz48L3N2Zz4K"

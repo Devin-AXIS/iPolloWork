@@ -57,7 +57,7 @@ import { Config, resolveConfig, type Config as ConfigInput } from "./config.ts";
 import { AppDataService, appDataRoute, appDataTool, APP_DATA_SKILL } from "./app-data.ts";
 import type { IpolloData } from "../shared/app-data.ts";
 import { isDefaultMarket, readMarket, updateKind, type NativePluginManager } from "./market.ts";
-import { cacheGithubArchive, createReleaseFeed } from "./market-releases.ts";
+import { cacheBundledArchive, cacheGithubArchive, createReleaseFeed } from "./market-releases.ts";
 import { BRAND_PATH, brandIndex, serveBrand } from "./brand.ts";
 import { AppDataRejection, InvitationRosterRejection, SuiteError } from "./errors.ts";
 import {
@@ -68,6 +68,8 @@ import {
 } from "./management.ts";
 import * as NativeConnection from "@deepseek-ai/dsh-client-connection";
 import { createPluginToggleLimit } from "./plugin-toggle-limit.ts";
+import { readLocalizedPluginDocument } from "./plugin-document.ts";
+import { pathToFileURL } from "node:url";
 export { Config };
 export const name = "ipollowork-suite";
 export const inject = [
@@ -104,6 +106,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   provide?(name: "ipolloStage", value: import('../shared/stage.ts').StageBridge): void;
   get?(name: "ipolloCloud"): unknown;
   get?(name: "liveshareShares"): NativeSharing | undefined;
+  get?(name: "pluginPackages"): { packageOf(name: string, base: string): { dir: string; name: string; version?: string } | undefined } | undefined;
   on(
     event: "agent/pre-step",
     listener: (
@@ -152,7 +155,7 @@ export interface HostContext extends EnterpriseNative, MemoryContext {
   };
   credentials: CredentialStore;
   pluginManager: NativePluginManager;
-  profileContext: { installAnchor: string; home: string };
+  profileContext: { installAnchor: string; home: string; dir?: string };
 }
 function json(response: ServerResponse, status: number, value: unknown): void {
   response.writeHead(status, {
@@ -404,9 +407,9 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
   const runtimeVersion = runtime.version;
   const marketCache = join(ctx.profileContext.home, "cache", "ipollowork-market");
   const listReleases = createReleaseFeed(lifetime.signal);
-  const marketState = async (language: string, curated: unknown[] = []) => readMarket(
-    config.catalogPath, ctx.pluginManager, runtimeVersion, language, config.maxResponseBytes, marketCache,
-    config.dedicatedDesktop, curated, isDefaultMarket(config.catalogPath) ? await listReleases() : [],
+  const marketReleases = () => isDefaultMarket(config.catalogPath) ? listReleases() : Promise.resolve([]);
+  const marketState = (language: string, options?: Parameters<typeof readMarket>[5]) => readMarket(
+    config.catalogPath, ctx.pluginManager, runtimeVersion, language, config.maxResponseBytes, options,
   );
   if (config.theme) {
     ctx.effect(
@@ -498,6 +501,21 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               });
               return;
             }
+            if (request.method === "GET" && path === "/plugin-detail") {
+              if (admission.peer.principal?.kind !== "owner") throw new SuiteError("RESOURCE_FORBIDDEN", 403);
+              const input = cloudSchema.object({ name: cloudSchema.string().min(1).max(214), language: cloudSchema.enum(["zh", "en"]) })
+                .parse({ name: url.searchParams.get("name"), language: url.searchParams.get("language") });
+              const bundle = (await ctx.pluginManager.listBundles()).find(item =>
+                item.name === input.name && (item.availability === "profile" || item.availability === "installation"));
+              if (!bundle) { json(response, 200, {}); return; }
+              const profileDir = ctx.profileContext.dir;
+              const anchor = bundle.availability === "profile" && profileDir
+                ? join(profileDir, "package.json") : ctx.profileContext.installAnchor;
+              const pkg = ctx.get?.("pluginPackages")?.packageOf(bundle.name, pathToFileURL(anchor).href);
+              const dir = pkg?.name === bundle.name && pkg.version === bundle.version ? pkg.dir : undefined;
+              json(response, 200, await readLocalizedPluginDocument(bundle.name, bundle.version, dir, input.language, lifetime.signal));
+              return;
+            }
             if (request.method === "POST" && path === "/catalog/discover" && config.market) {
               const permission = cloudSchema.object({ canManage: cloudSchema.boolean() }).parse(await account.request('/api/v1/market/manage'));
               if (!permission.canManage) throw new SuiteError('ADMIN_REQUIRED', 403);
@@ -526,13 +544,20 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
               path === "/catalog" &&
               config.market
             ) {
-              const [catalog, permission] = await Promise.all([
+              const language = url.searchParams.get("language") === "zh" ? "zh" : "en";
+              if (url.searchParams.get("view") === "local") {
+                json(response, 200, { ...await marketState(language, { inventory: [] }), inventoryPending: true });
+                return;
+              }
+              const [catalog, permission, published, inventory] = await Promise.all([
                 account.marketCatalog().catch(() => ({ plugins: [] })),
                 account.request('/api/v1/market/manage', undefined, undefined, AbortSignal.timeout(3000)).catch(() => ({ canManage: false })),
+                marketReleases(),
+                ctx.pluginManager.listBundles(),
               ]);
               const curated = cloudSchema.object({ plugins: cloudSchema.array(cloudSchema.unknown()).max(200) }).parse(catalog);
               const canManage = cloudSchema.object({ canManage: cloudSchema.boolean() }).parse(permission).canManage;
-              const state = await marketState(url.searchParams.get("language") === "zh" ? "zh" : "en", curated.plugins);
+              const state = await marketState(language, { curated: curated.plugins, published, inventory });
               json(response, 200, { ...state, canManage });
               return;
             }
@@ -542,21 +567,18 @@ export function apply(ctx: HostContext, input: ConfigInput): void {
                 version: cloudSchema.string().min(1).max(100),
                 fromVersion: cloudSchema.string().max(100).optional(),
               }).strict().parse(await body(request));
-              const { items } = await marketState("en");
+              const { items } = await marketState("en", { published: await marketReleases() });
               const item = items.find(item => item.name === target.name && item.version === target.version && item.compatible);
               const eligible = item && (target.fromVersion === undefined
-                ? !item.installed && !item.providedByDsh && item.archiveSha256
+                ? !item.installed && !item.providedByDsh
                 : item.update === 'archive' && item.installedVersion === target.fromVersion);
-              if (!item || !eligible) throw new SuiteError("IPW_MARKET_VERSION_CHANGED", 409);
-              const spec = item.archiveSha256
-                ? await cacheGithubArchive({ spec: item.spec, archiveSha256: item.archiveSha256 }, marketCache, lifetime.signal)
-                : item.spec;
-              if (item.archiveSha256) {
-                const current = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === item.name);
-                if (target.fromVersion === undefined ? current?.installed || current?.availability === "installation"
-                  : current?.version !== target.fromVersion || updateKind(current, item, item.version, true) !== "archive")
-                  throw new SuiteError("IPW_MARKET_VERSION_CHANGED", 409);
-              }
+              if (!item?.archiveSha256 || !eligible) throw new SuiteError("IPW_MARKET_VERSION_CHANGED", 409);
+              const cache = item.spec.startsWith("file:") ? cacheBundledArchive : cacheGithubArchive;
+              const spec = await cache({ spec: item.spec, archiveSha256: item.archiveSha256 }, marketCache, lifetime.signal);
+              const current = (await ctx.pluginManager.listBundles()).find(bundle => bundle.name === item.name);
+              if (target.fromVersion === undefined ? current?.installed || current?.availability === "installation"
+                : current?.version !== target.fromVersion || updateKind(current, item, item.version, true) !== "archive")
+                throw new SuiteError("IPW_MARKET_VERSION_CHANGED", 409);
               json(response, 200, { spec });
               return;
             }

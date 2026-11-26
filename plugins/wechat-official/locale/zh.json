@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "微信公众号",
-    "description": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流。"
+    "description": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流。",
+    "detail": "README.zh.md"
   }
 }

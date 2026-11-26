@@ -6,6 +6,7 @@ import { request } from './api.ts'
 import { labelSource, copy, language } from './locale.ts'
 import { mountTheme } from './theme.tsx'
 import { mountNativeBrandCopy } from './native-brand-copy.ts'
+import { mountLocalizedPluginDocuments } from './plugin-document.tsx'
 import { brandAttribute } from '../../../custom-appearance/src/model.ts'
 import { mountCurrentVersion } from './desktop-version.tsx'
 import { MarketPanel } from './market.tsx'
@@ -31,6 +32,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
   if ('__DSH_LIVESHARE_VIEWER__' in globalThis) return
   mountCurrentVersion(ctx)
   mountNativeBrandCopy(ctx)
+  mountLocalizedPluginDocuments(ctx)
   const lifetime = new AbortController()
   ctx.effect(() => () => lifetime.abort(), 'ipollowork-suite: client requests')
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = '/ipollowork-suite/assets/client.css'
@@ -47,7 +49,8 @@ export async function apply(ctx: ClientContext): Promise<void> {
   if (info.theme) mountTheme(ctx)
   let enterpriseInstaller: MarketInstallation | undefined
   ctx.inject(['remote.pluginManager'], scope => {
-    const load = (signal: AbortSignal) => request<MarketState>(`/catalog?language=${language(ctx)}`, { signal })
+    const load = (signal: AbortSignal, local = false) => request<MarketState>(
+      `/catalog?language=${language(ctx)}${local ? '&view=local' : ''}`, { signal })
     const marketLifetime = new AbortController()
     scope.effect(() => () => marketLifetime.abort(), 'ipollowork-market: client requests')
     const installation = new MarketInstallation(scope.remote.pluginManager, marketLifetime.signal, async target => {
@@ -68,7 +71,7 @@ export async function apply(ctx: ClientContext): Promise<void> {
     }, MarketInstallDialog))
     if (info.market) scope.slots.inject('plugins.tab', () => scope.slots.register({ name: 'plugins.tab', id: 'ipollowork-market', order: -10, label: () => copy(ctx).market,
       inject: () => ({
-        load, installation, hooks: { labels }, organizationCall: info.account ? request : undefined,
+        load, installation, hooks: { labels }, language: () => language(ctx), organizationCall: info.account ? request : undefined,
         discover: async (source: string) => (await request<{ entries: MarketEntry[] }>('/catalog/discover', { method: 'POST', body: JSON.stringify({ source, language: language(ctx) }) })).entries,
         add: (entry: MarketEntry) => request<void>('/catalog/plugins', { method: 'POST', body: JSON.stringify(entry) }),
       }),

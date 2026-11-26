@@ -1,6 +1,6 @@
 import { translate as tr, useLocale } from './i18n'
 import { useState } from 'react'
-import { Button, Select, Switch, TextArea, TextField } from '@radix-ui/themes'
+import { Button, Switch, TextArea, TextField } from '@radix-ui/themes'
 import { CheckCircledIcon } from '@radix-ui/react-icons'
 import type { DatabaseChoice, DatabaseConnection, DatabaseCheck } from '../core/database'
 import { api, message } from './api'
@@ -32,7 +32,7 @@ export function DatabaseFields({
   const [checking, setChecking] = useState(false),
     [error, setError] = useState(''),
     [result, setResult] = useState<DatabaseCheck>()
-  function change(key: keyof DatabaseConnection, next: string | number) {
+  function change<Key extends keyof DatabaseConnection>(key: Key, next: DatabaseConnection[Key]) {
     const updated = { ...connection, [key]: next }
     setConnection(updated)
     onChange({ mode: 'independent', connection: updated })
@@ -69,29 +69,11 @@ export function DatabaseFields({
           onClick={() => onChange({ mode: 'independent', connection })}
         >
           <b>{tr('独立数据库')}</b>
-          <span>{tr('连接专属的数据库存储')}</span>
+          <span>{tr('连接专属的 PostgreSQL 数据库')}</span>
         </button>
       </div>
       {value.mode === 'independent' && (
         <div className="database-config form-stack">
-          <FormLabel label={tr('数据库类型')}>
-            <Select.Root
-              value={connection.engine}
-              onValueChange={(v) => change('engine', v)}
-              disabled={disabled || checking}
-            >
-              <Select.Trigger aria-label={tr('数据库类型')} />
-              <Select.Content>
-                <Select.Item value="postgres">PostgreSQL</Select.Item>
-                <Select.Item value="highgo">{tr('瀚高 · PostgreSQL 兼容连接')}</Select.Item>
-              </Select.Content>
-            </Select.Root>
-          </FormLabel>
-          {connection.engine === 'highgo' && (
-            <p className="form-hint">
-              {tr('适用于 PostgreSQL 兼容模式；瀚高版本需实机验证，不代表信创认证。')}
-            </p>
-          )}
           <div className="database-host-row">
             <FormLabel label={tr('主机地址')}>
               <TextField.Root

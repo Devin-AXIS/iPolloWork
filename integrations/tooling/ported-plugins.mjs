@@ -70,7 +70,10 @@ if (command === 'import') {
     await mkdir(join(destination, 'locale'), { recursive: true })
     for (const language of ['en', 'zh']) {
       const text = language === 'en' ? manifest.localization?.translations?.en : manifest
-      await writeFile(join(destination, 'locale', language + '.json'), JSON.stringify({ meta: { title: text?.name ?? manifest.name, description: text?.description ?? manifest.description } }, null, 2) + '\n')
+      await writeFile(join(destination, 'locale', language + '.json'), JSON.stringify({ meta: {
+        title: text?.name ?? manifest.name, description: text?.description ?? manifest.description,
+        ...(language === 'zh' && { detail: 'README.zh.md' }),
+      } }, null, 2) + '\n')
     }
     await writeFile(join(destination, 'NOTICE.md'), `Business sources: iPolloWork ${sourceRevision}, examples/plugin-packages/${slug} (${manifest.package.version}). Original license and third-party notices are retained in business/. Native DSH integration is owned by iPolloWork. No old host runtime is included.\n`)
     await writeFile(join(destination, 'README.md'), `# ${manifest.localization?.translations?.en?.name ?? manifest.name}\n\nNative DSH bundle migrated from \`${slug}\` ${manifest.package.version}. Install its .tgz through iPolloWork Market or the native DSH Plugin Manager. Choose a registered workspace before opening the workbench. Credentials use the native Host credential store; existing local business data is retained. Disable/uninstall releases tools, Skills, routes and child services while retaining data.\n\nBuild with \`npm run build\`; run \`npm run check\` and \`npm run pack:check\` before packaging. See the repository migration inventory for capability-specific verification and limitations.\n`)

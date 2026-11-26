@@ -5,7 +5,7 @@ import type { request } from './api.ts'
 /** Native plugin-page tab. Installation and component management stay with DSH. */
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react'
 import { pluginGlyph } from '../ported/icons.ts'
-import type { MarketEntry, MarketItem, MarketState } from '../shared/types.ts'
+import { SESSION_TITLES_BUNDLE, type MarketEntry, type MarketItem, type MarketState } from '../shared/types.ts'
 import type { Labels } from './locale.ts'
 import type { MarketProps } from './native.ts'
 import { installPending, type MarketInstallation } from './market-installation.ts'
@@ -13,15 +13,17 @@ import css from './suite.module.css'
 
 export interface MarketPanelProps extends MarketProps {
   useLabels<T>(selector: (value: Labels) => T): T
-  load(signal: AbortSignal): Promise<MarketState>
+  language(): 'zh' | 'en'
+  load(signal: AbortSignal, local?: boolean): Promise<MarketState>
   installation: MarketInstallation
   discover?(source: string): Promise<MarketEntry[]>
   add?(entry: MarketEntry): Promise<void>
   organizationCall?: typeof request | undefined
 }
 
-export function MarketPanel({ useLabels, load, installation, openPackage, update: nativeUpdate, add, discover, organizationCall }: MarketPanelProps) {
+export function MarketPanel({ useLabels, language, load, installation, openPackage, update: nativeUpdate, add, discover, organizationCall }: MarketPanelProps) {
   const t = useLabels(value => value)
+  const locale = language()
   const { task, revision } = useSyncExternalStore(installation.subscribe, installation.getSnapshot)
   const [catalog, setCatalog] = useState<{ data: MarketState; revision: number } | null>(null)
   const data = catalog?.data
@@ -36,6 +38,7 @@ export function MarketPanel({ useLabels, load, installation, openPackage, update
   const detailTitle = useRef<HTMLHeadingElement>(null)
   const returnFocus = useRef<string | null>(null)
   const cardButtons = useRef(new Map<string, HTMLButtonElement>())
+  const displayedLocale = useRef<'zh' | 'en'>()
   useEffect(() => {
     window.addEventListener('focus', installation.invalidate)
     return () => window.removeEventListener('focus', installation.invalidate)
@@ -44,17 +47,30 @@ export function MarketPanel({ useLabels, load, installation, openPackage, update
     const controller = new AbortController()
     setLoading(true)
     setError(false)
-    void load(controller.signal).then(value => {
-      if (controller.signal.aborted) return
+    let complete = false
+    const show = (value: MarketState) => {
+      displayedLocale.current = locale
       setCatalog({ data: value, revision })
       setLoading(false)
-    }).catch(() => {
+    }
+    // The full response can arrive first. A later bundled response must never replace it,
+    // nor discard previously discovered entries on a same-language refresh.
+    const local = displayedLocale.current === locale ? Promise.resolve() : load(controller.signal, true).then(value => {
+      if (!controller.signal.aborted && !complete) show(value)
+    }).catch(() => {})
+    void load(controller.signal).then(value => {
       if (controller.signal.aborted) return
-      setLoading(false)
-      setError(true)
+      complete = true
+      show(value)
+    }).catch(async () => {
+      await local
+      if (!controller.signal.aborted) {
+        setLoading(false)
+        setError(true)
+      }
     })
     return () => controller.abort()
-  }, [load, revision, t])
+  }, [locale, load, revision, t])
   useEffect(() => {
     if (selected) detailTitle.current?.focus()
     else if (returnFocus.current) cardButtons.current.get(returnFocus.current)?.focus()
@@ -63,22 +79,27 @@ export function MarketPanel({ useLabels, load, installation, openPackage, update
     && `${item.title} ${item.name} ${item.description} ${item.author}`.toLowerCase().includes(query.toLowerCase())) ?? []
   const available = (item: MarketItem) => item.installed || item.providedByDsh
   const action = (item: MarketItem) => {
+    if (data?.inventoryPending) return { label: t.loading, disabled: true, onClick: () => {} }
     const currentTask = task?.target.name === item.name ? task : null
-    const pending = currentTask && installPending(currentTask.phase)
+    const pending = currentTask && (installPending(currentTask.phase) || currentTask.enabling)
     const unconfirmed = currentTask?.phase === 'unconfirmed'
     const completed = currentTask?.phase === 'done' && (catalog?.revision ?? 0) < (currentTask.completedRevision ?? 0)
     const installed = available(item)
     const update = item.update !== undefined
-    const otherInstallPending = task && task !== currentTask && (installPending(task.phase) || task.phase === 'unconfirmed')
+    const activate = installed && !item.enabled && item.name === SESSION_TITLES_BUNDLE
+    const canChange = !installed || update || activate
+    const otherInstallPending = task && task !== currentTask && (installPending(task.phase) || task.phase === 'unconfirmed' || task.enabling)
     return {
-      label: pending ? (update ? t.marketUpdating : t.installing) : unconfirmed ? t.installView
-        : completed ? (update ? t.marketUpdated : t.installed) : update ? t.marketUpdate
-          : installed ? t.manage : item.compatible ? (item.enableOnInstall ? t.installAndEnable : t.install) : t.incompatible,
-      disabled: !pending && !unconfirmed && (completed || ((!installed || update) && (!item.compatible || Boolean(otherInstallPending)))),
+      label: pending ? (currentTask.enabling ? t.marketEnabling : update ? t.marketUpdating : t.installing) : unconfirmed ? t.installView
+        : completed ? (currentTask.result?.enabled ? t.enabled : update ? t.marketUpdated : t.installed)
+          : canChange && !item.compatible ? t.incompatible : update ? t.marketUpdate : activate ? t.installEnable
+            : installed ? t.manage : item.enableOnInstall ? t.installAndEnable : t.install,
+      disabled: !pending && !unconfirmed && (completed || (canChange && (!item.compatible || Boolean(otherInstallPending)))),
       onClick: () => {
         if (pending || unconfirmed) installation.show()
         else if (item.update === 'git') nativeUpdate({ packageName: item.name, version: item.version, spec: item.spec })
         else if (item.update === 'archive' || !installed) installation.start(item)
+        else if (activate) void installation.activate(item)
         else openPackage(item.name)
       },
     }
@@ -105,7 +126,7 @@ export function MarketPanel({ useLabels, load, installation, openPackage, update
           <FormSelect aria-label={t.all} value={category} onChange={event => setCategory(event.target.value)}><option value="">{t.all}</option>{data?.categories.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}</FormSelect>
         </div>}
       </div>
-      {enterprise ? <OrganizationMarket call={organizationCall} installation={installation} revision={revision} t={t}/> : loading && !data ? <div role="status" className={css.skeletonList}>
+      {enterprise ? <OrganizationMarket call={organizationCall} installation={installation} revision={revision} chinese={locale === 'zh'} t={t}/> : loading && !data ? <div role="status" className={css.skeletonList}>
         <span className={css.srOnly}>{t.loading}</span>
         {[0, 1, 2].map(key => <div className={css.skeletonRow} key={key} aria-hidden="true"><span/><div><span/><span/></div></div>)}
       </div> : <div className={css.pluginList}>
@@ -120,7 +141,7 @@ export function MarketPanel({ useLabels, load, installation, openPackage, update
           </button>
           <InstallButton action={action(item)} secondary={available(item)}/>
         </article>)}
-        {!items.length && !error && <p className={css.empty}>{t.empty}</p>}
+        {!items.length && !error && <p className={css.empty}>{data?.inventoryPending ? t.loading : t.empty}</p>}
       </div>}
     </>}
     {adding && data?.canManage && add && discover && <MarketAdd t={t} discover={discover} close={() => setAdding(false)} save={async entry => { await add(entry); installation.invalidate() }}/>}
@@ -179,5 +200,7 @@ function PluginDetailPage({ item, t, titleRef, onBack, action, onOpenComponents 
 function Icon({ item, large = false }: { item: MarketItem; large?: boolean }) {
   const [failed, setFailed] = useState<string>()
   const Glyph = pluginGlyph(item.name)
-  return <span className={`${css.icon}${large ? ` ${css.largeIcon}` : ''}`}>{item.icon && item.icon !== failed ? <img src={item.icon} alt="" loading="lazy" onError={() => setFailed(item.icon!)}/> : <Glyph size={large ? 36 : 28} strokeWidth={1.6} aria-hidden="true"/>}</span>
+  return <span className={`${css.icon}${large ? ` ${css.largeIcon}` : ''}`} data-ipw-plugin-artwork={item.name}>
+    {item.icon && item.icon !== failed ? <img src={item.icon} alt="" loading="lazy" onError={() => setFailed(item.icon!)}/> : <Glyph size={large ? 36 : 28} strokeWidth={1.6} aria-hidden="true"/>}
+  </span>
 }

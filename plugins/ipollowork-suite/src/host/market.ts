@@ -1,20 +1,21 @@
 import { isDeepStrictEqual } from 'node:util'
 /** Read a curated DSH format-1 index and join it with the native installation inventory. */
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { createHash, randomUUID } from 'node:crypto'
-import { join, resolve } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseMarketIndex, marketInstallTarget } from '@deepseek-ai/dsh-plugin-market-index'
 import { parseInstallSpec, pinnedGitOrigin, type BundleInfo } from '@deepseek-ai/dsh-plugin-manager'
 import semver from 'semver'
-import type { MarketItem, MarketState } from '../shared/types.ts'
+import { SESSION_TITLES_BUNDLE, type MarketItem, type MarketState } from '../shared/types.ts'
+import { chinesePluginIntroductions } from '../shared/plugin-introductions.ts'
+import { studioPluginTitle } from '../shared/studio-plugin-titles.ts'
 import { SuiteError } from './errors.ts'
 import retiredPlugins from '../../catalog/retired-plugins.json' with { type: 'json' }
-import { bundledReleases, githubArchive, readBundledArchive, verifyArchive, type PublishedRelease } from './market-releases.ts'
+import { bundledArchiveOffer, bundledReleases, githubArchive, type PublishedRelease } from './market-releases.ts'
 
 export interface InstalledBundle {
   name: string; installed: boolean; enabled: boolean; version?: string;
-  meta?: { icon?: string };
+  meta?: BundleInfo['meta'];
   availability?: 'installation' | 'profile' | 'missing';
   source?: string;
   official?: boolean;
@@ -43,41 +44,22 @@ export function isDefaultMarket(path: string): boolean {
   return resolve(path) === defaultCatalog
 }
 
-/** Resolve verified, suite-carried releases only for the suite's default catalog. */
-async function bundledInstallTargets(catalogPath: string, cacheDirectory?: string) {
+/** List archive identities from the bundled manifest. Only installation reads and verifies the selected bytes. */
+async function bundledInstallTargets(catalogPath: string) {
   const targets = new Map<string, ArchiveTarget>()
   const names = new Set<string>()
   if (!isDefaultMarket(catalogPath)) return { targets, names }
   try {
     const releases = bundledReleases.parse(JSON.parse(await readFile(new URL('../../catalog/bundled-releases.json', import.meta.url), 'utf8')))
-    for (const release of releases.plugins) {
-      if (release.upgradeOnly) continue
+    const offers = await Promise.all(releases.plugins.filter(release => !release.upgradeOnly).map(async release => {
+      const file = fileURLToPath(new URL(`../../catalog/packages/${release.file}`, import.meta.url))
+      return { release, target: await bundledArchiveOffer(release, file) }
+    }))
+    for (const { release, target } of offers) {
       const key = `${release.name}@${release.version}`
       if (targets.has(key)) throw new Error('Duplicate bundled release')
       names.add(release.name)
-      const file = fileURLToPath(new URL(`../../catalog/packages/${release.file}`, import.meta.url))
-      const content=await readBundledArchive(release,file)
-      if('target'in content){
-        targets.set(key,content.target)
-        continue
-      }
-      const {bytes}=content
-      let target = file
-      if (cacheDirectory) {
-        await mkdir(cacheDirectory, { recursive: true })
-        target = join(cacheDirectory, `${release.sha256}.tgz`)
-        const cached = await readFile(target).catch((error: NodeJS.ErrnoException) => {
-          if (error.code === 'ENOENT') return undefined
-          throw error
-        })
-        if (cached) verifyArchive(cached, release.sha256)
-        if (!cached) {
-          const temporary = `${target}.${randomUUID()}.tmp`
-          try { await writeFile(temporary, bytes, { flag: 'wx' }); await rename(temporary, target) }
-          finally { await rm(temporary, { force: true }) }
-        }
-      }
-      targets.set(key, { spec: `file:${target}` })
+      targets.set(key, target)
     }
     return { targets, names }
   } catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 500, { cause }) }
@@ -97,7 +79,9 @@ export function updateKind(current: InstalledBundle | undefined, target: Archive
 }
 
 /** Each request re-reads the operator's catalog. No copied installation state is persisted. */
-export async function readMarket(path: string, manager: NativePluginManager, runtimeVersion: string, language: string, maxBytes: number, cacheDirectory?: string, _downloadOnDemand = false, curated: unknown[] = [], published: readonly PublishedRelease[] = []): Promise<MarketState> {
+export async function readMarket(path: string, manager: NativePluginManager, runtimeVersion: string, language: string, maxBytes: number, {
+  curated = [], published = [], inventory,
+}: { curated?: unknown[]; published?: readonly PublishedRelease[]; inventory?: readonly InstalledBundle[] } = {}): Promise<MarketState> {
   const content = await readFile(path)
   if (content.byteLength > maxBytes) throw new SuiteError('IPW_CATALOG_TOO_LARGE', 500)
   const defaults = isDefaultMarket(path)
@@ -129,8 +113,8 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       index = { ...index, plugins: [...merged.values()] }
     } catch (cause) { throw new SuiteError('IPW_INVALID_CATALOG', 502, { cause }) }
   }
-  const bundled = await bundledInstallTargets(path, cacheDirectory)
-  const installed = new Map((await manager.listBundles()).map(bundle => [bundle.name, bundle]))
+  const [bundled, bundles] = await Promise.all([bundledInstallTargets(path), inventory ?? manager.listBundles()])
+  const installed = new Map(bundles.map(bundle => [bundle.name, bundle]))
   return {
     title: localized(index.title, language), runtimeVersion,
     categories: Object.entries(index.metadata.categories).map(([id, value]) => ({ id, title: localized(value.title, language, id) })),
@@ -144,11 +128,17 @@ export async function readMarket(path: string, manager: NativePluginManager, run
       const selectedVersion = release?.version ?? version.version
       const acceptable = release !== undefined || compatible !== undefined
       const current = installed.get(plugin.name)
+      const isSessionTitles = plugin.name === SESSION_TITLES_BUNDLE
+      const title = studioPluginTitle(plugin.name, language)
+        ?? localized(isSessionTitles ? current?.meta?.title ?? plugin.title : plugin.title, language, plugin.name)
+      const description = (language === 'zh' ? chinesePluginIntroductions.get(plugin.name) : undefined)
+        ?? localized(plugin.description, language)
       const update = acceptable ? updateKind(current, target, selectedVersion, archive !== undefined) : undefined
-      const enableOnInstall = acceptable && archive !== undefined && enableOnInstallPlugins.has(plugin.name)
+      const enableOnInstall = acceptable
+        && (isSessionTitles || (archive !== undefined && enableOnInstallPlugins.has(plugin.name)))
         && current?.installed !== true && current?.availability !== 'installation'
       return {
-        name: plugin.name, title: localized(plugin.title, language, plugin.name), description: localized(plugin.description, language),
+        name: plugin.name, title, description,
         author: plugin.author ?? '', icon: (current?.version && current.version !== selectedVersion ? plugin.icon : undefined) ?? current?.meta?.icon ?? plugin.icon ?? null, homepage: plugin.homepage ?? null,
         category: plugin.metadata.category ?? '', categoryTitle: localized(index.metadata.categories[plugin.metadata.category ?? '']?.title, language), version: selectedVersion, ...target,
         compatible: acceptable, requirement: release?.dsh ?? version.engines.dsh ?? null,

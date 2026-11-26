@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Linear",
-    "description": "把问题分流、Sprint 规划、交付跟进和项目更新组合成一致的 Linear 工作流。"
+    "description": "把问题分流、Sprint 规划、交付跟进和项目更新组合成一致的 Linear 工作流。",
+    "detail": "README.zh.md"
   }
 }

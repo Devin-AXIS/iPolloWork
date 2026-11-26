@@ -1,6 +1,7 @@
 {
   "meta": {
     "title": "Sentry",
-    "description": "把生产问题调查、回归监控、发布健康和修复验证组合成有证据的 Sentry 工作流。"
+    "description": "把生产问题调查、回归监控、发布健康和修复验证组合成有证据的 Sentry 工作流。",
+    "detail": "README.zh.md"
   }
 }

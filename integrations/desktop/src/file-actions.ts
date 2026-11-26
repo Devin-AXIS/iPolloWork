@@ -1,8 +1,8 @@
 /** Trusted-window Chromium downloads and clipboard fallback reads. */
 import { app, dialog, ipcMain, session } from 'electron'
-import type { BrowserWindow, IpcMainInvokeEvent } from 'electron'
-import { closeSync, createWriteStream, openSync, renameSync, rmSync } from 'node:fs'
-import { dirname, extname, join } from 'node:path'
+import type { BrowserWindow, IpcMainInvokeEvent, SaveDialogOptions, WebContents } from 'electron'
+import { createWriteStream, openSync, renameSync, rmSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { resolveDragFileName } from '@deepseek-ai/dsh-util-file-drag'
@@ -11,23 +11,12 @@ import type { FileSaveResult } from '@deepseek-ai/dsh-client-ui-file-actions/typ
 import { DESKTOP_IPC } from './ipc.ts'
 import { resolveDurationMs } from './duration-env.ts'
 
-/** Pick a new name without overwriting downloads already on disk. */
-function reserveDownload(name: string): { path: string; fd: number } {
-  const destination = join(app.getPath('downloads'), name)
-  const extension = extname(destination)
-  const stem = destination.slice(0, destination.length - extension.length)
-  for (let index = 0; ; index++) {
-    const path = index === 0 ? destination : `${stem} (${index})${extension}`
-    try { return { path, fd: openSync(path, 'wx') } }
-    catch (error) {
-      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST') continue
-      throw error
-    }
-  }
+function saveDialogOptions(name: string): SaveDialogOptions {
+  return { defaultPath: join(app.getPath('downloads'), name), properties: ['showOverwriteConfirmation', 'createDirectory'] }
 }
 
-/** @param value - untrusted IPC input. @returns captured URL and destination policy. */
-function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: string; mode: 'download' | 'saveAs' } {
+/** Accept either mode for compatibility with installed plugins and older clients. */
+function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: string } {
   if (typeof value !== 'object' || value === null
     || !('url' in value) || typeof value.url !== 'string'
     || ('name' in value && typeof value.name !== 'string')
@@ -35,13 +24,12 @@ function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: str
     || !('mode' in value) || (value.mode !== 'download' && value.mode !== 'saveAs')) throw new Error('Invalid file save request')
   const url = new URL(value.url)
   const packageDownload = /^\/ipollowork-suite\/enterprise\/organizations\/[\w-]{1,200}\/packages\/[\w-]{1,200}\/files\/[\w-]{1,200}\/download$/u.test(url.pathname)
-  const projectDownload = value.mode === 'download' &&
-    /^\/ipollowork-suite\/enterprise\/(?:download\/[\w-]{1,200}|projects\/[\w-]{1,200}\/memory-versions\/\d+)$/u.test(url.pathname)
+  const projectDownload = /^\/ipollowork-suite\/enterprise\/(?:download\/[\w-]{1,200}|projects\/[\w-]{1,200}\/memory-versions\/\d+)$/u.test(url.pathname)
   const appDownload = url.protocol === 'dsh-app:' && url.host === 'app' && !url.search &&
     'name' in value && typeof value.name === 'string' && !!value.name.trim() && (packageDownload || projectDownload)
   if ((!appDownload && !['https:', 'http:', 'blob:', 'data:'].includes(url.protocol)) || url.username || url.password)
     throw new Error('Unsupported file source')
-  return { url, mode: value.mode,
+  return { url,
     ...'name' in value ? { name: value.name as string } : {},
     ...'mediaType' in value ? { mediaType: value.mediaType as string } : {},
   }
@@ -52,10 +40,12 @@ function saveRequest(value: unknown): { url: URL; name?: string; mediaType?: str
  * @param assertOwner - rejects shell pages, subframes, and unowned windows.
  * @param hostUrl - current application Host excluded from image reads.
  * @param projectRequest - authenticated fetch for allowlisted project downloads.
+ * @param isApplicationContents - identifies browser downloads from the application window, including plugin frames.
  */
 export function installFileActions(
   assertOwner: (event: IpcMainInvokeEvent) => BrowserWindow, hostUrl: () => string | undefined = () => undefined,
   projectRequest?: (request: Request) => Promise<Response>,
+  isApplicationContents: (contents: WebContents) => boolean = () => false,
 ): void {
   const timeoutMs = resolveDurationMs(process.env, 'DSH_DESKTOP_IMAGE_READ_TIMEOUT_MS', 30_000)
   const maxBytes = Number(process.env.DSH_DESKTOP_IMAGE_READ_MAX_BYTES ?? 64 * 1024 * 1024)
@@ -70,30 +60,27 @@ export function installFileActions(
   }>()
   session.defaultSession.on('will-download', (_event, item, contents) => {
     const url = item.getURLChain()[0]
-    if (url === undefined || !new URL(url).hash.startsWith('#dsh-download=')) return
+    if (url === undefined || !new URL(url).hash.startsWith('#dsh-download=')) {
+      if (contents && isApplicationContents(contents)) {
+        const name = resolveDragFileName({ name: item.getFilename(), mediaType: '' })
+        item.setSaveDialogOptions(saveDialogOptions(name))
+      }
+      return
+    }
     const entry = pending.get(url)
     if (entry === undefined || entry.owner.webContents !== contents) { item.cancel(); return }
     entry.started()
     entry.item = item
-    let reserved: string | undefined
     try {
       assertOwner(entry.event)
       const name = resolveDragFileName({
         name: entry.request.name ?? item.getFilename(),
         mediaType: item.getMimeType() || entry.request.mediaType || '',
       })
-      if (entry.request.mode === 'saveAs') {
-        item.setSaveDialogOptions({ defaultPath: join(app.getPath('downloads'), name), properties: ['showOverwriteConfirmation', 'createDirectory'] })
-      } else {
-        const file = reserveDownload(name)
-        reserved = file.path
-        closeSync(file.fd)
-        item.setSavePath(file.path)
-      }
+      item.setSaveDialogOptions(saveDialogOptions(name))
       item.once('done', (_event, state) => {
         try {
           if (state !== 'completed') {
-            if (reserved !== undefined) rmSync(reserved, { force: true })
             entry.finish(state === 'cancelled' ? { status: 'cancelled' } : new Error('File download interrupted'))
             return
           }
@@ -104,11 +91,6 @@ export function installFileActions(
       })
     } catch (error) {
       item.cancel()
-      try { if (reserved !== undefined) rmSync(reserved, { force: true }) }
-      catch (cleanupError) {
-        entry.finish(new AggregateError([error, cleanupError], 'File download failed and its partial file could not be removed'))
-        return
-      }
       entry.finish(error instanceof Error ? error : new Error('File download unavailable'))
     }
   })
@@ -125,19 +107,13 @@ export function installFileActions(
     }
     owner.once('closed', abort)
     contents.on('did-start-navigation', navigate)
-    let reserved: string | undefined
+    let temporary: string | undefined
     try {
       const name = resolveDragFileName({ name: request.name, mediaType: '' })
-      let destination: string | undefined
-      if (request.mode === 'saveAs') {
-        const choice = await dialog.showSaveDialog(owner, {
-          defaultPath: join(app.getPath('downloads'), name),
-          properties: ['showOverwriteConfirmation', 'createDirectory'],
-        })
-        if (choice.canceled || !choice.filePath || lifetime.signal.aborted) return { status: 'cancelled' }
-        assertOwner(event)
-        destination = choice.filePath
-      }
+      const choice = await dialog.showSaveDialog(owner, saveDialogOptions(name))
+      if (choice.canceled || !choice.filePath || lifetime.signal.aborted) return { status: 'cancelled' }
+      assertOwner(event)
+      const destination = choice.filePath
       const signal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(downloadTimeoutMs)])
       request.url.hash = ''
       let response = await projectRequest(new Request(request.url, { signal }))
@@ -153,16 +129,16 @@ export function installFileActions(
         throw new Error('Project download unavailable')
       }
       // Stage beside the destination so an interrupted overwrite leaves the previous file intact.
-      const temporary = destination ? join(dirname(destination), '.ipollowork-download-' + randomUUID() + '.tmp') : undefined
-      const file = temporary ? { path: temporary, fd: openSync(temporary, 'wx') } : reserveDownload(name)
-      reserved = file.path
-      await pipeline(Readable.fromWeb(response.body as import('node:stream/web').ReadableStream), createWriteStream(file.path, { fd: file.fd }), { signal })
+      const stagingPath = join(dirname(destination), '.ipollowork-download-' + randomUUID() + '.tmp')
+      const fd = openSync(stagingPath, 'wx')
+      temporary = stagingPath
+      await pipeline(Readable.fromWeb(response.body as import('node:stream/web').ReadableStream), createWriteStream(stagingPath, { fd }), { signal })
       assertOwner(event)
       signal.throwIfAborted()
-      if (destination) renameSync(file.path, destination)
-      return { status: 'saved', path: destination ?? file.path }
+      renameSync(stagingPath, destination)
+      return { status: 'saved', path: destination }
     } catch (error) {
-      if (reserved !== undefined) rmSync(reserved, { force: true })
+      if (temporary !== undefined) rmSync(temporary, { force: true })
       if (lifetime.signal.aborted) return { status: 'cancelled' }
       throw error
     } finally {

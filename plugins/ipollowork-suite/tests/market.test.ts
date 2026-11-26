@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto'
 import yaml from 'js-yaml'
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { readMarket } from '../src/host/market.ts'
-import {readBundledArchive} from '../src/host/market-releases.ts'
+import { bundledArchiveOffer, cacheBundledArchive } from '../src/host/market-releases.ts'
 import semver from 'semver'
 
 const runtimeVersion=JSON.parse(await readFile(new URL('../../../integrations/runtime/upstream.json',import.meta.url),'utf8')).npmVersion
@@ -52,17 +52,45 @@ test('invalid operator catalog and duplicate identities fail instead of showing 
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 test('bundles shipped by DSH open native details instead of offering a duplicate installation', async () => {
-  const state = await readMarket('catalog/index.json', { listBundles: async () => [{ name: '@deepseek-ai/dsh-experimental-session-titles-bundle', availability: 'installation', installed: false, enabled: false, version: '0.2.2-rc.2', rows: [] }] }, '0.2.2-rc.2', 'zh', 1048576)
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [{
+    name: '@deepseek-ai/dsh-experimental-session-titles-bundle', availability: 'installation', installed: false,
+    enabled: false, version: '0.2.2-rc.2', rows: [],
+    meta: { title: { en: 'Conversation-following titles', zh: '随对话更新的标题' } },
+  }] }, '0.2.2-rc.2', 'zh', 1048576)
   const titles = state.items.find(item => item.name === '@deepseek-ai/dsh-experimental-session-titles-bundle')!
   assert.equal(titles.installed, false)
   assert.equal(titles.providedByDsh, true)
+  assert.equal(titles.enableOnInstall, undefined)
+  assert.equal(titles.title, '随对话更新的标题')
+  assert.match(titles.description, /会话标题/)
   assert.equal(state.categories[0]?.title, '效率')
 })
 
+test('market installs activate Session Titles when the runtime does not already provide it', async () => {
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'zh', 1048576)
+  const titles = state.items.find(item => item.name === '@deepseek-ai/dsh-experimental-session-titles-bundle')!
+  assert.equal(titles.providedByDsh, false)
+  assert.equal(titles.enableOnInstall, true)
+})
+
+
+test('Chinese market copy covers all bundled entries and earlier English-only service records', async () => {
+  const manager = { listBundles: async () => [] }
+  const current = await readMarket('catalog/index.json', manager, runtimeVersion, 'zh', 1048576)
+  assert(current.items.length > 0)
+  for (const item of current.items) assert.match(item.description, /\p{Script=Han}/u, item.name)
+  const index = JSON.parse(await readFile('catalog/index.json', 'utf8'))
+  const acme = index.plugins.find((entry: { name: string }) => entry.name === '@ipollo/dsh-acme-research')
+  const serviceRecords = [{ ...acme, description: 'Minimal independent plugin package for local development.' }]
+  const zh = await readMarket('catalog/index.json', manager, runtimeVersion, 'zh', 1048576, { curated: serviceRecords })
+  const en = await readMarket('catalog/index.json', manager, runtimeVersion, 'en', 1048576, { curated: serviceRecords })
+  assert.match(zh.items.find(item => item.name === acme.name)!.description, /本地开发和测试/)
+  assert.equal(en.items.find(item => item.name === acme.name)!.description, serviceRecords[0]!.description)
+})
 
 test('the default market shows Design and Video first without installing or enabling them', async () => {
   const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'zh', 1048576)
-  assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
+  assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['设计工作台', '视频工作台'])
   for (const item of state.items.slice(0, 2)) {
     assert.equal(item.version,studioVersion(item.name))
     assert.equal(item.categoryTitle, '创作')
@@ -113,20 +141,26 @@ test('a custom operator catalog keeps its declared source for the same package v
   } finally { await rm(dir, { recursive: true, force: true }) }
 })
 
-test('bundled installation specs use a retained content-addressed cache when the host supplies one', async () => {
+test('preview skips the native inventory and verifies only the archive requested for installation', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ipw-release-cache-'))
   try {
-    const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, directory)
-    const source = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576)
-    for (const item of state.items.slice(0, 2)) {
-      assert.match(item.spec, /[a-f0-9]{64}\.tgz$/)
-      assert(item.spec.startsWith(`file:${directory}`))
-      assert.deepEqual(await readFile(item.spec.slice(5)), await readFile(source.items.find(entry => entry.name === item.name)!.spec.slice(5)))
-    }
-    const again = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, directory)
-    assert.equal(again.items[0]?.spec, state.items[0]?.spec)
-    await writeFile(state.items[0]!.spec.slice(5), 'damaged cache')
-    await assert.rejects(readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, directory), { code: 'IPW_INVALID_CATALOG' })
+    const manager = { listBundles: async () => assert.fail('preview must not read the installed inventory') }
+    const state = await readMarket('catalog/index.json', manager, runtimeVersion, 'en', 1048576, { inventory: [] })
+    assert.deepEqual(await readdir(directory), [])
+    const item = state.items[0]!
+    assert(item.archiveSha256)
+    const signal = new AbortController().signal
+    const target = { spec: item.spec, archiveSha256: item.archiveSha256 }
+    const restored = await cacheBundledArchive(target, directory, signal)
+    assert.equal(restored, `file:${join(directory, item.archiveSha256 + '.tgz')}`)
+    assert.deepEqual(await readdir(directory), [item.archiveSha256 + '.tgz'])
+    assert.deepEqual(await readFile(restored.slice(5)), await readFile(item.spec.slice(5)))
+    await writeFile(restored.slice(5), 'damaged cache')
+    const badSource = join(directory, 'bad.tgz')
+    await writeFile(badSource, 'wrong bytes')
+    await assert.rejects(cacheBundledArchive({ ...target, spec: 'file:' + badSource }, directory, signal),
+      { code: 'IPW_MARKET_ARCHIVE_UNAVAILABLE' })
+    assert.equal(await cacheBundledArchive(target, directory, signal), restored)
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
 
@@ -157,20 +191,21 @@ test('npm delivery downloads optional Studio archives only when installed', asyn
   try {
     for(const release of releases.plugins.filter(item=>['deepseek-idesign','deepseek-ivideo'].includes(item.name))){
       const tag = release.tag ?? 'fixture-published'
-      if (!release.tag) await assert.rejects(readBundledArchive(release,join(directory,release.file)),/missing from this installation/)
-      const content=await readBundledArchive({...release,tag},join(directory,release.file))
-      assert('target'in content)
-      assert.equal(content.target.spec,`https://github.com/Devin-AXIS/iPolloWork/releases/download/${tag}/${release.file}`)
-      assert.equal(content.target.archiveSha256,release.sha256)
+      const missing = join(directory, release.file)
+      if (!release.tag) assert.equal((await bundledArchiveOffer(release, missing)).spec, 'file:' + missing)
+      const target = await bundledArchiveOffer({ ...release, tag }, missing)
+      assert.equal(target.spec, `https://github.com/Devin-AXIS/iPolloWork/releases/download/${tag}/${release.file}`)
+      assert.equal(target.archiveSha256, release.sha256)
     }
     const local=releases.plugins.find(item=>item.name.startsWith('@ipollo/dsh-'))!
-    await assert.rejects(readBundledArchive(local,join(directory,local.file)),/missing from this installation/)
+    const missing = join(directory, local.file)
+    assert.equal((await bundledArchiveOffer({ ...local, tag: 'fixture-published' }, missing)).spec, 'file:' + missing)
   }finally{await rm(directory,{recursive:true,force:true})}
 })
 
 
 test('dedicated desktop prefers the checked bundled Studio archives', async () => {
-  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, undefined, true)
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576)
   for (const item of state.items.slice(0, 2)) {
     assert.equal(item.installed, false)
     assert(item.spec.startsWith('file:'))
@@ -185,7 +220,7 @@ test('the default market keeps retired entries hidden even if the service still 
     versions: [{ version: '1.0.0', publishTimestamp: 1, source: { type: 'npm' }, engines: { dsh: runtimeVersion } }],
   }))
   const state = await readMarket('catalog/index.json', { listBundles: async () => [] },
-    runtimeVersion, 'en', 1048576, undefined, false, curated)
+    runtimeVersion, 'en', 1048576, { curated })
   assert(state.items.some(item => item.name === 'deepseek-idesign'))
   assert(state.items.some(item => item.name === 'deepseek-ivideo'))
   assert(state.items.every(item => !names.includes(item.name)))
@@ -193,11 +228,11 @@ test('the default market keeps retired entries hidden even if the service still 
 
 test('service-curated entries merge with bundled plugins and use the official pinned source resolver', async () => {
   const entry = { name: '@publisher/plugin', title: 'External', metadata: { category: 'productivity' }, versions: [{ version: '1.0.0', publishTimestamp: 1, source: { type: 'git', url: 'https://github.com/publisher/plugin', commit: 'a'.repeat(40), path: 'packages/plugin' } }] }
-  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, undefined, false, [entry])
-  assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design', 'Video'])
+  const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, { curated: [entry] })
+  assert.deepEqual(state.items.slice(0, 2).map(item => item.title), ['Design Studio', 'Video Studio'])
   assert.equal(state.items.at(-1)?.spec, 'git+https://github.com/publisher/plugin.git#' + 'a'.repeat(40) + '&path:/packages/plugin')
   assert.equal(state.items.at(-1)?.categoryTitle, 'Productivity')
-  await assert.rejects(readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, undefined, false, [{ ...entry, versions: [] }]), { code: 'IPW_INVALID_CATALOG' })
+  await assert.rejects(readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576, { curated: [{ ...entry, versions: [] }] }), { code: 'IPW_INVALID_CATALOG' })
 })
 
 test('the default market offers a compatible newer archive for an existing archive install', async () => {
@@ -213,7 +248,7 @@ test('the default market offers a compatible newer archive for an existing archi
   const published = [publication(laterVersion, '0.0.0'), publication(nextVersion, range)]
   const item = async (current = installed, releases = published) => (await readMarket(
     'catalog/index.json', { listBundles: async () => [current] }, runtimeVersion, 'en', 1048576,
-    undefined, false, [], releases,
+    { published: releases },
   )).items.find(item => item.name === name)!
   const remote = await item()
   assert.equal(remote.update, 'archive')
@@ -233,7 +268,7 @@ test('an older or incompatible service catalog cannot replace a newer reviewed b
     versions: [{ version, publishTimestamp: 1, source: { type: 'npm' }, engines: { dsh } }] })
   for (const dsh of [runtimeVersion, '0.2.2-rc.3']) {
     const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576,
-      undefined, false, [entry('1.0.2', dsh)])
+      { curated: [entry('1.0.2', dsh)] })
     const item = state.items.find(item => item.name === name)!
     assert.equal(item.version, current)
     assert.equal(item.compatible, true)
@@ -241,7 +276,7 @@ test('an older or incompatible service catalog cannot replace a newer reviewed b
   }
   const newer = semver.inc(current, 'patch')!
   const state = await readMarket('catalog/index.json', { listBundles: async () => [] }, runtimeVersion, 'en', 1048576,
-    undefined, false, [entry(newer, runtimeVersion)])
+    { curated: [entry(newer, runtimeVersion)] })
   assert.equal(state.items.find(item => item.name === name)?.version, newer)
 })
 
@@ -254,19 +289,20 @@ test('market Git updates use the native same-repository pin contract', async () 
     listBundles: async () => [{
       name, installed: true, enabled: true, availability: 'profile', version: '1.0.0', update: 'git', source: from + path, rows: [],
     }],
-  }, runtimeVersion, 'en', 1048576, undefined, false, [entry])).items.find(item => item.name === name)
+  }, runtimeVersion, 'en', 1048576, { curated: [entry] })).items.find(item => item.name === name)
   assert.equal((await item('plugin'))?.update, 'git')
   assert.equal((await item('other'))?.update, undefined)
 })
 
 test('live catalog can replace a bundled listing in place and use its pinned installation source', async () => {
   const manager = { listBundles: async () => [] };
-  const read = (entries: unknown[] = []) => readMarket('catalog/index.json', manager, runtimeVersion, 'en', 1048576, undefined, false, entries);
+  const read = (entries: unknown[] = []) => readMarket('catalog/index.json', manager, runtimeVersion, 'en', 1048576, { curated: entries });
   const baseline = await read();
-  const first = baseline.items[0]!;
+  const target = baseline.items.findIndex(item => item.name === '@ipollo/dsh-acme-research');
+  const first = baseline.items[target]!;
   const entry = { name: first.name, title: 'Online introduction', metadata: { category: 'creative' }, versions: [{ version: first.version, publishTimestamp: 2, source: { type: 'git', url: 'https://github.com/example/bundle', commit: 'b'.repeat(40) } }] };
   const state = await read([entry]);
   assert.equal(state.items.length, baseline.items.length);
-  assert.equal(state.items[0]?.title, entry.title);
-  assert.match(state.items[0]!.spec, /github\.com\/example\/bundle/);
+  assert.equal(state.items[target]?.title, entry.title);
+  assert.match(state.items[target]!.spec, /github\.com\/example\/bundle/);
 });

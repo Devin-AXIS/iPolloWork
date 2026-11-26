@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const databaseConnectionInput = z
   .object({
-    engine: z.enum(['postgres', 'highgo']).default('postgres'),
+    engine: z.literal('postgres').default('postgres'),
     host: z
       .string()
       .trim()
@@ -26,6 +26,7 @@ export const databaseChoiceInput = z.discriminatedUnion('mode', [
 ])
 export interface DatabaseSummary {
   mode: 'default' | 'independent'
+  // Existing project snapshots can still identify a retired connection.
   engine: 'postgres' | 'highgo' | 'sqlite'
   database: string
   host: string

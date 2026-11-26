@@ -4,13 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { unzipSync, zipSync } from 'fflate';
 import { read, utils, write } from 'xlsx';
 import type { FileHost } from '../../_shared/workspace-document-files.ts';
 import { apply } from '../src/excel-host.ts';
 import type { FileDocument } from '../src/file-contract.ts';
 import { clipboardCells, rangeText, singleCell } from '../src/sheet-model.ts';
 
-test('Excel workspace reads formatted values and saves legacy edits to copies', async () => {
+test('Excel workspace edits XLSX with XML byte order marks and saves legacy edits to copies', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ipw-excel-')));
   const routes = new Map<string, (request: Request) => Promise<Response>>();
   const session = 'excel-test';
@@ -39,7 +40,16 @@ test('Excel workspace reads formatted values and saves legacy edits to copies', 
     utils.book_append_sheet(workbook, utils.aoa_to_sheet([['保留']]), '清单');
     for (const format of ['xlsx', 'xls', 'ods'] as const) {
       const filename = 'workbook.' + format;
-      const bytes: Buffer = write(workbook, { bookType: format, type: 'buffer' });
+      let bytes: Buffer = write(workbook, { bookType: format, type: 'buffer' });
+      const relationships = 'xl/_rels/workbook.xml.rels';
+      if (format === 'xlsx') {
+        const archive = unzipSync(bytes);
+        for (const part of [relationships, 'xl/worksheets/sheet1.xml']) {
+          assert.ok(archive[part], part);
+          archive[part] = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), archive[part]]);
+        }
+        bytes = Buffer.from(zipSync(archive));
+      }
       await writeFile(join(root, filename), bytes);
       const response = await fetch('document', filename);
       assert.equal(response.status, 200, format + ' should open');
@@ -52,6 +62,15 @@ test('Excel workspace reads formatted values and saves legacy edits to copies', 
       if (format === 'xlsx') {
         assert.deepEqual(first.cells.find(cell => cell.address === 'C1'),
           { address: 'C1', value: '=SUM(B2:C2)', display: '12', kind: 'formula' });
+        const saved = await fetch('document', filename, { version: book.version, kind: 'workbook',
+          changes: [{ sheet: '财务', address: 'A2', kind: 'text', value: '原文件编辑' }] });
+        assert.equal(saved.status, 200);
+        const updated = await readFile(join(root, filename));
+        const checked = read(updated, { type: 'buffer' });
+        assert.equal(checked.Sheets['财务']?.['A2']?.v, '原文件编辑');
+        assert.equal(checked.Sheets['财务']?.['C1']?.f, 'SUM(B2:C2)');
+        assert.equal(checked.Sheets['清单']?.['A1']?.v, '保留');
+        assert.deepEqual(Buffer.from(unzipSync(updated)[relationships]!), Buffer.from(unzipSync(bytes)[relationships]!));
         continue;
       }
       assert.equal(book.legacy, true);

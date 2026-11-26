@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-excel-editor",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Edit spreadsheet ranges in the right workspace and open legacy XLS and ODS files.",
   "type": "module",
   "license": "SEE LICENSE IN lib/LICENSE",

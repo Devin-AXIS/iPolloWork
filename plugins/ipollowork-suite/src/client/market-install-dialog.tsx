@@ -32,7 +32,7 @@ export function MarketInstallDialog({ installation, useLabels }: {
   </Modal>
   if (!task) return null
 
-  const { phase, target, result, enabling, enableFailed, inspectionError, archiveFailed } = task
+  const { phase, target, result, enabling, enableFailed, activationOnly, inspectionError, archiveFailed } = task
   const fromVersion = target.archive?.fromVersion
   const updating = fromVersion !== undefined
   const pending = installPending(phase)
@@ -48,7 +48,10 @@ export function MarketInstallDialog({ installation, useLabels }: {
     reconciling: t.installChecking,
     unconfirmed: t.installUnknown,
     done: updating ? (result?.application === 'restart-required' ? t.marketUpdateRestart : t.marketUpdated)
-      : enableFailed ? t.installEnableFailed : result?.application === 'restart-required' ? t.installRestart : result?.enabled ? t.enabled : t.installed,
+      : enabling ? t.marketEnabling
+        : enableFailed ? (activationOnly ? t.marketEnableFailed : t.installEnableFailed)
+          : result?.application === 'restart-required' ? (activationOnly ? t.marketEnableRestart : t.installRestart)
+            : result?.enabled ? t.enabled : t.installed,
     failed: archiveFailed ? t.marketArchiveFailed : updating ? t.marketUpdateFailed : t.installFailed,
     cancelled: t.installCancelled,
     unknown: t.installUnknown,

@@ -37,6 +37,7 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
   let indexTap: ((html: string) => string) | undefined;
   const disposers: (() => void | Promise<void>)[] = [];
   const subscriptions: string[] = [];
+  let inventoryReads = 0;
   const ctx: HostContext = {
     fs: {
       resolve: async () => {
@@ -87,7 +88,7 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
       modifyRecord: async () => undefined,
       deleteRecord: async () => {},
     },
-    pluginManager: { listBundles: async () => [] },
+    pluginManager: { listBundles: async () => { inventoryReads++; return []; } },
     profileContext: { installAnchor: anchor, home: dir },
     workspaceRegistry: { list: () => [] },
     sessionQuery: { readSurface: async () => ({ events: [] }) },
@@ -129,12 +130,18 @@ for (const dedicatedDesktop of [false, true]) test(`native authorization and del
       headers: { Cookie: "owner=test" },
     });
     assert.deepEqual(await account.json(), { status: "anonymous" });
+    const preview = await fetch(base + "/catalog?view=local&language=zh", { headers: { Cookie: "owner=test" } });
+    assert.equal(preview.status, 200);
+    const previewState = await preview.json();
+    assert.equal(previewState.inventoryPending, true);
+    assert.deepEqual(previewState.items.slice(0, 2).map(({ title }: { title: string }) => title), ["设计工作台", "视频工作台"]);
+    assert.equal(inventoryReads, 0);
     const catalog = await fetch(base + "/catalog", { headers: { Cookie: "owner=test" } });
     assert.equal(catalog.status, 200);
     const market = await catalog.json();
     assert.equal(market.runtimeVersion, runtimeVersion);
     assert.deepEqual(market.items.slice(0, 2).map(({ title, compatible }: { title: string; compatible: boolean }) =>
-      [title, compatible]), [["Design", true], ["Video", true]]);
+      [title, compatible]), [["Design Studio", true], ["Video Studio", true]]);
     const availability=await fetch(base+'/cloud/availability',{headers:{Cookie:'owner=test'}});
     assert.deepEqual(await availability.json(),{enabled:false});
     assert.equal((await fetch(base+'/cloud/projects',{method:'POST',headers:{Cookie:'owner=test','Content-Type':'application/json'},body:'{}'})).status,409);

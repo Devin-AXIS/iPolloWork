@@ -2,14 +2,15 @@ import {useEffect,useRef,useState,useSyncExternalStore} from 'react'
 import {PluginArtworkDefault} from '@deepseek-ai/dsh-client-ui-primitives'
 import {FormSelect,TextInput} from '../../../_shared/ui/controls.tsx'
 import type {Enterprise,EnterpriseCatalog,OrganizationPublication} from '../shared/enterprise.ts'
+import {chinesePluginIntroductions} from '../shared/plugin-introductions.ts'
 import type {request} from './api.ts'
 import type {Labels} from './locale.ts'
 import {installPending,type MarketInstallation} from './market-installation.ts'
 import css from './suite.module.css'
 
 /** Read the existing authorized publication list; resolve the exact release again at install time. */
-export function OrganizationMarket({call,installation,revision,t}:{
-  call:typeof request|undefined;installation:MarketInstallation;revision:number;t:Labels
+export function OrganizationMarket({call,installation,revision,chinese,t}:{
+  call:typeof request|undefined;installation:MarketInstallation;revision:number;chinese:boolean;t:Labels
 }) {
   const [organizations,setOrganizations]=useState<Enterprise[]>([])
   const [selected,setSelected]=useState('')
@@ -60,7 +61,9 @@ export function OrganizationMarket({call,installation,revision,t}:{
   }
   if(!call)return <p className={css.empty}>{t.enterpriseUnavailable}</p>
   const signedOut=error==='IPW_SIGN_IN_REQUIRED'
-  const filtered=items?.filter(item=>`${item.title} ${item.packageName??''} ${item.description}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
+  const description=(item:OrganizationPublication)=>(chinese && item.packageName && !/\p{Script=Han}/u.test(item.description)
+    ? chinesePluginIntroductions.get(item.packageName) : undefined) ?? item.description
+  const filtered=items?.filter(item=>`${item.title} ${item.packageName??''} ${description(item)}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const pending=Boolean(task&&(installPending(task.phase)||task.phase==='unconfirmed'))
   return <div aria-busy={!items&&!error}>
     {organizations.length>0&&<div className={css.toolbar}>
@@ -79,7 +82,7 @@ export function OrganizationMarket({call,installation,revision,t}:{
           <span className={css.icon}><PluginArtworkDefault size={36}/></span>
           <div className={css.cardCopy}>
             <div className={css.titleRow}><h2>{item.title}</h2><span className={css.version}>{item.publishedVersion}</span></div>
-            <p className={css.cardDescription}>{item.description}</p>
+            <p className={css.cardDescription}>{description(item)}</p>
             <div className={css.cardMeta}><span>{organization?.name}</span><span aria-hidden="true">·</span><span>{item.packageName}</span></div>
           </div>
         </div>

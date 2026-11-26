@@ -1,4 +1,6 @@
 /** Shared, credential-free records sent from the Host to the browser. */
+export const SESSION_TITLES_BUNDLE = '@deepseek-ai/dsh-experimental-session-titles-bundle'
+
 export interface AccountUser { id: string; name: string; email: string }
 export type AccountState =
   | { status: 'anonymous' }
@@ -14,7 +16,10 @@ export interface MarketItem {
   enableOnInstall?: boolean;
   update?: 'archive' | 'git';
 }
-export interface MarketState { title: string; items: MarketItem[]; categories: { id: string; title: string }[]; runtimeVersion: string; canManage?: boolean }
+export interface MarketState {
+  title: string; items: MarketItem[]; categories: { id: string; title: string }[]; runtimeVersion: string
+  canManage?: boolean; inventoryPending?: boolean
+}
 export interface SuiteInfo { name: 'iPolloWork'; version: string }
 
 /** Narrow native services used by this package; no runtime service is reimplemented. */
