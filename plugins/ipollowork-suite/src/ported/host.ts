@@ -16,7 +16,7 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { bundleAuthorization } from './credentials.ts'
-import { manifestSchema, type ActionContext, type BusinessRuntime, type BusinessService, type BundleState } from './contracts.ts'
+import { manifestSchema, socialLoginPlugins, type ActionContext, type BusinessRuntime, type BusinessService, type BundleState } from './contracts.ts'
 import { capabilityActions } from './media.ts'
 import { frameStyle } from './frame-style.ts'
 
@@ -27,6 +27,11 @@ function frameSetup(nonce = '', prefix = ''): string {
 }
 
 const callSchema = z.object({ workspace: z.string().min(1), sessionId: z.string().optional(), resource: z.string(), action: z.string(), input: z.record(z.string(), z.unknown()).default({}) }).strict()
+const socialObservation = z.object({
+  type: z.literal('ipollo-social-login'), requestId: z.number().int().positive(),
+  input: z.object({ plugin: z.string(), workspace: z.string().min(1), sessionId: z.string().min(1),
+    browserProfileId: z.uuid(), url: z.string().max(2000), tree: z.string().min(1).max(25_000) }).strict(),
+})
 const mime: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.woff2': 'font/woff2' }
 const json = (res: ServerResponse, status: number, value: unknown) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(value)) }
 async function body(req: IncomingMessage): Promise<unknown> {
@@ -91,6 +96,28 @@ export async function applyBundle(ctx: Context, raw: unknown, root: string): Pro
     if (!actionFn) throw new Error('Plugin action unavailable')
     return actionFn(input, context)
   }
+  const observer = socialLoginPlugins.has(manifest.id) && actions.find(action => action.id === 'observe-browser-session')
+  if (observer && process.send) ctx.effect(() => {
+    const receive = (message: unknown): void => {
+      const parsed = socialObservation.safeParse(message)
+      if (!parsed.success || parsed.data.input.plugin !== manifest.id) return
+      const { requestId, input: { workspace: id, sessionId, browserProfileId, url, tree } } = parsed.data
+      const reply = (result: 'waiting' | 'connected' | 'mismatch' | 'duplicate', error?: string): void => {
+        if (process.connected) process.send?.({ type: 'ipollo-social-login', requestId, result, error }, () => {})
+      }
+      void (async () => {
+        const current = workspace(id)
+        if (!current.sessionIds.some(candidate => candidate === sessionId)) throw new Error('Invalid desktop login session')
+        const value = z.object({ connected: z.boolean(), reason: z.string().optional() }).parse(
+          await invoke(id, observer.resource, observer.id, { browserProfileId, url, tree },
+            { directory: current.path, workspaceId: id, sessionId, signal: lifetime.signal }))
+        reply(value.connected ? 'connected' : value.reason === 'duplicate' ? 'duplicate'
+          : value.reason === 'account_mismatch' || value.reason === 'identity_mismatch' ? 'mismatch' : 'waiting')
+      })().catch(() => reply('waiting', 'Account recognition unavailable'))
+    }
+    process.on('message', receive)
+    return () => { process.off('message', receive) }
+  }, 'ported plugin: desktop account recognition')
   ctx.effect(() => async () => {
     lifetime.abort(); for (const request of pending) request.destroy()
     await Promise.allSettled([...services.values()].map(async value => (await value).dispose?.()))

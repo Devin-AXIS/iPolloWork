@@ -2,6 +2,7 @@ lib/
 *.tgz
 node_modules/
 business/runtime/
+business/skills/xhs-ops-worker/app/data/
 business/service/*.js
 NOTICE.dependencies.txt
 business/THIRD-PARTY-LICENSES.txt

@@ -106,11 +106,11 @@
     </main>
   </div>
 
-  <dialog id="account-dialog" class="account-dialog">
+  <dialog id="account-dialog" class="account-dialog" aria-labelledby="account-dialog-title" aria-describedby="account-dialog-hint">
     <form id="account-form" method="dialog">
       <header><div><h3 id="account-dialog-title">添加公众号</h3></div><button id="close-account-dialog" class="button icon" type="button" aria-label="关闭">×</button></header>
-      <p id="account-dialog-hint">每个账号的 AppID 和 AppSecret 会独立保存在 iPolloWork 加密授权仓库中。</p>
-      <label>账号标识 <span>用于切换和定时任务，例如“品牌主号”</span><input id="account-name" maxlength="80" autocomplete="off" placeholder="品牌主号" required></label>
+      <p id="account-dialog-hint">填写公众号后台的开发凭据。</p>
+      <label>账号名称<input id="account-name" maxlength="80" autocomplete="off" placeholder="品牌主号" required></label>
       <label>AppID<input id="account-appid" maxlength="128" autocomplete="off" placeholder="wx…"></label>
       <label>AppSecret<input id="account-secret" type="password" maxlength="256" autocomplete="new-password" placeholder="请输入 AppSecret"></label>
       <footer>

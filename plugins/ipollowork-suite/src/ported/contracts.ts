@@ -46,3 +46,5 @@ export interface BundleState {
   connections: { accountId: string; methodId: string; status: string; active: boolean }[];
   skills: { id: string; title: string }[];
 }
+
+export const socialLoginPlugins = new Set(['douyin-ops', 'wechat-channels-ops', 'xiaohongshu-ops'])

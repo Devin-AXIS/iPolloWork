@@ -42,24 +42,26 @@ export class BrowserOperations {
     const account = this.store.list('account', null, 50).find(item => item.browserProfileId === input.browserProfileId);
     if (!account) return { connected: false, reason: 'profile_required' };
     const url = new URL(required(input.url, '当前页面地址'));
-    if (url.origin !== 'https://www.douyin.com' || url.pathname !== '/user/self' || url.username || url.password) return { connected: false, reason: 'own_page_required' };
+    if (url.origin !== 'https://www.douyin.com' || !/^\/user\/[\w-]+\/?$/.test(url.pathname) || url.username || url.password) return { connected: false, reason: 'own_page_required' };
     const tree = required(input.tree, '可见页面', 100000);
     const entries = tree.split('\n').flatMap(line => {
       const match = line.match(/^\s*(?:\[@[^\]]+\]\s*)?(heading|StaticText|tab|button) ("(?:[^"\\]|\\.)*")(.*)$/);
       if (!match) return [];
       try { return [{ role: match[1], text: JSON.parse(match[2]), detail: match[3] }]; } catch { return []; }
     });
-    const nickname = entries.find(item => item.role === 'heading' && /\blevel=1\b/.test(item.detail))?.text;
-    const identityIndex = entries.findIndex(item => item.role === 'StaticText' && /^抖音号[：:]/.test(item.text));
-    const identityLabel = entries[identityIndex]?.text.replace(/^抖音号[：:]\s*/, '');
+    const identityIndex = entries.findIndex(item => item.role === 'StaticText' && /^抖音号\s*[：:]/.test(item.text));
+    const nickname = [...entries.slice(0, Math.max(0, identityIndex))].reverse()
+      .find(item => item.role === 'heading' && /\blevel=1\b/.test(item.detail))?.text;
+    const identityLabel = entries[identityIndex]?.text.replace(/^抖音号\s*[：:]\s*/, '');
     const webIdentity = identityLabel || (entries[identityIndex + 1]?.role === 'StaticText' ? entries[identityIndex + 1].text : '');
     const ownsPage = entries.some(item => item.role === 'button' && ['编辑资料', '批量管理'].includes(item.text))
       && entries.some(item => item.role === 'tab' && ['私密作品', '观看历史'].includes(item.text));
     if (identityIndex < 0 || !nickname || !/^[\w.-]{1,200}$/.test(webIdentity) || !ownsPage) return { connected: false, reason: 'identity_not_visible' };
     if (account.webIdentity && account.webIdentity !== webIdentity) return { connected: false, reason: 'account_mismatch' };
+    if (this.store.list('account', null, 50).some(item => item.id !== account.id && item.webIdentity === webIdentity)) return { connected: false, reason: 'duplicate' };
     return this.verify({ accountId: account.id, actualProfileId: `douyin-ops:${account.browserProfileId}`,
-      actualAccount: webIdentity, nickname, profileUrl: account.profileUrl || url.href,
-      evidence: `宿主可见的本人主页 /user/self 显示昵称 ${nickname}、抖音号 ${webIdentity}，并存在个人管理与私密作品或观看历史入口。` });
+      actualAccount: webIdentity, nickname, profileUrl: account.profileUrl || url.origin + url.pathname.replace(/\/$/, ''),
+      evidence: `本人主页显示昵称 ${nickname}、抖音号 ${webIdentity}，并存在个人管理与私密作品或观看历史入口。` });
   }
   verify(input) {
     const account = this.ops.account(input.accountId);

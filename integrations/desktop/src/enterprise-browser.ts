@@ -35,7 +35,8 @@ export class EnterpriseDesktop {
   private readonly active = new Map<string, BrowserWindow>()
   private readonly tracked = new Map<string, { session: Session; stop: () => void }>()
 
-  constructor(private readonly directory: string, private readonly localHost: () => string | undefined) {}
+  constructor(private readonly directory: string, private readonly localHost: () => string | undefined,
+    private readonly applicationIconPath: string) {}
 
   handle(message: EnterpriseDesktopMessage): Promise<unknown> {
     return this.serialize(async () => {
@@ -143,7 +144,7 @@ export class EnterpriseDesktop {
     })
     profile.on('will-download', event => event.preventDefault())
     const window = new BrowserWindow({
-      title: input.label, width: 1060, height: 760, autoHideMenuBar: true,
+      title: input.label, width: 1060, height: 760, autoHideMenuBar: true, icon: this.applicationIconPath,
       webPreferences: {
         session: profile, sandbox: true, contextIsolation: true, nodeIntegration: false,
         webviewTag: false, devTools: false, navigateOnDragDrop: false,

@@ -14,6 +14,8 @@ export default defineConfig({
       'integrations/desktop/tests/account-origin.spec.ts',
       'integrations/desktop/tests/development-project.spec.ts',
       'integrations/desktop/tests/plugin-update.spec.ts',
+      'integrations/desktop/tests/macos-update-location.spec.ts',
+      'integrations/desktop/tests/social-login.spec.ts',
       'integrations/desktop/tests/smoke-runtime.spec.ts',
       'integrations/desktop/tests/welcome-renderer.client.spec.tsx'],
     setupFiles: ['./scripts/test-proxy-environment.ts'],

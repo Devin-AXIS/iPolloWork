@@ -7,6 +7,7 @@ import type { DesktopKeyboardApi, DesktopShortcutsApi } from '@deepseek-ai/dsh-c
 import type { IpcMainInvokeEvent } from 'electron'
 import type { DesktopBrowserBridge } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
 import type { DesktopFileDrag } from '@deepseek-ai/dsh-util-file-drag'
+import type { SocialLoginRequest, SocialLoginResult } from './social-login.ts'
 
 export const DESKTOP_VERSION_ARGUMENT = '--ipollo-app-version='
 export const DESKTOP_FIXED_UPDATE_CHANNEL_ARGUMENT = '--ipollo-fixed-update-channel'
@@ -29,6 +30,7 @@ export const DESKTOP_IPC = {
   browserAcquire: 'dsh-desktop:browser-acquire',
   browserRelease: 'dsh-desktop:browser-release',
   browserOpenRequested: 'dsh-desktop:browser-open-requested',
+  socialLogin: 'ipollo-desktop:social-login',
   directoryPick: 'dsh-desktop:directory-pick',
   fileDragPrepare: 'dsh-desktop:file-drag-prepare',
   fileDragCancel: 'dsh-desktop:file-drag-cancel',
@@ -99,6 +101,8 @@ export interface DshDesktopProductApi {
   readonly version?: string
   readonly appVersion: () => Promise<string>
   readonly browser: DesktopBrowserBridge
+  readonly socialLogin: (request: SocialLoginRequest) => Promise<SocialLoginResult>
+  readonly socialLoginQrEntry: true
   readonly organizationBrowser: true
   readonly organizationPackageSaveAs: true
   readonly fileDrag: DesktopFileDrag

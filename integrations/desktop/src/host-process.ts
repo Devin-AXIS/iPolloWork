@@ -8,6 +8,7 @@ import type { PlatformSession } from '@deepseek-ai/dsh-deepseek-account'
 import { desktopNodeEnvironment } from './node-environment.ts'
 import { enterpriseDesktopMessage, type EnterpriseDesktopMessage } from './enterprise-desktop-protocol.ts'
 import { parsePluginOperationRecord, type PluginOperationRecord, type PluginOperationRunId } from '@deepseek-ai/dsh-plugin-manager/diagnostic'
+import type { SocialLoginObservation, SocialLoginObservationResult } from './social-login.ts'
 
 interface ReadyEvent {
   readonly type: 'ready'
@@ -45,6 +46,11 @@ type DesktopHostEvent = ReadyEvent | FatalEvent | PlatformSessionEvent | {
   readonly requestId: number
   readonly activeTasks: boolean
   readonly scheduledTasks: boolean
+  readonly error?: string
+} | {
+  readonly type: 'ipollo-social-login'
+  readonly requestId: number
+  readonly result: SocialLoginObservationResult
   readonly error?: string
 }
 
@@ -119,6 +125,10 @@ function isDesktopHostEvent(message: unknown): message is DesktopHostEvent {
     case 'quit-inspection':
       return Number.isSafeInteger(candidate.requestId) && typeof candidate.activeTasks === 'boolean'
         && typeof candidate.scheduledTasks === 'boolean' && (candidate.error === undefined || typeof candidate.error === 'string')
+    case 'ipollo-social-login':
+      return Number.isSafeInteger(candidate.requestId) && typeof candidate.result === 'string'
+        && ['waiting', 'connected', 'mismatch', 'duplicate'].includes(candidate.result)
+        && (candidate.error === undefined || typeof candidate.error === 'string')
     default:
       return false
   }
@@ -348,9 +358,16 @@ export class DesktopHostProcess {
     return response.resource
   }
 
+  async observeSocialLogin(input: SocialLoginObservation, signal: AbortSignal): Promise<SocialLoginObservationResult> {
+    const response = await this.control({ type: 'ipollo-social-login', input }, 8_000, 'Account recognition timed out', 'social login', signal)
+    if (response.type !== 'ipollo-social-login') throw new Error('Unexpected account recognition response')
+    return response.result
+  }
+
   private async control(
     request: { readonly type: 'update-tasks'; readonly action: 'inspect' | 'lock' | 'unlock' } | { readonly type: 'quit-inspection' }
-      | { readonly type: 'file-drag-resource'; readonly address: string },
+      | { readonly type: 'file-drag-resource'; readonly address: string }
+      | { readonly type: 'ipollo-social-login'; readonly input: SocialLoginObservation },
     deadlineMs: number, deadlineMessage: string, operation: string, signal?: AbortSignal,
   ): Promise<DesktopHostControlResponse> {
     const child = this.child

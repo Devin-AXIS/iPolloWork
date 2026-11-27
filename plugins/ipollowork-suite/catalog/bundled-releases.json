@@ -139,38 +139,10 @@
       "tag": "v1.0.20"
     },
     {
-      "name": "@ipollo/dsh-wechat-official",
-      "version": "0.1.8",
-      "file": "ipollo-dsh-wechat-official-0.1.8-0c05b558efbf.tgz",
-      "sha256": "0c05b558efbfa0e44207343b628dfc590929b30e1fde276562b5941fc584cd5a",
-      "tag": "v1.0.20"
-    },
-    {
-      "name": "@ipollo/dsh-douyin-ops",
-      "version": "0.1.7",
-      "file": "ipollo-dsh-douyin-ops-0.1.7-eee19e6a3609.tgz",
-      "sha256": "eee19e6a3609bd49cf2d81110e1456dd388203ec4e875ab66114fca5be273b53",
-      "tag": "v1.0.22"
-    },
-    {
       "name": "@ipollo/dsh-media-studio",
       "version": "0.1.9",
       "file": "ipollo-dsh-media-studio-0.1.9-322ebd259f48.tgz",
       "sha256": "322ebd259f48cad8c2efd0b5681dc451eaefbf88a21f9d2f3f73e33e11a6c6a1",
-      "tag": "v1.0.22"
-    },
-    {
-      "name": "@ipollo/dsh-wechat-channels-ops",
-      "version": "0.1.7",
-      "file": "ipollo-dsh-wechat-channels-ops-0.1.7-654599bf34be.tgz",
-      "sha256": "654599bf34be8aa91baef1a3979ada95f88e70f3cd7afcc4ddc6d099a80770ac",
-      "tag": "v1.0.22"
-    },
-    {
-      "name": "@ipollo/dsh-xiaohongshu-ops",
-      "version": "0.1.9",
-      "file": "ipollo-dsh-xiaohongshu-ops-0.1.9-a2af2ee4f07b.tgz",
-      "sha256": "a2af2ee4f07b6d97241da6c4405071194181b375b7fbca554a33704c08cca82b",
       "tag": "v1.0.22"
     },
     {
@@ -179,6 +151,34 @@
       "file": "ipollo-dsh-decision-intelligence-1.0.4-7a5edde4f883.tgz",
       "sha256": "7a5edde4f88354ac9823607945d2f5124014687004e4f76a81afb99312e22bd2",
       "tag": "v1.0.22"
+    },
+    {
+      "name": "@ipollo/dsh-wechat-official",
+      "version": "0.1.9",
+      "file": "ipollo-dsh-wechat-official-0.1.9-9decd162096e.tgz",
+      "sha256": "9decd162096e31390cda9d80ec344d8629707202a217960d456a3324c7bbcfc8",
+      "tag": "v1.0.22"
+    },
+    {
+      "name": "@ipollo/dsh-douyin-ops",
+      "version": "0.1.8",
+      "file": "ipollo-dsh-douyin-ops-0.1.8-3398b55edc04.tgz",
+      "sha256": "3398b55edc04891778e2830e3640b5fed510e0e301f3af67cf7277cc3572900d",
+      "tag": "v1.0.22"
+    },
+    {
+      "name": "@ipollo/dsh-xiaohongshu-ops",
+      "version": "0.1.10",
+      "file": "ipollo-dsh-xiaohongshu-ops-0.1.10-3632c6762b5d.tgz",
+      "sha256": "3632c6762b5d956d58a5a16f44c553b9b73f13d72431100dcd15e98ba5290323",
+      "tag": "v1.0.22"
+    },
+    {
+      "name": "@ipollo/dsh-wechat-channels-ops",
+      "version": "0.1.10",
+      "file": "ipollo-dsh-wechat-channels-ops-0.1.10-d4310ab44ac8.tgz",
+      "sha256": "d4310ab44ac836802564f410686167bad50fe58296dad219e514949cb7a18851",
+      "tag": "v1.0.23"
     }
   ]
 }

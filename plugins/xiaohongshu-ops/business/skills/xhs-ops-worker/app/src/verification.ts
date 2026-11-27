@@ -14,11 +14,12 @@ export function observeBrowserSession(db: OpsDatabase, sessionId: string, addres
     if (bound && bound.sessionStatus !== 'reauthorize') db.setAccountSession(bound.id, 'reauthorize', { error: '请登录小红书，返回运营台后会自动连接' })
     return { connected: false }
   }
-  if (url.pathname !== '/new/home') return { connected: false }
-  const texts = [...tree.matchAll(/StaticText ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]!) as string)
-  const identity = texts.find(value => /^小红书账号[:：]\s*\S+$/.test(value))
-  if (!identity) return { connected: false }
-  const profileId = identity.replace(/^小红书账号[:：]\s*/, '')
+  if (!/^\/new\/home\/?$/.test(url.pathname)) return { connected: false }
+  const texts = [...tree.matchAll(/(?:StaticText|heading) ("(?:[^"\\]|\\.)*")/g)].map(match => JSON.parse(match[1]!) as string)
+  const marker = texts.findIndex(value => /^小红书(?:账号|号)\s*[:：]/.test(value))
+  if (marker < 0) return { connected: false }
+  const profileId = texts[marker]!.replace(/^小红书(?:账号|号)\s*[:：]\s*/, '') || texts[marker + 1]
+  if (!profileId || !/^\S{1,200}$/.test(profileId)) return { connected: false }
   const brandIndex = texts.indexOf('创作服务平台')
   const actualName = brandIndex >= 0 ? texts[brandIndex + 1] : undefined
   const account = accounts.find(item => item.enabled && item.expectedProfileId === profileId)
@@ -32,7 +33,7 @@ export function observeBrowserSession(db: OpsDatabase, sessionId: string, addres
   }
   if (bound && bound.expectedProfileId !== profileId) {
     if (bound.sessionStatus !== 'reauthorize') db.setAccountSession(bound.id, 'reauthorize', { error: '当前浏览器登录了其他账号，请切换回此账号' })
-    return { connected: false }
+    return { connected: false, reason: 'account_mismatch' }
   }
   if (account && account.browserProfileId !== browserProfileId) return { connected: false }
   if (!account || !actualName || actualName.toLocaleLowerCase() !== account.handle.toLocaleLowerCase()) return { connected: false }

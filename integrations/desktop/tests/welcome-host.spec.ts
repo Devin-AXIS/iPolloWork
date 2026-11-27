@@ -160,9 +160,11 @@ it('uses the iPolloWork account service without returning the session grant', as
 
 it.each([
   [401, 'IPW_SIGN_IN_REQUIRED', { ok: false, reason: 'session-rejected' }],
+  [401, 'IPW_INVALID_LOGIN', { ok: false, reason: 'invalid-credentials' }],
   [400, 'IPW_INVALID_LOGIN', { ok: false, reason: 'invalid-credentials' }],
   [401, 'UNRELATED_ERROR', { ok: false }],
   [502, 'IPW_ACCOUNT_UNAVAILABLE', { ok: false, reason: 'service-unavailable' }],
+  [502, 'IPW_ACCOUNT_CONNECTION_FAILED', { ok: false, reason: 'connection-interrupted' }],
   [504, 'IPW_ACCOUNT_TIMEOUT', { ok: false, reason: 'timeout' }],
   [429, 'IPW_ACCOUNT_UNAVAILABLE', { ok: false, reason: 'rate-limited' }],
 ] as const)('returns a safe sign-in result for HTTP %s with %s', async (status, error, expected) => {

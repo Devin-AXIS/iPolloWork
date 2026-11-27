@@ -498,6 +498,13 @@ export class OpsDatabase {
     return row ? accountFromRow(row) : null
   }
 
+  ensureBrowserProfile(id: number): string {
+    const row = this.database.prepare(`UPDATE accounts SET browser_profile_id = COALESCE(browser_profile_id, ?)
+      WHERE id = ? AND deleted_at IS NULL AND enabled = 1 RETURNING browser_profile_id`).get(randomUUID(), id) as Row | undefined
+    if (typeof row?.browser_profile_id !== 'string') throw new Error('账号不存在或已停用')
+    return row.browser_profile_id
+  }
+
   createAccount(input: {
     handle: string; displayName: string; expectedProfileId: string; profileUrl: string; avatarUrl?: string | null;
     workerThreadId?: string | null; browserProfileId?: string | null; position: string; audience: string; noteTone: string; commentTone: string;

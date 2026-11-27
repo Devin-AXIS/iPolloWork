@@ -4,6 +4,17 @@ import { Jobs } from './jobs.mjs';
 import { now, text, record } from './validation.mjs';
 import { officialUrl } from './validation.mjs';
 
+const channelIdLabel = /^视频号\s*ID/i;
+const channelNameLabel = /^(?:视频号(?:名称|昵称)|账号名称|帐号名称|账户名称)(?:\s*[:：]|$)/;
+const pageHeadings = new Set(['视频号助手', '首页', '账号信息', '帐号信息', '账号设置', '帐号设置', '账号管理', '设置']);
+
+function identityField(entries, index, label) {
+  const inline = entries[index]?.value.replace(label, '').replace(/^\s*[:：]\s*/, '').trim();
+  if (inline) return inline;
+  const next = entries[index + 1]?.value;
+  return /^[:：]$/.test(next ?? '') ? entries[index + 2]?.value : next;
+}
+
 export class Operations {
   constructor({ store, dataDir, workspaceRoot }) {
     this.store = store;
@@ -30,7 +41,8 @@ export class Operations {
     return { account: this.store.put('account', account) };
   }
   connectAccount(input) {
-    const prior = input.accountId ? record(this.store, 'account', input.accountId) : null;
+    const prior = input.accountId ? record(this.store, 'account', input.accountId)
+      : this.store.list('account', null, 50).find(item => item.autoNamed && !item.channelId);
     if (!prior && this.store.count('account') >= 50) fail('最多管理 50 个账号');
     const account = this.store.put('account', { ...prior, id: prior?.id || randomUUID(),
       browserProfileId: prior?.browserProfileId || randomUUID(), name: prior?.name || '等待扫码连接',
@@ -42,6 +54,7 @@ export class Operations {
   }
   observeBrowserSession(input, context) {
     const url = new URL(officialUrl(input.url));
+    if (url.origin !== 'https://channels.weixin.qq.com') return { connected: false };
     const browserProfileId = text(input.browserProfileId, '浏览器环境', 36);
     const account = this.store.list('account', null, 50).find(item => item.browserProfileId === browserProfileId);
     if (!account) return { connected: false };
@@ -50,18 +63,24 @@ export class Operations {
         verifiedSessionId: null, connectionError: '视频号登录已失效，请重新扫码登录', updatedAt: now() });
       return { connected: false, accountId: account.id };
     }
-    if (!['/platform', '/platform/', '/platform/home'].includes(url.pathname)) return { connected: false };
+    if (!/^\/platform(?:\/home)?\/?$/.test(url.pathname)) return { connected: false };
     const tree = text(input.tree, '页面内容', 100_000);
     const entries = [...tree.matchAll(/\b(StaticText|heading)\s+("(?:[^"\\]|\\.)*")/g)].map(match => {
-      try { return { role: match[1], value: JSON.parse(match[2]) }; } catch { return null; }
+      try { return { role: match[1], value: JSON.parse(match[2]).trim() }; } catch { return null; }
     }).filter(Boolean);
-    const marker = entries.findIndex(entry => /^视频号ID\s*[:：]?\s*\S*$/.test(entry.value));
+    const marker = entries.findIndex(entry => channelIdLabel.test(entry.value));
     if (marker < 0) return { connected: false, accountId: account.id };
-    const inline = entries[marker].value.replace(/^视频号ID\s*[:：]?\s*/, '');
-    const actualChannelId = text(inline || entries[marker + 1]?.value, '页面视频号 ID', 100);
-    if (/\s/.test(actualChannelId)) return { connected: false, accountId: account.id };
-    const actualName = [...entries.slice(0, marker)].reverse().find(entry => entry.role === 'heading' && entry.value.trim())?.value;
-    if (!actualName) return { connected: false, accountId: account.id };
+    const actualChannelId = identityField(entries, marker, channelIdLabel);
+    if (!actualChannelId || !/^\S{1,100}$/.test(actualChannelId)
+      || channelNameLabel.test(actualChannelId) || channelIdLabel.test(actualChannelId) || pageHeadings.has(actualChannelId))
+      return { connected: false, accountId: account.id };
+    const nameMarker = entries.findIndex((entry, index) => Math.abs(index - marker) <= 8 && channelNameLabel.test(entry.value));
+    const heading = [...entries.slice(0, marker)].reverse()
+      .find(entry => entry.role === 'heading' && entry.value && !pageHeadings.has(entry.value));
+    const actualName = (nameMarker >= 0 ? identityField(entries, nameMarker, channelNameLabel) : undefined) ?? heading?.value;
+    if (!actualName || actualName.length > 100 || pageHeadings.has(actualName)
+      || channelIdLabel.test(actualName) || channelNameLabel.test(actualName))
+      return { connected: false, accountId: account.id };
     const duplicate = this.store.list('account', null, 50).find(item => item.id !== account.id && item.channelId === actualChannelId);
     if (duplicate) {
       this.store.put('account', { ...account, status: 'conflict', connectionError: '这个视频号已经添加过了', updatedAt: now() });

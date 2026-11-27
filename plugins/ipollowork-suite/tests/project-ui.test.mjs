@@ -130,7 +130,12 @@ test('project sharing offers all scopes and keeps individual permission edits',a
       scope.dispatchEvent(new ui.dom.window.Event('change',{bubbles:true}))
     })
     assert.equal(ui.button('Save').disabled,true)
-    await act(async()=>ui.button('Engineering').click())
+    const picker=scope.closest('[role="dialog"]').querySelector('button[aria-label^="departmentRecipients"]')
+    await act(async()=>picker.click())
+    assert.equal(picker.getAttribute('aria-expanded'),'true')
+    const department=scope.closest('[role="dialog"]').querySelector('[role="group"][aria-label="departmentRecipients"] input[type="checkbox"]')
+    await act(async()=>department.click())
+    assert.equal(department.checked,true)
     await act(async()=>ui.button('Save').click())
     assert.deepEqual(JSON.parse(JSON.stringify(writes)),[
       {method:'PATCH',data:[{subjectId:'member',role:'maintain'}]},

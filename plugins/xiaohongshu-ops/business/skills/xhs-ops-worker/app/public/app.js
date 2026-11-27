@@ -8,7 +8,6 @@
   let studioBusy = false
   let studioDirty = false
   let previousState
-  let newAccountProfileId = sessionStorage.getItem('xhs-new-account-profile')
   const hostRequests = new Map()
   let hostRequestId = 0
   window.addEventListener('message', event => {
@@ -25,7 +24,7 @@
     if (window === parent) return Promise.reject(new Error(workbenchEntryHint))
     return new Promise((resolve, reject) => {
       const id = ++hostRequestId
-      const timer = setTimeout(() => { hostRequests.delete(id); reject(new Error('当前会话未响应，请确认会话空闲后重试')) }, 15000)
+      const timer = setTimeout(() => { hostRequests.delete(id); reject(new Error('当前会话未响应，请重新打开运营台')) }, method === 'ui/account-login' ? 310000 : 15000)
       hostRequests.set(id, { resolve, reject, timer })
       parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*')
     })
@@ -38,18 +37,30 @@
     }).catch(error => { hostPromise = undefined; throw error })
     return hostPromise
   }
+  const hasDesktopLogin = host => host.hostCapabilities?.experimental?.['ai.ipollo/desktop-account-login'] === true
+  async function signInAccount(id, host) {
+    if (!hasDesktopLogin(host)) throw new Error('请在支持账号登录的 iPolloWork 桌面版中打开运营台')
+    const { browserProfileId } = await request(`/api/accounts/${id}/browser-profile`, { method: 'POST' })
+    const { status } = await hostRequest('ui/account-login', { browserProfileId })
+    if (status === 'connected' || status === 'closed') return status
+    throw new Error({
+      mismatch: '登录的小红书号与已添加的账号不同，请切换回原账号',
+      expired: '暂未识别到登录，请重新扫码并停留在创作服务平台首页',
+    }[status] || '登录窗口暂不可用，请关闭其他登录窗口后重试')
+  }
   document.querySelectorAll('[data-account-login]').forEach(link => link.addEventListener('click', async event => {
     event.preventDefault()
     if (loginPending) return
     loginPending = true
     try {
-      if (link.hasAttribute('data-new-account-login')) {
-        newAccountProfileId ||= crypto.randomUUID()
-        sessionStorage.setItem('xhs-new-account-profile', newAccountProfileId)
-      }
-      const browserProfileId = link.hasAttribute('data-new-account-login') ? newAccountProfileId : link.dataset.browserProfileId
       const host = await getHost()
-      if (browserProfileId && !host.hostCapabilities?.experimental?.['ai.ipollo/browser-profiles']) throw new Error('当前 DSH 版本尚不支持隔离网页账号；请使用已配置的原生浏览器能力')
+      const accountId = link.dataset.loginAccountId
+      if (accountId && window.ipolloPortedHost) {
+        if (await signInAccount(accountId, host) === 'connected') window.location.reload()
+        else toast('登录窗口已关闭，可以重新扫码')
+        return
+      }
+      const browserProfileId = window.ipolloPortedHost ? null : link.dataset.browserProfileId
       const result = await hostRequest('ui/open-link', { url: link.href, ...(browserProfileId ? { browserProfileId } : {}) })
       if (result?.isError) throw new Error('无法打开软件内登录页，请重新打开运营台')
     } catch (error) { toast(error.message, true) }
@@ -154,22 +165,14 @@
     if (!accountPanel) return
     if (open && !accountPanel.open) accountPanel.showModal()
     else if (!open && accountPanel.open) accountPanel.close()
-    if (open) {
-      window.setTimeout(() => document.querySelector('#account-name')?.focus(), 120)
-    }
-  }
-  function startAccountLogin() {
-    setAccountPanel(true)
-
+    if (open) document.querySelector('#account-name')?.focus()
   }
   document.querySelectorAll('[data-open-account-form]').forEach((button) => button.addEventListener('click', event => {
     event.preventDefault()
-    startAccountLogin()
+    setAccountPanel(true)
   }))
   document.querySelector('[data-close-account-form]')?.addEventListener('click', () => {
     setAccountPanel(false)
-    sessionStorage.removeItem('xhs-new-account-profile')
-    newAccountProfileId = null
     document.querySelector('#account-form')?.reset()
   })
 
@@ -185,19 +188,25 @@
       const result = await request('/api/accounts', { method: 'POST', body: JSON.stringify({
         handle: displayName, displayName,
         expectedProfileId: form.get('expectedProfileId'), profileUrl: form.get('profileUrl'), workerThreadId: null,
-        browserProfileId: newAccountProfileId,
         position: form.get('position'), audience: form.get('audience'), noteTone: form.get('noteTone'), commentTone: form.get('commentTone'),
         contentColumns: lines(form.get('contentColumns')), bannedTopics: lines(form.get('bannedTopics')), dailyLimit: Number(form.get('dailyLimit')),
       }) })
-      sessionStorage.removeItem('xhs-new-account-profile')
-      newAccountProfileId = null
-      toast('账号已保存，登录后返回运营台即可自动连接')
       setAccountPanel(false)
       const url = new URL(location.href)
       url.searchParams.set('account', result.account.id)
       url.searchParams.delete('connect')
       url.searchParams.delete('draft')
       url.searchParams.delete('search')
+      loginPending = true
+      try {
+        if (window.ipolloPortedHost) await signInAccount(result.account.id, await getHost())
+      } catch (error) {
+        toast(error.message, true)
+        // Keep the saved account selectable with a single login action.
+        window.history.replaceState(null, '', url.href)
+        window.setTimeout(() => window.location.reload(), 2500)
+        return
+      } finally { loginPending = false }
       window.location.href = url.href
     } catch (error) { toast(error.message, true); restore() }
   })
@@ -236,6 +245,13 @@
     const restore = busy(button, button.hasAttribute('data-sync-analytics') ? '正在发起同步' : '正在发起验证')
     try {
       const host = await getHost()
+      const syncAnalytics = button.hasAttribute('data-sync-analytics')
+      if (!syncAnalytics && window.ipolloPortedHost) {
+        if (await signInAccount(button.dataset.verifyAccount, host) === 'connected') window.location.reload()
+        return
+      }
+      if (syncAnalytics && window.ipolloPortedHost && !host.hostCapabilities?.experimental?.['ai.ipollo/browser-profiles'])
+        throw new Error('此版本的桌面登录支持身份核对。数据可从本页导入 CSV。')
       const sessionId = host.hostContext?.['ai.ipollo/workspace']?.sessionId
       if (!sessionId || !host.hostCapabilities?.message) throw new Error('请先打开一个可对话的会话，再从右侧打开运营台')
       const verification = await request(`/api/accounts/${button.dataset.verifyAccount}/verify`, { method: 'POST', body: JSON.stringify({ sessionId, syncAnalytics: button.hasAttribute('data-sync-analytics') }) })
@@ -251,7 +267,8 @@
       }
       toast(button.hasAttribute('data-sync-analytics') ? '已打开所选账号，正在同步可见数据' : '已打开所选账号，正在核对登录状态')
       window.setTimeout(() => window.location.reload(), 450)
-    } catch (error) { verificationPending = false; toast(error.message, true); restore() }
+    } catch (error) { toast(error.message, true) }
+    finally { verificationPending = false; restore() }
   }))
 
   const studioApi = (action, data = {}) => request(`/api/studio/${action}`, { method: 'POST', body: JSON.stringify({ accountId: pageData.accountId, ...data }) })
@@ -454,10 +471,10 @@
     let polls = 0
     const timer = setInterval(async () => {
       if (++polls > (document.querySelector('.studio-page') ? 1200 : 200)) return clearInterval(timer)
-      if (verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || (document.hidden && !document.querySelector('.studio-page')) || deleteDialog?.open || accountPanel?.open || settingsDialog?.open) return
+      if (loginPending || verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || (document.hidden && !document.querySelector('.studio-page')) || deleteDialog?.open || accountPanel?.open || settingsDialog?.open) return
       try {
         const result = await request('/api/state', { method: 'GET' })
-        if (verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || deleteDialog?.open || accountPanel?.open || settingsDialog?.open) return
+        if (loginPending || verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || deleteDialog?.open || accountPanel?.open || settingsDialog?.open) return
         if ((renderedAccounts && renderedAccounts !== JSON.stringify(JSON.parse(result.state).accounts)) || (previousState && previousState !== result.state)) window.location.reload()
         previousState = result.state
       } catch { /* A transient network failure must not discard the page or user input. */ }
@@ -579,5 +596,5 @@
     });
   }
 
-  try { await initializeUi(); if (new URLSearchParams(location.search).get('connect') === '1') startAccountLogin(); } catch (error) { document.querySelector("main").prepend(Object.assign(document.createElement("p"), { className: "ui-error", textContent: error.message, role: "alert" })); }
+  try { await initializeUi(); if (new URLSearchParams(location.search).get('connect') === '1') setAccountPanel(true); } catch (error) { document.querySelector("main").prepend(Object.assign(document.createElement("p"), { className: "ui-error", textContent: error.message, role: "alert" })); }
 })()

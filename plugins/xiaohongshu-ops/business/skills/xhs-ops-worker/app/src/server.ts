@@ -324,6 +324,12 @@ export function createApp(service: OpsService, options: { uiRuntime?: string; or
       return c.json({ job }, 202)
     } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
+  app.post('/api/accounts/:id/browser-profile', (c) => {
+    try {
+      const id = integer(c.req.param('id'), '账号 ID', 1, Number.MAX_SAFE_INTEGER)
+      return c.json({ browserProfileId: service.db.ensureBrowserProfile(id) })
+    } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
+  })
   app.post('/api/accounts/:id/session', async (c) => {
     try {
       const input = await c.req.json<Record<string, unknown>>()

@@ -85,6 +85,35 @@ test('account diagnostics distinguish DNS, secure connection, and timeout failur
   }
 })
 
+test('sign-in retries a pre-TLS disconnect once and preserves the credential rejection', async () => {
+  const fixture = credentials()
+  const input = { email: user.email, password: 'wrong-password-for-test' }
+  let calls = 0
+  const account = new AccountService(fixture.store, config, new AbortController().signal, async (url, options) => {
+    assert.equal(new URL(String(url)).pathname, '/api/auth/sign-in/email')
+    assert.equal(options?.method, 'POST')
+    assert.deepEqual(JSON.parse(String(options?.body)), input)
+    if (++calls === 1) {
+      const cause = Object.assign(new Error('Client network socket disconnected before secure TLS connection was established'), { code: 'ECONNRESET' })
+      throw new TypeError('fetch failed', { cause })
+    }
+    return json({ code: 'INVALID_EMAIL_OR_PASSWORD' }, 401)
+  })
+  await assert.rejects(account.signIn(input), { code: 'IPW_INVALID_LOGIN', status: 401 })
+  assert.equal(calls, 2)
+  assert.equal(fixture.record(), undefined)
+})
+
+test('sign-in does not replay a reset when the request may have already been sent', async () => {
+  let calls = 0
+  const account = new AccountService(credentials().store, config, new AbortController().signal, async () => {
+    calls++
+    throw new TypeError('fetch failed', { cause: Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' }) })
+  })
+  await assert.rejects(account.signIn({ email: user.email, password: 'test-password' }), { code: 'IPW_ACCOUNT_CONNECTION_FAILED' })
+  assert.equal(calls, 1)
+})
+
 test('a stalled catalog attempt leaves time for one retry inside the original deadline', async () => {
   const stalledConfig = resolveConfig({ accountOrigin: config.accountOrigin, requestTimeoutMs: 5000 })
   let calls = 0

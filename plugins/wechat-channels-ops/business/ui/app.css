@@ -38,6 +38,11 @@
   .table-scroll { overflow-x: auto; }
   .dialog-content { max-width: 560px; }
   .dialog-content .record { padding: 12px 0; }
+  .account-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; }
+  .account-row .record-head { align-items: center; justify-content: flex-start; margin: 0; min-width: 0; }
+  .account-row .caption { margin: 0; }
+  .account-row .caption:empty { display: none; }
+  .account-row .actions { margin: 0; }
   .file-input { display: none; }
   .long-copy { overflow-wrap: anywhere; }
   .loading-icon { animation: spin 1s linear infinite; }

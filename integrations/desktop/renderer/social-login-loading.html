@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+  <style>
+    :root {
+      color-scheme: light dark;
+      --line: color-mix(in srgb, CanvasText 16%, transparent);
+      --secondary: color-mix(in srgb, CanvasText 68%, Canvas);
+    }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      background: Canvas; color: CanvasText; font: 14px/1.5 system-ui, sans-serif;
+    }
+    header {
+      box-sizing: border-box; height: 52px; flex: none; padding: 0 12px;
+      display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line);
+    }
+    .page { flex: 1; min-width: 0; line-height: 1.25; }
+    .page > * { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    h1 { font-size: 14px; font-weight: 500; }
+    #context { margin-top: 3px; color: var(--secondary); font-size: 12px; }
+    main { flex: 1; display: grid; place-items: center; }
+    .feedback { box-sizing: border-box; padding: 24px; max-width: 420px; text-align: center; }
+    [role="status"] { margin: 0; }
+    #spinner {
+      box-sizing: border-box; width: 24px; height: 24px; margin: 0 auto 14px;
+      border: 2px solid color-mix(in srgb, CanvasText 20%, transparent);
+      border-top-color: CanvasText; border-radius: 50%; animation: spin 900ms linear infinite;
+    }
+    button {
+      padding: 4px 12px; min-height: 32px; font: inherit; white-space: nowrap;
+      background: Canvas; color: CanvasText; border: 1px solid var(--line);
+      border-radius: 8px; cursor: pointer;
+    }
+    button:hover { background: color-mix(in srgb, CanvasText 8%, Canvas); }
+    button:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+    .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+    .actions button { margin-top: 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { #spinner { animation: none; } }
+  </style>
+</head>
+<body>
+  <header aria-label="登录浏览器">
+    <button id="leave" type="button">返回运营台</button>
+    <div class="page">
+      <h1 id="platform">平台账号登录</h1>
+      <p id="context" aria-live="polite"></p>
+    </div>
+    <button id="back" type="button" hidden>返回登录页</button>
+    <button id="reload" type="button" hidden>重新加载</button>
+    <button id="direct-toolbar" type="button" hidden>直连重试</button>
+  </header>
+  <main id="feedback">
+    <div class="feedback">
+      <div id="spinner" aria-hidden="true"></div>
+      <p id="message" role="status">正在加载平台登录页…</p>
+      <div class="actions">
+        <button id="retry" type="button" hidden>重试</button>
+        <button id="direct" type="button" hidden>直连重试</button>
+      </div>
+    </div>
+  </main>
+  <script>
+    const elements = Object.fromEntries(
+      ['leave', 'platform', 'context', 'back', 'reload', 'feedback', 'spinner', 'message', 'retry', 'direct', 'direct-toolbar']
+        .map(id => [id, document.getElementById(id)])
+    )
+    for (const [id, action] of [['leave', 'leave'], ['back', 'back'], ['reload', 'retry'], ['retry', 'retry'], ['direct', 'direct'], ['direct-toolbar', 'direct']]) {
+      elements[id].addEventListener('click', () => {
+        history.replaceState(null, '', location.href.split('#')[0])
+        location.hash = action
+      })
+    }
+    globalThis.renderSocialLogin = ({ label, hostname, authorization, notice, message, retry, directRetry }) => {
+      document.title = label
+      elements.platform.textContent = label
+      elements.context.textContent = notice || hostname
+      elements.context.title = notice || hostname
+      elements.back.hidden = !authorization
+      elements.reload.hidden = Boolean(message || authorization)
+      elements['direct-toolbar'].hidden = Boolean(message || authorization || !directRetry)
+      elements.feedback.hidden = !message
+      elements.message.textContent = message || ''
+      elements.spinner.hidden = retry
+      elements.retry.hidden = !retry
+      elements.direct.hidden = !retry || !directRetry || authorization
+    }
+  </script>
+</body>
+</html>

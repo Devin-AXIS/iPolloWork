@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-wechat-channels-ops",
-  "version": "0.1.7",
+  "version": "0.1.10",
   "description": "管理视频号本地草稿、视频封面素材与运营任务，在原生会话中继续工作。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",
@@ -44,7 +44,7 @@
   },
   "scripts": {
     "build": "node ../../integrations/tooling/ported-plugins.mjs build wechat-channels-ops",
-    "check": "node ../../integrations/tooling/ported-plugins.mjs check wechat-channels-ops",
+    "check": "node ../../integrations/tooling/ported-plugins.mjs check wechat-channels-ops && node --test tests/*.test.mjs",
     "pack:check": "npm pack --dry-run"
   },
   "icon": "./icon.svg",

@@ -14,6 +14,9 @@ export async function packNativeArchive(directory,output,npm){
       const binary = `sharp-${process.platform}-${process.arch}`
       const required = `business/runtime/vendor/@img/${binary}/lib/${binary}.node`
       if (!packed.files.some(file => file.path === required)) throw new Error(`Xiaohongshu plugin archive is missing ${required}`)
+      if (packed.files.some(file => file.path.startsWith('business/skills/xhs-ops-worker/app/data/'))) {
+        throw new Error('Xiaohongshu plugin archive contains local account or test data')
+      }
     }
     return packed
   }finally{await rm(staging,{recursive:true,force:true})}

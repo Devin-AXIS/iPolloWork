@@ -40,7 +40,7 @@ Windows 安装核验准确的 Git commit 和 tree，无需文件符号链接权�
 
 服务 schema 22 是已有产品迁移，并非 DSH 新增 schema。构建按导出的服务 schema 常量复制全部迁移；部署从构建镜像读取目标版本，避免继续固定为 21。实际服务器完成备份、向前迁移和切换后就绪验证前，不能宣称部署已完成。
 
-首次启动与重启等待设置时共用 `plugins/ipollowork-suite/src/client/onboarding/OnboardingSurface.tsx`。原有 `shell.overlay` 入口使用公开的 `IconLoadingOutlineRegular` 和 DSH 主题文字色。下次更换固定版本时，在桌面启动期间延迟设置或账号读取，检查加载指示居中、标题栏留空、明暗主题、减少动态效果，以及读取结束后提示退出。
+首次启动与重启等待设置时共用 `plugins/ipollowork-suite/src/client/onboarding/OnboardingSurface.tsx`。原有 `shell.overlay` 入口使用公开的 `IconLoadingOutlineRegular` 和 DSH 主题变量，加载布局在套件样式表到达前即可使用。Windows 桌面外壳为原生窗口按钮使用透明背景，预加载脚本读取 `--dsw-alias-label-primary` 设置按钮符号颜色。更新运行时固定版本时，启动期间同时延迟套件样式表和设置或账号读取，检查启动页到工作区的窗口按钮背景、图标辨识度、窄窗口加载指示居中、明暗主题、减少动态效果和读取完成后的切换。
 
 企业桌面包通过 `integrations/desktop/scripts/pack-enterprise-plugins.ts` 将选择的归档加入现有签名包集合。归档新增的 Cordis 条目随私有 Host 应用从原生 install anchor 加载。下次更换固定版本时，验证 npm 与本地归档、相对入口解析和重复 ID 拒绝，再用独立 profile 启动已安装客户端，修改一项插件偏好后复测覆盖安装。
 
@@ -72,7 +72,7 @@ Suite `0.1.47` 携带 22 个迁移原生包的显示元数据修复。各包导�
 
 Suite `0.1.46` 将多引擎分支 24 个身份的对应清单和经校验的独立原生包加入既有 format-1 市场。`src/ported/host.ts` 使用 `ctx.tools.register`、`ctx.skills.register`、`workspaceRegistry`、所有者准入、沙箱策略、原生凭据记录和生命周期内的 `mcpManager.register`；`src/ported/client.tsx` 使用 `main`、`sidebar.panellist`、`plugins.bundle.config`、`uiWorkspace.connectWorkspace` 及未发送的会话草稿。自有 iframe 桥接复用原生组件，不包含旧宿主或 Agent 运行时。`ServiceCenter.capability` 通过既有账号授权能力接口接通模型，不向插件传递供应商密钥。下次升级复测实际安装包、schema 方言、启停卸载、凭据脱敏、只读和工作区拒绝、MCP 授权、iframe 操作、明暗主题与窄布局。没有对应服务契约的旧版高级媒体操作明确不可用；见[迁移清单](../../docs/multi-engine-plugin-migration.zh.md)。
 
-工作台主题桥接从原生 body 读取 --dsw-/--dsh- 计算 token，只复制 style[data-plugin="@deepseek-ai/dsh-client-ui-primitives"] 样式；升级时复核这些 DOM 约定。本地重定向、Onto 动态扩展导入和 EventSource 地址保留所有者代理前缀。当前 pin 没有旧宿主按账号浏览器资料、自动观察和 ui/open-link 桥接的对应接口，这些流程明确不可用。
+工作台主题桥接从原生 body 读取 --dsw-/--dsh- 计算 token，只复制 style[data-plugin="@deepseek-ai/dsh-client-ui-primitives"] 样式。升级时复核这些 DOM 约定。本地重定向、Onto 动态扩展导入和 EventSource 地址保留所有者代理前缀。
 
 Desktop `1.0.10` 沿用 `initProfile`/`readProfileManifest` 和原生 `dsh.profile.bundles`，补齐已初始化配置缺失的私有 Host；备份原清单后移除重复的公开产品 Bundle 和产品直接依赖。`desktop-runtime.json.sharedPackages` 限定安装包拥有的 Suite/Stage/Host 副本，即使版本相同也恢复为安装包提供。最终原生 Include overlay 仅启用产品入口；Suite 根据 install-anchor 包身份固定该发行版的账号、主题及服务地址，保留其他插件配置和凭据。升级时复测旧 web-only profile、旧及相同版本 Suite、停用条目、已安装 Mac 的真实云端登录、错误密码分类和保持登录后再次进入。欢迎页进入工作区前核验 `/ipollowork-suite/info`，区分凭据错误、会话拒绝、服务异常、超时和限流。详见[升级诊断](../../docs/diagnostics/2026-11-20-mac-login-and-upgrade.md)。
 
@@ -88,6 +88,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 | --- | --- | --- |
 | [桌面更新兼容检查](../desktop/src/plugin-update.ts)和[强更恢复](../desktop/src/mandatory-update-window.ts) | 更新使用原生 profile 启用列表、`resolveBundleDir`、`evaluatePluginCompatibility` 和 `readProfileVersionExemptions` 已有的精确版本许可。迁移计划只收录安装包内已审核的市场归档。 | 在旧客户端安装用户自制的本地链接工作台。兼容更新后打开界面和调用工具，检查源码、设置、数据与启用状态。不兼容链接须能拦截强更。由强更页打开源目录，验证适配后重试，确认同一插件仍启用。 |
 | [组织网页入口](../../plugins/ipollowork-suite/src/client/organization-websites.tsx) | 复用组织设置页面和当前 DSH 连接身份下的套件 Host 接口，由 Work 账号服务判定可见性，并在打开时解析网址。 | 用管理员账号添加按部门和角色授权的链接，用有权限的成员账号打开。修改成员权限后，确认此前显示的入口也无法继续打开。检查深浅主题和窄窗口。 |
+| [资源下发对象](../../plugins/ipollowork-suite/src/client/organization-recipients.tsx) | 套件复用原生 Modal、Button 和表单浮层。Work 账号服务在完整的已授权组织成员目录中搜索，再对结果分页。 | 打开下发资源弹窗，用部分姓名或工号查找不在首屏的成员，并勾选两个部门。确认按 Esc 只关闭下拉框、已选部门保留且提交包含两个部门。检查深浅主题和窄窗口。 |
 | [插件后台安装](../../plugins/ipollowork-suite/src/client/market-installation.ts)与[原生添加插件入口](../../plugins/ipollowork-suite/src/client/add-plugin.ts) | DSH Plugin Manager 的安装请求 ID、`plugin-manager/install-state`、`plugin-manager/changed`、连接重置、`shell.overlay`、`plugins.tab`。原生工具栏的 DOM 是额外依赖，涉及 `data-plugin-toolbar`、菜单角色和本地化标签。 | 分别从工具栏主按钮、下拉菜单和市场开始安装。关闭弹窗并切换页面，确认安装继续、重新打开可见进度、安装结束按钮自动刷新。上游提供可替换的安装入口后移除 DOM 拦截。 |
 | [插件启停客户端限制](../../plugins/ipollowork-suite/src/client/plugin-toggle-limit.ts)与 [Host 限制](../../plugins/ipollowork-suite/src/host/plugin-toggle-limit.ts) | `pluginChanges.bundle(name)` 提供插件包及组件的写入状态。通过原生面板、卡片、详情头部和组件行的 DOM 属性、开关角色及插件包进度状态元素识别开关。已验证连接的 `connection/request` 在 `/api/pluginManager/setBundleEnabled` 和 `/api/pluginManager/setPluginEnabled` 间共用一个 POST 请求名额。 | 延迟一次启用或停用，在列表卡片和组件行用鼠标和键盘尝试下一次操作。确认成功或失败后恢复操作，其他控件仍可使用，并发的已验证请求收到 HTTP 409。上游提供共享的开关禁用状态后移除客户端拦截。 |
 | [精选市场更新](../../plugins/ipollowork-suite/src/host/market.ts) | `listBundles` 提供版本、来源、归属、选中及只读状态。同来源的固定 Git 提交使用 `plugins.tab.update`。归档更新以预期包名、版本和 `enabled: false` 调用原生 `installBundle`，替换同一个依赖时沿用现有选中状态。 | 分别更新已启用、已停用的旧归档，重启核对版本、配置、工程文件和启用状态。验证当前版本变化、归档损坏时拒绝更新，并复验兼容性、离线目录、同来源 Git 更新、明暗主题与窄窗口。[桌面自检](../desktop/scripts/smoke-runtime.ts) 核对市场安装来源，并根据安装包内的运行时清单验证两个离线归档的哈希。 |
@@ -106,7 +107,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 | [品牌和 Windows 标题栏](../../plugins/ipollowork-suite/src/client/brand.css) | 使用套件 theme、原生 slot 及部分 DSH DOM 和 CSS token。工作区顶部的额外 Windows 标志通过移除 `body::before` 覆盖处理。 | 检查标题栏、折叠侧栏、全屏、浅色和暗色。品牌标志和原生窗口控制应各自正确显示。 |
 | [macOS 窗口拖拽](../../plugins/ipollowork-suite/src/client/suite.module.css) | DSH `dsh-v0.2.2-rc.3` 用 `data-global-panel` 标记主内容列，用 `data-window-drag` 标记原生拖拽栏，用 `data-shortcut-modal="settings"` 标记挂在页面根节点外的设置面板。套件按 `--dsh-frame-top-clearance` 设置顶部拖拽区，保留原生窗口控件。 | 在 macOS Electron 中从首页、会话、插件、组织空间、数据、机器人和设置顶部拖动窗口。收起侧栏和缩窄窗口后重试，检查滚动、按钮、弹窗和全屏。 |
 | [登录、profile 和桌面集成](../desktop-host)、[官方启动器接入](../tooling/start.mjs) | `profile-boot`、`app-boot`、Connection 与认证导出，以及 DSH profile 配置和桌面桥接。源码构建和公开 npm 包需要分别核对导出，即使版本号一致。 | 在隔离 home 中启动真实 Electron，打开已有 profile 的测试副本，验证登录注册、模型和 agent 模式、工作区与会话、浏览器和文件操作。 |
-| [桌面首页账号表单](../desktop/src/client/WelcomePage.tsx) | 桌面使用经过认证的本地 Host 账号路由，原生 preload 向表单传递明确允许的登录和注册错误。 | 验证错误密码、邮箱已注册，检查登录页没有忘记密码控件，确认成功登录后进入工作区。 |
+| [桌面首页账号表单](../desktop/src/client/WelcomePage.tsx) | 桌面使用经过认证的本地 Host 账号路由，原生 preload 向表单传递明确允许的登录和注册错误。[账号适配器](../../plugins/ipollowork-suite/src/host/account.ts)在 Node 明确报告 TLS 建立前断线时重试一次登录。 | 验证密码错误、连接中断及邮箱已注册。检查 TLS 建立前断线可以恢复，无法确定请求状态时只发送一次，成功登录后进入工作区。 |
 | [桌面会话分享](../desktop/src/web-document.ts)与[中继](../../services/ipollowork/src/liveshare.ts) | LiveShare 在 `ownerLoginStart` 和 `ownerLoginRedeem` 校验 Web 来源，桌面转发已认证的宿主 HTTP 来源。DSH v1 中继在修改权限时用原 ID 重新注册；服务端核对所有者、来源会话、运行实例和网关令牌后更新分享。 | 用另一账号打开分享，再由所有者修改权限和部门范围。确认原链接保持在线，移除的成员和作废链接仍不能访问。 |
 | [桌面下载位置](../desktop/src/file-actions.ts) | `dshDesktop.fileActions.save` 的两种模式都打开系统另存为窗口，主应用窗口里的插件下载链接和 Blob 导出也使用同一个窗口。套件的项目制品、记忆版本和组织文件包仅允许从已授权路由下载。桌面流式读取经过鉴权的 Host 响应，下载签名 HTTPS 对象时不转发 Host 凭据。 | 从对话附件、插件 Blob 导出、组织文件包和项目交付物选择其他目录并改名保存，核对原始字节。复验取消、覆盖中断、两种存储方式和两种桥接模式，并检查访客窗口下载限制及 Web 端下载。 |
 | [通用设置版本行](../../plugins/ipollowork-suite/src/client/desktop-version.tsx)与[桌面 preload](../desktop/src/preload-app.ts) | DSH `dsh-v0.2.2-rc.3` 提供 `settings.general.item` 插槽、`current-version` 条目和 `general.currentVersion` 翻译。产品用 Electron 包版本覆盖该条目。 | 使用版本号与 DSH 固定版本不同的安装包，核对通用设置和关于界面。检查浏览器仍显示 DSH 版本，使用旧 preload 的桌面客户端仍能通过 IPC 取得版本。 |
@@ -114,6 +115,7 @@ Suite `0.1.39` 携带 Design `1.0.0-beta.37`，使用原生 `ctx.skills.register
 | [插件组合](../../plugins/ipollowork-suite/cordis.patch.yml)、[Studio 市场](../../plugins/ipollowork-suite/catalog/index.json)与[桌面资源打包](../desktop/scripts/prepare-dsh.ts) | Cordis 插入项和依赖、原生插件加载器、DSH ASAR 布局、Host/CLI 启动入口和电脑操作资源路径。官网安装包和 Office 回退在产品打包层。 | 用各平台打包客户端验证启动、市场按需安装、打开已有 Design/Video 项目、Office 打开和电脑操作辅助程序。 |
 | [Design 模板生成和结果打开](https://github.com/Devin-AXIS/deepseek-design) | 基于 `dsh-v0.2.2-rc.3`，Design 使用会话范围的 `resources.source`、右侧栏文件关联、`conversation.chat.turnTail`、原生 `present` 工具和交付卡片。`design-actions.tsx` 打开编辑器，`surface.tsx` 向输入框插入文件引用时保持编辑器打开。 | 套用模板并给出与示例主题明显不同的提示词。保存期间切换会话，再返回检查预览。关闭预览后，从对话结果打开最终 HTML。用原生幻灯片模板发出做 PPT 的请求，点击「在 Design 中编辑」修改一页，核对修改已保存到同一份 HTML 且页数一致。 |
 | [桌面更新频道](../desktop/src/update-channel.ts) | iPolloWork 正式发布源提供稳定版更新清单。桌面预加载对该来源省略可选的 `dshDesktop.updates.channels` 接口，DSH 通用设置不会显示开发版频道选项。 | 用保存过开发版偏好的设置启动正式安装包，确认它使用稳定版且仍可手动检查更新。换用其他更新源，确认频道选择仍可用。 |
+| [macOS 更新运行位置](../desktop/src/macos-update-location.ts) | 桌面端在手动更新前检查运行中的应用包，并识别 Squirrel.Mac 的只读卷错误。当前用户可写入「应用程序」且目标未被占用时，用户确认后由 Electron 移动并重新打开应用。其余情况可打开访达的「应用程序」。移动流程复用 Host 任务锁定和退出确认。 | 用签名候选包从挂载的 DMG 和「下载」中触发 App Translocation 的副本分别启动。检查取消、运行中任务确认、从「应用程序」用原有 profile 重开，以及应用内更新到下一版。再验证已有同名应用时可打开访达，原应用包保持完整。 |
 | Stage 桌面插件（在 PR #582 中移除） | 曾使用 `main`、`sidebar.panellist`、`plugins.bundle.config`、Host 连接准入、`workspaceRegistry`、`tools` 和 `sandboxPolicy`。 | 检查产品组合是否已移除 Stage Bundle。 |
 | [iPolloWork 共用控件](../../plugins/_shared/ui/controls.tsx) | 套件客户端、项目看板与通知中心在构建时打入同一份产品源码。共用控件使用固定 DSH 的公开 `Button`、`Input`、`Menu`、`MenuSurface`、`Tag`、`Switch` 与主题语义变量。`FieldPopover` 在套件的智能体编辑和看板详情中使用浏览器顶层锚定弹层。看板和通知中心各自随客户端生命周期加载与撤销样式。 | 安装套件，在明暗主题与窄屏用鼠标和键盘检查智能体编辑与看板的下拉。分别停用和启用两个子插件，确认另一个入口的样式仍然可用。单独安装两个归档并验证它们可在没有套件时打开控件。 |
 | [项目文件](../../plugins/project-files) | 使用原生 `sidebarRightTabs` 和 `sidebar.right.pane.tab` 接入对话右侧，用 `keepMounted` 在资源预览时保留文件浏览位置。Host 通过 `workspaceRegistry` 确认项目，使用 `sessionQuery.readSession` 读取历史、原生附件和工作区变更摘要，通过 `sessionFileAddress` 打开预览，使用 `fileMediaUrl` 和 `ImageLightbox` 支持项目图片和上传图片预览，按会话头的 `cwd` 解析记录中的相对路径。条目复用对话附件使用的原生 `FileTypeIcon`、`classifyFileType`、`fileExtension` 和 `fileSizeText`。从 `deliverables/presented` 的可选 `description` 取得显示标题。插件自己的文件操作要求所有者身份、文件系统一致及工作区路径校验。 | 分别独立安装和随套件安装。在两个项目打开右栏，核对本次对话和整个项目范围的输入输出、交付标题和文件名以及网格和列表排列、等大条目、原生文件图标、附件原件下载、小缩略图和直接预览交付网页及目录首页、复制、拖放、改名、废纸篓和恢复，验证跨项目与非所有者访问失败，并检查明暗主题和 390 px。 |
@@ -270,4 +272,18 @@ Suite `src/host/service-models.ts` 保持原生模型的 `retryPolicy.maxRetries
 升级 DSH 固定版本时，使用独立桌面 profile，在没有会话的情况下从「业务网页」打开已配置的站点。以相同 profile 冷启动，验证获准的 HTTPS Cookie 恢复。切换账号、取消组织成员资格和主动退出，验证权限和隔离。检查插件 Host 的组织接口，以及凭据库中账号授权记录的加密状态。
 ### 移植工作台路由与模型任务
 
-[移植 Host](../../plugins/ipollowork-suite/src/ported/host.ts) 将 `workspaceRegistry` 校验后的工作区 ID 传给业务操作，并按所有者连接的生命周期管理请求。[移植客户端](../../plugins/ipollowork-suite/src/ported/client.tsx) 校验工作台消息来源，由桌面壳在系统浏览器打开对应的官方平台；系统浏览器登录无法提供独立账号环境与自动核验。升级 DSH 时复测官方登录链接可打开、跨平台链接会被拒绝、视频号封面通过工作台代理上传与预览，以及图片任务按原任务回执查询成功且只有一次提交。检查小红书安装包是否包含目标平台的本地依赖，并用全新配置验证冷启动。
+[移植 Host](../../plugins/ipollowork-suite/src/ported/host.ts) 通过 `workspaceRegistry` 验证工作区及会话归属。[移植客户端](../../plugins/ipollowork-suite/src/ported/client.tsx) 校验工作台消息来源，并用 `uiWorkspace.connectWorkspace` 解析当前会话。抖音、视频号及小红书使用可选的[产品桌面登录桥](../desktop/src/social-login.ts)，在现有主窗口嵌入按账号隔离的 Chromium 页面。Electron 主进程通过私有 Host 通道发送有限的可见身份信息，由业务服务核验并保存账号状态。公开网页链接仍使用系统浏览器。DSH 侧栏浏览器的公开打开接口仅接受网址，会话存储按工作区设置。授权页沿用原有的账号隔离存储，登录桥不向模型提供浏览器工具。
+
+升级 pin 后在真实 Electron 中安装三个归档，复验显示二维码、扫码后回写、多个账号隔离、关闭后重试与拒绝错号。用缺少浏览器配置的旧小红书账号和缺少登录桥的旧桌面壳各检查一次。复测公开网页链接、视频号封面上传与预览和图片任务回执恢复。确认小红书归档包含对应平台依赖并能从新配置冷启动。
+
+平台授权页通过 Electron 的 `setWindowOpenHandler` 和 `createWindow` 将子 `WebContentsView` 接入同一个主窗口，保留原网页回调和表单提交。子页面使用当前账号的沙盒会话，顶层导航遵守平台域名名单。更新运行时后复验空白子页面跳转、表单 POST、原网页回调、阻止平台外跳转、只有一个主窗口，以及授权页返回登录页和运营台。
+
+授权页的[工具栏和反馈](../desktop/src/social-login-feedback.ts)独立于平台网页加载。只读检查发现已渲染文字或可见媒体后收起加载提示并保留工具栏。加载过慢或失败时，用户可在同一账号会话内重试。更新运行时后复验主文档延迟、空白页、可见内容与慢资源并存、连接失败、按钮和键盘重试，以及主窗口重载或关闭后的清理。
+
+桌面 preload 提供 `socialLoginQrEntry` 时，视频号工作台的「扫码添加账号」直接打开官方扫码入口。已有账号优先恢复管理页，管理页失败或加载中持续空白时切换到登录入口。检测到微信页面和静态资源使用同一个本机 HTTP 代理时，工具栏提供「直连重试」，仅在该账号浏览器分区内临时直连官方微信登录及静态资源域名。复验新旧工作台与桌面版本的组合、添加账号、继续登录、代理较慢时的二维码加载，以及关闭页面后恢复代理。
+
+平台页面稳定后，账号核验失败最多自动重试两次。更新运行时后复验 Host 首次核验失败时，可以在同一窗口和已授权页面恢复核验。
+
+视频号优先从 `/platform/` 核验已有账号会话，再打开扫码入口。桌面桥读取页面上可见的视频号 ID 和名称，返回运营台前会完成一次核验。复验已有会话的待绑定账号、带空格的 ID 标签、非标题元素中的账号名称及错号拒绝。
+
+小红书创作首页加载完成后仍为空白时，内嵌页面会在同一账号会话里尝试平台的登录入口。更新运行时后复验首次登录的空白页恢复，以及已有登录的创作首页正常开启。
