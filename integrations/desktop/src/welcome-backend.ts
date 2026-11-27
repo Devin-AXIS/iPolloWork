@@ -98,6 +98,7 @@ export function connectDesktopWelcome(
       }
       if (response.status === 429) return { ok: false, reason: 'rate-limited' }
       if (response.status === 504 || code === 'IPW_ACCOUNT_TIMEOUT') return { ok: false, reason: 'timeout' }
+      if (response.status === 502 && code === 'IPW_ACCOUNT_CONNECTION_FAILED') return { ok: false, reason: 'connection-interrupted' }
       if (response.status >= 500) return { ok: false, reason: 'service-unavailable' }
       return { ok: false }
     }

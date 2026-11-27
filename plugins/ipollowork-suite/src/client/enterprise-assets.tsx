@@ -56,7 +56,7 @@ import {
   type Call,
 } from "./enterprise-ui.tsx";
 import { KeyGlyph, Monogram } from "./glyphs.tsx";
-import { EmployeeRecipients } from "./organization-recipients.tsx";
+import { DepartmentRecipients, EmployeeRecipients } from "./organization-recipients.tsx";
 import css from "./suite.module.css";
 
 type Kind = "skill" | "service" | "mcp" | "package";
@@ -207,21 +207,9 @@ export function AudienceFields({
         selected={audience.members} change={members => change({ scope, audience: { ...audience, members } })}
         disabled={disabled} managersHaveAccess={managersHaveAccess} excludeUserId={excludeUserId}/>}
     {!legacy && (scope === "departments" || scope === "mixed") &&
-      <section>
-        {detail.departments.length ? <div className={css.chipRow}>
-          {detail.departments.map(department => {
-            const checked = audience.departments.includes(department.id);
-            return <button key={department.id} type="button" className={css.filterChip}
-              aria-pressed={checked} disabled={disabled || (!checked && audience.departments.length >= 200)}
-              onClick={() => change({
-                scope, audience: { ...audience, departments: checked ? audience.departments.filter(id => id !== department.id)
-                  : [...audience.departments, department.id] },
-              })}>
-              {checked && <IconCheckOutlineRegular size={12} aria-hidden="true"/>}
-              {department.name}
-            </button>;
-          })}
-        </div> : <p className={css.quietLine}>{t.noDepartments}</p>}
+      <section className={css.departmentRecipientField}>
+        <DepartmentRecipients departments={detail.departments} selected={audience.departments} disabled={disabled} t={t}
+          change={departments => change({ scope, audience: { ...audience, departments } })}/>
         {includeDepartmentTree && !!audience.departments.length && <label><input type="checkbox" checked={audience.includeSubdepartments ?? false}
           disabled={disabled} onChange={event => change({ scope, audience: { ...audience, includeSubdepartments: event.target.checked } })}/> {t.includeSubdepartments}</label>}
       </section>}

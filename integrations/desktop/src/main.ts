@@ -9,7 +9,7 @@ import type { DesktopChannelState, DesktopChannelChangeResult } from '@deepseek-
 import { DesktopUpdateSettings, type DesktopUpdateSettingsResult } from './update-settings.ts'
 import { isDesktopUpdateChannel } from './settings-file.ts'
 import type { ProductEventMap, ProductEvent } from '@deepseek-ai/dsh-client-product-analytics/types'
-import { WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
+import { WINDOWS_CAPTION_BACKGROUND, WINDOWS_TITLEBAR_HEIGHT } from './windows-layout.ts'
 import { access, readFile, writeFile } from 'node:fs/promises'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -74,6 +74,7 @@ import { readDesktopLocaleCache, writeDesktopLocaleCache } from './locale-cache.
 import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
 import { readDesktopRuntime } from './runtime-tree.ts'
 import { DesktopBrowserGuests } from './browser-guests.ts'
+import { DesktopSocialLogin, socialLoginRequest, type SocialLoginObservation } from './social-login.ts'
 import { EnterpriseDesktop } from './enterprise-browser.ts'
 import { installDesktopShortcuts } from './keyboard.ts'
 import { DesktopUpdateOverlays } from './update-overlay.ts'
@@ -262,8 +263,7 @@ function developmentHostInspectPort(enabled: boolean): number | undefined {
 /**
  * Opaque chrome fallback matching the built-in sidebar palette (the resolved
  * `--dsw-static-neutral-bluish-900` / `-50` tokens). An approximation for
- * custom themes: Windows captions use the renderer's measured palette over
- * windowsAppearance IPC. The Windows workspace base stays opaque and follows
+ * custom themes. The Windows workspace base stays opaque and follows
  * the effective light/dark theme; macOS uses it only while minimized or hidden.
  * @returns the sidebar fill hex for the effective application color scheme.
  */
@@ -296,7 +296,7 @@ function createWindow(preload: string, applicationIconPath: string, fixedUpdateC
       icon: applicationIconPath,
       backgroundColor: chromeFallbackFill(),
       titleBarStyle: 'hidden' as const,
-      titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
+      titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: WINDOWS_CAPTION_BACKGROUND,
         symbolColor: nativeTheme.shouldUseDarkColors ? '#f9fafb' : '#0f1115' },
     } : {}),
     // hiddenInset places traffic lights inside the sidebar; sidebar vibrancy
@@ -517,10 +517,13 @@ async function main(): Promise<void> {
   })
   const appPreload = fileURLToPath(new URL('./preload-app.cjs', import.meta.url))
   const applicationUrl = `${SCHEME}://app/`
+  const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
+    : join(process.resourcesPath, desktopIdentity.dshApplicationIcon ?? 'icon.png')
   let hostUrl: string | undefined
   let hostCookie: string | undefined
   const browserGuests = new DesktopBrowserGuests(() => hostUrl)
-  const enterpriseDesktop = new EnterpriseDesktop(join(app.getPath('userData'), 'organization-browser'), () => hostUrl)
+  const socialLogin = new DesktopSocialLogin()
+  const enterpriseDesktop = new EnterpriseDesktop(join(app.getPath('userData'), 'organization-browser'), () => hostUrl, applicationIconPath)
   let injections: readonly unknown[] = []
   let welcomeBackend: DesktopWelcomeBackend | undefined
   let reportedLaunch = false
@@ -639,6 +642,7 @@ async function main(): Promise<void> {
       updateTasks: (action: 'inspect' | 'lock' | 'unlock') => host.updateTasks(action),
       inspectQuit: () => host.inspectQuit(),
       resolveDragResource: (address: string, signal?: AbortSignal) => host.resolveDragResource(address, signal),
+      observeSocialLogin: (input: SocialLoginObservation, signal: AbortSignal) => host.observeSocialLogin(input, signal),
     }
   }, (state) => {
     if (state.phase === 'error') reportFatal(state.failure, 'host')
@@ -1038,6 +1042,12 @@ async function main(): Promise<void> {
     assertProductSender(event)
     return browserGuests.release(event.sender, lease)
   })
+  ipcMain.handle(DESKTOP_IPC.socialLogin, (event, request: unknown) => {
+    const owner = assertProductSender(event)
+    const host = backend.host
+    if (!host || quitting || shuttingDown || isMandatory()) return 'unavailable'
+    return socialLogin.open(owner, socialLoginRequest.parse(request), host.observeSocialLogin)
+  })
 
   session.defaultSession.webRequest.onBeforeSendHeaders({ urls: ['ws://127.0.0.1/*', 'wss://127.0.0.1/*'] }, (details, callback) => {
     if (hostUrl === undefined || hostCookie === undefined || details.webContentsId !== mainWindow?.webContents.id) {
@@ -1360,8 +1370,6 @@ async function main(): Promise<void> {
     updates.dispose()
   })
 
-  const applicationIconPath = development ? join(app.getAppPath(), 'resources', 'icon-windows.png')
-    : join(process.resourcesPath, desktopIdentity.dshApplicationIcon ?? 'icon.png')
   app.setAboutPanelOptions({
     applicationName: app.getName(),
     applicationVersion: app.getVersion(),
@@ -1741,7 +1749,7 @@ async function main(): Promise<void> {
   if (policyConfig !== undefined) {
     if (policyConfig.authentication === 'feishu-test') {
       policyAuth = new DesktopPolicyTestAuth(policyConfig.origin, policyConfig.allowedAuthOrigins, locale,
-        () => mandatoryUI?.confirmationWindow ?? currentDialogWindow(),
+        () => mandatoryUI?.confirmationWindow ?? currentDialogWindow(), applicationIconPath,
         (event) => { console.info(`desktop policy authentication: ${event}`); updateJournal?.action(`policy-login-${event}`) })
     }
     if (!['win32', 'darwin'].includes(process.platform) || !['x64', 'arm64'].includes(process.arch)) throw new Error('desktop policy: unsupported platform')

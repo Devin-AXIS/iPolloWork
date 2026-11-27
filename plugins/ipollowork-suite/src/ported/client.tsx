@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore, type ComponentType } from 'react'
 import { Button, Input } from '@deepseek-ai/dsh-client-ui-primitives'
 import { pluginGlyph } from './icons.ts'
-import type { BundleState } from './contracts.ts'
+import { socialLoginPlugins, type BundleState } from './contracts.ts'
 
 interface NativeClient {
   effect(effect: () => void | (() => void), label?: string): unknown;
@@ -17,6 +17,16 @@ const workbenchLinkOrigins: Readonly<Record<string, readonly string[]>> = {
   'douyin-ops': ['https://www.douyin.com', 'https://creator.douyin.com', 'https://open.douyin.com'],
   'wechat-channels-ops': ['https://channels.weixin.qq.com'],
   'xiaohongshu-ops': ['https://www.xiaohongshu.com', 'https://creator.xiaohongshu.com'],
+}
+type DesktopSocialLoginArgs = { plugin: string; workspace: string; sessionId: string; browserProfileId: string }
+type DesktopSocialLogin = (args: DesktopSocialLoginArgs & { startAtQr?: true }) => Promise<string>
+function desktopSocialLogin(plugin: string) {
+  const desktop = (window as Window & { dshDesktop?: { socialLogin?: DesktopSocialLogin; socialLoginQrEntry?: true } }).dshDesktop
+  const open = desktop?.socialLogin
+  if (!socialLoginPlugins.has(plugin) || typeof open !== 'function') return undefined
+  return (args: DesktopSocialLoginArgs, startAtQr = false) => open(
+    desktop?.socialLoginQrEntry && startAtQr ? { ...args, startAtQr: true } : args,
+  )
 }
 const styles = `
 .ipw-ported{height:100%;min-width:0;display:flex;flex-direction:column;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base);font:var(--dsw-font-body,13px/1.5 system-ui)}
@@ -108,7 +118,7 @@ function Panel({ ctx, manifest }: { ctx: NativeClient; manifest: DisplayManifest
       const target = frame.current?.contentWindow, version = generation.current
       const respond = (result: unknown, error = false) => { if (version === generation.current) target?.postMessage({ jsonrpc: '2.0', id: value.id, ...(error ? { error: { code: -32602, message: String(result) } } : { result }) }, window.location.origin) }
       try {
-        if (value.method === 'ui/initialize') { const sessionId = await sessionFor(); respond({ protocolVersion: '2025-11-21', hostInfo: { name: 'iPolloWork', version: '1' }, hostCapabilities: { message: true, tools: {} }, hostContext: { theme, locale: language, workspaceId: workspace, 'ai.ipollo/workspace': { workspaceId: workspace, sessionId } } }); return }
+        if (value.method === 'ui/initialize') { const sessionId = await sessionFor(); respond({ protocolVersion: '2025-11-21', hostInfo: { name: 'iPolloWork', version: '1' }, hostCapabilities: { message: true, tools: {}, experimental: { 'ai.ipollo/desktop-account-login': Boolean(desktopSocialLogin(manifest.id)) } }, hostContext: { theme, locale: language, workspaceId: workspace, 'ai.ipollo/workspace': { workspaceId: workspace, sessionId } } }); return }
         if (value.method === 'ui/update-model-context') { context.current = JSON.stringify(value.params ?? {}).slice(0, 32_000); respond({}); return }
         if (value.method === 'ui/message') {
           const parts = value.params?.content
@@ -124,6 +134,18 @@ function Panel({ ctx, manifest }: { ctx: NativeClient; manifest: DisplayManifest
           // The Desktop shell sends external windows to the system browser.
           window.open(url.href, '_blank', 'noopener,noreferrer')
           respond({ isError: false, browser: 'external', automaticRecognition: false })
+          return
+        }
+        if (value.method === 'ui/account-login') {
+          const openLogin = desktopSocialLogin(manifest.id)
+          const browserProfileId = value.params?.browserProfileId
+          if (!openLogin || !workspace || typeof browserProfileId !== 'string' || !/^[a-f\d-]{36}$/i.test(browserProfileId)) {
+            respond({ status: 'unavailable' }); return
+          }
+          const sessionId = await sessionFor()
+          if (version !== generation.current) return
+          const startAtQr = manifest.id === 'wechat-channels-ops' && value.params?.startAtQr === true
+          respond({ status: await openLogin({ plugin: manifest.id, workspace, sessionId, browserProfileId }, startAtQr) })
           return
         }
         if (value.method === 'tools/call') {

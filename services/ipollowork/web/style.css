@@ -77,4 +77,7 @@ button.primary{background:var(--action);border-color:var(--action);color:var(--a
 .organization-audience fieldset{min-inline-size:0;max-height:16rem;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:12px}
 .organization-audience legend{padding:0 4px;font-size:12px;color:var(--muted)}
 .organization-audience input[type=search]{width:100%}
-.organization-audience .check{margin-top:8px}
+.organization-audience .check{margin-top:8px;overflow-wrap:anywhere}
+.department-picker{border:1px solid var(--line);border-radius:12px;background:var(--raised)}
+.department-picker summary{padding:8px 12px;cursor:pointer}
+.department-picker-options{border-top:1px solid var(--line);padding:0 12px 8px;overflow:auto;max-height:10rem;overflow-wrap:anywhere}

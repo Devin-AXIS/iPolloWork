@@ -37,6 +37,8 @@ function createProductApi(): DshDesktopProductApi {
         Promise<{ bytes: Uint8Array; mediaType: string }>,
     },
     browser: createDesktopBrowserBridge(),
+    socialLogin: request => ipcRenderer.invoke(DESKTOP_IPC.socialLogin, request) as ReturnType<DshDesktopProductApi['socialLogin']>,
+    socialLoginQrEntry: true,
     organizationBrowser: true,
     organizationPackageSaveAs: true,
     fileDrag: {

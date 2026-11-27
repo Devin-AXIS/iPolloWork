@@ -169,8 +169,8 @@
     const accountId = editing ? state.activeAccountId : '';
     $('#account-dialog-title').textContent = editing ? '管理公众号' : '添加公众号';
     $('#account-dialog-hint').textContent = editing
-      ? 'AppID 或 AppSecret 留空会保留原值；保存前会先验证账号凭据。'
-      : '每个账号的 AppID 和 AppSecret 会独立保存在 iPolloWork 加密授权仓库中。';
+      ? '留空的凭据会保留原值。'
+      : '填写公众号后台的开发凭据。';
     $('#account-name').value = accountId; $('#account-name').readOnly = editing;
     $('#account-appid').value = ''; $('#account-secret').value = '';
     $('#account-appid').required = !editing; $('#account-secret').required = !editing;

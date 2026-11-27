@@ -113,7 +113,8 @@ test('opens publishing with account dialogs and redirects retired account and ta
   assert.match(accountHtml, /<dialog id="account-onboarding"/)
   assert.doesNotMatch(accountHtml, /账号接入步骤|href="\/accounts"/)
   assert.equal((await app.request('/accounts?account=999')).status, 404)
-  assert.match(accountHtml, /data-new-account-login/)
+  assert.match(accountHtml, /保存并扫码/)
+  assert.doesNotMatch(accountHtml, /data-new-account-login/)
   assert.match(accountHtml, /name="expectedProfileId"/)
   assert.match(accountHtml, /name="position"/)
   const health = await app.request('/healthz')
@@ -200,7 +201,7 @@ test('account onboarding supports editing and queues a real session verification
 
   const page = await app.request('/publishing')
   const html = await page.text()
-  assert.match(html, /保存后会自动识别/)
+  assert.match(html, /扫码后自动核对/)
   assert.doesNotMatch(html, /标记已登录/)
   db.close()
 })

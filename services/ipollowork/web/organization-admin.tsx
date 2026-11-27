@@ -118,6 +118,7 @@ function OrganizationAudienceFields({ path, departments, initial, legacy = false
 }) {
   const draft = audienceDraft(initial);
   const [scope, setScope] = useState<AudienceScope | "legacy">(legacy ? "legacy" : draft.scope);
+  const [selectedDepartments, setSelectedDepartments] = useState(() => draft.audience.departments);
   return <div className="organization-audience">
     <Field label="共享范围"><select name="sharingScope" value={scope} onChange={event => setScope(event.target.value as typeof scope)}>
       {legacy && <option value="legacy">原有范围</option>}
@@ -127,10 +128,23 @@ function OrganizationAudienceFields({ path, departments, initial, legacy = false
     {(scope === "departments" || scope === "mixed") && <fieldset>
       <legend>选定部门</legend>
       {departments.length === 0 && <p>暂无可选部门</p>}
-      {departments.map(row => <label className="check" key={text(row.id)}>
-        <input type="checkbox" name="department" value={text(row.id)} defaultChecked={draft.audience.departments.includes(text(row.id))}/>
-        {text(row.name)}
-      </label>)}
+      {departments.length > 0 && <details className="department-picker">
+        <summary>{selectedDepartments.length ? `已选 ${selectedDepartments.length} 个部门` : "请选择部门"}</summary>
+        <div className="department-picker-options" role="group" aria-label="选定部门">
+          {departments.map(row => {
+            const id = text(row.id);
+            const checked = selectedDepartments.includes(id);
+            return <label className="check" key={id}>
+              <input type="checkbox" name="department" value={id} checked={checked}
+                disabled={!checked && selectedDepartments.length >= 200} onChange={event => {
+                  const include = event.target.checked;
+                  setSelectedDepartments(current => include ? [...current, id] : current.filter(selected => selected !== id));
+                }}/>
+              {text(row.name)}
+            </label>;
+          })}
+        </div>
+      </details>}
       {!project && departments.length > 0 && <label className="check">
         <input type="checkbox" name="includeSubdepartments" defaultChecked={draft.audience.includeSubdepartments}/>包含下级部门
       </label>}
@@ -418,13 +432,16 @@ export function OrganizationMemberOptions({ path, initial, name }: { path: strin
   const directory = useData<{items: Row[]; more: boolean}>(path + "/members?" + new URLSearchParams({ query, page: String(page), active: "true" }));
   return <fieldset>
     <legend>选定员工 · 已选 {selected.size} 人</legend>
-    <input type="search" aria-label="搜索成员" placeholder="姓名或工号" maxLength={120} value={query}
+    <input type="search" aria-label="搜索成员" placeholder="姓名、工号或邮箱" maxLength={120} value={query}
       onChange={event => { setQuery(event.target.value); setPage(1); }}/>
     <Status error={directory.error} loading={!directory.data}/>
     {directory.error && <button type="button" onClick={directory.reload}>重试</button>}
-    {directory.data?.items.filter(row => row.role === "member").map(row => {
+    {directory.data?.items.length === 0 && <p className="empty">没有匹配的成员</p>}
+    {directory.data?.items.map(row => {
       const id = text(row.user_id);
+      const alreadyGranted = row.role !== "member" && !selected.has(id);
       return <label key={id} className="check"><input type="checkbox" checked={selected.has(id)}
+        disabled={alreadyGranted || (!selected.has(id) && selected.size >= 500)}
         onChange={event => {
           const checked = event.target.checked;
           setSelected(previous => {
@@ -432,7 +449,7 @@ export function OrganizationMemberOptions({ path, initial, name }: { path: strin
             if (checked) next.add(id); else next.delete(id);
             return next;
           });
-        }}/>{[row.name, row.employee_number].filter(Boolean).map(text).join(" · ")}</label>;
+        }}/>{[row.name, row.employee_number, row.email, alreadyGranted && "已有访问权限"].filter(Boolean).map(text).join(" · ")}</label>;
     })}
     {[...selected].map(id => <input key={id} type="hidden" name={name} value={id}/>)}
     <OrganizationPager previous={page > 1 ? () => setPage(page - 1) : undefined}

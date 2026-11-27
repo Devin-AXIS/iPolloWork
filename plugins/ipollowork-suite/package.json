@@ -82,12 +82,12 @@
     "catalog/packages/ipollo-dsh-sentry-0.1.6-b7d854eb6ab8.tgz",
     "catalog/packages/ipollo-dsh-short-video-studio-0.1.7-28d2f77d3a95.tgz",
     "catalog/packages/ipollo-dsh-stripe-0.1.6-eb1248952096.tgz",
-    "catalog/packages/ipollo-dsh-wechat-official-0.1.8-0c05b558efbf.tgz",
-    "catalog/packages/ipollo-dsh-douyin-ops-0.1.7-eee19e6a3609.tgz",
     "catalog/packages/ipollo-dsh-media-studio-0.1.9-322ebd259f48.tgz",
-    "catalog/packages/ipollo-dsh-wechat-channels-ops-0.1.7-654599bf34be.tgz",
-    "catalog/packages/ipollo-dsh-xiaohongshu-ops-0.1.9-a2af2ee4f07b.tgz",
-    "catalog/packages/ipollo-dsh-decision-intelligence-1.0.4-7a5edde4f883.tgz"
+    "catalog/packages/ipollo-dsh-decision-intelligence-1.0.4-7a5edde4f883.tgz",
+    "catalog/packages/ipollo-dsh-wechat-official-0.1.9-9decd162096e.tgz",
+    "catalog/packages/ipollo-dsh-douyin-ops-0.1.8-3398b55edc04.tgz",
+    "catalog/packages/ipollo-dsh-xiaohongshu-ops-0.1.10-3632c6762b5d.tgz",
+    "catalog/packages/ipollo-dsh-wechat-channels-ops-0.1.10-d4310ab44ac8.tgz"
   ],
   "dsh": {
     "bundle": {

@@ -119,6 +119,7 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
     await enterpriseAccess(store, actor, id);
     const project = input.projectId ? await projectAccess(store, actor, input.projectId, true) : undefined;
     if (project && project.enterprise_id !== id) throw new ServiceError("PROJECT_NOT_FOUND", 404);
+    const keywords = input.query.split(/\s+/u).filter(Boolean);
     const items = await store.all(
       `SELECT page.*,
         CASE WHEN ?::text IS NULL THEN NULL
@@ -134,13 +135,18 @@ export function mountEnterprise(app: App, store: Store, config: Config, cloud?: 
           FROM members m JOIN "user" u ON u.id=m.user_id
           WHERE m.enterprise_id=? AND (?::text IS NULL OR COALESCE(m.department_id,'')=?)
             AND (?::text IS NULL OR m.user_id=?) AND (?='false' OR (m.status='active' AND COALESCE(u.banned,false)=false))
-            AND (?='' OR strpos(lower(COALESCE(m.display_name,u.name)),lower(?))>0
-              OR strpos(lower(u.email),lower(?))>0 OR strpos(lower(COALESCE(m.employee_number,'')),lower(?))>0)
+            AND NOT EXISTS (
+              SELECT 1 FROM unnest(?::text[]) AS keyword(value)
+              WHERE strpos(lower(COALESCE(m.display_name,'')),lower(keyword.value))=0
+                AND strpos(lower(COALESCE(u.name,'')),lower(keyword.value))=0
+                AND strpos(lower(COALESCE(u.email,'')),lower(keyword.value))=0
+                AND strpos(lower(COALESCE(m.employee_number,'')),lower(keyword.value))=0
+            )
           ORDER BY m.created_at,m.user_id LIMIT 51 OFFSET ?
         ) page ORDER BY page.created_at,page.user_id`,
       project?.id ?? null, project?.id ?? null, project?.id ?? null, project?.access_mode ?? null, project?.id ?? null,
       id, input.department ?? null, input.department ?? null, input.userId ?? null, input.userId ?? null,
-      input.active, input.query, input.query, input.query, input.query, (input.page - 1) * 50,
+      input.active, keywords, (input.page - 1) * 50,
     );
     return c.json({ items: items.slice(0, 50), more: items.length > 50 });
   });

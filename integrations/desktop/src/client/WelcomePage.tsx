@@ -148,6 +148,7 @@ export function Welcome({ api }: { api: WelcomeApi }) {
           'invalid-credentials': m.welcomeInvalidCredentials,
           'email-in-use': m.welcomeEmailInUse,
           'session-rejected': m.welcomeAuthSessionRejected,
+          'connection-interrupted': m.welcomeAuthConnectionInterrupted,
           'service-unavailable': m.welcomeAuthServiceUnavailable,
           timeout: m.welcomeAuthTimeout,
           'rate-limited': m.welcomeAuthRateLimited,

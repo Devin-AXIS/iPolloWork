@@ -10,6 +10,7 @@ import { AppDataRejection, InvitationRosterRejection, ModelServiceError, StageRe
 import { desktopEnterprise, hasEnterpriseDesktop } from "./desktop-enterprise.ts";
 
 const KEY = "ipollowork-suite/account";
+const signInPath = "/api/auth/sign-in/email";
 type Grant = { version: 1; origin: string; token: string };
 type HostAccountState = AccountState & { origin: string };
 
@@ -46,8 +47,12 @@ function connectionFailure(cause: unknown) {
     return { code: "IPW_ACCOUNT_TLS_FAILED", retry: false };
   if (codes.length && codes.every(code => timeoutCodes.has(code)))
     return { code: "IPW_ACCOUNT_TIMEOUT", retry: true };
-  if (cause.message === "terminated" || codes.some(code => socketCodes.has(code)))
-    return { code: "IPW_ACCOUNT_CONNECTION_FAILED", retry: true };
+  if (cause.message === "terminated" || codes.some(code => socketCodes.has(code))) {
+    const beforeSecureConnection = cause.message === "fetch failed" && underlying instanceof Error
+      && "code" in underlying && underlying.code === "ECONNRESET"
+      && underlying.message === "Client network socket disconnected before secure TLS connection was established";
+    return { code: "IPW_ACCOUNT_CONNECTION_FAILED", retry: true, beforeSecureConnection };
+  }
   return { code: "IPW_ACCOUNT_UNAVAILABLE", retry: codes.length === 0 };
 }
 
@@ -159,8 +164,11 @@ export class AccountService {
         if (deadline.aborted) throw new SuiteError("IPW_ACCOUNT_TIMEOUT", 504, { cause });
         const attemptTimedOut = first?.aborted && attemptSignal.reason === first.reason;
         const connection = connectionFailure(cause);
-        if (read && attempt === 0 && (attemptTimedOut || connection?.retry
-          || (cause instanceof SuiteError && retryableAccountReads.has(cause.code)))) {
+        const retryRead = read && (attemptTimedOut || connection?.retry
+          || (cause instanceof SuiteError && retryableAccountReads.has(cause.code)));
+        // An HTTPS sign-in can be retried only when TLS failed before any credentials could be sent.
+        const retrySignIn = path === signInPath && response === undefined && connection?.beforeSecureConnection;
+        if (attempt === 0 && (retryRead || retrySignIn)) {
           const wait = accountRetryDelay(response);
           if (wait <= 2000) {
             await delay(wait, undefined, { signal: requestSignal }).catch(error => {
@@ -212,7 +220,7 @@ export class AccountService {
           throw new SuiteError("IPW_EMAIL_IN_USE", 409);
         throw new SuiteError("IPW_REGISTRATION_REJECTED", 400);
       }
-      if (path === "/api/auth/sign-in/email" && [400, 401].includes(response.status)) {
+      if (path === signInPath && [400, 401].includes(response.status)) {
         const failure = await readJson(response, maximum).catch(() => undefined);
         if (object(failure) && ["INVALID_EMAIL_OR_PASSWORD", "INVALID_EMAIL"].some(code => failure.code === code))
           throw new SuiteError("IPW_INVALID_LOGIN", 401);
@@ -554,7 +562,7 @@ export class AccountService {
       input.password.length > 1024
     )
       throw new SuiteError("IPW_INVALID_LOGIN");
-    return this.authenticate("/api/auth/sign-in/email", {
+    return this.authenticate(signInPath, {
       email: input.email.trim(),
       password: input.password,
     });

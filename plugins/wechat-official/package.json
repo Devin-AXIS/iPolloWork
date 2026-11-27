@@ -1,6 +1,6 @@
 {
   "name": "@ipollo/dsh-wechat-official",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "通过微信公众号平台 API 管理账号、图文、草稿、消息与运营工作流。",
   "type": "module",
   "license": "SEE LICENSE IN LICENSE",

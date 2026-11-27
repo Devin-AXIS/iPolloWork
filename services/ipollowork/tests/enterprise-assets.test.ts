@@ -183,6 +183,20 @@ test("organization assets enforce member and department grants, and project owne
     assert.equal(directory.data.more,true);
     const found = await http<{items:{user_id:string;project_role:string|null}[]}>(base+"/members?query=roster-501%40&projectId="+securedProject.data.id,owner.token);
     assert.deepEqual(found.data.items.map(row=>[row.user_id,row.project_role]),[["asset-roster-501",null]]);
+    await service.store.run(
+      "UPDATE members SET display_name=?,employee_number=? WHERE enterprise_id=? AND user_id=?",
+      "驻场研发", "ENG-501", enterprise, "asset-roster-501",
+    );
+    const search = (query: string) => http<{items:{user_id:string}[];more:boolean}>(
+      base + "/members?" + new URLSearchParams({ query, active: "true" }), owner.token,
+    );
+    for (const query of ["oster 501", "研发　eng-50", " ENG-5   @ASSETS "]) {
+      const result = await search(query);
+      assert.equal(result.status, 200);
+      assert.deepEqual(result.data.items.map(row => row.user_id), ["asset-roster-501"]);
+      assert.equal(result.data.more, false);
+    }
+    assert.deepEqual((await search("研发 %")).data.items, []);
     assert.equal((await http(securedPath+"/access",owner.token,{mode:"enterprise",grants:secured.access.grants},"PUT")).status,200);
     assert.equal((await http(securedPath+"/access",owner.token,[{subjectId:sales.id,role:null}],"PATCH")).status,200);
     assert.equal((await http(securedPath + "/space", sales.token)).status,403);

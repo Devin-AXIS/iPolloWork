@@ -25,7 +25,7 @@ export type WelcomeSaveResult = { readonly ok: true } | { readonly ok: false }
 /** Only recognized account rejections cross into the welcome renderer. */
 export type WelcomeAccountResult = { readonly ok: true } | {
   readonly ok: false
-  readonly reason?: 'invalid-credentials' | 'email-in-use' | 'session-rejected' | 'service-unavailable' | 'timeout' | 'rate-limited'
+  readonly reason?: 'invalid-credentials' | 'email-in-use' | 'session-rejected' | 'connection-interrupted' | 'service-unavailable' | 'timeout' | 'rate-limited'
 }
 
 /** One-time notification retained by the main process until Welcome receives it. */

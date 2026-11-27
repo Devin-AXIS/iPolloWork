@@ -53,7 +53,7 @@ function hostRequest(method, params) {
       timer = setTimeout(() => {
         requests.delete(id);
         reject(new Error("当前会话未响应，请重新打开运营台。"));
-      }, 15000);
+      }, method === "ui/account-login" ? 310000 : 15000);
     requests.set(id, { resolve, reject, timer });
     parent.postMessage({ jsonrpc: "2.0", id, method, params }, "*");
   });
@@ -500,14 +500,26 @@ async function openTarget(target) {
     });
 }
 async function connect(id) {
-  await getHost();
+  const host = await getHost();
+  if (window.ipolloPortedHost && !host.hostCapabilities?.experimental?.["ai.ipollo/desktop-account-login"])
+    throw new Error("请在支持账号登录的 iPolloWork 桌面版中打开运营台。");
   const target = await action("connect-browser", id ? { accountId: id } : {});
-  await selectAccount(target.account.id);
+  if (model.accountId !== target.account.id) await selectAccount(target.account.id);
   await refresh();
-  const result = await openTarget(target);
-  notify(result?.browser === "external"
-    ? "请在系统浏览器打开的抖音页面扫码。当前工作台无法自动确认该浏览器中的登录。"
-    : "请在账号浏览器完成登录并进入“我”的主页，账号会自动识别。");
+  if (!window.ipolloPortedHost) {
+    await openTarget(target);
+    return;
+  }
+  notify("请在登录窗口扫码，完成后会自动连接。");
+  const { status } = await hostRequest("ui/account-login", { browserProfileId: target.browserProfileId });
+  await refresh();
+  if (status === "connected") notify("抖音账号已连接。");
+  else if (status === "closed") notify("登录窗口已关闭，可以重新扫码。");
+  else throw new Error({
+    duplicate: "这个抖音账号已经添加，请切换账号后再试。",
+    mismatch: "登录账号与已绑定账号不同，请切换回原账号。",
+    expired: "暂未识别到登录。请重新打开窗口，扫码后停留在「我的」主页。",
+  }[status] || "登录窗口暂不可用，请关闭其他登录窗口后重试。");
 }
 const dispatchKey = (job, reconcile = false) =>
   reconcile
@@ -682,9 +694,7 @@ function Accounts() {
         h(
           ui.DialogDescription,
           null,
-          window.ipolloPortedHost
-            ? "在系统浏览器的抖音官方页面扫码，工作台会保留待核验的账号。"
-            : "每个账号使用独立的浏览器环境，登录后自动识别。",
+          "扫码登录后，账号会自动连接。",
         ),
       ),
       model.notice &&
@@ -701,17 +711,15 @@ function Accounts() {
           onClick: () => run("connect", () => connect()),
         },
         h(ui.Icon, { name: "Plus" }),
-        pending.has("connect") ? "正在打开…" : "扫码添加账号",
+        pending.has("connect") ? "等待扫码…" : "扫码添加账号",
       ),
-      window.ipolloPortedHost &&
-        h("a", { href: "https://www.douyin.com/user/self", target: "_blank", rel: "noopener noreferrer" }, "手动打开抖音登录页"),
       h(
         "div",
         { className: "stack compact" },
         ...model.data.accounts.map((item) =>
           h(
             "article",
-            { key: item.id, className: "record" },
+            { key: item.id, className: "record account-row" },
             h(
               "div",
               { className: "record-head" },
@@ -722,7 +730,7 @@ function Accounts() {
                 h(
                   "p",
                   { className: "caption" },
-                  item.webIdentity || item.openId || "登录后识别抖音号",
+                  item.webIdentity || item.openId || null,
                 ),
               ),
               h(
@@ -749,9 +757,9 @@ function Accounts() {
                   disabled: pending.size > 0,
                   onClick: () => run("connect", () => connect(item.id)),
                 },
-                "打开账号",
+                item.webIdentity ? "检查登录" : "继续登录",
               ),
-              item.connection === "browser" &&
+              !window.ipolloPortedHost && item.connection === "browser" &&
                 h(
                   ui.Button,
                   {
